@@ -4,6 +4,7 @@ export type SyncDirection = 'sheet_to_db' | 'db_to_sheet' | 'initial_import';
 export interface SyncRun {
   id: string;
   direction: SyncDirection;
+  tab: string | null;
   started_at: string;
   finished_at: string | null;
   rows_seen: number | null;
