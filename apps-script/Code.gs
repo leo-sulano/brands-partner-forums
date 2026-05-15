@@ -1,51 +1,53 @@
-// Brands Partner Forum — Sheet bridge
+// Brands Partner Forum — Multi-tab Sheet bridge
 // Bound to the Google Sheet at id 1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk.
 //
-// Responsibilities (Phase 1):
-//   - backfillIds(): one-shot, fills column A with UUIDs for all existing rows
-//   - doPost():      receives row updates from the push-to-sheet Edge Function
-//                    and writes them back into the sheet
+// Endpoints:
+//   doPost  { secret, op: 'upsert_row', tab, sheet_row_id, fields, sync_tag } → writes row
+//   doGet   ?secret=X&op=structure  → returns [{ name, headers }]
+//   doGet   ?secret=X&op=dump       → returns [{ name, headers, rows }]
 //
-// Phase 2 will add an onEdit() installable trigger and reverse-sync POST.
+// Run once after install: backfillAllTabIds()
 
-var SHEET_NAME = 'Sheet1'; // operator: change if the data tab is named differently
-var ID_COLUMN = 1;         // column A
-var SYNC_TAG_COLUMN = 35;  // column AI = column A (id) + 33 data columns + 1
+var OPERATIONAL_TABS = [
+  'TP Brand Injection',
+  'Rooster Partners',
+  'Revolution Casino',
+  'Trybet',
+  'SilverPlay',
+  'SuprPlay Limited'
+];
 
 var SHARED_SECRET = 'REPLACE_ME_WITH_APPS_SCRIPT_SHARED_SECRET';
 
-// Order MUST match the DB column order used in push-to-sheet/index.ts ENTRY_FIELDS.
-var ENTRY_FIELDS = [
-  'agent', 'account', 'country', 'proxy_used', 'email', 'password',
-  'account_name', 'account_surname',
-  'process', 'details', 'brand',
-  'status_date', 'score_added', 'trustpilot_date', 'profile_url', 'review_status',
-  'redirection_search_engine', 'redirection_word', 'review_language',
-  'register_from_google', 'leaving_review_after_email', 'sticky_ip_mobile',
-  'photo_in_account', 'device', 'opening_via_useful', 'opening_via_register',
-  'scrolling_hovering', 'smart_paste', 'mentioning_time_frames',
-  'mentioning_amounts', 'mentioning_agent_name', 'review_length', 'native_language'
-];
+var ID_COLUMN = 1; // column A, always
 
-function backfillIds() {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+// Per-tab, last_sync_tag goes in (last data column + 1). Computed dynamically.
 
-  // Idempotency: only insert/seed the id column if it's not already there.
+function backfillAllTabIds() {
+  var ss = SpreadsheetApp.getActive();
+  var totals = [];
+  for (var i = 0; i < OPERATIONAL_TABS.length; i++) {
+    var name = OPERATIONAL_TABS[i];
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) {
+      totals.push(name + ': NOT FOUND');
+      continue;
+    }
+    var n = ensureIdColumn(sheet);
+    ensureSyncTagColumn(sheet);
+    totals.push(name + ': +' + n + ' UUIDs');
+  }
+  Logger.log(totals.join('\n'));
+}
+
+function ensureIdColumn(sheet) {
   var firstHeader = sheet.getRange(1, ID_COLUMN).getValue();
   if (firstHeader !== 'id') {
-    // Shift all existing data right by one column to make room for the id column.
     sheet.insertColumnsBefore(ID_COLUMN, 1);
     sheet.getRange(1, ID_COLUMN).setValue('id');
   }
-
-  // Ensure the last_sync_tag header exists at SYNC_TAG_COLUMN.
-  var syncHeader = sheet.getRange(1, SYNC_TAG_COLUMN).getValue();
-  if (syncHeader !== 'last_sync_tag') {
-    sheet.getRange(1, SYNC_TAG_COLUMN).setValue('last_sync_tag');
-  }
-
   var lastRow = sheet.getLastRow();
-  if (lastRow < 2) return;
+  if (lastRow < 2) return 0;
   var range = sheet.getRange(2, ID_COLUMN, lastRow - 1, 1);
   var values = range.getValues();
   var changed = 0;
@@ -56,46 +58,118 @@ function backfillIds() {
     }
   }
   range.setValues(values);
-  Logger.log('Backfilled %s UUIDs', changed);
+  return changed;
+}
+
+function ensureSyncTagColumn(sheet) {
+  var col = syncTagColumnIndex(sheet);
+  var header = sheet.getRange(1, col).getValue();
+  if (header !== 'last_sync_tag') {
+    sheet.getRange(1, col).setValue('last_sync_tag');
+  }
+}
+
+function syncTagColumnIndex(sheet) {
+  // last column with header content + 1. If already named 'last_sync_tag', use that column.
+  var lastCol = sheet.getLastColumn();
+  for (var c = 1; c <= lastCol; c++) {
+    if (sheet.getRange(1, c).getValue() === 'last_sync_tag') return c;
+  }
+  return lastCol + 1;
+}
+
+function doGet(e) {
+  var p = e.parameter || {};
+  if (p.secret !== SHARED_SECRET) {
+    return jsonResponse({ ok: false, error: 'unauthorized' });
+  }
+  var op = p.op;
+  if (op === 'structure') return jsonResponse({ ok: true, tabs: collectStructures(false) });
+  if (op === 'dump')      return jsonResponse({ ok: true, tabs: collectStructures(true) });
+  return jsonResponse({ ok: false, error: 'unknown op: ' + op });
+}
+
+function collectStructures(includeRows) {
+  var ss = SpreadsheetApp.getActive();
+  var out = [];
+  for (var i = 0; i < OPERATIONAL_TABS.length; i++) {
+    var name = OPERATIONAL_TABS[i];
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) continue;
+    var lastCol = sheet.getLastColumn();
+    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
+    var tab = { name: name, headers: headers.map(String) };
+    if (includeRows) {
+      var lastRow = sheet.getLastRow();
+      tab.rows = lastRow >= 2
+        ? sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
+        : [];
+    }
+    out.push(tab);
+  }
+  return out;
 }
 
 function doPost(e) {
   try {
     var body = JSON.parse(e.postData.contents);
     if (body.secret !== SHARED_SECRET) {
-      return jsonResponse({ ok: false, error: 'unauthorized' }, 401);
+      return jsonResponse({ ok: false, error: 'unauthorized' });
     }
-    var op = body.op;
-    if (op === 'upsert_row') return handleUpsertRow(body);
-    return jsonResponse({ ok: false, error: 'unknown op: ' + op }, 400);
+    if (body.op === 'upsert_row') return handleUpsertRow(body);
+    return jsonResponse({ ok: false, error: 'unknown op: ' + body.op });
   } catch (err) {
-    return jsonResponse({ ok: false, error: err.message }, 500);
+    return jsonResponse({ ok: false, error: err.message });
   }
 }
 
 function handleUpsertRow(body) {
-  var sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_NAME);
+  var tabName = body.tab;
   var rowId = body.sheet_row_id;
   var fields = body.fields || {};
   var syncTag = body.sync_tag;
-  if (!rowId) return jsonResponse({ ok: false, error: 'sheet_row_id required' }, 400);
+  if (!tabName || !rowId) {
+    return jsonResponse({ ok: false, error: 'tab and sheet_row_id required' });
+  }
+  if (OPERATIONAL_TABS.indexOf(tabName) === -1) {
+    return jsonResponse({ ok: false, error: 'tab not in OPERATIONAL_TABS: ' + tabName });
+  }
+  var sheet = SpreadsheetApp.getActive().getSheetByName(tabName);
+  if (!sheet) return jsonResponse({ ok: false, error: 'sheet not found: ' + tabName });
 
+  // Locate the row by id (column A). Create a new row at the bottom if not found.
   var rowIdx = findRowById(sheet, rowId);
   if (rowIdx === -1) {
     rowIdx = sheet.getLastRow() + 1;
     sheet.getRange(rowIdx, ID_COLUMN).setValue(rowId);
   }
 
-  for (var i = 0; i < ENTRY_FIELDS.length; i++) {
-    var fieldName = ENTRY_FIELDS[i];
-    if (Object.prototype.hasOwnProperty.call(fields, fieldName)) {
-      var col = ID_COLUMN + 1 + i; // data starts in column B
-      sheet.getRange(rowIdx, col).setValue(fields[fieldName] == null ? '' : fields[fieldName]);
+  // Read row 1 to map header → column index.
+  var lastCol = Math.max(sheet.getLastColumn(), 1);
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  var headerToCol = {};
+  for (var i = 0; i < headers.length; i++) headerToCol[headers[i]] = i + 1;
+
+  for (var key in fields) {
+    if (!Object.prototype.hasOwnProperty.call(fields, key)) continue;
+    if (key === 'id' || key === 'last_sync_tag') continue; // never overwrite bookkeeping
+    var col = headerToCol[key];
+    if (!col) {
+      // Unknown header — append it after current last column.
+      lastCol++;
+      col = lastCol;
+      sheet.getRange(1, col).setValue(key);
+      headers.push(key);
+      headerToCol[key] = col;
     }
+    var v = fields[key];
+    sheet.getRange(rowIdx, col).setValue(v == null ? '' : v);
   }
+
   if (syncTag) {
-    sheet.getRange(rowIdx, SYNC_TAG_COLUMN).setValue(syncTag);
+    sheet.getRange(rowIdx, syncTagColumnIndex(sheet)).setValue(syncTag);
   }
+
   return jsonResponse({ ok: true, row: rowIdx });
 }
 
@@ -109,7 +183,7 @@ function findRowById(sheet, rowId) {
   return -1;
 }
 
-function jsonResponse(obj, status) {
+function jsonResponse(obj) {
   return ContentService
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
