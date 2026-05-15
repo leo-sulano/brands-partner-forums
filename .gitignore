@@ -1,0 +1,29 @@
+# Node / build
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editors
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+
+# OS
+Thumbs.db
+
+# Supabase
+supabase/.branches
+supabase/.temp
+supabase/functions/**/.env
