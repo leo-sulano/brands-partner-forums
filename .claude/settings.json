@@ -23,7 +23,9 @@
       "Bash(git push *)",
       "Bash(findstr /i \"tsbuildinfo\")",
       "Bash(git reset *)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Skill(superpowers:executing-plans)",
+      "Skill(superpowers:executing-plans:*)"
     ]
   }
 }
