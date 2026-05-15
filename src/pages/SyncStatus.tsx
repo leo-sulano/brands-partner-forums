@@ -125,6 +125,7 @@ function StatusPill({ status }: { status: SyncRun['status'] }) {
     running: 'bg-amber-100 text-amber-700',
     success: 'bg-emerald-100 text-emerald-700',
     error: 'bg-rose-100 text-rose-700',
+    skipped: 'bg-slate-100 text-slate-600',
   } as const;
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${map[status]}`}>
