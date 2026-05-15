@@ -1,14 +1,13 @@
-// Supabase Edge Function: push-to-sheet
+// Supabase Edge Function: push-to-sheet (multi-tab)
 //
-// Receives a row update from the dashboard, applies it to public.review_entries,
-// and relays the same change to the bound Apps Script Web App which writes the
-// row back into the Google Sheet.
+// Receives { tab, sheet_row_id, fields } from the dashboard, upserts into
+// public.entries (merging the JSONB data), and relays to the Apps Script Web App
+// which writes the same row into the named Sheet tab.
 //
 // Required secrets:
-//   SUPABASE_URL                          — runtime
-//   SUPABASE_SERVICE_ROLE_KEY             — runtime
-//   APPS_SCRIPT_WEB_APP_URL               — the /exec URL from the deployment
-//   APPS_SCRIPT_SHARED_SECRET             — must match SHARED_SECRET in Code.gs
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (runtime)
+//   APPS_SCRIPT_WEB_APP_URL
+//   APPS_SCRIPT_SHARED_SECRET
 
 // @ts-expect-error: Deno-only import resolved at runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -22,43 +21,36 @@ const SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SHARED_SECRET')!;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-// Order MUST match ENTRY_FIELDS in apps-script/Code.gs.
-const ENTRY_FIELDS = [
-  'agent', 'account', 'country', 'proxy_used', 'email', 'password',
-  'account_name', 'account_surname',
-  'process', 'details', 'brand',
-  'status_date', 'score_added', 'trustpilot_date', 'profile_url', 'review_status',
-  'redirection_search_engine', 'redirection_word', 'review_language',
-  'register_from_google', 'leaving_review_after_email', 'sticky_ip_mobile',
-  'photo_in_account', 'device', 'opening_via_useful', 'opening_via_register',
-  'scrolling_hovering', 'smart_paste', 'mentioning_time_frames',
-  'mentioning_amounts', 'mentioning_agent_name', 'review_length', 'native_language',
-];
-
-const FIELD_SET = new Set(ENTRY_FIELDS);
+const OPERATIONAL_TABS = new Set([
+  'TP Brand Injection',
+  'Rooster Partners',
+  'Revolution Casino',
+  'Trybet',
+  'SilverPlay',
+  'SuprPlay Limited',
+]);
 
 interface RequestBody {
-  sheet_row_id: string;           // required: existing or new UUID
-  fields: Record<string, unknown>; // any subset of ENTRY_FIELDS
+  tab: string;
+  sheet_row_id: string;
+  fields: Record<string, string | null>;
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ ok: false, error: 'method not allowed' }, 405);
 
   let body: RequestBody;
-  try {
-    body = await req.json();
-  } catch {
-    return json({ ok: false, error: 'invalid JSON' }, 400);
-  }
-  if (!body.sheet_row_id || typeof body.sheet_row_id !== 'string') {
-    return json({ ok: false, error: 'sheet_row_id required' }, 400);
-  }
+  try { body = await req.json(); } catch { return json({ ok: false, error: 'invalid JSON' }, 400); }
 
-  // Filter fields to known columns only — silently drop anything else.
-  const cleanFields: Record<string, unknown> = {};
+  if (!body.tab || typeof body.tab !== 'string') return json({ ok: false, error: 'tab required' }, 400);
+  if (!OPERATIONAL_TABS.has(body.tab)) return json({ ok: false, error: 'unknown tab' }, 400);
+  if (!body.sheet_row_id || typeof body.sheet_row_id !== 'string') return json({ ok: false, error: 'sheet_row_id required' }, 400);
+
+  // Normalize fields: strip empty strings to null, drop bookkeeping keys.
+  const cleanFields: Record<string, string | null> = {};
   for (const [k, v] of Object.entries(body.fields ?? {})) {
-    if (FIELD_SET.has(k)) cleanFields[k] = v === '' ? null : v;
+    if (k === 'id' || k === 'last_sync_tag' || k === '') continue;
+    cleanFields[k] = v === '' || v === undefined ? null : (v as string | null);
   }
 
   const syncTag = crypto.randomUUID();
@@ -66,22 +58,37 @@ Deno.serve(async (req: Request) => {
 
   const { data: runRow, error: runErr } = await admin
     .from('sync_runs')
-    .insert({ direction: 'db_to_sheet', status: 'running', payload_ref: body.sheet_row_id })
+    .insert({ direction: 'db_to_sheet', tab: body.tab, status: 'running', payload_ref: body.sheet_row_id })
     .select('id')
     .single();
   if (runErr) return json({ ok: false, error: runErr.message }, 500);
   const runId = runRow!.id as string;
 
   try {
+    // Merge with existing data so partial updates don't overwrite untouched fields.
+    const { data: existing, error: selErr } = await admin
+      .from('entries')
+      .select('data')
+      .eq('tab', body.tab)
+      .eq('sheet_row_id', body.sheet_row_id)
+      .maybeSingle();
+    if (selErr) throw selErr;
+
+    const mergedData: Record<string, string | null> = {
+      ...(existing?.data as Record<string, string | null> | null ?? {}),
+      ...cleanFields,
+    };
+
     const { error: upsertErr } = await admin
-      .from('review_entries')
+      .from('entries')
       .upsert({
+        tab: body.tab,
         sheet_row_id: body.sheet_row_id,
-        ...cleanFields,
+        data: mergedData,
         updated_at: nowIso,
         last_edited_by: 'dashboard',
         last_sync_tag: syncTag,
-      }, { onConflict: 'sheet_row_id' });
+      }, { onConflict: 'tab,sheet_row_id' });
     if (upsertErr) throw upsertErr;
 
     const scriptRes = await fetch(SCRIPT_URL, {
@@ -90,6 +97,7 @@ Deno.serve(async (req: Request) => {
       body: JSON.stringify({
         secret: SCRIPT_SECRET,
         op: 'upsert_row',
+        tab: body.tab,
         sheet_row_id: body.sheet_row_id,
         fields: cleanFields,
         sync_tag: syncTag,
@@ -99,6 +107,8 @@ Deno.serve(async (req: Request) => {
       const text = await scriptRes.text();
       throw new Error(`Apps Script ${scriptRes.status}: ${text}`);
     }
+    const scriptBody = (await scriptRes.json()) as { ok?: boolean; error?: string };
+    if (!scriptBody.ok) throw new Error(`Apps Script returned not-ok: ${scriptBody.error ?? '<no error>'}`);
 
     await admin.from('sync_runs').update({
       finished_at: new Date().toISOString(),
