@@ -1,73 +1,77 @@
 -- Brands Partner Forum — Supabase schema
--- Run in the Supabase SQL editor (or via `supabase db push`).
+-- Run in the Supabase SQL editor, or via `supabase db push` against a linked project.
+
+-- Drop legacy tables from the prior design.
+drop table if exists public.mentions cascade;
+drop table if exists public.sync_runs cascade;
 
 create extension if not exists "pgcrypto";
 
--- =====================================================================
--- mentions
--- =====================================================================
-create table if not exists public.mentions (
+create table public.review_entries (
   id              uuid primary key default gen_random_uuid(),
-  source_row_id   text not null unique,
-  forum           text not null,
-  thread_title    text,
-  mention_text    text not null,
-  url             text not null,
-  author          text,
-  posted_at       timestamptz,
-  keyword         text,
-  sentiment       text check (sentiment in ('positive','neutral','negative')),
-  status          text not null default 'new' check (status in ('new','reviewed','ignored')),
-  synced_at       timestamptz not null default now()
+  sheet_row_id    text unique not null,
+
+  agent                       text,
+  account                     text,
+  country                     text,
+  proxy_used                  text,
+  email                       text,
+  password                    text,
+  account_name                text,
+  account_surname             text,
+
+  process                     text,
+  details                     text,
+  brand                       text,
+
+  status_date                 date,
+  score_added                 int,
+  trustpilot_date             date,
+  profile_url                 text,
+  review_status               text,
+
+  redirection_search_engine   text,
+  redirection_word            text,
+  review_language             text,
+  native_language             text,
+
+  register_from_google        text,
+  leaving_review_after_email  text,
+  sticky_ip_mobile            text,
+  photo_in_account            text,
+  device                      text,
+  opening_via_useful          text,
+  opening_via_register        text,
+  scrolling_hovering          text,
+  smart_paste                 text,
+  mentioning_time_frames      text,
+  mentioning_amounts          text,
+  mentioning_agent_name       text,
+  review_length               text,
+
+  updated_at        timestamptz not null default now(),
+  last_edited_by    text not null default 'dashboard',
+  last_sync_tag     text
 );
 
-create index if not exists mentions_posted_at_idx on public.mentions (posted_at desc);
-create index if not exists mentions_forum_idx     on public.mentions (forum);
-create index if not exists mentions_keyword_idx   on public.mentions (keyword);
-create index if not exists mentions_status_idx    on public.mentions (status);
+create index review_entries_brand_idx       on public.review_entries (brand);
+create index review_entries_agent_idx       on public.review_entries (agent);
+create index review_entries_country_idx     on public.review_entries (country);
+create index review_entries_status_idx      on public.review_entries (review_status);
+create index review_entries_updated_at_idx  on public.review_entries (updated_at desc);
 
--- =====================================================================
--- sync_runs
--- =====================================================================
-create table if not exists public.sync_runs (
-  id              uuid primary key default gen_random_uuid(),
-  started_at      timestamptz not null default now(),
-  finished_at     timestamptz,
-  rows_seen       int not null default 0,
-  rows_upserted   int not null default 0,
-  rows_skipped    int not null default 0,
-  error_message   text,
-  status          text not null default 'running' check (status in ('running','success','error'))
+create table public.sync_runs (
+  id             uuid primary key default gen_random_uuid(),
+  direction      text not null check (direction in ('sheet_to_db','db_to_sheet','initial_import')),
+  started_at     timestamptz not null default now(),
+  finished_at    timestamptz,
+  rows_seen      int,
+  rows_upserted  int,
+  rows_skipped   int,
+  status         text not null default 'running' check (status in ('running','success','error','skipped')),
+  error_message  text,
+  payload_ref    text
 );
 
-create index if not exists sync_runs_started_at_idx on public.sync_runs (started_at desc);
-
--- =====================================================================
--- Row Level Security
--- =====================================================================
--- Vercel password protection guards the deploy, so the anon key is effectively
--- private. We still keep RLS on with permissive read policies so we never have
--- truly open writes from the anon client. Status updates from the UI go through
--- the anon client, so we permit updates to the `status` column only.
-
-alter table public.mentions  enable row level security;
-alter table public.sync_runs enable row level security;
-
-create policy "anon read mentions"
-  on public.mentions for select
-  to anon
-  using (true);
-
-create policy "anon update mention status"
-  on public.mentions for update
-  to anon
-  using (true)
-  with check (true);
-
-create policy "anon read sync_runs"
-  on public.sync_runs for select
-  to anon
-  using (true);
-
--- Writes (insert/upsert into mentions, insert into sync_runs) are performed by
--- the Edge Function using the service role key, which bypasses RLS.
+create index sync_runs_started_at_idx on public.sync_runs (started_at desc);
+create index sync_runs_direction_idx  on public.sync_runs (direction);
