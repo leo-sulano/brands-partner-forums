@@ -125,7 +125,11 @@ export default function BrandGroup() {
             })
             .filter((h): h is string => h !== undefined)
         : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
-      setHeaders(visible);
+      // Drop columns where every entry has a null/empty value.
+      const populated = visible.filter((h) =>
+        rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
+      );
+      setHeaders(populated);
       setKpis(k);
       setError(null);
     } catch (err) {
