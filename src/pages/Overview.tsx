@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MessageCircle, CalendarDays, Flame, Hash } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import MentionsTable from '../components/MentionsTable';
@@ -14,6 +14,7 @@ import {
   type MentionCounts,
   type TopItem,
 } from '../lib/queries';
+import { subscribeEntries } from '../lib/realtime';
 import type { Mention } from '../types/mention';
 
 interface State {
@@ -39,36 +40,40 @@ const initial: State = {
 export default function Overview() {
   const [state, setState] = useState<State>(initial);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [counts, perDay, topForums, trendingKeywords, recent] = await Promise.all([
-          fetchMentionCounts(),
-          fetchMentionsPerDay(30),
-          fetchTopForums(5),
-          fetchTrendingKeywords(5),
-          fetchRecentMentions(20),
-        ]);
-        if (cancelled) return;
-        setState({
-          loading: false,
-          error: null,
-          counts,
-          perDay,
-          topForums,
-          trendingKeywords,
-          recent,
-        });
-      } catch (err) {
-        if (cancelled) return;
-        setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const loadData = useCallback(async () => {
+    try {
+      const [counts, perDay, topForums, trendingKeywords, recent] = await Promise.all([
+        fetchMentionCounts(),
+        fetchMentionsPerDay(30),
+        fetchTopForums(5),
+        fetchTrendingKeywords(5),
+        fetchRecentMentions(20),
+      ]);
+      setState({
+        loading: false,
+        error: null,
+        counts,
+        perDay,
+        topForums,
+        trendingKeywords,
+        recent,
+      });
+    } catch (err) {
+      setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
+    }
   }, []);
+
+  // Initial load
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  // Realtime: re-fetch when any entry changes
+  useEffect(() => {
+    return subscribeEntries(() => {
+      loadData();
+    });
+  }, [loadData]);
 
   if (state.error) {
     return (
