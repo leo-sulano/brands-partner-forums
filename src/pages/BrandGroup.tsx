@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { CheckCircle2, XCircle, Circle, Building2, ExternalLink } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
@@ -89,65 +89,70 @@ export default function BrandGroup() {
   const [kpis, setKpis] = useState<TabKpis>({ total: 0, live: 0, removed: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Incrementing this triggers a reload without changing the tab.
+  const [reloadSeq, setReloadSeq] = useState(0);
+  const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
 
-  // Reset to a clean loading state whenever the tab changes so stale
-  // columns from the previous tab never flash while the new tab loads.
+  // Single effect owns the full load lifecycle. A `canceled` flag ensures that
+  // if the tab changes (or component unmounts) while fetches are in-flight, the
+  // stale result is silently discarded and never written to state.
   useEffect(() => {
+    if (!decodedTab) return;
+    let canceled = false;
     setLoading(true);
     setEntries([]);
     setHeaders([]);
     setKpis({ total: 0, live: 0, removed: 0 });
     setError(null);
-  }, [decodedTab]);
 
-  const load = useCallback(async () => {
-    if (!decodedTab) return;
-    try {
-      const [rawEntries, tabHeaders, k] = await Promise.all([
-        fetchRawEntriesByTab(decodedTab),
-        fetchTabHeaders(decodedTab),
-        fetchTabKpis(decodedTab),
-      ]);
-      setEntries(rawEntries);
-      const configCols = getTabColumns(decodedTab);
-      // Use whitelist if configured. Two-pass match:
-      // 1. Direct case-insensitive match against actual header.
-      // 2. Label alias match: whitelist entry may be a display label (from COLUMN_LABELS);
-      //    find the actual header whose mapped label equals the config entry.
-      const visible = configCols
-        ? configCols
-            .map((col) => {
-              const colLower = col.toLowerCase();
-              return (
-                tabHeaders.find((h) => h.toLowerCase() === colLower) ??
-                tabHeaders.find((h) => (COLUMN_LABELS[h] ?? h).toLowerCase() === colLower)
-              );
-            })
-            .filter((h): h is string => h !== undefined)
-        : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
-      // Drop columns where every entry has a null/empty value.
-      const populated = visible.filter((h) =>
-        rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
-      );
-      setHeaders(populated);
-      setKpis(k);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load');
-    } finally {
-      setLoading(false);
-    }
-  }, [decodedTab]);
+    (async () => {
+      try {
+        const [rawEntries, tabHeaders, k] = await Promise.all([
+          fetchRawEntriesByTab(decodedTab),
+          fetchTabHeaders(decodedTab),
+          fetchTabKpis(decodedTab),
+        ]);
+        if (canceled) return;
+        const configCols = getTabColumns(decodedTab);
+        // Two-pass match: direct name, then COLUMN_LABELS reverse lookup so
+        // whitelist entries like 'TP Review Status' also resolve 'Trust pilot Review Status'.
+        const visible = configCols
+          ? configCols
+              .map((col) => {
+                const colLower = col.toLowerCase();
+                return (
+                  tabHeaders.find((h) => h.toLowerCase() === colLower) ??
+                  tabHeaders.find((h) => (COLUMN_LABELS[h] ?? h).toLowerCase() === colLower)
+                );
+              })
+              .filter((h): h is string => h !== undefined)
+          : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
+        // Drop columns where every entry has a null/empty value.
+        const populated = visible.filter((h) =>
+          rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
+        );
+        setEntries(rawEntries);
+        setHeaders(populated);
+        setKpis(k);
+        setError(null);
+      } catch (err) {
+        if (canceled) return;
+        setError(err instanceof Error ? err.message : 'Failed to load');
+      } finally {
+        if (!canceled) setLoading(false);
+      }
+    })();
 
-  useEffect(() => { load(); }, [load]);
+    return () => { canceled = true; };
+  }, [decodedTab, reloadSeq]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     return subscribeEntries(() => {
       clearTimeout(timer);
-      timer = setTimeout(() => load(), 400);
+      timer = setTimeout(() => reloadRef.current(), 400);
     });
-  }, [load]);
+  }, []);
 
   if (error) {
     return (
