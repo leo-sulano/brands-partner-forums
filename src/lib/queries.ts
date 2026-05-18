@@ -177,9 +177,10 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
     status,
   };
 
+  const syncTag = crypto.randomUUID();
   const { error: upErr } = await supabase
     .from('entries')
-    .update({ data: mergedData, last_edited_by: 'dashboard' })
+    .update({ data: mergedData, last_edited_by: 'dashboard', last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
 
