@@ -4,6 +4,7 @@ import { CheckCircle2, XCircle, Circle, Building2, ExternalLink } from 'lucide-r
 import KpiCard from '../components/KpiCard';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
+import { getTabColumns } from '../lib/tab-configs';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -84,7 +85,12 @@ export default function BrandGroup() {
         fetchTabKpis(decodedTab),
       ]);
       setEntries(rawEntries);
-      setHeaders(tabHeaders.filter((h) => !HIDDEN_COLS.has(h)));
+      const configCols = getTabColumns(decodedTab);
+      // Use whitelist if configured; otherwise show all non-internal columns that exist in the sheet
+      const visible = configCols
+        ? configCols.filter((col) => tabHeaders.includes(col))
+        : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
+      setHeaders(visible);
       setKpis(k);
       setError(null);
     } catch (err) {
