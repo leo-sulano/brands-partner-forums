@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { fetchSyncRuns, triggerSync } from '../lib/queries';
 import type { SyncRun } from '../types/sync';
+import { subscribeSyncRuns } from '../lib/realtime';
 import Toast, { type ToastKind } from '../components/Toast';
 import { formatDateTime, formatRelative } from '../lib/format';
 
@@ -26,6 +27,13 @@ export default function SyncStatus() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  // Realtime: re-fetch sync_runs when any run changes (e.g. running → success)
+  useEffect(() => {
+    return subscribeSyncRuns(() => {
+      load();
+    });
   }, []);
 
   async function handleRunNow() {
