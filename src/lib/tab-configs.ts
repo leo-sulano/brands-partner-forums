@@ -10,8 +10,10 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Trust Pilot',
     'Link to the profile',
     'TP Review Status',
-    'Score added',
-    'Review Status',
+    'AG Score Added',
+    'AG Review Status',
+    'CG Score Added',
+    'CG Review Status',
   ],
 };
 
