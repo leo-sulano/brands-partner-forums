@@ -25,6 +25,16 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Link to the profile',
     'Review Status',
   ],
+  'Trybet': [
+    'Account',
+    'Account Name',
+    'Agent',
+    'Removed / Not Published / stil published date',
+    'Score added',
+    'Trust Pilot',
+    'Link to the profile',
+    'Trust pilot Review Status',
+  ],
   'Revolution Casino': [
     'Account',
     'Account Name',
