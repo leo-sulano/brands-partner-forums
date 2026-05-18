@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, Circle, Building2, ExternalLink } from 'lucide-r
 import KpiCard from '../components/KpiCard';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -110,11 +110,19 @@ export default function BrandGroup() {
       ]);
       setEntries(rawEntries);
       const configCols = getTabColumns(decodedTab);
-      // Use whitelist if configured; case-insensitive match so minor casing differences don't drop columns.
-      // Resolved name comes from the actual sheet header so the display label is always accurate.
+      // Use whitelist if configured. Two-pass match:
+      // 1. Direct case-insensitive match against actual header.
+      // 2. Label alias match: whitelist entry may be a display label (from COLUMN_LABELS);
+      //    find the actual header whose mapped label equals the config entry.
       const visible = configCols
         ? configCols
-            .map((col) => tabHeaders.find((h) => h.toLowerCase() === col.toLowerCase()))
+            .map((col) => {
+              const colLower = col.toLowerCase();
+              return (
+                tabHeaders.find((h) => h.toLowerCase() === colLower) ??
+                tabHeaders.find((h) => (COLUMN_LABELS[h] ?? h).toLowerCase() === colLower)
+              );
+            })
             .filter((h): h is string => h !== undefined)
         : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
       setHeaders(visible);
@@ -166,7 +174,7 @@ export default function BrandGroup() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="min-w-max w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left">
               {loading
