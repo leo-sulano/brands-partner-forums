@@ -15,6 +15,18 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Casino Guru review added',
     'CG Review Status',
   ],
+  'Revolution Casino': [
+    'Account',
+    'Account Name',
+    'Brands',
+    'Trust Pilot',
+    'Link to the profile',
+    'TP Review Status',
+    'Ask Gambler review added',
+    'AG Review Status',
+    'Casino Guru review added',
+    'CG Review Status',
+  ],
 };
 
 // Display label overrides — maps actual sheet column name → shorter UI label.
