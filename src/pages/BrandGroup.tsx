@@ -61,7 +61,10 @@ function StatusPill({ value }: { value: string }) {
 }
 
 function formatCellValue(value: string): string {
-  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(value)) {
+    const [y, m, d] = value.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
   return value;
 }
 
