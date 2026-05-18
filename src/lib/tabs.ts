@@ -5,6 +5,8 @@ export const OPERATIONAL_TABS = [
   'Trybet',
   'SilverPlay',
   'SuprPlay Limited',
+  'Hazemirates',
+  'Hanan',
 ] as const;
 
 export type OperationalTab = (typeof OPERATIONAL_TABS)[number];
