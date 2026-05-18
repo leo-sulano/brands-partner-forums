@@ -15,6 +15,16 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Casino Guru review added',
     'CG Review Status',
   ],
+  'TP Brand Injection': [
+    'Agent',
+    'Account',
+    'Brand / TP URL PAGE',
+    'Removed / Not Published / stil published date',
+    'Score added',
+    'Trust Pilot',
+    'Link to the profile',
+    'Review Status',
+  ],
   'Revolution Casino': [
     'Account',
     'Account Name',
