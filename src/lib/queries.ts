@@ -192,6 +192,27 @@ export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   return (data ?? []).map((row) => entryToBrandEntry(row as Entry));
 }
 
+export async function fetchRawEntriesByTab(tab: string): Promise<Entry[]> {
+  const { data, error } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('tab', tab)
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as Entry[];
+}
+
+export async function fetchTabHeaders(tab: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('tab_schemas')
+    .select('headers')
+    .eq('tab', tab)
+    .maybeSingle();
+  if (error) throw error;
+  const headers = (data?.headers ?? []) as string[];
+  return headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
+}
+
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   const { data, error } = await supabase
     .from('entries')
@@ -200,9 +221,13 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   if (error) throw error;
   let live = 0, removed = 0;
   for (const row of data ?? []) {
-    const s = (getField(row.data as Record<string, string | null>, 'Review Status', 'review_status', 'status', 'Status') ?? '').toLowerCase();
-    if (s.includes('live')) live++;
-    else if (s.includes('removed')) removed++;
+    const d = row.data as Record<string, string | null>;
+    // Check all columns whose name contains 'status' (covers TP/AG/CG per-platform columns)
+    const statusValues = Object.keys(d)
+      .filter((k) => k.toLowerCase().includes('status'))
+      .map((k) => (d[k] ?? '').toLowerCase());
+    if (statusValues.some((v) => v.includes('live'))) live++;
+    else if (statusValues.some((v) => v.includes('removed'))) removed++;
   }
   return { total: (data ?? []).length, live, removed };
 }
