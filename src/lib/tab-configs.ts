@@ -52,12 +52,13 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
 // Display label overrides — maps actual sheet column name → shorter UI label.
 // Applied globally across all tabs.
 export const COLUMN_LABELS: Record<string, string> = {
-  'Trust Pilot Review Status':   'TP Review Status',
-  'Trustpilot Review Status':    'TP Review Status',
-  'Trust pilot Review Status':   'TP Review Status',
-  'Score added':                 'Score Added',
-  'Ask Gambler review added':    'AG Review Added',
-  'Casino Guru review added':    'CG Review Added',
+  'Trust Pilot Review Status':                        'TP Review Status',
+  'Trustpilot Review Status':                         'TP Review Status',
+  'Trust pilot Review Status':                        'TP Review Status',
+  'Score added':                                      'Score Added',
+  'Ask Gambler review added':                         'AG Review Added',
+  'Casino Guru review added':                         'CG Review Added',
+  'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };
 
 // Returns the ordered column list for a tab, or null if no config exists.
