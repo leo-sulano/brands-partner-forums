@@ -90,6 +90,16 @@ export default function BrandGroup() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Reset to a clean loading state whenever the tab changes so stale
+  // columns from the previous tab never flash while the new tab loads.
+  useEffect(() => {
+    setLoading(true);
+    setEntries([]);
+    setHeaders([]);
+    setKpis({ total: 0, live: 0, removed: 0 });
+    setError(null);
+  }, [decodedTab]);
+
   const load = useCallback(async () => {
     if (!decodedTab) return;
     try {
