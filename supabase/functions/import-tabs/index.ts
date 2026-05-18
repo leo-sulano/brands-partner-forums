@@ -61,10 +61,11 @@ Deno.serve(async () => {
 
     for (const tab of body.tabs) {
       try {
-        await admin.from('tab_schemas').upsert(
+        const { error: schemaErr } = await admin.from('tab_schemas').upsert(
           { tab: tab.name, headers: tab.headers, refreshed_at: new Date().toISOString() },
           { onConflict: 'tab' },
         );
+        if (schemaErr) throw schemaErr;
 
         const idColIndex = tab.headers.indexOf('id');
         if (idColIndex === -1) {
@@ -107,7 +108,8 @@ Deno.serve(async () => {
           .from('entries')
           .select('sheet_row_id, last_edited_by, last_sync_tag')
           .eq('tab', tab.name)
-          .in('sheet_row_id', sheetIds);
+          .in('sheet_row_id', sheetIds)
+          .limit(sheetIds.length);
 
         const existingMap = new Map<string, { last_edited_by: string; last_sync_tag: string | null }>();
         for (const row of existingRows ?? []) {
