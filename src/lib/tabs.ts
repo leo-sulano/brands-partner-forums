@@ -5,7 +5,7 @@ export const OPERATIONAL_TABS = [
   'Trybet',
   'SilverPlay',
   'SuprPlay Limited',
-  'Hazemirates',
+  'Hazemirate UAE',
   'Hanan',
 ] as const;
 
