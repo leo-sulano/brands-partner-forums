@@ -15,6 +15,15 @@ import type { TabKpis } from '../types/brand-entry';
 const HIDDEN_COLS = new Set(['id', 'last_sync_tag']);
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
+const STATUS_CHIPS = [
+  { label: 'Removed',   cls: 'border-rose-200   bg-rose-50   text-rose-700',   active: 'border-rose-400   bg-rose-100   text-rose-800'   },
+  { label: 'On Pause',  cls: 'border-amber-200  bg-amber-50  text-amber-700',  active: 'border-amber-400  bg-amber-100  text-amber-800'  },
+  { label: 'Published', cls: 'border-emerald-200 bg-emerald-50 text-emerald-700', active: 'border-emerald-400 bg-emerald-100 text-emerald-800' },
+  { label: 'Refuse',    cls: 'border-orange-200  bg-orange-50  text-orange-700',  active: 'border-orange-400  bg-orange-100  text-orange-800'  },
+  { label: 'Done',      cls: 'border-blue-200   bg-blue-50   text-blue-700',   active: 'border-blue-400   bg-blue-100   text-blue-800'   },
+  { label: 'Pending',   cls: 'border-violet-200 bg-violet-50 text-violet-700', active: 'border-violet-400 bg-violet-100 text-violet-800' },
+] as const;
+
 function isStatusCol(header: string) {
   return header.toLowerCase().includes('status');
 }
@@ -102,6 +111,7 @@ export default function BrandGroup() {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
+  const [activeStatuses, setActiveStatuses] = useState<Set<string>>(new Set());
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState<number>(25);
@@ -120,6 +130,7 @@ export default function BrandGroup() {
     setKpis({ total: 0, live: 0, removed: 0 });
     setError(null);
     setSearch('');
+    setActiveStatuses(new Set());
     setSortCol(null);
     setSortDir('asc');
     setPage(1);
@@ -171,8 +182,8 @@ export default function BrandGroup() {
     });
   }, []);
 
-  // Derived: filter → sort → paginate
-  const filtered = search.trim()
+  // Derived: text filter → status filter → sort → paginate
+  const textFiltered = search.trim()
     ? entries.filter((e) =>
         headers.some((h) => {
           const v = e.data[h];
@@ -180,6 +191,17 @@ export default function BrandGroup() {
         }),
       )
     : entries;
+
+  const filtered = activeStatuses.size > 0
+    ? textFiltered.filter((e) =>
+        headers.some((h) =>
+          isStatusCol(h) &&
+          [...activeStatuses].some(
+            (s) => (e.data[h] ?? '').toLowerCase().trim() === s.toLowerCase(),
+          ),
+        ),
+      )
+    : textFiltered;
 
   const sorted = sortCol
     ? [...filtered].sort((a, b) => {
@@ -207,6 +229,15 @@ export default function BrandGroup() {
 
   function handleSearch(val: string) {
     setSearch(val);
+    setPage(1);
+  }
+
+  function toggleStatus(label: string) {
+    setActiveStatuses((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
     setPage(1);
   }
 
@@ -253,7 +284,7 @@ export default function BrandGroup() {
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Search bar */}
-        <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
+        <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
           <Search className="size-4 text-slate-400 shrink-0" />
           <input
             type="text"
@@ -267,10 +298,35 @@ export default function BrandGroup() {
               <X className="size-4" />
             </button>
           )}
-          {!loading && search && (
+          {!loading && (search || activeStatuses.size > 0) && (
             <span className="text-xs text-slate-400 whitespace-nowrap">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
             </span>
+          )}
+        </div>
+
+        {/* Status filter chips */}
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-200 px-3 py-2">
+          {STATUS_CHIPS.map(({ label, cls, active }) => {
+            const on = activeStatuses.has(label);
+            return (
+              <button
+                key={label}
+                onClick={() => toggleStatus(label)}
+                className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${on ? active : cls} hover:opacity-80`}
+              >
+                {on && <X className="mr-1 size-2.5" />}
+                {label}
+              </button>
+            );
+          })}
+          {activeStatuses.size > 0 && (
+            <button
+              onClick={() => { setActiveStatuses(new Set()); setPage(1); }}
+              className="text-xs text-slate-400 hover:text-slate-600 ml-1"
+            >
+              Clear
+            </button>
           )}
         </div>
 
