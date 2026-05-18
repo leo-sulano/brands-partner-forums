@@ -233,7 +233,7 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   for (const entry of entries) {
     const d = entry.data;
     const tpStatus = (
-      getField(d, 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Review Status', 'status', 'Status') ?? ''
+      getField(d, 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status', 'status', 'Status') ?? ''
     ).toLowerCase();
     if (tpStatus.includes('published') || tpStatus.includes('live')) live++;
     else if (tpStatus.includes('removed')) removed++;

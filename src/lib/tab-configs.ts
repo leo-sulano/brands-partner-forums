@@ -9,10 +9,9 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Brands',
     'Trust Pilot',
     'Link to the profile',
-    'Trust pilot Review Status',
-    'AG Review Added',
+    'TP Review Status',
+    'Score added',
     'Review Status',
-    'CG Review Added',
   ],
 };
 
@@ -20,8 +19,9 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
 // Applied globally across all tabs.
 export const COLUMN_LABELS: Record<string, string> = {
   'Trust Pilot Review Status': 'TP Review Status',
-  'Trustpilot Review Status': 'TP Review Status',
+  'Trustpilot Review Status':  'TP Review Status',
   'Trust pilot Review Status': 'TP Review Status',
+  'Score added':               'Score Added',
 };
 
 // Returns the ordered column list for a tab, or null if no config exists.
