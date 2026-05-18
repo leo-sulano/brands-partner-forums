@@ -3,6 +3,7 @@ export type Sentiment = 'positive' | 'neutral' | 'negative' | null;
 
 export interface Mention {
   id: string;
+  tab: string;
   source_row_id: string;
   forum: string;
   thread_title: string | null;
