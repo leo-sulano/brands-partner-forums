@@ -1,5 +1,5 @@
 // Brands Partner Forum — Multi-tab Sheet bridge
-// Bound to the Google Sheet at id 1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk.
+// Standalone script targeting Sheet id 1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk.
 //
 // Endpoints:
 //   doPost  { secret, op: 'upsert_row', tab, sheet_row_id, fields, sync_tag } → writes row
@@ -17,14 +17,15 @@ var OPERATIONAL_TABS = [
   'SuprPlay Limited'
 ];
 
-var SHARED_SECRET = 'REPLACE_ME_WITH_APPS_SCRIPT_SHARED_SECRET';
+var SHEET_ID = '1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk';
+var SHARED_SECRET = 'JkoNDP4JMdpjHRvOtU6HyZKo_TrXDYp2qH9oL7aiJRE';
 
 var ID_COLUMN = 1; // column A, always
 
 // Per-tab, last_sync_tag goes in (last data column + 1). Computed dynamically.
 
 function backfillAllTabIds() {
-  var ss = SpreadsheetApp.getActive();
+  var ss = SpreadsheetApp.openById(SHEET_ID);
   var totals = [];
   for (var i = 0; i < OPERATIONAL_TABS.length; i++) {
     var name = OPERATIONAL_TABS[i];
@@ -90,7 +91,7 @@ function doGet(e) {
 }
 
 function collectStructures(includeRows) {
-  var ss = SpreadsheetApp.getActive();
+  var ss = SpreadsheetApp.openById(SHEET_ID);
   var out = [];
   for (var i = 0; i < OPERATIONAL_TABS.length; i++) {
     var name = OPERATIONAL_TABS[i];
@@ -134,7 +135,7 @@ function handleUpsertRow(body) {
   if (OPERATIONAL_TABS.indexOf(tabName) === -1) {
     return jsonResponse({ ok: false, error: 'tab not in OPERATIONAL_TABS: ' + tabName });
   }
-  var sheet = SpreadsheetApp.getActive().getSheetByName(tabName);
+  var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(tabName);
   if (!sheet) return jsonResponse({ ok: false, error: 'sheet not found: ' + tabName });
 
   // Locate the row by id (column A). Create a new row at the bottom if not found.

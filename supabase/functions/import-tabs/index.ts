@@ -1,14 +1,12 @@
 // Supabase Edge Function: import-tabs
 //
-// Calls Apps Script doGet(op='dump') and bulk-upserts every operational tab's
-// rows into public.entries. Refreshes public.tab_schemas with current headers.
-// Skips rows where the Sheet is echoing back our own last_sync_tag (loop prevention).
+// Reads all operational tabs from the Apps Script Web App (op=dump) and
+// bulk-upserts into public.entries. Skips echo rows (loop prevention via last_sync_tag).
 //
 // Required secrets:
-//   SUPABASE_URL                — runtime
-//   SUPABASE_SERVICE_ROLE_KEY   — runtime
-//   APPS_SCRIPT_WEB_APP_URL     — /exec URL
-//   APPS_SCRIPT_SHARED_SECRET   — matches Code.gs SHARED_SECRET
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (runtime)
+//   APPS_SCRIPT_URL  — Web App exec URL
+//   APPS_SCRIPT_SECRET — shared secret configured in Code.gs
 
 // @ts-expect-error: Deno-only import resolved at runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -20,22 +18,28 @@ declare const Deno: {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const SCRIPT_URL = Deno.env.get('APPS_SCRIPT_WEB_APP_URL')!;
-const SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SHARED_SECRET')!;
+const APPS_SCRIPT_URL = Deno.env.get('APPS_SCRIPT_URL')!;
+const APPS_SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SECRET')!;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
-interface DumpedTab {
+interface SheetTab {
   name: string;
   headers: string[];
   rows: string[][];
+}
+
+interface DumpResponse {
+  ok: boolean;
+  tabs?: SheetTab[];
+  error?: string;
 }
 
 interface Candidate {
   tab: string;
   sheet_row_id: string;
   data: Record<string, string | null>;
-  sheetSyncTag: string | null; // read from Sheet row; used for echo detection only
+  sheetSyncTag: string | null;
 }
 
 Deno.serve(async () => {
@@ -47,69 +51,55 @@ Deno.serve(async () => {
   if (startErr) return json({ ok: false, error: startErr.message }, 500);
   const runId = runRow!.id as string;
 
-  let rowsSeen = 0;
-  let rowsUpserted = 0;
-  let rowsSkipped = 0;
+  let rowsSeen = 0, rowsUpserted = 0, rowsSkipped = 0;
   const tabsFailed: string[] = [];
 
   try {
-    const dumpUrl = `${SCRIPT_URL}?secret=${encodeURIComponent(SCRIPT_SECRET)}&op=dump`;
-    const res = await fetch(dumpUrl);
-    if (!res.ok) throw new Error(`doGet ${res.status}: ${await res.text()}`);
-    const body = (await res.json()) as { ok: boolean; tabs?: DumpedTab[]; error?: string };
-    if (!body.ok || !body.tabs) throw new Error(body.error ?? 'doGet returned not-ok');
+    const dumpRes = await fetch(
+      `${APPS_SCRIPT_URL}?secret=${encodeURIComponent(APPS_SCRIPT_SECRET)}&op=dump`,
+      { redirect: 'follow' },
+    );
+    if (!dumpRes.ok) throw new Error(`Apps Script ${dumpRes.status}: ${await dumpRes.text()}`);
 
-    for (const tab of body.tabs) {
+    const dump = (await dumpRes.json()) as DumpResponse;
+    if (!dump.ok) throw new Error(`Apps Script error: ${dump.error}`);
+
+    for (const sheetTab of dump.tabs ?? []) {
+      const { name: tabName, headers, rows: dataRows } = sheetTab;
       try {
-        const { error: schemaErr } = await admin.from('tab_schemas').upsert(
-          { tab: tab.name, headers: tab.headers, refreshed_at: new Date().toISOString() },
+        await admin.from('tab_schemas').upsert(
+          { tab: tabName, headers, refreshed_at: new Date().toISOString() },
           { onConflict: 'tab' },
         );
-        if (schemaErr) throw schemaErr;
 
-        const idColIndex = tab.headers.indexOf('id');
-        if (idColIndex === -1) {
-          tabsFailed.push(`${tab.name}: no 'id' column`);
-          continue;
-        }
+        const idColIndex = headers.indexOf('id');
+        if (idColIndex === -1) { tabsFailed.push(`${tabName}: no 'id' column`); continue; }
+        const syncTagColIndex = headers.indexOf('last_sync_tag');
 
-        const syncTagColIndex = tab.headers.indexOf('last_sync_tag');
-
-        // Build candidate list — extract sheet sync tag alongside the data blob.
         const candidates: Candidate[] = [];
-        for (const row of tab.rows) {
+        for (const row of dataRows) {
           rowsSeen++;
           const sheetRowId = String(row[idColIndex] ?? '').trim();
-          if (!sheetRowId) {
-            rowsSkipped++;
-            continue;
-          }
-
-          const sheetSyncTag =
-            syncTagColIndex >= 0 && row[syncTagColIndex]
-              ? String(row[syncTagColIndex]).trim() || null
-              : null;
-
+          if (!sheetRowId) { rowsSkipped++; continue; }
+          const sheetSyncTag = syncTagColIndex >= 0 && row[syncTagColIndex]
+            ? String(row[syncTagColIndex]).trim() || null : null;
           const data: Record<string, string | null> = {};
-          for (let i = 0; i < tab.headers.length; i++) {
-            const h = tab.headers[i];
+          for (let i = 0; i < headers.length; i++) {
+            const h = headers[i];
             if (h === 'id' || h === 'last_sync_tag' || h === '') continue;
             const val = row[i];
             data[h] = val == null || val === '' ? null : String(val);
           }
-          candidates.push({ tab: tab.name, sheet_row_id: sheetRowId, data, sheetSyncTag });
+          candidates.push({ tab: tabName, sheet_row_id: sheetRowId, data, sheetSyncTag });
         }
 
         if (candidates.length === 0) continue;
 
-        // Batch-fetch existing rows for this tab to detect echoes.
-        const sheetIds = candidates.map((c) => c.sheet_row_id);
         const { data: existingRows } = await admin
           .from('entries')
           .select('sheet_row_id, last_edited_by, last_sync_tag')
-          .eq('tab', tab.name)
-          .in('sheet_row_id', sheetIds)
-          .limit(sheetIds.length);
+          .eq('tab', tabName)
+          .in('sheet_row_id', candidates.map((c) => c.sheet_row_id));
 
         const existingMap = new Map<string, { last_edited_by: string; last_sync_tag: string | null }>();
         for (const row of existingRows ?? []) {
@@ -119,26 +109,21 @@ Deno.serve(async () => {
           });
         }
 
-        // Filter echoes and build final upsert batch.
         const toUpsert: Array<Record<string, unknown>> = [];
         for (const c of candidates) {
           const existing = existingMap.get(c.sheet_row_id);
-          // Echo: dashboard wrote this exact sync_tag and the Sheet is reflecting it back.
           if (
             existing?.last_edited_by === 'dashboard' &&
             existing.last_sync_tag !== null &&
             c.sheetSyncTag !== null &&
             existing.last_sync_tag === c.sheetSyncTag
-          ) {
-            rowsSkipped++;
-            continue;
-          }
+          ) { rowsSkipped++; continue; }
           toUpsert.push({
             tab: c.tab,
             sheet_row_id: c.sheet_row_id,
             data: c.data,
             last_edited_by: 'sheet',
-            last_sync_tag: null, // clear tag — Sheet is now authoritative for this row
+            last_sync_tag: null,
           });
         }
 
@@ -150,43 +135,27 @@ Deno.serve(async () => {
           rowsUpserted += toUpsert.length;
         }
       } catch (tabErr) {
-        tabsFailed.push(`${tab.name}: ${tabErr instanceof Error ? tabErr.message : String(tabErr)}`);
+        tabsFailed.push(`${tabName}: ${tabErr instanceof Error ? tabErr.message : String(tabErr)}`);
       }
     }
 
-    const finalStatus = tabsFailed.length === 0 ? 'success' : 'error';
-    await admin
-      .from('sync_runs')
-      .update({
-        finished_at: new Date().toISOString(),
-        rows_seen: rowsSeen,
-        rows_upserted: rowsUpserted,
-        rows_skipped: rowsSkipped,
-        status: finalStatus,
-        error_message: tabsFailed.length > 0 ? tabsFailed.join('; ') : null,
-      })
-      .eq('id', runId);
-
-    return json({
-      ok: tabsFailed.length === 0,
+    await admin.from('sync_runs').update({
+      finished_at: new Date().toISOString(),
       rows_seen: rowsSeen,
       rows_upserted: rowsUpserted,
       rows_skipped: rowsSkipped,
-      tabs_failed: tabsFailed,
-    });
+      status: tabsFailed.length === 0 ? 'success' : 'error',
+      error_message: tabsFailed.length > 0 ? tabsFailed.join('; ') : null,
+    }).eq('id', runId);
+
+    return json({ ok: tabsFailed.length === 0, rows_seen: rowsSeen, rows_upserted: rowsUpserted, rows_skipped: rowsSkipped, tabs_failed: tabsFailed });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await admin
-      .from('sync_runs')
-      .update({ finished_at: new Date().toISOString(), status: 'error', error_message: msg })
-      .eq('id', runId);
+    await admin.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: msg }).eq('id', runId);
     return json({ ok: false, error: msg }, 500);
   }
 });
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }

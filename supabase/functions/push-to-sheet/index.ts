@@ -1,25 +1,26 @@
-// Supabase Edge Function: push-to-sheet (multi-tab)
+// Supabase Edge Function: push-to-sheet
 //
-// Receives { tab, sheet_row_id, fields } from the dashboard, upserts into
-// public.entries (merging the JSONB data), and relays to the Apps Script Web App
-// which writes the same row into the named Sheet tab.
+// Receives { tab, sheet_row_id, fields } from the dashboard, merges into
+// public.entries, then writes the same fields to Google Sheets via the
+// Apps Script Web App (op=upsert_row).
 //
 // Required secrets:
 //   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (runtime)
-//   APPS_SCRIPT_WEB_APP_URL
-//   APPS_SCRIPT_SHARED_SECRET
+//   APPS_SCRIPT_URL   — Web App exec URL
+//   APPS_SCRIPT_SECRET — shared secret configured in Code.gs
 
 // @ts-expect-error: Deno-only import resolved at runtime
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-declare const Deno: { env: { get(name: string): string | undefined }; serve: (h: (r: Request) => Response | Promise<Response>) => void };
+declare const Deno: {
+  env: { get(name: string): string | undefined };
+  serve: (h: (r: Request) => Response | Promise<Response>) => void;
+};
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const SCRIPT_URL = Deno.env.get('APPS_SCRIPT_WEB_APP_URL')!;
-const SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SHARED_SECRET')!;
-
-const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+const APPS_SCRIPT_URL = Deno.env.get('APPS_SCRIPT_URL')!;
+const APPS_SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SECRET')!;
 
 const OPERATIONAL_TABS = new Set([
   'TP Brand Injection',
@@ -29,6 +30,8 @@ const OPERATIONAL_TABS = new Set([
   'SilverPlay',
   'SuprPlay Limited',
 ]);
+
+const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
 interface RequestBody {
   tab: string;
@@ -44,9 +47,8 @@ Deno.serve(async (req: Request) => {
 
   if (!body.tab || typeof body.tab !== 'string') return json({ ok: false, error: 'tab required' }, 400);
   if (!OPERATIONAL_TABS.has(body.tab)) return json({ ok: false, error: 'unknown tab' }, 400);
-  if (!body.sheet_row_id || typeof body.sheet_row_id !== 'string') return json({ ok: false, error: 'sheet_row_id required' }, 400);
+  if (!body.sheet_row_id) return json({ ok: false, error: 'sheet_row_id required' }, 400);
 
-  // Normalize fields: strip empty strings to null, drop bookkeeping keys.
   const cleanFields: Record<string, string | null> = {};
   for (const [k, v] of Object.entries(body.fields ?? {})) {
     if (k === 'id' || k === 'last_sync_tag' || k === '') continue;
@@ -65,7 +67,6 @@ Deno.serve(async (req: Request) => {
   const runId = runRow!.id as string;
 
   try {
-    // Merge with existing data so partial updates don't overwrite untouched fields.
     const { data: existing, error: selErr } = await admin
       .from('entries')
       .select('data')
@@ -79,23 +80,22 @@ Deno.serve(async (req: Request) => {
       ...cleanFields,
     };
 
-    const { error: upsertErr } = await admin
-      .from('entries')
-      .upsert({
-        tab: body.tab,
-        sheet_row_id: body.sheet_row_id,
-        data: mergedData,
-        updated_at: nowIso,
-        last_edited_by: 'dashboard',
-        last_sync_tag: syncTag,
-      }, { onConflict: 'tab,sheet_row_id' });
+    const { error: upsertErr } = await admin.from('entries').upsert({
+      tab: body.tab,
+      sheet_row_id: body.sheet_row_id,
+      data: mergedData,
+      updated_at: nowIso,
+      last_edited_by: 'dashboard',
+      last_sync_tag: syncTag,
+    }, { onConflict: 'tab,sheet_row_id' });
     if (upsertErr) throw upsertErr;
 
-    const scriptRes = await fetch(SCRIPT_URL, {
+    const scriptRes = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',
+      redirect: 'follow',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        secret: SCRIPT_SECRET,
+        secret: APPS_SCRIPT_SECRET,
         op: 'upsert_row',
         tab: body.tab,
         sheet_row_id: body.sheet_row_id,
@@ -103,12 +103,10 @@ Deno.serve(async (req: Request) => {
         sync_tag: syncTag,
       }),
     });
-    if (!scriptRes.ok) {
-      const text = await scriptRes.text();
-      throw new Error(`Apps Script ${scriptRes.status}: ${text}`);
-    }
-    const scriptBody = (await scriptRes.json()) as { ok?: boolean; error?: string };
-    if (!scriptBody.ok) throw new Error(`Apps Script returned not-ok: ${scriptBody.error ?? '<no error>'}`);
+    if (!scriptRes.ok) throw new Error(`Apps Script ${scriptRes.status}: ${await scriptRes.text()}`);
+
+    const scriptBody = (await scriptRes.json()) as { ok: boolean; error?: string };
+    if (!scriptBody.ok) throw new Error(`Apps Script error: ${scriptBody.error}`);
 
     await admin.from('sync_runs').update({
       finished_at: new Date().toISOString(),
@@ -121,18 +119,11 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, sync_tag: syncTag });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await admin.from('sync_runs').update({
-      finished_at: new Date().toISOString(),
-      status: 'error',
-      error_message: msg,
-    }).eq('id', runId);
+    await admin.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: msg }).eq('id', runId);
     return json({ ok: false, error: msg }, 500);
   }
 });
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
