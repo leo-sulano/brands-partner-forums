@@ -61,9 +61,20 @@ function StatusPill({ value }: { value: string }) {
 }
 
 function formatCellValue(value: string): string {
+  // ISO datetime: 2025-02-19 or 2025-02-19T...
   if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(value)) {
     const [y, m, d] = value.slice(0, 10).split('-');
     return `${d}/${m}/${y}`;
+  }
+  // Google Sheets full date string: "Wed Feb 19 2025 08:00:00 GMT+0800 (...)"
+  if (/^[A-Za-z]{3}\s[A-Za-z]{3}\s\d{1,2}\s\d{4}/.test(value)) {
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
   }
   return value;
 }
