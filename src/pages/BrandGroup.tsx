@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { CheckCircle2, XCircle, Circle, Building2, ExternalLink } from 'lucide-react';
+import {
+  CheckCircle2, XCircle, Circle, Building2, ExternalLink,
+  ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
+  Search, X,
+} from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
@@ -9,6 +13,7 @@ import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
 const HIDDEN_COLS = new Set(['id', 'last_sync_tag']);
+const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 function isStatusCol(header: string) {
   return header.toLowerCase().includes('status');
@@ -54,7 +59,6 @@ function StatusPill({ value }: { value: string }) {
 }
 
 function formatCellValue(value: string): string {
-  // ISO datetime → date only: 2025-02-26T00:00:00.000Z → 2025-02-26
   if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10);
   return value;
 }
@@ -79,6 +83,13 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
   return <span className="text-slate-600">{display}</span>;
 }
 
+function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | null; sortDir: 'asc' | 'desc' }) {
+  if (sortCol !== col) return <ChevronsUpDown className="size-3 text-slate-400 shrink-0" />;
+  return sortDir === 'asc'
+    ? <ChevronUp className="size-3 text-violet-600 shrink-0" />
+    : <ChevronDown className="size-3 text-violet-600 shrink-0" />;
+}
+
 export default function BrandGroup() {
   const { tab } = useParams<{ tab: string }>();
   const navigate = useNavigate();
@@ -89,13 +100,17 @@ export default function BrandGroup() {
   const [kpis, setKpis] = useState<TabKpis>({ total: 0, live: 0, removed: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Incrementing this triggers a reload without changing the tab.
+
+  const [search, setSearch] = useState('');
+  const [sortCol, setSortCol] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState(1);
+  const [jumpInput, setJumpInput] = useState('');
+
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
 
-  // Single effect owns the full load lifecycle. A `canceled` flag ensures that
-  // if the tab changes (or component unmounts) while fetches are in-flight, the
-  // stale result is silently discarded and never written to state.
   useEffect(() => {
     if (!decodedTab) return;
     let canceled = false;
@@ -104,6 +119,11 @@ export default function BrandGroup() {
     setHeaders([]);
     setKpis({ total: 0, live: 0, removed: 0 });
     setError(null);
+    setSearch('');
+    setSortCol(null);
+    setSortDir('asc');
+    setPage(1);
+    setJumpInput('');
 
     (async () => {
       try {
@@ -114,8 +134,6 @@ export default function BrandGroup() {
         ]);
         if (canceled) return;
         const configCols = getTabColumns(decodedTab);
-        // Two-pass match: direct name, then COLUMN_LABELS reverse lookup so
-        // whitelist entries like 'TP Review Status' also resolve 'Trust pilot Review Status'.
         const visible = configCols
           ? configCols
               .map((col) => {
@@ -127,7 +145,6 @@ export default function BrandGroup() {
               })
               .filter((h): h is string => h !== undefined)
           : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
-        // Drop columns where every entry has a null/empty value.
         const populated = visible.filter((h) =>
           rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
         );
@@ -153,6 +170,58 @@ export default function BrandGroup() {
       timer = setTimeout(() => reloadRef.current(), 400);
     });
   }, []);
+
+  // Derived: filter → sort → paginate
+  const filtered = search.trim()
+    ? entries.filter((e) =>
+        headers.some((h) => {
+          const v = e.data[h];
+          return v != null && v.toLowerCase().includes(search.toLowerCase());
+        }),
+      )
+    : entries;
+
+  const sorted = sortCol
+    ? [...filtered].sort((a, b) => {
+        const av = a.data[sortCol] ?? '';
+        const bv = b.data[sortCol] ?? '';
+        const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+        return sortDir === 'asc' ? cmp : -cmp;
+      })
+    : filtered;
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(page, totalPages);
+  const pageRows = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  function handleSort(col: string) {
+    if (isLinkCol(col)) return;
+    if (sortCol === col) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+    setPage(1);
+  }
+
+  function handleSearch(val: string) {
+    setSearch(val);
+    setPage(1);
+  }
+
+  function handlePageSize(val: number) {
+    setPageSize(val);
+    setPage(1);
+    setJumpInput('');
+  }
+
+  function handleJump(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return;
+    const n = parseInt(jumpInput, 10);
+    if (!isNaN(n)) setPage(Math.min(totalPages, Math.max(1, n)));
+    setJumpInput('');
+  }
 
   if (error) {
     return (
@@ -182,60 +251,144 @@ export default function BrandGroup() {
         />
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-x-auto">
-        <table className="min-w-max w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 bg-slate-50 text-left">
-              {loading
-                ? Array.from({ length: 5 }).map((_, i) => (
-                    <th key={i} className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                    </th>
-                  ))
-                : headers.map((h) => (
-                    <th key={h} className={`px-3 py-3 font-medium text-slate-600 whitespace-nowrap ${colWidthClass(h)}`}>
-                      {getColLabel(h)}
-                    </th>
-                  ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i}>
-                  {Array.from({ length: 5 }).map((_, j) => (
-                    <td key={j} className="px-4 py-3">
-                      <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
-                    </td>
-                  ))}
-                </tr>
-              ))
-            ) : entries.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={headers.length || 5}
-                  className="px-4 py-8 text-center text-slate-400"
-                >
-                  No entries — run a sync from the Sync Status page.
-                </td>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Search bar */}
+        <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2">
+          <Search className="size-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => handleSearch(e.target.value)}
+            placeholder="Search all columns…"
+            className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
+          />
+          {search && (
+            <button onClick={() => handleSearch('')} className="text-slate-400 hover:text-slate-600">
+              <X className="size-4" />
+            </button>
+          )}
+          {!loading && search && (
+            <span className="text-xs text-slate-400 whitespace-nowrap">
+              {filtered.length} result{filtered.length !== 1 ? 's' : ''}
+            </span>
+          )}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-max w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-left">
+                {loading
+                  ? Array.from({ length: 5 }).map((_, i) => (
+                      <th key={i} className="px-4 py-3">
+                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      </th>
+                    ))
+                  : headers.map((h) => (
+                      <th
+                        key={h}
+                        onClick={() => handleSort(h)}
+                        className={`px-3 py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {getColLabel(h)}
+                          {!isLinkCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
+                        </span>
+                      </th>
+                    ))}
               </tr>
-            ) : (
-              entries.map((entry) => (
-                <tr
-                  key={entry.id}
-                  onClick={() => navigate(`/mentions/${entry.id}`)}
-                  className="cursor-pointer hover:bg-slate-50 transition-colors"
-                >
-                  {headers.map((h) => (
-                    <td key={h} className="px-3 py-2.5">
-                      <CellValue header={h} value={entry.data[h] ?? null} />
-                    </td>
-                  ))}
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i}>
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <td key={j} className="px-4 py-3">
+                        <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : pageRows.length === 0 ? (
+                <tr>
+                  <td colSpan={headers.length || 5} className="px-4 py-8 text-center text-slate-400">
+                    {search ? 'No entries match your search.' : 'No entries — run a sync from the Sync Status page.'}
+                  </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                pageRows.map((entry) => (
+                  <tr
+                    key={entry.id}
+                    onClick={() => navigate(`/mentions/${entry.id}`)}
+                    className="cursor-pointer hover:bg-slate-50 transition-colors"
+                  >
+                    {headers.map((h) => (
+                      <td key={h} className="px-3 py-2.5">
+                        <CellValue header={h} value={entry.data[h] ?? null} />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination bar */}
+        {!loading && sorted.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
+            {/* Left: row range + page size */}
+            <div className="flex items-center gap-3">
+              <span className="tabular-nums whitespace-nowrap">
+                {sorted.length === 0 ? '0' : `${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, sorted.length)}`} of {sorted.length}
+              </span>
+              <select
+                value={pageSize}
+                onChange={(e) => handlePageSize(Number(e.target.value))}
+                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+              >
+                {PAGE_SIZE_OPTIONS.map((n) => (
+                  <option key={n} value={n}>{n} / page</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Right: prev / page indicator / jump / next */}
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={safePage === 1}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-slate-100 transition-colors"
+              >
+                <ChevronLeft className="size-4" /> Prev
+              </button>
+
+              <span className="px-1 tabular-nums whitespace-nowrap">
+                {safePage} / {totalPages}
+              </span>
+
+              {/* Jump to page */}
+              <input
+                type="number"
+                min={1}
+                max={totalPages}
+                value={jumpInput}
+                onChange={(e) => setJumpInput(e.target.value)}
+                onKeyDown={handleJump}
+                placeholder="Go"
+                className="w-12 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={safePage === totalPages}
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-slate-100 transition-colors"
+              >
+                Next <ChevronRight className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
