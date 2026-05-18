@@ -1,4 +1,4 @@
-import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL } from './supabase';
+import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY } from './supabase';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
@@ -18,7 +18,7 @@ function getField(data: Record<string, string | null>, ...keys: string[]): strin
 }
 
 function entryToMention(entry: Entry): Mention {
-  const d = entry.data;
+  const d = entry.data ?? {};
   return {
     id: entry.id,
     tab: entry.tab,
@@ -168,8 +168,9 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
     .from('entries')
     .select('tab, sheet_row_id, data')
     .eq('id', id)
-    .single();
+    .maybeSingle();
   if (selErr) throw selErr;
+  if (!existing) throw new Error('Entry not found — it may have been deleted.');
 
   const mergedData = {
     ...(existing.data as Record<string, string | null>),
@@ -199,7 +200,7 @@ export async function pushEntryToSheet(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({ tab, sheet_row_id: sheetRowId, fields }),
   });
@@ -219,7 +220,7 @@ export async function triggerSync(): Promise<void> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     },
   });
   if (!res.ok) {
