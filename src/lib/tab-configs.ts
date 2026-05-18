@@ -35,6 +35,14 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Link to the profile',
     'Trust pilot Review Status',
   ],
+  'SuprPlay Limited': [
+    'Account Name',
+    'Brand Name',
+    'Removed / Not Published / stil published date',
+    'Trust Pilot',
+    'Link to the profile',
+    'Review Status',
+  ],
   'SilverPlay': [
     'Account',
     'Account Name',
