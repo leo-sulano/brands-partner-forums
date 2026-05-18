@@ -182,26 +182,25 @@ export default function BrandGroup() {
     });
   }, []);
 
-  // Derived: text filter → status filter → sort → paginate
-  const textFiltered = search.trim()
-    ? entries.filter((e) =>
-        headers.some((h) => {
+  // Derived: filter (OR between text and status chips) → sort → paginate
+  const hasSearch = search.trim().length > 0;
+  const hasStatus = activeStatuses.size > 0;
+  const filtered = (!hasSearch && !hasStatus)
+    ? entries
+    : entries.filter((e) => {
+        const matchesText = hasSearch && headers.some((h) => {
           const v = e.data[h];
           return v != null && v.toLowerCase().includes(search.toLowerCase());
-        }),
-      )
-    : entries;
-
-  const filtered = activeStatuses.size > 0
-    ? textFiltered.filter((e) =>
-        headers.some((h) =>
+        });
+        const matchesStatus = hasStatus && headers.some((h) =>
           isStatusCol(h) &&
           [...activeStatuses].some(
             (s) => (e.data[h] ?? '').toLowerCase().trim() === s.toLowerCase(),
           ),
-        ),
-      )
-    : textFiltered;
+        );
+        if (hasSearch && hasStatus) return matchesText || matchesStatus;
+        return hasSearch ? matchesText : matchesStatus;
+      });
 
   const sorted = sortCol
     ? [...filtered].sort((a, b) => {
