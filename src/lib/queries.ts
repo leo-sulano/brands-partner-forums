@@ -222,12 +222,13 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   let live = 0, removed = 0;
   for (const row of data ?? []) {
     const d = row.data as Record<string, string | null>;
-    // Check all columns whose name contains 'status' (covers TP/AG/CG per-platform columns)
-    const statusValues = Object.keys(d)
-      .filter((k) => k.toLowerCase().includes('status'))
-      .map((k) => (d[k] ?? '').toLowerCase());
-    if (statusValues.some((v) => v.includes('live'))) live++;
-    else if (statusValues.some((v) => v.includes('removed'))) removed++;
+    // Only check the Trustpilot Review Status column for Live/Removed KPI counts.
+    // Values from the sheet: "Published" → live, "Removed" → removed.
+    const tpStatus = (
+      getField(d, 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Review Status', 'status', 'Status') ?? ''
+    ).toLowerCase();
+    if (tpStatus.includes('published') || tpStatus.includes('live')) live++;
+    else if (tpStatus.includes('removed')) removed++;
   }
   return { total: (data ?? []).length, live, removed };
 }
