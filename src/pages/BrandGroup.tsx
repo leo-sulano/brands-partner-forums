@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
@@ -94,7 +94,6 @@ function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | nu
 
 export default function BrandGroup() {
   const { tab } = useParams<{ tab: string }>();
-  const navigate = useNavigate();
   const decodedTab = decodeURIComponent(tab ?? '');
 
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -322,8 +321,7 @@ export default function BrandGroup() {
                 pageRows.map((entry) => (
                   <tr
                     key={entry.id}
-                    onClick={() => navigate(`/mentions/${entry.id}`)}
-                    className="cursor-pointer hover:bg-slate-50 transition-colors"
+                    className="hover:bg-slate-50 transition-colors"
                   >
                     {headers.map((h) => (
                       <td key={h} className="px-3 py-2.5">
