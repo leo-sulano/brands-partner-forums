@@ -43,11 +43,11 @@ function entryToBrandEntry(entry: Entry): BrandEntry {
     id: entry.id,
     tab: entry.tab,
     source_row_id: entry.sheet_row_id,
-    casino: getField(d, 'casino', 'Casino', 'casino_name', 'Casino Name', 'name', 'Name') ?? '',
-    platform: getField(d, 'platform', 'Platform'),
-    status: getField(d, 'status', 'Status') ?? 'new',
-    date: getField(d, 'date', 'Date', 'posted_at', 'Posted At'),
-    notes: getField(d, 'notes', 'Notes', 'note', 'Note'),
+    casino: getField(d, 'Account Name', 'account_name', 'casino', 'Casino', 'casino_name', 'Casino Name', 'name', 'Name') ?? '',
+    platform: getField(d, 'Brand / TP URL PAGE', 'brand', 'Brand', 'platform', 'Platform'),
+    status: getField(d, 'Review Status', 'review_status', 'status', 'Status') ?? 'new',
+    date: getField(d, 'Score added', 'score_added', 'score', 'Score', 'date', 'Date', 'posted_at', 'Posted At'),
+    notes: getField(d, 'Link to the profile', 'link_to_profile', 'profile_link', 'notes', 'Notes', 'note', 'Note'),
   };
 }
 
@@ -200,7 +200,7 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   if (error) throw error;
   let live = 0, removed = 0;
   for (const row of data ?? []) {
-    const s = (getField(row.data as Record<string, string | null>, 'status', 'Status') ?? '').toLowerCase();
+    const s = (getField(row.data as Record<string, string | null>, 'Review Status', 'review_status', 'status', 'Status') ?? '').toLowerCase();
     if (s.includes('live')) live++;
     else if (s.includes('removed')) removed++;
   }

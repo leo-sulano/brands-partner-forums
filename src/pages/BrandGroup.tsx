@@ -98,11 +98,11 @@ export default function BrandGroup() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50 text-left">
-              <th className="px-4 py-3 font-medium text-slate-600">Casino</th>
-              <th className="px-4 py-3 font-medium text-slate-600">Platform</th>
-              <th className="px-4 py-3 font-medium text-slate-600">Status</th>
-              <th className="px-4 py-3 font-medium text-slate-600">Date</th>
-              <th className="px-4 py-3 font-medium text-slate-600">Notes</th>
+              <th className="px-4 py-3 font-medium text-slate-600">Account Name</th>
+              <th className="px-4 py-3 font-medium text-slate-600">Brand / TP URL Page</th>
+              <th className="px-4 py-3 font-medium text-slate-600">Review Status</th>
+              <th className="px-4 py-3 font-medium text-slate-600">Score Added</th>
+              <th className="px-4 py-3 font-medium text-slate-600">Link to Profile</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
