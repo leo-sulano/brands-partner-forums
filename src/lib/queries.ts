@@ -192,14 +192,28 @@ export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   return (data ?? []).map((row) => entryToBrandEntry(row as Entry));
 }
 
+// Fetches all rows for a tab, paginating in 1 000-row batches to bypass Supabase's default limit.
+async function fetchAllTabEntries(tab: string): Promise<Entry[]> {
+  const PAGE = 1000;
+  const all: Entry[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('entries')
+      .select('*')
+      .eq('tab', tab)
+      .order('updated_at', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all.push(...((data ?? []) as Entry[]));
+    if ((data ?? []).length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function fetchRawEntriesByTab(tab: string): Promise<Entry[]> {
-  const { data, error } = await supabase
-    .from('entries')
-    .select('*')
-    .eq('tab', tab)
-    .order('updated_at', { ascending: false });
-  if (error) throw error;
-  return (data ?? []) as Entry[];
+  return fetchAllTabEntries(tab);
 }
 
 export async function fetchTabHeaders(tab: string): Promise<string[]> {
@@ -214,23 +228,17 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
 }
 
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
-  const { data, error } = await supabase
-    .from('entries')
-    .select('data')
-    .eq('tab', tab);
-  if (error) throw error;
+  const entries = await fetchAllTabEntries(tab);
   let live = 0, removed = 0;
-  for (const row of data ?? []) {
-    const d = row.data as Record<string, string | null>;
-    // Only check the Trustpilot Review Status column for Live/Removed KPI counts.
-    // Values from the sheet: "Published" → live, "Removed" → removed.
+  for (const entry of entries) {
+    const d = entry.data;
     const tpStatus = (
       getField(d, 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Review Status', 'status', 'Status') ?? ''
     ).toLowerCase();
     if (tpStatus.includes('published') || tpStatus.includes('live')) live++;
     else if (tpStatus.includes('removed')) removed++;
   }
-  return { total: (data ?? []).length, live, removed };
+  return { total: entries.length, live, removed };
 }
 
 // ---------------------------------------------------------------------------
