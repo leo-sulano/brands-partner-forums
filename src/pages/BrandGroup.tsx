@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, Circle, Building2, ExternalLink } from 'lucide-r
 import KpiCard from '../components/KpiCard';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns } from '../lib/tab-configs';
+import { getTabColumns, getColLabel } from '../lib/tab-configs';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -167,7 +167,7 @@ export default function BrandGroup() {
                   ))
                 : headers.map((h) => (
                     <th key={h} className={`px-3 py-3 font-medium text-slate-600 whitespace-nowrap ${colWidthClass(h)}`}>
-                      {h}
+                      {getColLabel(h)}
                     </th>
                   ))}
             </tr>

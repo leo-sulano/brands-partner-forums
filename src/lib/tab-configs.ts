@@ -17,7 +17,21 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
 };
 
+// Display label overrides — maps actual sheet column name → shorter UI label.
+// Applied globally across all tabs.
+export const COLUMN_LABELS: Record<string, string> = {
+  'Trust Pilot Review Status': 'TP Review Status',
+  'Trustpilot Review Status': 'TP Review Status',
+  'Ask Gambler review added': 'AG Review Added',
+  'Casino Guru review added': 'CG Review Added',
+};
+
 // Returns the ordered column list for a tab, or null if no config exists.
 export function getTabColumns(tab: string): string[] | null {
   return TAB_COLUMN_CONFIGS[tab] ?? null;
+}
+
+// Returns the display label for a column header.
+export function getColLabel(header: string): string {
+  return COLUMN_LABELS[header] ?? header;
 }
