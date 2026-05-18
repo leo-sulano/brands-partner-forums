@@ -93,9 +93,12 @@ export default function BrandGroup() {
       ]);
       setEntries(rawEntries);
       const configCols = getTabColumns(decodedTab);
-      // Use whitelist if configured; otherwise show all non-internal columns that exist in the sheet
+      // Use whitelist if configured; case-insensitive match so minor casing differences don't drop columns.
+      // Resolved name comes from the actual sheet header so the display label is always accurate.
       const visible = configCols
-        ? configCols.filter((col) => tabHeaders.includes(col))
+        ? configCols
+            .map((col) => tabHeaders.find((h) => h.toLowerCase() === col.toLowerCase()))
+            .filter((h): h is string => h !== undefined)
         : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
       setHeaders(visible);
       setKpis(k);

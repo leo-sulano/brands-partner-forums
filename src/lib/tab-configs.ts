@@ -9,7 +9,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Brands',
     'Trust Pilot',
     'Link to the profile',
-    'Trustpilot Review Status',
+    'Trust Pilot Review Status',
     'Ask Gambler review added',
     'Ask Gambler Review Status',
     'Casino Guru review added',
