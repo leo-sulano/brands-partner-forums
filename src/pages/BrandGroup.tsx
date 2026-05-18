@@ -19,6 +19,14 @@ function isLinkCol(header: string) {
   return h.includes('link') || h.includes('url') || h.includes('profile');
 }
 
+function colWidthClass(header: string): string {
+  if (isLinkCol(header)) return 'w-24';
+  if (isStatusCol(header)) return 'w-36';
+  const h = header.toLowerCase();
+  if (h.includes('account') || h.includes('brand') || h.includes('name')) return 'w-40';
+  return 'w-32';
+}
+
 function StatusPill({ value }: { value: string }) {
   const v = value.toLowerCase();
   if (v.includes('live')) {
@@ -52,7 +60,6 @@ function formatCellValue(value: string): string {
 }
 
 function CellValue({ header, value }: { header: string; value: string | null }) {
-  const raw = value ?? '—';
   const display = value ? formatCellValue(value) : '—';
   if (isStatusCol(header)) return <StatusPill value={display} />;
   if (isLinkCol(header) && value) {
@@ -63,9 +70,9 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
         target="_blank"
         rel="noopener noreferrer"
         onClick={(e) => e.stopPropagation()}
-        className="inline-flex items-center gap-1 text-blue-600 hover:underline max-w-xs truncate"
+        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
       >
-        {raw} <ExternalLink className="size-3 shrink-0" />
+        <ExternalLink className="size-3" /> View
       </a>
     );
   }
@@ -159,7 +166,7 @@ export default function BrandGroup() {
                     </th>
                   ))
                 : headers.map((h) => (
-                    <th key={h} className="px-4 py-3 font-medium text-slate-600 whitespace-nowrap">
+                    <th key={h} className={`px-3 py-3 font-medium text-slate-600 whitespace-nowrap ${colWidthClass(h)}`}>
                       {h}
                     </th>
                   ))}
@@ -193,7 +200,7 @@ export default function BrandGroup() {
                   className="cursor-pointer hover:bg-slate-50 transition-colors"
                 >
                   {headers.map((h) => (
-                    <td key={h} className="px-4 py-3 max-w-xs">
+                    <td key={h} className="px-3 py-2.5">
                       <CellValue header={h} value={entry.data[h] ?? null} />
                     </td>
                   ))}
