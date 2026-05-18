@@ -2,6 +2,7 @@ import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY } fro
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
+import type { BrandEntry, TabKpis } from '../types/brand-entry';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -33,6 +34,20 @@ function entryToMention(entry: Entry): Mention {
     sentiment: getField(d, 'sentiment', 'Sentiment') as Mention['sentiment'],
     status: (getField(d, 'status', 'Status') ?? 'new') as MentionStatus,
     synced_at: entry.updated_at,
+  };
+}
+
+function entryToBrandEntry(entry: Entry): BrandEntry {
+  const d = entry.data ?? {};
+  return {
+    id: entry.id,
+    tab: entry.tab,
+    source_row_id: entry.sheet_row_id,
+    casino: getField(d, 'casino', 'Casino', 'casino_name', 'Casino Name', 'name', 'Name') ?? '',
+    platform: getField(d, 'platform', 'Platform'),
+    status: getField(d, 'status', 'Status') ?? 'new',
+    date: getField(d, 'date', 'Date', 'posted_at', 'Posted At'),
+    notes: getField(d, 'notes', 'Notes', 'note', 'Note'),
   };
 }
 
@@ -156,6 +171,40 @@ export async function fetchSyncRuns(limit = 10): Promise<SyncRun[]> {
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as SyncRun[];
+}
+
+export async function fetchAvailableTabs(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('tab_schemas')
+    .select('tab')
+    .order('tab', { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => row.tab as string);
+}
+
+export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
+  const { data, error } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('tab', tab)
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => entryToBrandEntry(row as Entry));
+}
+
+export async function fetchTabKpis(tab: string): Promise<TabKpis> {
+  const { data, error } = await supabase
+    .from('entries')
+    .select('data')
+    .eq('tab', tab);
+  if (error) throw error;
+  let live = 0, removed = 0;
+  for (const row of data ?? []) {
+    const s = (getField(row.data as Record<string, string | null>, 'status', 'Status') ?? '').toLowerCase();
+    if (s.includes('live')) live++;
+    else if (s.includes('removed')) removed++;
+  }
+  return { total: (data ?? []).length, live, removed };
 }
 
 // ---------------------------------------------------------------------------

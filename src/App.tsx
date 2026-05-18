@@ -4,6 +4,7 @@ import Topbar from './components/Topbar';
 import Overview from './pages/Overview';
 import MentionDetail from './pages/MentionDetail';
 import SyncStatus from './pages/SyncStatus';
+import BrandGroup from './pages/BrandGroup';
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
             <Route path="/" element={<Overview />} />
             <Route path="/mentions/:id" element={<MentionDetail />} />
             <Route path="/sync" element={<SyncStatus />} />
+            <Route path="/brands/:tab" element={<BrandGroup />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
