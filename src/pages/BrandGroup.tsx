@@ -45,8 +45,15 @@ function StatusPill({ value }: { value: string }) {
   );
 }
 
+function formatCellValue(value: string): string {
+  // ISO datetime → date only: 2025-02-26T00:00:00.000Z → 2025-02-26
+  if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return value.slice(0, 10);
+  return value;
+}
+
 function CellValue({ header, value }: { header: string; value: string | null }) {
-  const display = value ?? '—';
+  const raw = value ?? '—';
+  const display = value ? formatCellValue(value) : '—';
   if (isStatusCol(header)) return <StatusPill value={display} />;
   if (isLinkCol(header) && value) {
     const href = value.startsWith('http') ? value : `https://${value}`;
@@ -58,7 +65,7 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
         onClick={(e) => e.stopPropagation()}
         className="inline-flex items-center gap-1 text-blue-600 hover:underline max-w-xs truncate"
       >
-        {value} <ExternalLink className="size-3 shrink-0" />
+        {raw} <ExternalLink className="size-3 shrink-0" />
       </a>
     );
   }
