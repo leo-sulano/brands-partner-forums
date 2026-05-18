@@ -12,7 +12,8 @@ import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
-const HIDDEN_COLS = new Set(['id', 'last_sync_tag']);
+// Checked case-insensitively against header names for tabs with no whitelist config.
+const HIDDEN_COLS = new Set(['id', 'last_sync_tag', 'score added', 'review status']);
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 
@@ -145,7 +146,7 @@ export default function BrandGroup() {
                 );
               })
               .filter((h): h is string => h !== undefined)
-          : tabHeaders.filter((h) => !HIDDEN_COLS.has(h));
+          : tabHeaders.filter((h) => !HIDDEN_COLS.has(h.toLowerCase()));
         const populated = visible.filter((h) =>
           rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
         );
