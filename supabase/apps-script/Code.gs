@@ -1,15 +1,17 @@
 // Apps Script Web App — Brands Partner Forum Dashboard Bridge
 //
-// Setup:
-//   1. Open your Google Sheet → Extensions → Apps Script
+// Setup (standalone script):
+//   1. Go to script.google.com → your standalone script
 //   2. Paste this file, replacing the default Code.gs
 //   3. Set SHARED_SECRET below (any string — must match APPS_SCRIPT_SECRET in Supabase)
-//   4. Deploy → New deployment → Web App
+//   4. Set SPREADSHEET_ID below (the ID from your Google Sheet URL)
+//   5. Deploy → New deployment → Web App
 //      - Execute as: Me
 //      - Who has access: Anyone
-//   5. Copy the Web App URL → set as APPS_SCRIPT_URL in Supabase Edge Function secrets
+//   6. Copy the Web App URL → set as APPS_SCRIPT_URL in Supabase Edge Function secrets
 
 var SHARED_SECRET = 'replace-with-your-secret';
+var SPREADSHEET_ID = '1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk';
 
 function doGet(e) {
   if (e.parameter.secret !== SHARED_SECRET) {
@@ -39,7 +41,7 @@ function doPost(e) {
 // Returns all non-hidden tabs with their headers and data rows.
 // Injects a synthetic 'id' column (1-based row index) if the tab has no 'id' column.
 function dumpAllTabs() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var tabs = [];
 
   ss.getSheets().forEach(function(sheet) {
@@ -67,7 +69,7 @@ function dumpAllTabs() {
 
 // Writes field values back to the matching row in the given tab.
 function upsertRow(tabName, sheetRowId, fields) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   var sheet = ss.getSheetByName(tabName);
   if (!sheet) return json({ ok: false, error: 'Tab not found: ' + tabName });
 
