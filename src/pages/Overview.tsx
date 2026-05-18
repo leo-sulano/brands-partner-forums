@@ -68,10 +68,12 @@ export default function Overview() {
     loadData();
   }, [loadData]);
 
-  // Realtime: re-fetch when any entry changes
+  // Realtime: re-fetch when any entry changes; debounced to coalesce bulk upsert events
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
     return subscribeEntries(() => {
-      loadData();
+      clearTimeout(timer);
+      timer = setTimeout(() => loadData(), 400);
     });
   }, [loadData]);
 

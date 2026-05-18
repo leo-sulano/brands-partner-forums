@@ -3,7 +3,7 @@ import { supabase } from './supabase';
 // Returns an unsubscribe function. Call it in a useEffect cleanup.
 export function subscribeEntries(onChange: () => void): () => void {
   const channel = supabase
-    .channel('entries-realtime')
+    .channel(`entries-realtime-${crypto.randomUUID()}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, onChange)
     .subscribe();
   return () => {
@@ -13,7 +13,7 @@ export function subscribeEntries(onChange: () => void): () => void {
 
 export function subscribeSyncRuns(onChange: () => void): () => void {
   const channel = supabase
-    .channel('sync-runs-realtime')
+    .channel(`sync-runs-realtime-${crypto.randomUUID()}`)
     .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_runs' }, onChange)
     .subscribe();
   return () => {
