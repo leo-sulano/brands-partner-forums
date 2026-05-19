@@ -223,6 +223,7 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
 ];
 
 const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Account Name'];
+const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE']);
 
 function BrandFilterDropdown({ value, onChange, brands }: {
   value: string; onChange: (v: string) => void; brands: string[];
@@ -833,7 +834,7 @@ export default function BrandGroup() {
             </span>
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
-          {uniqueBrands.length > 1 && (
+          {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && (
             <BrandFilterDropdown
               value={brandFilter}
               onChange={(v) => { setBrandFilter(v); setPage(1); }}
