@@ -227,18 +227,45 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
   return headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
 }
 
+function isLiveStatus(s: string) { return s.includes('published') || s.includes('live'); }
+function isRemovedStatus(s: string) { return s.includes('removed'); }
+
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   const entries = await fetchAllTabEntries(tab);
   let live = 0, removed = 0;
+  let tpLive = 0, tpRemoved = 0;
+  let agLive = 0, agRemoved = 0;
+  let cgLive = 0, cgRemoved = 0;
+
   for (const entry of entries) {
     const d = entry.data;
-    const tpStatus = (
-      getField(d, 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status', 'status', 'Status') ?? ''
-    ).toLowerCase();
-    if (tpStatus.includes('published') || tpStatus.includes('live')) live++;
-    else if (tpStatus.includes('removed')) removed++;
+    const tp = (getField(d, 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status') ?? '').toLowerCase();
+    const ag = (getField(d, 'AG Review Status') ?? '').toLowerCase();
+    const cg = (getField(d, 'CG Review Status') ?? '').toLowerCase();
+    const generic = (!tp && !ag && !cg)
+      ? (getField(d, 'Review Status', 'status', 'Status') ?? '').toLowerCase()
+      : '';
+
+    if (tp) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
+    if (ag) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
+    if (cg) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
+
+    const agg = tp || ag || cg || generic;
+    if (agg) {
+      const statuses = [tp, ag, cg, generic].filter(Boolean);
+      if (statuses.some(isLiveStatus)) live++;
+      else if (statuses.some(isRemovedStatus)) removed++;
+    }
   }
-  return { total: entries.length, live, removed };
+
+  return {
+    total: entries.length,
+    live,
+    removed,
+    tp: { live: tpLive, removed: tpRemoved },
+    ag: { live: agLive, removed: agRemoved },
+    cg: { live: cgLive, removed: cgRemoved },
+  };
 }
 
 // ---------------------------------------------------------------------------

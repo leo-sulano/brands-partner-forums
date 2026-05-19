@@ -9,8 +9,16 @@ export interface BrandEntry {
   notes: string | null;
 }
 
+export interface PlatformKpis {
+  live: number;
+  removed: number;
+}
+
 export interface TabKpis {
   total: number;
   live: number;
   removed: number;
+  tp: PlatformKpis;
+  ag: PlatformKpis;
+  cg: PlatformKpis;
 }

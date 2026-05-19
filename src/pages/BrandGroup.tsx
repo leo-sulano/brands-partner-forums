@@ -112,7 +112,7 @@ export default function BrandGroup() {
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [kpis, setKpis] = useState<TabKpis>({ total: 0, live: 0, removed: 0 });
+  const [kpis, setKpis] = useState<TabKpis>({ total: 0, live: 0, removed: 0, tp: { live: 0, removed: 0 }, ag: { live: 0, removed: 0 }, cg: { live: 0, removed: 0 } });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,7 +132,7 @@ export default function BrandGroup() {
     setLoading(true);
     setEntries([]);
     setHeaders([]);
-    setKpis({ total: 0, live: 0, removed: 0 });
+    setKpis({ total: 0, live: 0, removed: 0, tp: { live: 0, removed: 0 }, ag: { live: 0, removed: 0 }, cg: { live: 0, removed: 0 } });
     setError(null);
     setSearch('');
     setSortCol(null);
@@ -258,11 +258,21 @@ export default function BrandGroup() {
           label="Live"
           value={loading ? '…' : kpis.live.toLocaleString()}
           hint="Reviews currently published"
+          breakdown={loading ? undefined : [
+            { label: 'TP', count: kpis.tp.live },
+            { label: 'AG', count: kpis.ag.live },
+            { label: 'CG', count: kpis.cg.live },
+          ]}
         />
         <KpiCard
           label="Removed"
           value={loading ? '…' : kpis.removed.toLocaleString()}
           hint="Reviews taken down"
+          breakdown={loading ? undefined : [
+            { label: 'TP', count: kpis.tp.removed },
+            { label: 'AG', count: kpis.ag.removed },
+            { label: 'CG', count: kpis.cg.removed },
+          ]}
         />
       </div>
 
