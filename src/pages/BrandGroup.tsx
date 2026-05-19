@@ -225,42 +225,129 @@ const PLATFORM_CARDS = [
   { key: 'cg' as const, label: 'Casino Guru', dot: 'bg-violet-500' },
 ];
 
-function formatDateDisplay(iso: string): string {
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+const DAY_LABELS = ['Mo','Tu','We','Th','Fr','Sa','Su'];
+
+function isoToDisplay(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
 
-function DateInput({ value, onChange, placeholder, min, max }: {
+function DatePicker({ value, onChange, placeholder, min, max }: {
   value: string; onChange: (v: string) => void;
   placeholder: string; min?: string; max?: string;
 }) {
+  const today = new Date();
+  const [open, setOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(() => value ? +value.slice(0, 4) : today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(() => value ? +value.slice(5, 7) - 1 : today.getMonth());
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  useEffect(() => {
+    if (value) { setViewYear(+value.slice(0, 4)); setViewMonth(+value.slice(5, 7) - 1); }
+  }, [value]);
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayMon = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7;
+
+  function pad(n: number) { return String(n).padStart(2, '0'); }
+  function toIso(day: number) { return `${viewYear}-${pad(viewMonth + 1)}-${pad(day)}`; }
+  function isSelected(day: number) { return toIso(day) === value; }
+  function isToday(day: number) { return viewYear === today.getFullYear() && viewMonth === today.getMonth() && day === today.getDate(); }
+  function isDisabled(day: number) {
+    const iso = toIso(day);
+    return (!!min && iso < min) || (!!max && iso > max);
+  }
+
+  function prevMonth() {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
+  }
+  function nextMonth() {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
+  }
+
   const active = !!value;
+
   return (
-    <label className={`relative inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
-      active
-        ? 'border-violet-300 bg-violet-50 text-violet-700'
-        : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
-    }`}>
-      <CalendarDays className="size-3.5 shrink-0 pointer-events-none" />
-      <span className="pointer-events-none">{active ? formatDateDisplay(value) : placeholder}</span>
-      <input
-        type="date"
-        value={value}
-        min={min}
-        max={max}
-        onChange={(e) => onChange(e.target.value)}
-        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-      />
-      {active && (
-        <button
-          type="button"
-          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChange(''); }}
-          className="relative z-10 ml-0.5 text-violet-400 hover:text-violet-600 transition-colors"
-        >
-          <X className="size-3" />
-        </button>
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+          active
+            ? 'border-violet-300 bg-violet-50 text-violet-700'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+        }`}
+      >
+        <CalendarDays className="size-3.5 shrink-0" />
+        <span>{active ? isoToDisplay(value) : placeholder}</span>
+        {active ? (
+          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
+            <X className="size-3" />
+          </span>
+        ) : (
+          <ChevronDown className={`size-3 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+          {/* Header */}
+          <div className="mb-3 flex items-center justify-between">
+            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 transition-colors">
+              <ChevronLeft className="size-4" />
+            </button>
+            <span className="text-sm font-semibold text-slate-700">{MONTH_NAMES[viewMonth]} {viewYear}</span>
+            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 transition-colors">
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+          {/* Day labels */}
+          <div className="mb-1 grid grid-cols-7">
+            {DAY_LABELS.map(d => (
+              <div key={d} className="py-1 text-center text-[10px] font-medium uppercase tracking-wide text-slate-400">{d}</div>
+            ))}
+          </div>
+          {/* Days */}
+          <div className="grid grid-cols-7 gap-y-0.5">
+            {Array.from({ length: firstDayMon }, (_, i) => <div key={`e${i}`} />)}
+            {Array.from({ length: daysInMonth }, (_, i) => {
+              const day = i + 1;
+              const sel = isSelected(day);
+              const dis = isDisabled(day);
+              const tod = isToday(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  disabled={dis}
+                  onClick={() => { onChange(toIso(day)); setOpen(false); }}
+                  className={`flex h-8 w-full items-center justify-center rounded-lg text-xs transition-colors ${
+                    sel ? 'bg-violet-600 font-semibold text-white'
+                    : dis ? 'cursor-not-allowed text-slate-300'
+                    : tod ? 'border border-violet-300 font-medium text-violet-600 hover:bg-violet-50'
+                    : 'text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       )}
-    </label>
+    </div>
   );
 }
 
@@ -542,14 +629,14 @@ export default function BrandGroup() {
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
           <div className="flex items-center gap-2">
-            <DateInput
+            <DatePicker
               value={dateFrom}
               onChange={(v) => { setDateFrom(v); setPage(1); }}
               placeholder="From date"
               max={dateTo || undefined}
             />
             <span className="text-xs text-slate-400">→</span>
-            <DateInput
+            <DatePicker
               value={dateTo}
               onChange={(v) => { setDateTo(v); setPage(1); }}
               placeholder="To date"
