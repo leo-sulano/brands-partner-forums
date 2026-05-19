@@ -219,6 +219,98 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
   { value: 'cg',  label: 'Casino Guru',  dot: 'bg-violet-500' },
 ];
 
+const BRAND_COLS = ['Account Name', 'Brands', 'Brand Name', 'Brand'];
+
+function BrandFilterDropdown({ value, onChange, brands }: {
+  value: string; onChange: (v: string) => void; brands: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) { setSearch(''); return; }
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    setTimeout(() => inputRef.current?.focus(), 50);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const visible = search.trim()
+    ? brands.filter((b) => b.toLowerCase().includes(search.toLowerCase()))
+    : brands;
+
+  const active = !!value;
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+          active
+            ? 'border-violet-300 bg-violet-50 text-violet-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+        }`}
+      >
+        {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
+        <span className="max-w-[9rem] truncate">{active ? value : 'All brands'}</span>
+        {active ? (
+          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
+            <X className="size-3" />
+          </span>
+        ) : (
+          <ChevronDown className={`size-3 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-60 rounded-lg border border-slate-200 bg-white shadow-lg">
+          <div className="flex items-center gap-1.5 border-b border-slate-100 px-3 py-2">
+            <Search className="size-3.5 shrink-0 text-slate-400" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search brands…"
+              className="flex-1 bg-transparent text-xs text-slate-700 placeholder:text-slate-400 outline-none"
+            />
+            {search && <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600"><X className="size-3" /></button>}
+          </div>
+          <div className="max-h-56 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+            >
+              <span className="flex-1">All brands</span>
+              {!value && <Check className="size-3 text-violet-500" />}
+            </button>
+            {visible.length === 0 && (
+              <div className="px-3 py-4 text-center text-xs text-slate-400">No brands match</div>
+            )}
+            {visible.map((brand) => (
+              <button
+                key={brand}
+                type="button"
+                onClick={() => { onChange(brand); setOpen(false); }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${brand === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              >
+                <span className="flex-1 truncate">{brand}</span>
+                {brand === value && <Check className="size-3 text-violet-500" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const PLATFORM_CARDS = [
   { key: 'tp' as const, label: 'Trust Pilot', dot: 'bg-blue-500' },
   { key: 'ag' as const, label: 'Ask Gambler', dot: 'bg-amber-500' },
@@ -369,6 +461,7 @@ export default function BrandGroup() {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed'>('all');
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>('all');
   const [dateFrom, setDateFrom] = useState('');
@@ -393,6 +486,7 @@ export default function BrandGroup() {
     setKpis({ total: 0, live: 0, removed: 0, tp: { live: 0, removed: 0 }, ag: { live: 0, removed: 0 }, cg: { live: 0, removed: 0 } });
     setError(null);
     setSearch('');
+    setBrandFilter('');
     setStatusFilter('all');
     setPlatformFilter('all');
     setDateFrom('');
@@ -455,8 +549,13 @@ export default function BrandGroup() {
     });
   }, []);
 
-  // Derived: filter → platform filter → status filter → sort → paginate
+  // Derived: search → brand → platform → status → date → sort → paginate
   const PLATFORM_STATUS_COLS = { tp: 'TP Review Status', ag: 'AG Review Status', cg: 'CG Review Status' };
+
+  const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
+  const uniqueBrands = brandCol
+    ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
+    : [];
 
   const searchFiltered = search.trim()
     ? entries.filter((e) =>
@@ -467,9 +566,13 @@ export default function BrandGroup() {
       )
     : entries;
 
+  const brandFiltered = brandFilter && brandCol
+    ? searchFiltered.filter((e) => e.data[brandCol] === brandFilter)
+    : searchFiltered;
+
   const platformFiltered = platformFilter === 'all' || !hasMultiPlatform(decodedTab)
-    ? searchFiltered
-    : searchFiltered.filter((e) => {
+    ? brandFiltered
+    : brandFiltered.filter((e) => {
         const col = PLATFORM_STATUS_COLS[platformFilter];
         const v = e.data[col];
         return v != null && v !== '';
@@ -687,12 +790,19 @@ export default function BrandGroup() {
               <X className="size-4" />
             </button>
           )}
-          {!loading && (search || statusFilter !== 'all' || platformFilter !== 'all') && (
+          {!loading && (search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all') && (
             <span className="text-xs text-slate-400 whitespace-nowrap">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
             </span>
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
+          {uniqueBrands.length > 1 && (
+            <BrandFilterDropdown
+              value={brandFilter}
+              onChange={(v) => { setBrandFilter(v); setPage(1); }}
+              brands={uniqueBrands}
+            />
+          )}
           <FilterDropdown
             value={statusFilter}
             onChange={(v) => { setStatusFilter(v); setPage(1); }}
@@ -746,7 +856,7 @@ export default function BrandGroup() {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={headers.length || 5} className="px-4 py-8 text-center text-slate-400">
-                    {search || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
+                    {search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
                   </td>
                 </tr>
               ) : (
