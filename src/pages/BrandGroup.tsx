@@ -8,7 +8,7 @@ import {
 import KpiCard from '../components/KpiCard';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, hasMultiPlatform } from '../lib/tab-configs';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -258,7 +258,7 @@ export default function BrandGroup() {
           label="Live"
           value={loading ? '…' : kpis.live.toLocaleString()}
           hint="Reviews currently published"
-          breakdown={loading ? undefined : [
+          breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
             { label: 'TP', count: kpis.tp.live },
             { label: 'AG', count: kpis.ag.live },
             { label: 'CG', count: kpis.cg.live },
@@ -268,7 +268,7 @@ export default function BrandGroup() {
           label="Removed"
           value={loading ? '…' : kpis.removed.toLocaleString()}
           hint="Reviews taken down"
-          breakdown={loading ? undefined : [
+          breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
             { label: 'TP', count: kpis.tp.removed },
             { label: 'AG', count: kpis.ag.removed },
             { label: 'CG', count: kpis.cg.removed },

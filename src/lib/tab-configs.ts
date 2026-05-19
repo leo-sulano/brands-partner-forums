@@ -107,3 +107,11 @@ export function getTabColumns(tab: string): string[] | null {
 export function getColLabel(header: string): string {
   return COLUMN_LABELS[header] ?? header;
 }
+
+// Returns true if the tab has TP + AG + CG platform columns.
+export function hasMultiPlatform(tab: string): boolean {
+  const cols = TAB_COLUMN_CONFIGS[tab];
+  if (!cols) return false;
+  const set = new Set(cols);
+  return set.has('AG Review Status') && set.has('CG Review Status');
+}
