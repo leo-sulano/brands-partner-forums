@@ -222,7 +222,7 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
   { value: 'cg',  label: 'Casino Guru',  dot: 'bg-violet-500' },
 ];
 
-const BRAND_COLS = ['Account Name', 'Brands', 'Brand Name', 'Brand'];
+const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Account Name'];
 
 function BrandFilterDropdown({ value, onChange, brands }: {
   value: string; onChange: (v: string) => void; brands: string[];
