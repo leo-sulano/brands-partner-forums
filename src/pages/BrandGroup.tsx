@@ -24,6 +24,7 @@ function isStatusCol(header: string) {
 }
 
 function isLinkCol(header: string) {
+  if (header === 'Brand / TP URL PAGE') return false;
   const h = header.toLowerCase();
   return h.includes('link') || h.includes('url') || h.includes('profile');
 }
