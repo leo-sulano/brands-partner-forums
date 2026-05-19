@@ -516,8 +516,15 @@ export default function BrandGroup() {
               .map((col) => {
                 const colLower = col.toLowerCase();
                 return (
+                  // 1. Exact case-insensitive match
                   tabHeaders.find((h) => h.toLowerCase() === colLower) ??
-                  tabHeaders.find((h) => (COLUMN_LABELS[h] ?? h).toLowerCase() === colLower)
+                  // 2. Match via display label
+                  tabHeaders.find((h) => (COLUMN_LABELS[h] ?? h).toLowerCase() === colLower) ??
+                  // 3. TP status variant fallback (e.g. config says 'TP Review Status'
+                  //    but sheet header is 'Trust pilot Review Status')
+                  (TP_STATUS_VARIANTS.has(col)
+                    ? tabHeaders.find((h) => TP_STATUS_VARIANTS.has(h))
+                    : undefined)
                 );
               })
               .filter((h): h is string => h !== undefined)
