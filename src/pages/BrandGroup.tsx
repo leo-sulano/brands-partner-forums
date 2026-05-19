@@ -672,8 +672,15 @@ export default function BrandGroup() {
     return v.includes('removed') || v.includes('not pub') || v.includes('refused');
   }
 
-  // Top KPI card counts — date-filtered when a range is active.
+  // Top KPI card counts.
+  // For multi-platform tabs: sum the platform card counts so all three cards are consistent.
+  // For single-platform tabs: date-filter client-side when a range is active.
   const displayTotals = (() => {
+    if (activePlatforms.length > 1) {
+      const live = activePlatforms.reduce((s, k) => s + displayKpis[k].live, 0);
+      const removed = activePlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
+      return { total: live + removed, live, removed };
+    }
     if (!dateActive) return { total: kpis.total, live: kpis.live, removed: kpis.removed };
     let total = 0, live = 0, removed = 0;
     for (const e of entries) {
