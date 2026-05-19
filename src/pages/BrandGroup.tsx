@@ -653,24 +653,30 @@ export default function BrandGroup() {
       );
 
   const dateActive = !!(dateFrom || dateTo);
-  const filtered = dateActive
-    ? statusFiltered.filter((e) => {
-        if (platformFilter !== 'all') {
-          const col = PLATFORM_DATE_COLS[platformFilter];
-          const raw = e.data[col];
-          if (!raw) return false;
-          const d = parseCellDate(raw) ?? new Date(raw);
-          if (isNaN(d.getTime())) return false;
-          if (dateFrom && d < new Date(dateFrom)) return false;
-          if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
-          return true;
-        }
-        return inDateRange(e.data, dateFrom, dateTo);
-      })
-    : statusFiltered;
+
+  function applyDateFilter<T extends { data: Record<string, string> }>(rows: T[]): T[] {
+    if (!dateActive) return rows;
+    return rows.filter((e) => {
+      if (platformFilter !== 'all') {
+        const col = PLATFORM_DATE_COLS[platformFilter];
+        const raw = e.data[col];
+        if (!raw) return false;
+        const d = parseCellDate(raw) ?? new Date(raw);
+        if (isNaN(d.getTime())) return false;
+        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+        return true;
+      }
+      return inDateRange(e.data, dateFrom, dateTo);
+    });
+  }
+
+  // kpiBase: all filters except status — KPI cards always show true totals.
+  const kpiBase = applyDateFilter(platformFiltered);
+  const filtered = applyDateFilter(statusFiltered);
 
 
-  // Platform card counts — always computed from filtered rows so all active filters are reflected.
+  // Platform card counts — computed from kpiBase (excludes status filter) so counts stay stable.
   const displayKpis = (() => {
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
       const statusCol = key === 'tp'
@@ -678,7 +684,7 @@ export default function BrandGroup() {
         : (headers.find((h) => h.toLowerCase() === PLATFORM_STATUS_COL[key].toLowerCase()) ?? null);
       if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
-      for (const e of filtered) {
+      for (const e of kpiBase) {
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
         else if (isRemoved(v)) removed++;
@@ -706,7 +712,7 @@ export default function BrandGroup() {
       return { total: live + removed, live, removed };
     }
     let total = 0, live = 0, removed = 0;
-    for (const e of filtered) {
+    for (const e of kpiBase) {
       total++;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
       if (statuses.some(isLive)) live++;
