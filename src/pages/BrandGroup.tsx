@@ -100,6 +100,19 @@ const ENTRY_DATE_COLS = [
   'Date', 'date', 'Posted At', 'posted_at',
 ];
 
+// Per-platform date columns used when a specific platform is selected.
+const PLATFORM_DATE_COLS = {
+  tp: 'Trust Pilot',
+  ag: 'Ask Gambler review added',
+  cg: 'Casino Guru review added',
+} as const;
+
+const PLATFORM_STATUS_COL = {
+  tp: 'TP Review Status',
+  ag: 'AG Review Status',
+  cg: 'CG Review Status',
+} as const;
+
 // All possible status column names across tabs
 const ALL_STATUS_COLS = [
   'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status',
@@ -550,7 +563,6 @@ export default function BrandGroup() {
   }, []);
 
   // Derived: search → brand → platform → status → date → sort → paginate
-  const PLATFORM_STATUS_COLS = { tp: 'TP Review Status', ag: 'AG Review Status', cg: 'CG Review Status' };
 
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
   const uniqueBrands = brandCol
@@ -573,7 +585,7 @@ export default function BrandGroup() {
   const platformFiltered = platformFilter === 'all' || !hasMultiPlatform(decodedTab)
     ? brandFiltered
     : brandFiltered.filter((e) => {
-        const col = PLATFORM_STATUS_COLS[platformFilter];
+        const col = PLATFORM_STATUS_COL[platformFilter];
         const v = e.data[col];
         return v != null && v !== '';
       });
@@ -592,7 +604,19 @@ export default function BrandGroup() {
 
   const dateActive = !!(dateFrom || dateTo);
   const filtered = dateActive
-    ? statusFiltered.filter((e) => inDateRange(e.data, dateFrom, dateTo))
+    ? statusFiltered.filter((e) => {
+        if (platformFilter !== 'all') {
+          const col = PLATFORM_DATE_COLS[platformFilter];
+          const raw = e.data[col];
+          if (!raw) return false;
+          const d = parseCellDate(raw) ?? new Date(raw);
+          if (isNaN(d.getTime())) return false;
+          if (dateFrom && d < new Date(dateFrom)) return false;
+          if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
+          return true;
+        }
+        return inDateRange(e.data, dateFrom, dateTo);
+      })
     : statusFiltered;
 
   // Counts for the date range section — computed from ALL entries, only date-filtered
@@ -611,6 +635,29 @@ export default function BrandGroup() {
       }
     }
     return { published, removed, refused };
+  })();
+
+  // Platform card counts — date-filtered when a range is active, otherwise use server-side kpis.
+  const displayKpis = (() => {
+    if (!dateActive) return { tp: kpis.tp, ag: kpis.ag, cg: kpis.cg };
+    function countPlatform(key: 'tp' | 'ag' | 'cg') {
+      const dateCol = PLATFORM_DATE_COLS[key];
+      const statusCol = PLATFORM_STATUS_COL[key];
+      let live = 0, removed = 0;
+      for (const e of entries) {
+        const raw = e.data[dateCol];
+        if (!raw) continue;
+        const d = parseCellDate(raw) ?? new Date(raw);
+        if (isNaN(d.getTime())) continue;
+        if (dateFrom && d < new Date(dateFrom)) continue;
+        if (dateTo && d > new Date(dateTo + 'T23:59:59')) continue;
+        const v = (e.data[statusCol] ?? '').toLowerCase();
+        if (v.includes('live') || v.includes('published')) live++;
+        else if (v.includes('removed')) removed++;
+      }
+      return { live, removed };
+    }
+    return { tp: countPlatform('tp'), ag: countPlatform('ag'), cg: countPlatform('cg') };
   })();
 
   const sorted = sortCol
@@ -712,11 +759,11 @@ export default function BrandGroup() {
                 ) : (
                   <div className="flex items-center gap-4">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-xl font-semibold text-emerald-700">{kpis[key].live.toLocaleString()}</span>
+                      <span className="text-xl font-semibold text-emerald-700">{displayKpis[key].live.toLocaleString()}</span>
                       <span className="text-xs text-slate-400">live</span>
                     </div>
                     <div className="flex items-baseline gap-1">
-                      <span className="text-xl font-semibold text-rose-600">{kpis[key].removed.toLocaleString()}</span>
+                      <span className="text-xl font-semibold text-rose-600">{displayKpis[key].removed.toLocaleString()}</span>
                       <span className="text-xs text-slate-400">removed</span>
                     </div>
                   </div>
