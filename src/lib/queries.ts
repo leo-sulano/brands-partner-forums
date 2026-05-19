@@ -232,7 +232,7 @@ function isLiveStatus(s: string) {
   return s.includes('published') || s.includes('live');
 }
 function isRemovedStatus(s: string) {
-  return s.includes('removed') || s.includes('not pub') || s.includes('refused');
+  return s.includes('remove') || s.includes('not pub') || s.includes('refused');
 }
 
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {

@@ -671,12 +671,12 @@ export default function BrandGroup() {
     });
   }
 
-  // kpiBase: all filters except status — KPI cards always show true totals.
-  const kpiBase = applyDateFilter(platformFiltered);
   const filtered = applyDateFilter(statusFiltered);
+  // kpiBase mirrors filtered so KPI counters always reflect the active filters.
+  const kpiBase = filtered;
 
 
-  // Platform card counts — computed from kpiBase (excludes status filter) so counts stay stable.
+  // Platform card counts — computed from kpiBase so they always reflect active filters.
   const displayKpis = (() => {
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
       const statusCol = key === 'tp'
@@ -699,16 +699,19 @@ export default function BrandGroup() {
     return v.includes('live') || v.includes('published');
   }
   function isRemoved(v: string) {
-    return v.includes('removed') || v.includes('not pub') || v.includes('refused');
+    return v.includes('remove') || v.includes('not pub') || v.includes('refused');
   }
 
-  // Top KPI card counts.
-  // For multi-platform tabs: sum the platform card counts so all three cards are consistent.
-  // For single-platform tabs: count directly from filtered rows.
+  // Top KPI card counts — always reflect the active filter combination.
   const displayTotals = (() => {
     if (activePlatforms.length > 1) {
-      const live = activePlatforms.reduce((s, k) => s + displayKpis[k].live, 0);
-      const removed = activePlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
+      // Scope to the selected platform card; fall back to all when none chosen.
+      const selectedPlatforms =
+        platformFilter !== 'all' && activePlatforms.includes(platformFilter as 'tp' | 'ag' | 'cg')
+          ? [platformFilter as 'tp' | 'ag' | 'cg']
+          : activePlatforms;
+      const live = selectedPlatforms.reduce((s, k) => s + displayKpis[k].live, 0);
+      const removed = selectedPlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
       return { total: live + removed, live, removed };
     }
     let total = 0, live = 0, removed = 0;
