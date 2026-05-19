@@ -94,15 +94,15 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
 // Display label overrides — maps actual sheet column name → shorter UI label.
 // Applied globally across all tabs.
 export const COLUMN_LABELS: Record<string, string> = {
-  'Trust Pilot':                                      'TP Review Added',
+  'Trust Pilot':                                      'TP Added',
   'TP Review Status':                                 'TP Status',
   'Trust Pilot Review Status':                        'TP Status',
   'Trustpilot Review Status':                         'TP Status',
   'Trust pilot Review Status':                        'TP Status',
   'Review Status':                                    'TP Status',
-  'Ask Gambler review added':                         'AG Review Added',
+  'Ask Gambler review added':                         'AG Added',
   'AG Review Status':                                 'AG Status',
-  'Casino Guru review added':                         'CG Review Added',
+  'Casino Guru review added':                         'CG Added',
   'CG Review Status':                                 'CG Status',
   'Brand / TP URL PAGE':                              'Brands',
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
