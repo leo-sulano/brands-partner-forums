@@ -225,6 +225,45 @@ const PLATFORM_CARDS = [
   { key: 'cg' as const, label: 'Casino Guru', dot: 'bg-violet-500' },
 ];
 
+function formatDateDisplay(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
+function DateInput({ value, onChange, placeholder, min, max }: {
+  value: string; onChange: (v: string) => void;
+  placeholder: string; min?: string; max?: string;
+}) {
+  const active = !!value;
+  return (
+    <label className={`relative inline-flex cursor-pointer select-none items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+      active
+        ? 'border-violet-300 bg-violet-50 text-violet-700'
+        : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+    }`}>
+      <CalendarDays className="size-3.5 shrink-0 pointer-events-none" />
+      <span className="pointer-events-none">{active ? formatDateDisplay(value) : placeholder}</span>
+      <input
+        type="date"
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+      />
+      {active && (
+        <button
+          type="button"
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); onChange(''); }}
+          className="relative z-10 ml-0.5 text-violet-400 hover:text-violet-600 transition-colors"
+        >
+          <X className="size-3" />
+        </button>
+      )}
+    </label>
+  );
+}
+
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | null; sortDir: 'asc' | 'desc' }) {
   if (sortCol !== col) return <ChevronsUpDown className="size-3 text-slate-400 shrink-0" />;
   return sortDir === 'asc'
@@ -501,34 +540,21 @@ export default function BrandGroup() {
       {/* Date range filter */}
       <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 shrink-0">
-            <CalendarDays className="size-4 text-slate-400" />
-            <span className="text-xs font-medium text-slate-500">Date range</span>
-          </div>
+          <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
           <div className="flex items-center gap-2">
-            <input
-              type="date"
+            <DateInput
               value={dateFrom}
+              onChange={(v) => { setDateFrom(v); setPage(1); }}
+              placeholder="From date"
               max={dateTo || undefined}
-              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
-              className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
             />
-            <span className="text-xs text-slate-400">to</span>
-            <input
-              type="date"
+            <span className="text-xs text-slate-400">→</span>
+            <DateInput
               value={dateTo}
+              onChange={(v) => { setDateTo(v); setPage(1); }}
+              placeholder="To date"
               min={dateFrom || undefined}
-              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
-              className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
             />
-            {dateActive && (
-              <button
-                onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-              >
-                <X className="size-3" /> Clear
-              </button>
-            )}
           </div>
 
           {dateRangeCounts && !loading && (
