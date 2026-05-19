@@ -225,8 +225,8 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
 const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Account Name'];
 const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'SilverPlay', 'Trybet']);
 
-function BrandFilterDropdown({ value, onChange, brands }: {
-  value: string; onChange: (v: string) => void; brands: string[];
+function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
+  value: string; onChange: (v: string) => void; brands: string[]; noun?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -261,7 +261,7 @@ function BrandFilterDropdown({ value, onChange, brands }: {
         }`}
       >
         {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
-        <span className="max-w-[9rem] truncate">{active ? value : 'All brands'}</span>
+        <span className="max-w-[9rem] truncate">{active ? value : `All ${noun}s`}</span>
         {active ? (
           <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
             <X className="size-3" />
@@ -280,7 +280,7 @@ function BrandFilterDropdown({ value, onChange, brands }: {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search brands…"
+              placeholder={`Search ${noun}s…`}
               className="flex-1 bg-transparent text-xs text-slate-700 placeholder:text-slate-400 outline-none"
             />
             {search && <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600"><X className="size-3" /></button>}
@@ -291,11 +291,11 @@ function BrandFilterDropdown({ value, onChange, brands }: {
               onClick={() => { onChange(''); setOpen(false); }}
               className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
             >
-              <span className="flex-1">All brands</span>
+              <span className="flex-1">{`All ${noun}s`}</span>
               {!value && <Check className="size-3 text-violet-500" />}
             </button>
             {visible.length === 0 && (
-              <div className="px-3 py-4 text-center text-xs text-slate-400">No brands match</div>
+              <div className="px-3 py-4 text-center text-xs text-slate-400">No {noun}s match</div>
             )}
             {visible.map((brand) => (
               <button
@@ -476,6 +476,7 @@ export default function BrandGroup() {
   const [page, setPage] = useState(1);
   const [jumpInput, setJumpInput] = useState('');
 
+  const [agentFilter, setAgentFilter] = useState('');
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
 
   const [reloadSeq, setReloadSeq] = useState(0);
@@ -493,6 +494,7 @@ export default function BrandGroup() {
     setBrandFilter('');
     setStatusFilter('all');
     setPlatformFilter('all');
+    setAgentFilter('');
     setDateFrom('');
     setDateTo('');
     setSortCol(null);
@@ -573,6 +575,11 @@ export default function BrandGroup() {
     ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
     : [];
 
+  const agentCol = headers.includes('Agent') ? 'Agent' : null;
+  const uniqueAgents = agentCol
+    ? [...new Set(entries.map((e) => e.data[agentCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
+    : [];
+
   const searchFiltered = search.trim()
     ? entries.filter((e) =>
         headers.some((h) => {
@@ -586,9 +593,13 @@ export default function BrandGroup() {
     ? searchFiltered.filter((e) => e.data[brandCol] === brandFilter)
     : searchFiltered;
 
+  const agentFiltered = agentFilter && agentCol
+    ? brandFiltered.filter((e) => e.data[agentCol] === agentFilter)
+    : brandFiltered;
+
   const platformFiltered = platformFilter === 'all' || activePlatforms.length <= 1
-    ? brandFiltered
-    : brandFiltered.filter((e) => {
+    ? agentFiltered
+    : agentFiltered.filter((e) => {
         const col = platformFilter === 'tp'
           ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
           : PLATFORM_STATUS_COL[platformFilter];
@@ -839,6 +850,14 @@ export default function BrandGroup() {
               value={brandFilter}
               onChange={(v) => { setBrandFilter(v); setPage(1); }}
               brands={uniqueBrands}
+            />
+          )}
+          {uniqueAgents.length > 1 && (
+            <BrandFilterDropdown
+              noun="agent"
+              value={agentFilter}
+              onChange={(v) => { setAgentFilter(v); setPage(1); }}
+              brands={uniqueAgents}
             />
           )}
           <FilterDropdown
