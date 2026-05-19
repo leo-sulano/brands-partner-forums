@@ -7,12 +7,11 @@ import {
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis, updateEntryData } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
-import type { TabKpis } from '../types/brand-entry';
 
 // Checked case-insensitively against header names for tabs with no whitelist config.
 const HIDDEN_COLS = new Set(['id', 'last_sync_tag', 'score added', 'review status']);
@@ -468,7 +467,6 @@ export default function BrandGroup() {
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
-  const [kpis, setKpis] = useState<TabKpis>({ total: 0, live: 0, removed: 0, tp: { live: 0, removed: 0 }, ag: { live: 0, removed: 0 }, cg: { live: 0, removed: 0 } });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -497,7 +495,6 @@ export default function BrandGroup() {
     setLoading(true);
     setEntries([]);
     setHeaders([]);
-    setKpis({ total: 0, live: 0, removed: 0, tp: { live: 0, removed: 0 }, ag: { live: 0, removed: 0 }, cg: { live: 0, removed: 0 } });
     setError(null);
     setSearch('');
     setBrandFilter('');
@@ -514,10 +511,9 @@ export default function BrandGroup() {
 
     (async () => {
       try {
-        const [rawEntries, tabHeaders, k] = await Promise.all([
+        const [rawEntries, tabHeaders] = await Promise.all([
           fetchRawEntriesByTab(decodedTab),
           fetchTabHeaders(decodedTab),
-          fetchTabKpis(decodedTab),
         ]);
         if (canceled) return;
         const configCols = getTabColumns(decodedTab);
@@ -544,7 +540,6 @@ export default function BrandGroup() {
         );
         setEntries(rawEntries);
         setHeaders(populated);
-        setKpis(k);
         setError(null);
         const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
           populated.some((h) => h.toLowerCase() === col.toLowerCase()),
