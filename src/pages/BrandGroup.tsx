@@ -485,6 +485,7 @@ export default function BrandGroup() {
   const [jumpInput, setJumpInput] = useState('');
 
   const [agentFilter, setAgentFilter] = useState('');
+  const [proxyFilter, setProxyFilter] = useState('');
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
 
   const [reloadSeq, setReloadSeq] = useState(0);
@@ -503,6 +504,7 @@ export default function BrandGroup() {
     setStatusFilter('all');
     setPlatformFilter('all');
     setAgentFilter('');
+    setProxyFilter('');
     setDateFrom('');
     setDateTo('');
     setSortCol(null);
