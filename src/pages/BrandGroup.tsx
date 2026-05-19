@@ -10,6 +10,7 @@ import EditEntryModal from '../components/EditEntryModal';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis, updateEntryData } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, hasMultiPlatform } from '../lib/tab-configs';
+import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -61,24 +62,6 @@ function StatusPill({ value }: { value: string }) {
   );
 }
 
-function formatCellValue(value: string): string {
-  // ISO datetime: 2025-02-19 or 2025-02-19T...
-  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(value)) {
-    const [y, m, d] = value.slice(0, 10).split('-');
-    return `${d}/${m}/${y}`;
-  }
-  // Google Sheets full date string: "Wed Feb 19 2025 08:00:00 GMT+0800 (...)"
-  if (/^[A-Za-z]{3}\s[A-Za-z]{3}\s\d{1,2}\s\d{4}/.test(value)) {
-    const date = new Date(value);
-    if (!isNaN(date.getTime())) {
-      const d = String(date.getDate()).padStart(2, '0');
-      const m = String(date.getMonth() + 1).padStart(2, '0');
-      const y = date.getFullYear();
-      return `${d}/${m}/${y}`;
-    }
-  }
-  return value;
-}
 
 function CellValue({ header, value }: { header: string; value: string | null }) {
   const display = value ? formatCellValue(value) : '—';
@@ -119,6 +102,7 @@ export default function BrandGroup() {
 
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed'>('all');
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>('all');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState<number>(25);
@@ -140,6 +124,7 @@ export default function BrandGroup() {
     setError(null);
     setSearch('');
     setStatusFilter('all');
+    setPlatformFilter('all');
     setSortCol(null);
     setSortDir('asc');
     setPage(1);
@@ -191,7 +176,9 @@ export default function BrandGroup() {
     });
   }, []);
 
-  // Derived: filter → status filter → sort → paginate
+  // Derived: filter → platform filter → status filter → sort → paginate
+  const PLATFORM_STATUS_COLS = { tp: 'TP Review Status', ag: 'AG Review Status', cg: 'CG Review Status' };
+
   const searchFiltered = search.trim()
     ? entries.filter((e) =>
         headers.some((h) => {
@@ -201,10 +188,18 @@ export default function BrandGroup() {
       )
     : entries;
 
+  const platformFiltered = platformFilter === 'all' || !hasMultiPlatform(decodedTab)
+    ? searchFiltered
+    : searchFiltered.filter((e) => {
+        const col = PLATFORM_STATUS_COLS[platformFilter];
+        const v = e.data[col];
+        return v != null && v !== '';
+      });
+
   const statusCols = headers.filter(isStatusCol);
   const filtered = statusFilter === 'all'
-    ? searchFiltered
-    : searchFiltered.filter((e) =>
+    ? platformFiltered
+    : platformFiltered.filter((e) =>
         statusCols.some((h) => {
           const v = (e.data[h] ?? '').toLowerCase();
           if (statusFilter === 'live') return v.includes('live') || v.includes('published');
@@ -276,9 +271,9 @@ export default function BrandGroup() {
           value={loading ? '…' : kpis.live.toLocaleString()}
           hint="Reviews currently published"
           breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
-            { label: 'Trust Pilot', count: kpis.tp.live },
-            { label: 'Ask Gambler', count: kpis.ag.live },
-            { label: 'Casino Guru', count: kpis.cg.live },
+            { label: 'TP', count: kpis.tp.live },
+            { label: 'AG', count: kpis.ag.live },
+            { label: 'CG', count: kpis.cg.live },
           ]}
         />
         <KpiCard
@@ -286,9 +281,9 @@ export default function BrandGroup() {
           value={loading ? '…' : kpis.removed.toLocaleString()}
           hint="Reviews taken down"
           breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
-            { label: 'Trust Pilot', count: kpis.tp.removed },
-            { label: 'Ask Gambler', count: kpis.ag.removed },
-            { label: 'Casino Guru', count: kpis.cg.removed },
+            { label: 'TP', count: kpis.tp.removed },
+            { label: 'AG', count: kpis.ag.removed },
+            { label: 'CG', count: kpis.cg.removed },
           ]}
         />
       </div>
@@ -309,7 +304,7 @@ export default function BrandGroup() {
               <X className="size-4" />
             </button>
           )}
-          {!loading && (search || statusFilter !== 'all') && (
+          {!loading && (search || statusFilter !== 'all' || platformFilter !== 'all') && (
             <span className="text-xs text-slate-400 whitespace-nowrap">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
             </span>
@@ -325,6 +320,21 @@ export default function BrandGroup() {
             <option value="live">Live</option>
             <option value="removed">Removed</option>
           </select>
+          {hasMultiPlatform(decodedTab) && (
+            <>
+              <div className="h-4 w-px bg-slate-200 shrink-0" />
+              <select
+                value={platformFilter}
+                onChange={(e) => { setPlatformFilter(e.target.value as typeof platformFilter); setPage(1); }}
+                className="bg-transparent text-xs text-slate-600 outline-none cursor-pointer"
+              >
+                <option value="all">All platforms</option>
+                <option value="tp">Trust Pilot</option>
+                <option value="ag">Ask Gambler</option>
+                <option value="cg">Casino Guru</option>
+              </select>
+            </>
+          )}
         </div>
 
 
@@ -366,7 +376,7 @@ export default function BrandGroup() {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={headers.length || 5} className="px-4 py-8 text-center text-slate-400">
-                    {search || statusFilter !== 'all' ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
+                    {search || statusFilter !== 'all' || platformFilter !== 'all' ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
                   </td>
                 </tr>
               ) : (

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import { getColLabel } from '../lib/tab-configs';
+import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 
 const STATUS_SUGGESTIONS = ['Live', 'Removed', 'Not Published', 'Published'];
@@ -21,7 +22,10 @@ interface Props {
 export default function EditEntryModal({ entry, headers, onClose, onSave }: Props) {
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
-    for (const h of headers) init[h] = entry.data[h] ?? '';
+    for (const h of headers) {
+      const raw = entry.data[h] ?? '';
+      init[h] = raw ? formatCellValue(raw) : '';
+    }
     return init;
   });
   const [saving, setSaving] = useState(false);

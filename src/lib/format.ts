@@ -27,6 +27,23 @@ export function formatRelative(value: string | null | undefined): string {
   return formatDate(value);
 }
 
+export function formatCellValue(value: string): string {
+  if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(value)) {
+    const [y, m, d] = value.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  if (/^[A-Za-z]{3}\s[A-Za-z]{3}\s\d{1,2}\s\d{4}/.test(value)) {
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+  }
+  return value;
+}
+
 export function truncate(text: string, max = 160): string {
   if (text.length <= max) return text;
   return text.slice(0, max - 1).trimEnd() + '…';
