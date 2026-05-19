@@ -665,23 +665,15 @@ export default function BrandGroup() {
     : statusFiltered;
 
 
-  // Platform card counts — date-filtered when a range is active, otherwise use server-side kpis.
+  // Platform card counts — always computed from filtered rows so all active filters are reflected.
   const displayKpis = (() => {
-    if (!dateActive) return { tp: kpis.tp, ag: kpis.ag, cg: kpis.cg };
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
-      const dateCol = PLATFORM_DATE_COLS[key];
       const statusCol = key === 'tp'
         ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
         : (headers.find((h) => h.toLowerCase() === PLATFORM_STATUS_COL[key].toLowerCase()) ?? null);
       if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
-      for (const e of entries) {
-        const raw = e.data[dateCol];
-        if (!raw) continue;
-        const d = parseCellDate(raw) ?? new Date(raw);
-        if (isNaN(d.getTime())) continue;
-        if (dateFrom && d < new Date(dateFrom)) continue;
-        if (dateTo && d > new Date(dateTo + 'T23:59:59')) continue;
+      for (const e of filtered) {
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
         else if (isRemoved(v)) removed++;
@@ -701,17 +693,15 @@ export default function BrandGroup() {
 
   // Top KPI card counts.
   // For multi-platform tabs: sum the platform card counts so all three cards are consistent.
-  // For single-platform tabs: date-filter client-side when a range is active.
+  // For single-platform tabs: count directly from filtered rows.
   const displayTotals = (() => {
     if (activePlatforms.length > 1) {
       const live = activePlatforms.reduce((s, k) => s + displayKpis[k].live, 0);
       const removed = activePlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
       return { total: live + removed, live, removed };
     }
-    if (!dateActive) return { total: kpis.total, live: kpis.live, removed: kpis.removed };
     let total = 0, live = 0, removed = 0;
-    for (const e of entries) {
-      if (!inDateRange(e.data, dateFrom, dateTo)) continue;
+    for (const e of filtered) {
       total++;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
       if (statuses.some(isLive)) live++;
