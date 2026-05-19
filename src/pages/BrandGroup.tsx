@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Filter,
+  Search, X, Check,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
@@ -82,6 +82,75 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
   }
   return <span className="text-slate-600">{display}</span>;
 }
+
+type FilterOpt<T extends string> = { value: T; label: string; dot?: string };
+
+function FilterDropdown<T extends string>({
+  value, onChange, options,
+}: { value: T; onChange: (v: T) => void; options: FilterOpt<T>[] }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors"
+      >
+        {selected?.dot && <span className={`size-1.5 shrink-0 rounded-full ${selected.dot}`} />}
+        {selected?.label}
+        <ChevronDown className={`size-3 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${opt.value === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+            >
+              {opt.dot && <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />}
+              <span className="flex-1">{opt.label}</span>
+              {opt.value === value && <Check className="size-3 text-violet-500" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed'>[] = [
+  { value: 'all',     label: 'All statuses', dot: 'bg-slate-400' },
+  { value: 'live',    label: 'Live',         dot: 'bg-emerald-500' },
+  { value: 'removed', label: 'Removed',      dot: 'bg-rose-500' },
+];
+
+const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
+  { value: 'all', label: 'All platforms' },
+  { value: 'tp',  label: 'Trust Pilot',  dot: 'bg-blue-500' },
+  { value: 'ag',  label: 'Ask Gambler',  dot: 'bg-amber-500' },
+  { value: 'cg',  label: 'Casino Guru',  dot: 'bg-violet-500' },
+];
+
+const PLATFORM_CARDS = [
+  { key: 'tp' as const, label: 'Trust Pilot', dot: 'bg-blue-500' },
+  { key: 'ag' as const, label: 'Ask Gambler', dot: 'bg-amber-500' },
+  { key: 'cg' as const, label: 'Casino Guru', dot: 'bg-violet-500' },
+];
 
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | null; sortDir: 'asc' | 'desc' }) {
   if (sortCol !== col) return <ChevronsUpDown className="size-3 text-slate-400 shrink-0" />;
@@ -270,23 +339,49 @@ export default function BrandGroup() {
           label="Live"
           value={loading ? '…' : kpis.live.toLocaleString()}
           hint="Reviews currently published"
-          breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
-            { label: 'TP', count: kpis.tp.live },
-            { label: 'AG', count: kpis.ag.live },
-            { label: 'CG', count: kpis.cg.live },
-          ]}
         />
         <KpiCard
           label="Removed"
           value={loading ? '…' : kpis.removed.toLocaleString()}
           hint="Reviews taken down"
-          breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
-            { label: 'TP', count: kpis.tp.removed },
-            { label: 'AG', count: kpis.ag.removed },
-            { label: 'CG', count: kpis.cg.removed },
-          ]}
         />
       </div>
+
+      {hasMultiPlatform(decodedTab) && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {PLATFORM_CARDS.map(({ key, label, dot }) => {
+            const active = platformFilter === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => { setPlatformFilter(active ? 'all' : key); setPage(1); }}
+                className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+              >
+                <div className="flex items-center gap-2 mb-3">
+                  <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+                  <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+                  {active && <Check className="size-3 ml-auto text-violet-500" />}
+                </div>
+                {loading ? (
+                  <div className="h-6 w-20 animate-pulse rounded bg-slate-200" />
+                ) : (
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-semibold text-emerald-700">{kpis[key].live.toLocaleString()}</span>
+                      <span className="text-xs text-slate-400">live</span>
+                    </div>
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-xl font-semibold text-rose-600">{kpis[key].removed.toLocaleString()}</span>
+                      <span className="text-xs text-slate-400">removed</span>
+                    </div>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Search + filter bar */}
@@ -310,30 +405,17 @@ export default function BrandGroup() {
             </span>
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
-          <Filter className="size-3.5 text-slate-400 shrink-0" />
-          <select
+          <FilterDropdown
             value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1); }}
-            className="bg-transparent text-xs text-slate-600 outline-none cursor-pointer"
-          >
-            <option value="all">All statuses</option>
-            <option value="live">Live</option>
-            <option value="removed">Removed</option>
-          </select>
+            onChange={(v) => { setStatusFilter(v); setPage(1); }}
+            options={STATUS_OPTS}
+          />
           {hasMultiPlatform(decodedTab) && (
-            <>
-              <div className="h-4 w-px bg-slate-200 shrink-0" />
-              <select
-                value={platformFilter}
-                onChange={(e) => { setPlatformFilter(e.target.value as typeof platformFilter); setPage(1); }}
-                className="bg-transparent text-xs text-slate-600 outline-none cursor-pointer"
-              >
-                <option value="all">All platforms</option>
-                <option value="tp">Trust Pilot</option>
-                <option value="ag">Ask Gambler</option>
-                <option value="cg">Casino Guru</option>
-              </select>
-            </>
+            <FilterDropdown
+              value={platformFilter}
+              onChange={(v) => { setPlatformFilter(v); setPage(1); }}
+              options={PLATFORM_OPTS}
+            />
           )}
         </div>
 
