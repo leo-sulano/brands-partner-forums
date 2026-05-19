@@ -64,6 +64,13 @@ function StatusPill({ value }: { value: string }) {
 
 
 function CellValue({ header, value }: { header: string; value: string | null }) {
+  if (isDateCol(header) && (!value || value.trim() === '')) {
+    return (
+      <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-500">
+        No Review
+      </span>
+    );
+  }
   const display = value ? formatCellValue(value) : '—';
   if (isStatusCol(header)) return <StatusPill value={display} />;
   if (isLinkCol(header) && value) {
@@ -120,6 +127,23 @@ function inDateRange(data: Record<string, string | null>, from: string, to: stri
   if (from && d < new Date(from)) return false;
   if (to && d > new Date(to + 'T23:59:59')) return false;
   return true;
+}
+
+function isDateCol(header: string): boolean {
+  const h = header.toLowerCase();
+  return ENTRY_DATE_COLS.some((c) => c.toLowerCase() === h);
+}
+
+function parseCellDate(value: string): Date | null {
+  if (!value) return null;
+  const d = new Date(value);
+  if (!isNaN(d.getTime())) return d;
+  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) {
+    const p = new Date(+m[3], +m[2] - 1, +m[1]);
+    if (!isNaN(p.getTime())) return p;
+  }
+  return null;
 }
 
 function categorizeStatus(v: string): 'published' | 'removed' | 'refused' | null {
@@ -278,6 +302,13 @@ export default function BrandGroup() {
         setHeaders(populated);
         setKpis(k);
         setError(null);
+        const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
+          populated.some((h) => h.toLowerCase() === col.toLowerCase()),
+        );
+        if (defaultDateCol) {
+          const matched = populated.find((h) => h.toLowerCase() === defaultDateCol.toLowerCase());
+          if (matched) { setSortCol(matched); setSortDir('desc'); }
+        }
       } catch (err) {
         if (canceled) return;
         setError(err instanceof Error ? err.message : 'Failed to load');
@@ -356,6 +387,14 @@ export default function BrandGroup() {
     ? [...filtered].sort((a, b) => {
         const av = a.data[sortCol] ?? '';
         const bv = b.data[sortCol] ?? '';
+        if (isDateCol(sortCol)) {
+          const da = parseCellDate(av);
+          const db = parseCellDate(bv);
+          if (!da && !db) return 0;
+          if (!da) return 1;
+          if (!db) return -1;
+          return sortDir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
+        }
         const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
         return sortDir === 'asc' ? cmp : -cmp;
       })
