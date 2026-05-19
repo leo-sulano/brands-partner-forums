@@ -58,7 +58,28 @@
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" status)",
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff)",
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" log --oneline -5)",
-      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" push)"
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" push)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" -Recurse -Directory)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" -Recurse | Where-Object { $_.PSIsContainer } | Select-Object -ExpandProperty FullName)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff src/pages/BrandGroup.tsx)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff HEAD src/pages/BrandGroup.tsx)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" show HEAD:src/pages/BrandGroup.tsx)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" status --short)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add src/pages/BrandGroup.tsx)",
+      "Bash(git -C 'c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard' commit -m ' *)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" status --short src/pages/BrandGroup.tsx)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" show ff8f8c3 --name-only --oneline)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" show 8536b92 --name-only --oneline)",
+      "Bash(curl -s 'https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/entries?tab=eq.TP%20Brand%20Injection&select=data&limit=5' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU')",
+      "Bash(curl -s -X POST https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/rpc/query -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU' -H 'Content-Type: application/json' -d '{\"query\": \"SELECT data->>'\\\\''Brand / TP URL PAGE'\\\\'' as brand_col FROM entries WHERE tab = '\\\\''TP Brand Injection'\\\\'' LIMIT 20\"}')",
+      "Bash(curl -s 'https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/entries?tab=eq.TP+Brand+Injection&select=data&limit=20' -H 'apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU' -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU')",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\Brands Partner Forum\\\\src\" -Recurse -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "Skill(gitnexus-exploring)",
+      "Skill(gitnexus-exploring:*)",
+      "Skill(superpowers:systematic-debugging)",
+      "Skill(superpowers:systematic-debugging:*)"
     ]
   }
 }
