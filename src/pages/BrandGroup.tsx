@@ -603,7 +603,17 @@ export default function BrandGroup() {
     : [];
 
   const uniqueProxies = headers.includes('Proxy Used')
-    ? [...new Set(entries.map((e) => e.data['Proxy Used']).filter((v): v is string => !!v && v.trim() !== ''))].sort()
+    ? (() => {
+        const seen = new Map<string, string>();
+        for (const e of entries) {
+          const v = e.data['Proxy Used'];
+          if (v && v.trim()) {
+            const key = v.trim().toLowerCase();
+            if (!seen.has(key)) seen.set(key, v.trim());
+          }
+        }
+        return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      })()
     : [];
 
   const searchFiltered = search.trim()
@@ -624,7 +634,7 @@ export default function BrandGroup() {
     : brandFiltered;
 
   const proxyFiltered = proxyFilter
-    ? agentFiltered.filter((e) => e.data['Proxy Used'] === proxyFilter)
+    ? agentFiltered.filter((e) => e.data['Proxy Used']?.trim().toLowerCase() === proxyFilter.toLowerCase())
     : agentFiltered;
 
   // Platform filter only affects visible columns, not row filtering.
