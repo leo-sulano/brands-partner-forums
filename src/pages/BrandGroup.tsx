@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check,
+  Search, X, Check, CalendarDays,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
@@ -81,6 +81,54 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
     );
   }
   return <span className="text-slate-600">{display}</span>;
+}
+
+// Date column candidates, in priority order
+const ENTRY_DATE_COLS = [
+  'Score added',
+  'Ask Gambler review added',
+  'Casino Guru review added',
+  'Removed / Not Published / stil published date',
+  'Date', 'date', 'Posted At', 'posted_at',
+];
+
+// All possible status column names across tabs
+const ALL_STATUS_COLS = [
+  'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status',
+  'AG Review Status', 'CG Review Status',
+  'Review Status', 'Status', 'status',
+];
+
+function getEntryDate(data: Record<string, string | null>): Date | null {
+  for (const col of ENTRY_DATE_COLS) {
+    const raw = data[col];
+    if (!raw) continue;
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d;
+    const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) {
+      const p = new Date(+m[3], +m[2] - 1, +m[1]);
+      if (!isNaN(p.getTime())) return p;
+    }
+  }
+  return null;
+}
+
+function inDateRange(data: Record<string, string | null>, from: string, to: string): boolean {
+  const d = getEntryDate(data);
+  if (!d) return false;
+  if (from && d < new Date(from)) return false;
+  if (to && d > new Date(to + 'T23:59:59')) return false;
+  return true;
+}
+
+function categorizeStatus(v: string): 'published' | 'removed' | 'refused' | null {
+  const l = v.toLowerCase();
+  if (!l) return null;
+  if (l.includes('not pub') || l.includes('refused')) return 'refused';
+  if (l.includes('removed')) return 'removed';
+  if (l.includes('live') || l.includes('published')) return 'published';
+  return null;
 }
 
 type FilterOpt<T extends string> = { value: T; label: string; dot?: string };
@@ -172,6 +220,8 @@ export default function BrandGroup() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed'>('all');
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState<number>(25);
@@ -194,6 +244,8 @@ export default function BrandGroup() {
     setSearch('');
     setStatusFilter('all');
     setPlatformFilter('all');
+    setDateFrom('');
+    setDateTo('');
     setSortCol(null);
     setSortDir('asc');
     setPage(1);
@@ -266,7 +318,7 @@ export default function BrandGroup() {
       });
 
   const statusCols = headers.filter(isStatusCol);
-  const filtered = statusFilter === 'all'
+  const statusFiltered = statusFilter === 'all'
     ? platformFiltered
     : platformFiltered.filter((e) =>
         statusCols.some((h) => {
@@ -276,6 +328,29 @@ export default function BrandGroup() {
           return false;
         }),
       );
+
+  const dateActive = !!(dateFrom || dateTo);
+  const filtered = dateActive
+    ? statusFiltered.filter((e) => inDateRange(e.data, dateFrom, dateTo))
+    : statusFiltered;
+
+  // Counts for the date range section — computed from ALL entries, only date-filtered
+  const dateRangeCounts = (() => {
+    if (!dateActive) return null;
+    let published = 0, removed = 0, refused = 0;
+    for (const e of entries) {
+      if (!inDateRange(e.data, dateFrom, dateTo)) continue;
+      for (const col of ALL_STATUS_COLS) {
+        const v = e.data[col];
+        if (!v) continue;
+        const cat = categorizeStatus(v);
+        if (cat === 'published') published++;
+        else if (cat === 'removed') removed++;
+        else if (cat === 'refused') refused++;
+      }
+    }
+    return { published, removed, refused };
+  })();
 
   const sorted = sortCol
     ? [...filtered].sort((a, b) => {
@@ -383,6 +458,66 @@ export default function BrandGroup() {
         </div>
       )}
 
+      {/* Date range filter */}
+      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 shrink-0">
+            <CalendarDays className="size-4 text-slate-400" />
+            <span className="text-xs font-medium text-slate-500">Date range</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="date"
+              value={dateFrom}
+              max={dateTo || undefined}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
+            />
+            <span className="text-xs text-slate-400">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              min={dateFrom || undefined}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              className="rounded-md border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
+            />
+            {dateActive && (
+              <button
+                onClick={() => { setDateFrom(''); setDateTo(''); setPage(1); }}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+              >
+                <X className="size-3" /> Clear
+              </button>
+            )}
+          </div>
+
+          {dateRangeCounts && !loading && (
+            <div className="flex flex-wrap items-center gap-4 ml-auto">
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
+                <span className="text-xs text-slate-500">Published</span>
+                <span className="text-sm font-semibold text-slate-800">{dateRangeCounts.published.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-rose-500 shrink-0" />
+                <span className="text-xs text-slate-500">Removed</span>
+                <span className="text-sm font-semibold text-slate-800">{dateRangeCounts.removed.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="size-2 rounded-full bg-amber-500 shrink-0" />
+                <span className="text-xs text-slate-500">Refused</span>
+                <span className="text-sm font-semibold text-slate-800">{dateRangeCounts.refused.toLocaleString()}</span>
+              </div>
+            </div>
+          )}
+          {dateActive && loading && (
+            <div className="ml-auto flex gap-4">
+              {[1, 2, 3].map((i) => <div key={i} className="h-4 w-20 animate-pulse rounded bg-slate-200" />)}
+            </div>
+          )}
+        </div>
+      </div>
+
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Search + filter bar */}
         <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
@@ -458,7 +593,7 @@ export default function BrandGroup() {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={headers.length || 5} className="px-4 py-8 text-center text-slate-400">
-                    {search || statusFilter !== 'all' || platformFilter !== 'all' ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
+                    {search || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
                   </td>
                 </tr>
               ) : (
