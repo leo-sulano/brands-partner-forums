@@ -652,6 +652,20 @@ export default function BrandGroup() {
     return { tp: countPlatform('tp'), ag: countPlatform('ag'), cg: countPlatform('cg') };
   })();
 
+  // Top KPI card counts — date-filtered when a range is active.
+  const displayTotals = (() => {
+    if (!dateActive) return { total: kpis.total, live: kpis.live, removed: kpis.removed };
+    let total = 0, live = 0, removed = 0;
+    for (const e of entries) {
+      if (!inDateRange(e.data, dateFrom, dateTo)) continue;
+      total++;
+      const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
+      if (statuses.some((v) => v.includes('live') || v.includes('published'))) live++;
+      else if (statuses.some((v) => v.includes('removed'))) removed++;
+    }
+    return { total, live, removed };
+  })();
+
   const sorted = sortCol
     ? [...filtered].sort((a, b) => {
         const av = a.data[sortCol] ?? '';
@@ -715,17 +729,17 @@ export default function BrandGroup() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
           label="Total"
-          value={loading ? '…' : kpis.total.toLocaleString()}
+          value={loading ? '…' : displayTotals.total.toLocaleString()}
           icon={<Building2 className="size-4" />}
         />
         <KpiCard
           label="Live"
-          value={loading ? '…' : kpis.live.toLocaleString()}
+          value={loading ? '…' : displayTotals.live.toLocaleString()}
           hint="Reviews currently published"
         />
         <KpiCard
           label="Removed"
-          value={loading ? '…' : kpis.removed.toLocaleString()}
+          value={loading ? '…' : displayTotals.removed.toLocaleString()}
           hint="Reviews taken down"
         />
       </div>
