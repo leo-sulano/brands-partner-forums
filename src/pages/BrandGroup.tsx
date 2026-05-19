@@ -672,7 +672,7 @@ export default function BrandGroup() {
       const dateCol = PLATFORM_DATE_COLS[key];
       const statusCol = key === 'tp'
         ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
-        : PLATFORM_STATUS_COL[key];
+        : (headers.find((h) => h.toLowerCase() === PLATFORM_STATUS_COL[key].toLowerCase()) ?? null);
       if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
       for (const e of entries) {

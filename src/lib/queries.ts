@@ -236,7 +236,26 @@ function isRemovedStatus(s: string) {
 }
 
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
-  const entries = await fetchAllTabEntries(tab);
+  const [entries, rawHeaders] = await Promise.all([
+    fetchAllTabEntries(tab),
+    fetchTabHeaders(tab),
+  ]);
+
+  // Resolve the actual sheet column name case-insensitively so minor casing
+  // differences between tabs don't cause zeroed-out counts.
+  function resolveHeader(...variants: string[]): string | null {
+    for (const v of variants) {
+      const found = rawHeaders.find((h) => h.toLowerCase() === v.toLowerCase());
+      if (found) return found;
+    }
+    return null;
+  }
+
+  const tpCol = resolveHeader('TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status');
+  const agCol = resolveHeader('AG Review Status');
+  const cgCol = resolveHeader('CG Review Status');
+  const genericCol = resolveHeader('Review Status', 'status', 'Status');
+
   let live = 0, removed = 0;
   let tpLive = 0, tpRemoved = 0;
   let agLive = 0, agRemoved = 0;
@@ -244,12 +263,10 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
 
   for (const entry of entries) {
     const d = entry.data;
-    const tp = (getField(d, 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status') ?? '').toLowerCase();
-    const ag = (getField(d, 'AG Review Status') ?? '').toLowerCase();
-    const cg = (getField(d, 'CG Review Status') ?? '').toLowerCase();
-    const generic = (!tp && !ag && !cg)
-      ? (getField(d, 'Review Status', 'status', 'Status') ?? '').toLowerCase()
-      : '';
+    const tp = tpCol ? (d[tpCol] ?? '').toLowerCase() : '';
+    const ag = agCol ? (d[agCol] ?? '').toLowerCase() : '';
+    const cg = cgCol ? (d[cgCol] ?? '').toLowerCase() : '';
+    const generic = (!tp && !ag && !cg && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
 
     if (tp) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
     if (ag) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
