@@ -727,8 +727,8 @@ export default function BrandGroup() {
       </div>
 
       {activePlatforms.length > 0 && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {PLATFORM_CARDS.map(({ key, label, dot }) => {
+        <div className={`grid grid-cols-1 gap-3 ${activePlatforms.length === 1 ? 'sm:grid-cols-1' : activePlatforms.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+          {PLATFORM_CARDS.filter(({ key }) => activePlatforms.includes(key)).map(({ key, label, dot }) => {
             const active = platformFilter === key;
             return (
               <button
@@ -819,11 +819,11 @@ export default function BrandGroup() {
             onChange={(v) => { setStatusFilter(v); setPage(1); }}
             options={STATUS_OPTS}
           />
-          {activePlatforms.length > 0 && (
+          {activePlatforms.length > 1 && (
             <FilterDropdown
               value={platformFilter}
               onChange={(v) => { setPlatformFilter(v); setPage(1); }}
-              options={PLATFORM_OPTS}
+              options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
             />
           )}
         </div>
