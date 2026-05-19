@@ -900,6 +900,14 @@ export default function BrandGroup() {
               brands={uniqueAgents}
             />
           )}
+          {uniqueProxies.length > 1 && (
+            <BrandFilterDropdown
+              noun="proxie"
+              value={proxyFilter}
+              onChange={(v) => { setProxyFilter(v); setPage(1); }}
+              brands={uniqueProxies}
+            />
+          )}
           <FilterDropdown
             value={statusFilter}
             onChange={(v) => { setStatusFilter(v); setPage(1); }}
