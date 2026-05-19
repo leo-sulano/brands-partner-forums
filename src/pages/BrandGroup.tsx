@@ -602,8 +602,8 @@ export default function BrandGroup() {
     : platformFiltered.filter((e) =>
         statusCols.some((h) => {
           const v = (e.data[h] ?? '').toLowerCase();
-          if (statusFilter === 'live') return v.includes('live') || v.includes('published');
-          if (statusFilter === 'removed') return v.includes('removed');
+          if (statusFilter === 'live') return isLive(v);
+          if (statusFilter === 'removed') return isRemoved(v);
           return false;
         }),
       );
@@ -644,13 +644,19 @@ export default function BrandGroup() {
         if (dateFrom && d < new Date(dateFrom)) continue;
         if (dateTo && d > new Date(dateTo + 'T23:59:59')) continue;
         const v = (e.data[statusCol] ?? '').toLowerCase();
-        if (v.includes('live') || v.includes('published')) live++;
-        else if (v.includes('removed')) removed++;
+        if (isLive(v)) live++;
+        else if (isRemoved(v)) removed++;
       }
       return { live, removed };
     }
     return { tp: countPlatform('tp'), ag: countPlatform('ag'), cg: countPlatform('cg') };
   })();
+
+  function isLive(v: string) {
+    if (v.includes('not pub') || v.includes('refused')) return false;
+    return v.includes('live') || v.includes('published');
+  }
+  function isRemoved(v: string) { return v.includes('removed'); }
 
   // Top KPI card counts — date-filtered when a range is active.
   const displayTotals = (() => {
@@ -660,8 +666,8 @@ export default function BrandGroup() {
       if (!inDateRange(e.data, dateFrom, dateTo)) continue;
       total++;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
-      if (statuses.some((v) => v.includes('live') || v.includes('published'))) live++;
-      else if (statuses.some((v) => v.includes('removed'))) removed++;
+      if (statuses.some(isLive)) live++;
+      else if (statuses.some(isRemoved)) removed++;
     }
     return { total, live, removed };
   })();

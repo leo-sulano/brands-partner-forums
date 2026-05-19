@@ -227,7 +227,10 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
   return headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
 }
 
-function isLiveStatus(s: string) { return s.includes('published') || s.includes('live'); }
+function isLiveStatus(s: string) {
+  if (s.includes('not pub') || s.includes('refused')) return false;
+  return s.includes('published') || s.includes('live');
+}
 function isRemovedStatus(s: string) { return s.includes('removed'); }
 
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
