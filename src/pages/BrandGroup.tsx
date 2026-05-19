@@ -752,7 +752,7 @@ export default function BrandGroup() {
         />
       </div>
 
-      {activePlatforms.length > 0 && (
+      {activePlatforms.length > 1 && (
         <div className={`grid grid-cols-1 gap-3 ${activePlatforms.length === 1 ? 'sm:grid-cols-1' : activePlatforms.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
           {PLATFORM_CARDS.filter(({ key }) => activePlatforms.includes(key)).map(({ key, label, dot }) => {
             const active = platformFilter === key;
