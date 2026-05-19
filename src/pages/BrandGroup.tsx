@@ -113,13 +113,6 @@ const PLATFORM_STATUS_COL = {
   cg: 'CG Review Status',
 } as const;
 
-// All possible status column names across tabs
-const ALL_STATUS_COLS = [
-  'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status',
-  'AG Review Status', 'CG Review Status',
-  'Review Status', 'Status', 'status',
-];
-
 function getEntryDate(data: Record<string, string | null>): Date | null {
   for (const col of ENTRY_DATE_COLS) {
     const raw = data[col];
@@ -157,15 +150,6 @@ function parseCellDate(value: string): Date | null {
     const p = new Date(+m[3], +m[2] - 1, +m[1]);
     if (!isNaN(p.getTime())) return p;
   }
-  return null;
-}
-
-function categorizeStatus(v: string): 'published' | 'removed' | 'refused' | null {
-  const l = v.toLowerCase();
-  if (!l) return null;
-  if (l.includes('not pub') || l.includes('refused')) return 'refused';
-  if (l.includes('removed')) return 'removed';
-  if (l.includes('live') || l.includes('published')) return 'published';
   return null;
 }
 
@@ -619,23 +603,6 @@ export default function BrandGroup() {
       })
     : statusFiltered;
 
-  // Counts for the date range section — computed from ALL entries, only date-filtered
-  const dateRangeCounts = (() => {
-    if (!dateActive) return null;
-    let published = 0, removed = 0, refused = 0;
-    for (const e of entries) {
-      if (!inDateRange(e.data, dateFrom, dateTo)) continue;
-      for (const col of ALL_STATUS_COLS) {
-        const v = e.data[col];
-        if (!v) continue;
-        const cat = categorizeStatus(v);
-        if (cat === 'published') published++;
-        else if (cat === 'removed') removed++;
-        else if (cat === 'refused') refused++;
-      }
-    }
-    return { published, removed, refused };
-  })();
 
   // Platform card counts — date-filtered when a range is active, otherwise use server-side kpis.
   const displayKpis = (() => {
@@ -794,30 +761,6 @@ export default function BrandGroup() {
             />
           </div>
 
-          {dateRangeCounts && !loading && (
-            <div className="flex flex-wrap items-center gap-4 ml-auto">
-              <div className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
-                <span className="text-xs text-slate-500">Published</span>
-                <span className="text-sm font-semibold text-slate-800">{dateRangeCounts.published.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-rose-500 shrink-0" />
-                <span className="text-xs text-slate-500">Removed</span>
-                <span className="text-sm font-semibold text-slate-800">{dateRangeCounts.removed.toLocaleString()}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="size-2 rounded-full bg-amber-500 shrink-0" />
-                <span className="text-xs text-slate-500">Refused</span>
-                <span className="text-sm font-semibold text-slate-800">{dateRangeCounts.refused.toLocaleString()}</span>
-              </div>
-            </div>
-          )}
-          {dateActive && loading && (
-            <div className="ml-auto flex gap-4">
-              {[1, 2, 3].map((i) => <div key={i} className="h-4 w-20 animate-pulse rounded bg-slate-200" />)}
-            </div>
-          )}
         </div>
       </div>
 
