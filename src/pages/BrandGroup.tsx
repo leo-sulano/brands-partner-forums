@@ -90,9 +90,10 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
   return <span className="text-slate-600">{display}</span>;
 }
 
-// Date column candidates, in priority order
+// Date column candidates, in priority order.
+// 'Score added' intentionally excluded — it stores a numeric rating (1–5), not a date.
 const ENTRY_DATE_COLS = [
-  'Score added',
+  'Trust Pilot',
   'Ask Gambler review added',
   'Casino Guru review added',
   'Removed / Not Published / stil published date',
