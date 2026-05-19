@@ -113,6 +113,13 @@ const PLATFORM_STATUS_COL = {
   cg: 'CG Review Status',
 } as const;
 
+// Columns that belong to each platform — used to hide non-selected platform cols.
+const PLATFORM_OWN_COLS: Record<'tp' | 'ag' | 'cg', Set<string>> = {
+  tp: new Set(['Trust Pilot', 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status']),
+  ag: new Set(['Ask Gambler review added', 'AG Review Status']),
+  cg: new Set(['Casino Guru review added', 'CG Review Status']),
+};
+
 // All known Trust Pilot status column variants across tabs.
 const TP_STATUS_VARIANTS = new Set([
   'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status',
@@ -577,6 +584,16 @@ export default function BrandGroup() {
     return result;
   })();
 
+  // Hide other platforms' columns when a specific platform is selected.
+  const visibleHeaders = platformFilter !== 'all' && activePlatforms.length > 1
+    ? headers.filter((h) => {
+        for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as ['tp' | 'ag' | 'cg', Set<string>][]) {
+          if (key !== platformFilter && cols.has(h)) return false;
+        }
+        return true;
+      })
+    : headers;
+
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
   const uniqueBrands = brandCol
     ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
@@ -905,7 +922,7 @@ export default function BrandGroup() {
                         <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                       </th>
                     ))
-                  : headers.map((h) => (
+                  : visibleHeaders.map((h) => (
                       <th
                         key={h}
                         onClick={() => handleSort(h)}
@@ -932,7 +949,7 @@ export default function BrandGroup() {
                 ))
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={headers.length || 5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={visibleHeaders.length || 5} className="px-4 py-8 text-center text-slate-400">
                     {search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
                   </td>
                 </tr>
@@ -943,7 +960,7 @@ export default function BrandGroup() {
                     onClick={() => setEditEntry(entry)}
                     className="cursor-pointer hover:bg-violet-50/50 transition-colors"
                   >
-                    {headers.map((h) => (
+                    {visibleHeaders.map((h) => (
                       <td key={h} className="px-3 py-2.5">
                         <CellValue header={h} value={entry.data[h] ?? null} />
                       </td>
