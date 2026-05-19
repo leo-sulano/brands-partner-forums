@@ -607,6 +607,10 @@ export default function BrandGroup() {
     ? [...new Set(entries.map((e) => e.data[agentCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
     : [];
 
+  const uniqueProxies = headers.includes('Proxy Used')
+    ? [...new Set(entries.map((e) => e.data['Proxy Used']).filter((v): v is string => !!v && v.trim() !== ''))].sort()
+    : [];
+
   const searchFiltered = search.trim()
     ? entries.filter((e) =>
         headers.some((h) => {
