@@ -9,7 +9,7 @@ import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis, updateEntryData } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, hasMultiPlatform } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import type { TabKpis } from '../types/brand-entry';
@@ -112,6 +112,12 @@ const PLATFORM_STATUS_COL = {
   ag: 'AG Review Status',
   cg: 'CG Review Status',
 } as const;
+
+// All known Trust Pilot status column variants across tabs.
+const TP_STATUS_VARIANTS = new Set([
+  'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status',
+  'Trust pilot Review Status', 'Review Status',
+]);
 
 function getEntryDate(data: Record<string, string | null>): Date | null {
   for (const col of ENTRY_DATE_COLS) {
@@ -548,6 +554,15 @@ export default function BrandGroup() {
 
   // Derived: search → brand → platform → status → date → sort → paginate
 
+  // Which platform cards are relevant for this tab, based on loaded headers.
+  const activePlatforms = (() => {
+    const result: ('tp' | 'ag' | 'cg')[] = [];
+    if (headers.some((h) => TP_STATUS_VARIANTS.has(h))) result.push('tp');
+    if (headers.includes('AG Review Status')) result.push('ag');
+    if (headers.includes('CG Review Status')) result.push('cg');
+    return result;
+  })();
+
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
   const uniqueBrands = brandCol
     ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
@@ -566,10 +581,13 @@ export default function BrandGroup() {
     ? searchFiltered.filter((e) => e.data[brandCol] === brandFilter)
     : searchFiltered;
 
-  const platformFiltered = platformFilter === 'all' || !hasMultiPlatform(decodedTab)
+  const platformFiltered = platformFilter === 'all' || activePlatforms.length <= 1
     ? brandFiltered
     : brandFiltered.filter((e) => {
-        const col = PLATFORM_STATUS_COL[platformFilter];
+        const col = platformFilter === 'tp'
+          ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
+          : PLATFORM_STATUS_COL[platformFilter];
+        if (!col) return false;
         const v = e.data[col];
         return v != null && v !== '';
       });
@@ -609,7 +627,10 @@ export default function BrandGroup() {
     if (!dateActive) return { tp: kpis.tp, ag: kpis.ag, cg: kpis.cg };
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
       const dateCol = PLATFORM_DATE_COLS[key];
-      const statusCol = PLATFORM_STATUS_COL[key];
+      const statusCol = key === 'tp'
+        ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
+        : PLATFORM_STATUS_COL[key];
+      if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
       for (const e of entries) {
         const raw = e.data[dateCol];
@@ -705,9 +726,9 @@ export default function BrandGroup() {
         />
       </div>
 
-      {hasMultiPlatform(decodedTab) && (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {PLATFORM_CARDS.map(({ key, label, dot }) => {
+      {activePlatforms.length > 0 && (
+        <div className={`grid grid-cols-1 gap-3 ${activePlatforms.length === 1 ? 'sm:grid-cols-1 max-w-xs' : activePlatforms.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+          {PLATFORM_CARDS.filter(({ key }) => activePlatforms.includes(key)).map(({ key, label, dot }) => {
             const active = platformFilter === key;
             return (
               <button
@@ -798,11 +819,11 @@ export default function BrandGroup() {
             onChange={(v) => { setStatusFilter(v); setPage(1); }}
             options={STATUS_OPTS}
           />
-          {hasMultiPlatform(decodedTab) && (
+          {activePlatforms.length > 1 && (
             <FilterDropdown
               value={platformFilter}
               onChange={(v) => { setPlatformFilter(v); setPage(1); }}
-              options={PLATFORM_OPTS}
+              options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
             />
           )}
         </div>
