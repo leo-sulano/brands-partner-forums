@@ -3,7 +3,7 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X,
+  Search, X, Filter,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
@@ -117,6 +117,7 @@ export default function BrandGroup() {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed'>('all');
   const [sortCol, setSortCol] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [pageSize, setPageSize] = useState<number>(25);
@@ -135,6 +136,7 @@ export default function BrandGroup() {
     setKpis({ total: 0, live: 0, removed: 0, tp: { live: 0, removed: 0 }, ag: { live: 0, removed: 0 }, cg: { live: 0, removed: 0 } });
     setError(null);
     setSearch('');
+    setStatusFilter('all');
     setSortCol(null);
     setSortDir('asc');
     setPage(1);
@@ -186,8 +188,8 @@ export default function BrandGroup() {
     });
   }, []);
 
-  // Derived: filter → sort → paginate
-  const filtered = search.trim()
+  // Derived: filter → status filter → sort → paginate
+  const searchFiltered = search.trim()
     ? entries.filter((e) =>
         headers.some((h) => {
           const v = e.data[h];
@@ -195,6 +197,18 @@ export default function BrandGroup() {
         }),
       )
     : entries;
+
+  const statusCols = headers.filter(isStatusCol);
+  const filtered = statusFilter === 'all'
+    ? searchFiltered
+    : searchFiltered.filter((e) =>
+        statusCols.some((h) => {
+          const v = (e.data[h] ?? '').toLowerCase();
+          if (statusFilter === 'live') return v.includes('live') || v.includes('published');
+          if (statusFilter === 'removed') return v.includes('removed');
+          return false;
+        }),
+      );
 
   const sorted = sortCol
     ? [...filtered].sort((a, b) => {
@@ -277,7 +291,7 @@ export default function BrandGroup() {
       </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        {/* Search bar */}
+        {/* Search + filter bar */}
         <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
           <Search className="size-4 text-slate-400 shrink-0" />
           <input
@@ -292,11 +306,22 @@ export default function BrandGroup() {
               <X className="size-4" />
             </button>
           )}
-          {!loading && search && (
+          {!loading && (search || statusFilter !== 'all') && (
             <span className="text-xs text-slate-400 whitespace-nowrap">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
             </span>
           )}
+          <div className="h-4 w-px bg-slate-200 shrink-0" />
+          <Filter className="size-3.5 text-slate-400 shrink-0" />
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value as typeof statusFilter); setPage(1); }}
+            className="bg-transparent text-xs text-slate-600 outline-none cursor-pointer"
+          >
+            <option value="all">All statuses</option>
+            <option value="live">Live</option>
+            <option value="removed">Removed</option>
+          </select>
         </div>
 
 
@@ -338,7 +363,7 @@ export default function BrandGroup() {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={headers.length || 5} className="px-4 py-8 text-center text-slate-400">
-                    {search ? 'No entries match your search.' : 'No entries — run a sync from the Sync Status page.'}
+                    {search || statusFilter !== 'all' ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
                   </td>
                 </tr>
               ) : (
