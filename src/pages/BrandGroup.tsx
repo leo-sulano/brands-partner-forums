@@ -799,9 +799,7 @@ export default function BrandGroup() {
       </div>
 
       {activePlatforms.length > 1 && (() => {
-        const visibleCards = PLATFORM_CARDS.filter(({ key }) =>
-          activePlatforms.includes(key) && (platformFilter === 'all' || platformFilter === key)
-        );
+        const visibleCards = PLATFORM_CARDS.filter(({ key }) => activePlatforms.includes(key));
         const cols = visibleCards.length === 1 ? 'sm:grid-cols-1' : visibleCards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
         return (
         <div className={`grid grid-cols-1 gap-3 ${cols}`}>
