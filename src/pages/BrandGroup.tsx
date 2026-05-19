@@ -621,16 +621,8 @@ export default function BrandGroup() {
     ? brandFiltered.filter((e) => e.data[agentCol] === agentFilter)
     : brandFiltered;
 
-  const platformFiltered = platformFilter === 'all' || activePlatforms.length <= 1
-    ? agentFiltered
-    : agentFiltered.filter((e) => {
-        const col = platformFilter === 'tp'
-          ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
-          : PLATFORM_STATUS_COL[platformFilter];
-        if (!col) return false;
-        const v = e.data[col];
-        return v != null && v !== '';
-      });
+  // Platform filter only affects visible columns, not row filtering.
+  const platformFiltered = agentFiltered;
 
   const statusCols = headers.filter(isStatusCol);
   const statusFiltered = statusFilter === 'all'
