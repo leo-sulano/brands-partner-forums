@@ -953,11 +953,35 @@ export default function BrandGroup() {
                     onClick={() => setEditEntry(entry)}
                     className="cursor-pointer hover:bg-violet-50/50 transition-colors"
                   >
-                    {visibleHeaders.map((h) => (
-                      <td key={h} className="px-3 py-2.5">
-                        <CellValue header={h} value={entry.data[h] ?? null} />
-                      </td>
-                    ))}
+                    {visibleHeaders.map((h) => {
+                      // Brand / TP URL PAGE: render brand name as a link to the profile URL
+                      if (h === 'Brand / TP URL PAGE') {
+                        const profileUrl = entry.data['Link to the profile'];
+                        const brandName = entry.data[h];
+                        if (brandName && profileUrl) {
+                          const href = profileUrl.startsWith('http') ? profileUrl : `https://${profileUrl}`;
+                          return (
+                            <td key={h} className="px-3 py-2.5">
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                              >
+                                <ExternalLink className="size-3 shrink-0" />
+                                {brandName}
+                              </a>
+                            </td>
+                          );
+                        }
+                      }
+                      return (
+                        <td key={h} className="px-3 py-2.5">
+                          <CellValue header={h} value={entry.data[h] ?? null} />
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))
               )}

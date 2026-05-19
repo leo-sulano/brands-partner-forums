@@ -50,7 +50,6 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Account Name',
     'Brand / TP URL PAGE',
     'Trust Pilot',
-    'Link to the profile',
     'Review Status',
   ],
   'Trybet': [
