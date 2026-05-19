@@ -628,8 +628,12 @@ export default function BrandGroup() {
     ? brandFiltered.filter((e) => e.data[agentCol] === agentFilter)
     : brandFiltered;
 
+  const proxyFiltered = proxyFilter
+    ? agentFiltered.filter((e) => e.data['Proxy Used'] === proxyFilter)
+    : agentFiltered;
+
   // Platform filter only affects visible columns, not row filtering.
-  const platformFiltered = agentFiltered;
+  const platformFiltered = proxyFiltered;
 
   const statusCols = headers.filter(isStatusCol);
   const statusFiltered = statusFilter === 'all'
