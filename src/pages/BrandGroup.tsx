@@ -654,7 +654,7 @@ export default function BrandGroup() {
 
   const dateActive = !!(dateFrom || dateTo);
 
-  function applyDateFilter<T extends { data: Record<string, string> }>(rows: T[]): T[] {
+  function applyDateFilter<T extends { data: Record<string, string | null> }>(rows: T[]): T[] {
     if (!dateActive) return rows;
     return rows.filter((e) => {
       if (platformFilter !== 'all') {
