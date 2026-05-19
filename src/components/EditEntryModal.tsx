@@ -4,7 +4,7 @@ import { getColLabel } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 
-const STATUS_SUGGESTIONS = ['Live', 'Removed', 'Not Published', 'Published'];
+const STATUS_SUGGESTIONS = ['Not done', 'Done', 'Published', 'Refused', 'Removed', 'Pending', 'On Pause'];
 
 function isStatusCol(h: string) { return h.toLowerCase().includes('status'); }
 function isLinkCol(h: string) {

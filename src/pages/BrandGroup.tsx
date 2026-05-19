@@ -37,23 +37,57 @@ function colWidthClass(header: string): string {
 }
 
 function StatusPill({ value }: { value: string }) {
-  const v = value.toLowerCase();
-  if (v.includes('live')) {
+  if (!value || value === '—') return <span className="text-slate-400">—</span>;
+  const v = value.toLowerCase().trim();
+  if (v === 'published' || v === 'done') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
         <CheckCircle2 className="size-3" /> {value}
       </span>
     );
   }
-  if (v.includes('removed')) {
+  if (v === 'removed' || v === 'refused') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
         <XCircle className="size-3" /> {value}
       </span>
     );
   }
-  if (!value || value === '—') {
-    return <span className="text-slate-400">—</span>;
+  if (v === 'pending') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+        <Circle className="size-3" /> {value}
+      </span>
+    );
+  }
+  if (v === 'not done') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+        <Circle className="size-3" /> {value}
+      </span>
+    );
+  }
+  if (v === 'on pause') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+        <Circle className="size-3" /> {value}
+      </span>
+    );
+  }
+  // fallback for any legacy / unrecognised values
+  if (v.includes('live') || v.includes('published')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+        <CheckCircle2 className="size-3" /> {value}
+      </span>
+    );
+  }
+  if (v.includes('remove') || v.includes('refused')) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
+        <XCircle className="size-3" /> {value}
+      </span>
+    );
   }
   return (
     <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
@@ -695,11 +729,11 @@ export default function BrandGroup() {
   })();
 
   function isLive(v: string) {
-    if (v.includes('not pub') || v.includes('refused')) return false;
-    return v.includes('live') || v.includes('published');
+    if (v.includes('not pub') || v === 'refused') return false;
+    return v === 'done' || v.includes('live') || v.includes('published');
   }
   function isRemoved(v: string) {
-    return v.includes('remove') || v.includes('not pub') || v.includes('refused');
+    return v === 'removed' || v === 'refused' || v.includes('not pub');
   }
 
   // Top KPI card counts — always reflect the active filter combination.
