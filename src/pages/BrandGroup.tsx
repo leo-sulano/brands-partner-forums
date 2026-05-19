@@ -778,9 +778,14 @@ export default function BrandGroup() {
         />
       </div>
 
-      {activePlatforms.length > 1 && (
-        <div className={`grid grid-cols-1 gap-3 ${activePlatforms.length === 1 ? 'sm:grid-cols-1' : activePlatforms.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
-          {PLATFORM_CARDS.filter(({ key }) => activePlatforms.includes(key)).map(({ key, label, dot }) => {
+      {activePlatforms.length > 1 && (() => {
+        const visibleCards = PLATFORM_CARDS.filter(({ key }) =>
+          activePlatforms.includes(key) && (platformFilter === 'all' || platformFilter === key)
+        );
+        const cols = visibleCards.length === 1 ? 'sm:grid-cols-1' : visibleCards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
+        return (
+        <div className={`grid grid-cols-1 gap-3 ${cols}`}>
+          {visibleCards.map(({ key, label, dot }) => {
             const active = platformFilter === key;
             return (
               <button
@@ -812,7 +817,8 @@ export default function BrandGroup() {
             );
           })}
         </div>
-      )}
+        );
+      })()}
 
       {/* Date range filter */}
       <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
