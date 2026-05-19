@@ -554,12 +554,16 @@ export default function BrandGroup() {
 
   // Derived: search → brand → platform → status → date → sort → paginate
 
-  // Which platform cards are relevant for this tab, based on loaded headers.
+  // Which platform cards are relevant for this tab.
+  // Check the tab's column config first (definitive); fall back to loaded headers
+  // so tabs without a config whitelist still work.
   const activePlatforms = (() => {
+    const configCols = getTabColumns(decodedTab);
+    const colSet = new Set(configCols ?? headers);
     const result: ('tp' | 'ag' | 'cg')[] = [];
-    if (headers.some((h) => TP_STATUS_VARIANTS.has(h))) result.push('tp');
-    if (headers.includes('AG Review Status')) result.push('ag');
-    if (headers.includes('CG Review Status')) result.push('cg');
+    if ([...TP_STATUS_VARIANTS].some((v) => colSet.has(v))) result.push('tp');
+    if (colSet.has('AG Review Status')) result.push('ag');
+    if (colSet.has('CG Review Status')) result.push('cg');
     return result;
   })();
 
