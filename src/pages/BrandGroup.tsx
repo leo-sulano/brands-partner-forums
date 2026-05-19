@@ -656,7 +656,9 @@ export default function BrandGroup() {
     if (v.includes('not pub') || v.includes('refused')) return false;
     return v.includes('live') || v.includes('published');
   }
-  function isRemoved(v: string) { return v.includes('removed'); }
+  function isRemoved(v: string) {
+    return v.includes('removed') || v.includes('not pub') || v.includes('refused');
+  }
 
   // Top KPI card counts — date-filtered when a range is active.
   const displayTotals = (() => {

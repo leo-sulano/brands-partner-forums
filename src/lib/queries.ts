@@ -231,7 +231,9 @@ function isLiveStatus(s: string) {
   if (s.includes('not pub') || s.includes('refused')) return false;
   return s.includes('published') || s.includes('live');
 }
-function isRemovedStatus(s: string) { return s.includes('removed'); }
+function isRemovedStatus(s: string) {
+  return s.includes('removed') || s.includes('not pub') || s.includes('refused');
+}
 
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   const entries = await fetchAllTabEntries(tab);
