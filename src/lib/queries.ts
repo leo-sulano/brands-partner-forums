@@ -272,6 +272,33 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
 // Write operations
 // ---------------------------------------------------------------------------
 
+export async function updateEntryData(
+  id: string,
+  tab: string,
+  sheetRowId: string,
+  fields: Record<string, string | null>,
+): Promise<void> {
+  const { data: existing, error: selErr } = await supabase
+    .from('entries')
+    .select('data')
+    .eq('id', id)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!existing) throw new Error('Entry not found — it may have been deleted.');
+
+  const mergedData = { ...(existing.data as Record<string, string | null>), ...fields };
+  const syncTag = crypto.randomUUID();
+  const { error: upErr } = await supabase
+    .from('entries')
+    .update({ data: mergedData, last_edited_by: 'dashboard', last_sync_tag: syncTag })
+    .eq('id', id);
+  if (upErr) throw upErr;
+
+  pushEntryToSheet(tab, sheetRowId, fields).catch(
+    (err) => console.warn('[push-to-sheet] entry update failed (non-blocking):', err),
+  );
+}
+
 export async function updateMentionStatus(id: string, status: MentionStatus): Promise<void> {
   // Read existing entry to get current data blob, tab, and sheet_row_id.
   const { data: existing, error: selErr } = await supabase

@@ -6,7 +6,8 @@ import {
   Search, X, Filter,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis } from '../lib/queries';
+import EditEntryModal from '../components/EditEntryModal';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchTabKpis, updateEntryData } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, hasMultiPlatform } from '../lib/tab-configs';
 import type { Entry } from '../types/entry';
@@ -123,6 +124,8 @@ export default function BrandGroup() {
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
   const [jumpInput, setJumpInput] = useState('');
+
+  const [editEntry, setEditEntry] = useState<Entry | null>(null);
 
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
@@ -370,7 +373,8 @@ export default function BrandGroup() {
                 pageRows.map((entry) => (
                   <tr
                     key={entry.id}
-                    className="hover:bg-slate-50 transition-colors"
+                    onClick={() => setEditEntry(entry)}
+                    className="cursor-pointer hover:bg-violet-50/50 transition-colors"
                   >
                     {headers.map((h) => (
                       <td key={h} className="px-3 py-2.5">
@@ -440,6 +444,18 @@ export default function BrandGroup() {
           </div>
         )}
       </div>
+
+      {editEntry && (
+        <EditEntryModal
+          entry={editEntry}
+          headers={headers}
+          onClose={() => setEditEntry(null)}
+          onSave={async (fields) => {
+            await updateEntryData(editEntry.id, editEntry.tab, editEntry.sheet_row_id, fields);
+            reloadRef.current();
+          }}
+        />
+      )}
     </div>
   );
 }
