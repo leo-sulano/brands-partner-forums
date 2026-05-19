@@ -94,6 +94,8 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
 // Display label overrides — maps actual sheet column name → shorter UI label.
 // Applied globally across all tabs.
 export const COLUMN_LABELS: Record<string, string> = {
+  'Account Name':                                     'Acc. Name',
+  'Link to the profile':                              'Profile Link',
   'Trust Pilot':                                      'TP Added',
   'TP Review Status':                                 'TP Status',
   'Trust Pilot Review Status':                        'TP Status',
