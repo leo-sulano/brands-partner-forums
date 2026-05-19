@@ -273,9 +273,9 @@ export default function BrandGroup() {
           value={loading ? '…' : kpis.live.toLocaleString()}
           hint="Reviews currently published"
           breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
-            { label: 'TP', count: kpis.tp.live },
-            { label: 'AG', count: kpis.ag.live },
-            { label: 'CG', count: kpis.cg.live },
+            { label: 'Trust Pilot', count: kpis.tp.live },
+            { label: 'Ask Gambler', count: kpis.ag.live },
+            { label: 'Casino Guru', count: kpis.cg.live },
           ]}
         />
         <KpiCard
@@ -283,9 +283,9 @@ export default function BrandGroup() {
           value={loading ? '…' : kpis.removed.toLocaleString()}
           hint="Reviews taken down"
           breakdown={loading || !hasMultiPlatform(decodedTab) ? undefined : [
-            { label: 'TP', count: kpis.tp.removed },
-            { label: 'AG', count: kpis.ag.removed },
-            { label: 'CG', count: kpis.cg.removed },
+            { label: 'Trust Pilot', count: kpis.tp.removed },
+            { label: 'Ask Gambler', count: kpis.ag.removed },
+            { label: 'Casino Guru', count: kpis.cg.removed },
           ]}
         />
       </div>
