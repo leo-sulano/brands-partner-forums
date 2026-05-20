@@ -706,8 +706,8 @@ export default function BrandGroup() {
   }
 
   const filtered = applyDateFilter(statusFiltered);
-  // kpiBase mirrors filtered so KPI counters always reflect the active filters.
-  const kpiBase = filtered;
+  // kpiBase skips status filter so platform card counts always show full live/removed totals.
+  const kpiBase = applyDateFilter(platformFiltered);
 
 
   // Platform card counts — computed from kpiBase so they always reflect active filters.
