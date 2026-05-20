@@ -736,7 +736,7 @@ export default function BrandGroup() {
 
   function isLive(v: string) {
     if (v.includes('not pub') || v === 'refused') return false;
-    return v === 'done' || v.includes('live') || v.includes('published');
+    return v.includes('live') || v.includes('published');
   }
   function isRemoved(v: string) {
     return v === 'removed' || v === 'refused' || v.includes('not pub');
