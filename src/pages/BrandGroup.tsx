@@ -675,10 +675,16 @@ export default function BrandGroup() {
   const platformFiltered = proxyFiltered;
 
   const statusCols = headers.filter(isStatusCol);
+  // When a platform card is selected, only check that platform's status column(s).
+  const activeStatusCols = platformFilter === 'all'
+    ? statusCols
+    : platformFilter === 'tp'
+      ? statusCols.filter((h) => TP_STATUS_VARIANTS.has(h))
+      : statusCols.filter((h) => h.toLowerCase() === PLATFORM_STATUS_COL[platformFilter].toLowerCase());
   const statusFiltered = statusFilter === 'all'
     ? platformFiltered
     : platformFiltered.filter((e) =>
-        statusCols.some((h) => {
+        activeStatusCols.some((h) => {
           const v = (e.data[h] ?? '').toLowerCase();
           if (statusFilter === 'live') return isLive(v);
           if (statusFilter === 'removed') return isRemoved(v);
