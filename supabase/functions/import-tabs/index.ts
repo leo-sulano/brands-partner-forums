@@ -170,29 +170,16 @@ Deno.serve(async () => {
         }
 
         if (toUpsert.length > 0) {
-          const existingSet = new Set(dedupedMap.keys());
-          const toUpdate = toUpsert.filter((r) => existingSet.has(r.sheet_row_id as string));
-          const toInsert = toUpsert.filter((r) => !existingSet.has(r.sheet_row_id as string));
-
-          for (const row of toUpdate) {
-            const { error: updErr } = await admin
+          // Bulk upsert in chunks — dedup+orphan deletion above ensures
+          // (tab, sheet_row_id) is unique so onConflict is safe.
+          const CHUNK = 500;
+          for (let i = 0; i < toUpsert.length; i += CHUNK) {
+            const chunk = toUpsert.slice(i, i + CHUNK);
+            const { error: upsErr } = await admin
               .from('entries')
-              .update({
-                data: row.data,
-                updated_at: new Date().toISOString(),
-                last_edited_by: row.last_edited_by,
-                last_sync_tag: row.last_sync_tag,
-              })
-              .eq('tab', row.tab as string)
-              .eq('sheet_row_id', row.sheet_row_id as string);
-            if (updErr) throw updErr;
+              .upsert(chunk, { onConflict: 'tab,sheet_row_id' });
+            if (upsErr) throw upsErr;
           }
-
-          if (toInsert.length > 0) {
-            const { error: insErr } = await admin.from('entries').insert(toInsert);
-            if (insErr) throw insErr;
-          }
-
           rowsUpserted += toUpsert.length;
         }
       } catch (tabErr) {
