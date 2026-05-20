@@ -569,9 +569,14 @@ export default function BrandGroup() {
               })
               .filter((h): h is string => h !== undefined)
           : tabHeaders.filter((h) => !HIDDEN_COLS.has(h.toLowerCase()));
-        const populated = visible.filter((h) =>
-          rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
-        );
+        // For configured tabs (explicit whitelist), show all whitelisted columns even
+        // if some have no data yet — prevents Brands from being dropped and falling
+        // back to Account Name in the brand filter.
+        const populated = configCols
+          ? visible
+          : visible.filter((h) =>
+              rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
+            );
         setEntries(rawEntries);
         setHeaders(populated);
         setError(null);
