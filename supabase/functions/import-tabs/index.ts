@@ -55,10 +55,12 @@ Deno.serve(async () => {
   const tabsFailed: string[] = [];
 
   try {
-    const dumpRes = await fetch(
-      `${APPS_SCRIPT_URL}?secret=${encodeURIComponent(APPS_SCRIPT_SECRET)}&op=dump`,
-      { redirect: 'follow' },
-    );
+    const dumpRes = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ secret: APPS_SCRIPT_SECRET, op: 'dump' }),
+    });
     if (!dumpRes.ok) throw new Error(`Apps Script ${dumpRes.status}: ${await dumpRes.text()}`);
 
     const dump = (await dumpRes.json()) as DumpResponse;
