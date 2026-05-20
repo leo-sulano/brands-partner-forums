@@ -80,15 +80,23 @@ Deno.serve(async (req: Request) => {
       ...cleanFields,
     };
 
-    const { error: upsertErr } = await admin.from('entries').upsert({
-      tab: body.tab,
-      sheet_row_id: body.sheet_row_id,
-      data: mergedData,
-      updated_at: nowIso,
-      last_edited_by: 'dashboard',
-      last_sync_tag: syncTag,
-    }, { onConflict: 'tab,sheet_row_id' });
-    if (upsertErr) throw upsertErr;
+    if (existing) {
+      const { error: updErr } = await admin.from('entries')
+        .update({ data: mergedData, updated_at: nowIso, last_edited_by: 'dashboard', last_sync_tag: syncTag })
+        .eq('tab', body.tab)
+        .eq('sheet_row_id', body.sheet_row_id);
+      if (updErr) throw updErr;
+    } else {
+      const { error: insErr } = await admin.from('entries').insert({
+        tab: body.tab,
+        sheet_row_id: body.sheet_row_id,
+        data: mergedData,
+        updated_at: nowIso,
+        last_edited_by: 'dashboard',
+        last_sync_tag: syncTag,
+      });
+      if (insErr) throw insErr;
+    }
 
     const scriptRes = await fetch(APPS_SCRIPT_URL, {
       method: 'POST',

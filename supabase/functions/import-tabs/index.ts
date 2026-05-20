@@ -128,10 +128,32 @@ Deno.serve(async () => {
         }
 
         if (toUpsert.length > 0) {
-          const { error: upErr } = await admin
-            .from('entries')
-            .upsert(toUpsert, { onConflict: 'tab,sheet_row_id' });
-          if (upErr) throw upErr;
+          // Split into UPDATE (existing rows) and INSERT (new rows) to avoid
+          // relying on a unique-constraint-backed upsert. Without the constraint
+          // PostgREST falls back to a plain INSERT, producing duplicate rows.
+          const existingSet = new Set(existingMap.keys());
+          const toUpdate = toUpsert.filter((r) => existingSet.has(r.sheet_row_id as string));
+          const toInsert = toUpsert.filter((r) => !existingSet.has(r.sheet_row_id as string));
+
+          for (const row of toUpdate) {
+            const { error: updErr } = await admin
+              .from('entries')
+              .update({
+                data: row.data,
+                updated_at: new Date().toISOString(),
+                last_edited_by: row.last_edited_by,
+                last_sync_tag: row.last_sync_tag,
+              })
+              .eq('tab', row.tab as string)
+              .eq('sheet_row_id', row.sheet_row_id as string);
+            if (updErr) throw updErr;
+          }
+
+          if (toInsert.length > 0) {
+            const { error: insErr } = await admin.from('entries').insert(toInsert);
+            if (insErr) throw insErr;
+          }
+
           rowsUpserted += toUpsert.length;
         }
       } catch (tabErr) {
