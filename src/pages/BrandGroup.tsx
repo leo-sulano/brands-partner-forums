@@ -264,7 +264,7 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
 ];
 
 const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'Account Name'];
-const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet']);
+const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay']);
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
   value: string; onChange: (v: string) => void; brands: string[]; noun?: string;
