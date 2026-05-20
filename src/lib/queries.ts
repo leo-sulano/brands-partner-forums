@@ -370,6 +370,28 @@ export async function pushEntryToSheet(
   }
 }
 
+export async function insertEntry(
+  tab: string,
+  fields: Record<string, string | null>,
+): Promise<void> {
+  const sheetRowId = `dashboard-${crypto.randomUUID()}`;
+  const syncTag = crypto.randomUUID();
+  const { error } = await supabase
+    .from('entries')
+    .insert({
+      tab,
+      sheet_row_id: sheetRowId,
+      data: fields,
+      last_edited_by: 'dashboard',
+      last_sync_tag: syncTag,
+    });
+  if (error) throw error;
+
+  pushEntryToSheet(tab, sheetRowId, fields).catch(
+    (err) => console.warn('[push-to-sheet] new entry push failed (non-blocking):', err),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Sync trigger
 // ---------------------------------------------------------------------------

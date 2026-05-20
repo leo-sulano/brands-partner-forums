@@ -3,10 +3,11 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays,
+  Search, X, Check, CalendarDays, Plus,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
+import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
@@ -501,6 +502,7 @@ export default function BrandGroup() {
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
+  const [fullHeaders, setFullHeaders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -519,6 +521,7 @@ export default function BrandGroup() {
   const [agentFilter, setAgentFilter] = useState('');
   const [proxyFilter, setProxyFilter] = useState('');
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
@@ -529,6 +532,7 @@ export default function BrandGroup() {
     setLoading(true);
     setEntries([]);
     setHeaders([]);
+    setFullHeaders([]);
     setError(null);
     setSearch('');
     setBrandFilter('');
@@ -579,6 +583,7 @@ export default function BrandGroup() {
             );
         setEntries(rawEntries);
         setHeaders(populated);
+        setFullHeaders(tabHeaders);
         setError(null);
         const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
           populated.some((h) => h.toLowerCase() === col.toLowerCase()),
@@ -829,6 +834,18 @@ export default function BrandGroup() {
 
   return (
     <div className="space-y-6">
+      {/* Page actions */}
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={() => setShowAddModal(true)}
+          className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition-colors"
+        >
+          <Plus className="size-4" />
+          Add Review Account
+        </button>
+      </div>
+
       {activePlatforms.length <= 1 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <KpiCard
@@ -1118,12 +1135,26 @@ export default function BrandGroup() {
       {editEntry && (
         <EditEntryModal
           entry={editEntry}
-          headers={headers}
+          headers={(() => {
+            const base = new Set(fullHeaders);
+            const extras = Object.keys(editEntry.data).filter(
+              (k) => k && k.trim() !== '' && k !== 'id' && k !== 'last_sync_tag' && !base.has(k),
+            );
+            return [...fullHeaders, ...extras];
+          })()}
           onClose={() => setEditEntry(null)}
           onSave={async (fields) => {
             await updateEntryData(editEntry.id, editEntry.tab, editEntry.sheet_row_id, fields);
             reloadRef.current();
           }}
+        />
+      )}
+
+      {showAddModal && (
+        <AddReviewAccountModal
+          currentTab={decodedTab}
+          onClose={() => setShowAddModal(false)}
+          onSaved={() => reloadRef.current()}
         />
       )}
     </div>
