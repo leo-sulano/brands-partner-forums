@@ -818,23 +818,25 @@ export default function BrandGroup() {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard
-          label="Total"
-          value={loading ? '…' : displayTotals.total.toLocaleString()}
-          icon={<Building2 className="size-4" />}
-        />
-        <KpiCard
-          label="Live"
-          value={loading ? '…' : displayTotals.live.toLocaleString()}
-          hint="Reviews currently published"
-        />
-        <KpiCard
-          label="Removed"
-          value={loading ? '…' : displayTotals.removed.toLocaleString()}
-          hint="Reviews taken down"
-        />
-      </div>
+      {activePlatforms.length <= 1 && (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <KpiCard
+            label="Total"
+            value={loading ? '…' : displayTotals.total.toLocaleString()}
+            icon={<Building2 className="size-4" />}
+          />
+          <KpiCard
+            label="Live"
+            value={loading ? '…' : displayTotals.live.toLocaleString()}
+            hint="Reviews currently published"
+          />
+          <KpiCard
+            label="Removed"
+            value={loading ? '…' : displayTotals.removed.toLocaleString()}
+            hint="Reviews taken down"
+          />
+        </div>
+      )}
 
       {activePlatforms.length > 1 && (() => {
         const visibleCards = PLATFORM_CARDS.filter(({ key }) =>
