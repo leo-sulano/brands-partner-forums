@@ -251,13 +251,14 @@ function FilterDropdown<T extends string>({
   );
 }
 
-const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending'>[] = [
+const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>[] = [
   { value: 'all',      label: 'All statuses', dot: 'bg-slate-400' },
   { value: 'live',     label: 'Live',         dot: 'bg-emerald-500' },
   { value: 'done',     label: 'Done',         dot: 'bg-green-500' },
   { value: 'removed',  label: 'Removed',      dot: 'bg-rose-500' },
   { value: 'on-pause', label: 'On Pause',     dot: 'bg-slate-500' },
   { value: 'pending',  label: 'Pending',      dot: 'bg-amber-400' },
+  { value: 'not-done', label: 'Not Done',     dot: 'bg-orange-500' },
 ];
 
 const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
@@ -511,7 +512,7 @@ export default function BrandGroup() {
 
   const [search, setSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>('all');
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -704,6 +705,7 @@ export default function BrandGroup() {
           if (statusFilter === 'done') return isDone(v);
           if (statusFilter === 'on-pause') return isOnPause(v);
           if (statusFilter === 'pending') return isPending(v);
+          if (statusFilter === 'not-done') return isNotDone(v);
           return false;
         }),
       );
@@ -759,6 +761,9 @@ export default function BrandGroup() {
   }
   function isDone(v: string) {
     return v === 'done';
+  }
+  function isNotDone(v: string) {
+    return v === 'not done' || v.includes('not done');
   }
   function isOnPause(v: string) {
     return v.includes('pause');
