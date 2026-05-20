@@ -72,9 +72,10 @@ Deno.serve(async () => {
           { onConflict: 'tab' },
         );
 
-        const idColIndex = headers.indexOf('id');
+        // Case-insensitive lookup so 'ID', 'Id', 'id' all work.
+        const idColIndex = headers.findIndex((h) => h.toLowerCase() === 'id');
         if (idColIndex === -1) { tabsFailed.push(`${tabName}: no 'id' column`); continue; }
-        const syncTagColIndex = headers.indexOf('last_sync_tag');
+        const syncTagColIndex = headers.findIndex((h) => h === 'last_sync_tag');
 
         const candidates: Candidate[] = [];
         for (const row of dataRows) {
@@ -86,7 +87,7 @@ Deno.serve(async () => {
           const data: Record<string, string | null> = {};
           for (let i = 0; i < headers.length; i++) {
             const h = headers[i];
-            if (h === 'id' || h === 'last_sync_tag' || h === '') continue;
+            if (h.toLowerCase() === 'id' || h === 'last_sync_tag' || h === '') continue;
             const val = row[i];
             data[h] = val == null || val === '' ? null : String(val);
           }
@@ -95,23 +96,54 @@ Deno.serve(async () => {
 
         if (candidates.length === 0) continue;
 
-        const { data: existingRows } = await admin
+        // Fetch ALL current DB rows for this tab (not just candidates) so we can
+        // deduplicate and delete orphans in one pass.
+        const { data: allDbRows } = await admin
           .from('entries')
-          .select('sheet_row_id, last_edited_by, last_sync_tag')
+          .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at')
           .eq('tab', tabName)
-          .in('sheet_row_id', candidates.map((c) => c.sheet_row_id));
+          .order('updated_at', { ascending: false });
 
-        const existingMap = new Map<string, { last_edited_by: string; last_sync_tag: string | null }>();
-        for (const row of existingRows ?? []) {
-          existingMap.set(row.sheet_row_id as string, {
-            last_edited_by: row.last_edited_by as string,
-            last_sync_tag: row.last_sync_tag as string | null,
-          });
+        // --- Step 1: remove duplicate rows (keep the most-recent per sheet_row_id) ---
+        const seenSheetIds = new Set<string>();
+        const duplicateDbIds: string[] = [];
+        const dedupedMap = new Map<string, { last_edited_by: string; last_sync_tag: string | null }>();
+        for (const row of allDbRows ?? []) {
+          const srid = row.sheet_row_id as string;
+          if (seenSheetIds.has(srid)) {
+            duplicateDbIds.push(row.id as string);
+          } else {
+            seenSheetIds.add(srid);
+            dedupedMap.set(srid, {
+              last_edited_by: row.last_edited_by as string,
+              last_sync_tag: row.last_sync_tag as string | null,
+            });
+          }
+        }
+        if (duplicateDbIds.length > 0) {
+          await admin.from('entries').delete().in('id', duplicateDbIds);
         }
 
+        // --- Step 2: delete orphaned sheet-sourced rows (in DB but absent from sheet) ---
+        // Dashboard-created rows (sheet_row_id starts with 'dashboard-') are kept.
+        const candidateIdSet = new Set(candidates.map((c) => c.sheet_row_id));
+        const orphanSheetRowIds: string[] = [];
+        for (const srid of seenSheetIds) {
+          if (!srid.startsWith('dashboard-') && !candidateIdSet.has(srid)) {
+            orphanSheetRowIds.push(srid);
+            dedupedMap.delete(srid);
+          }
+        }
+        if (orphanSheetRowIds.length > 0) {
+          await admin.from('entries').delete()
+            .eq('tab', tabName)
+            .in('sheet_row_id', orphanSheetRowIds);
+        }
+
+        // --- Step 3: update existing rows / insert genuinely new rows ---
         const toUpsert: Array<Record<string, unknown>> = [];
         for (const c of candidates) {
-          const existing = existingMap.get(c.sheet_row_id);
+          const existing = dedupedMap.get(c.sheet_row_id);
           if (
             existing?.last_edited_by === 'dashboard' &&
             existing.last_sync_tag !== null &&
@@ -128,10 +160,7 @@ Deno.serve(async () => {
         }
 
         if (toUpsert.length > 0) {
-          // Split into UPDATE (existing rows) and INSERT (new rows) to avoid
-          // relying on a unique-constraint-backed upsert. Without the constraint
-          // PostgREST falls back to a plain INSERT, producing duplicate rows.
-          const existingSet = new Set(existingMap.keys());
+          const existingSet = new Set(dedupedMap.keys());
           const toUpdate = toUpsert.filter((r) => existingSet.has(r.sheet_row_id as string));
           const toInsert = toUpsert.filter((r) => !existingSet.has(r.sheet_row_id as string));
 
