@@ -121,7 +121,12 @@ Deno.serve(async () => {
           }
         }
         if (duplicateDbIds.length > 0) {
-          await admin.from('entries').delete().in('id', duplicateDbIds);
+          const CHUNK = 100;
+          for (let i = 0; i < duplicateDbIds.length; i += CHUNK) {
+            const chunk = duplicateDbIds.slice(i, i + CHUNK);
+            const { error: delErr } = await admin.from('entries').delete().in('id', chunk);
+            if (delErr) throw delErr;
+          }
         }
 
         // --- Step 2: delete orphaned sheet-sourced rows (in DB but absent from sheet) ---
@@ -135,9 +140,14 @@ Deno.serve(async () => {
           }
         }
         if (orphanSheetRowIds.length > 0) {
-          await admin.from('entries').delete()
-            .eq('tab', tabName)
-            .in('sheet_row_id', orphanSheetRowIds);
+          const CHUNK = 100;
+          for (let i = 0; i < orphanSheetRowIds.length; i += CHUNK) {
+            const chunk = orphanSheetRowIds.slice(i, i + CHUNK);
+            const { error: delErr } = await admin.from('entries').delete()
+              .eq('tab', tabName)
+              .in('sheet_row_id', chunk);
+            if (delErr) throw delErr;
+          }
         }
 
         // --- Step 3: update existing rows / insert genuinely new rows ---
