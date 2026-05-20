@@ -99,7 +99,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
 // Applied globally across all tabs.
 export const COLUMN_LABELS: Record<string, string> = {
   'Account Name':                                     'Acc. Name',
-  'Link to the profile':                              'Profile Link',
+  'Link to the profile':                              'TP Profile Links',
   'Trust Pilot':                                      'TP Added',
   'TP Review Status':                                 'TP Status',
   'Trust Pilot Review Status':                        'TP Status',
