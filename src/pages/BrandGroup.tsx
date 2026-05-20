@@ -253,8 +253,8 @@ function FilterDropdown<T extends string>({
 
 const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>[] = [
   { value: 'all',      label: 'All statuses', dot: 'bg-slate-400' },
-  { value: 'live',     label: 'Live',         dot: 'bg-emerald-500' },
-  { value: 'done',     label: 'Done',         dot: 'bg-green-500' },
+  { value: 'live',     label: 'Live',         dot: 'bg-green-500' },
+  { value: 'done',     label: 'Done',         dot: 'bg-teal-500' },
   { value: 'removed',  label: 'Removed',      dot: 'bg-rose-500' },
   { value: 'on-pause', label: 'On Pause',     dot: 'bg-slate-500' },
   { value: 'pending',  label: 'Pending',      dot: 'bg-amber-400' },

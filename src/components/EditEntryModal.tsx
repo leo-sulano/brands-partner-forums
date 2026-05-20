@@ -4,7 +4,7 @@ import { getColLabel } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 
-const STATUS_SUGGESTIONS = ['Not done', 'Done', 'Published', 'Refused', 'Removed', 'Pending', 'On Pause'];
+const STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
 function isStatusCol(h: string) { return h.toLowerCase().includes('status'); }
 function isLinkCol(h: string) {
@@ -80,18 +80,14 @@ export default function EditEntryModal({ entry, headers, onClose, onSave }: Prop
                   {getColLabel(h)}
                 </label>
                 {isStatusCol(h) ? (
-                  <>
-                    <input
-                      list={`datalist-${h}`}
-                      value={fields[h]}
-                      onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
-                      placeholder="e.g. Live, Removed…"
-                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
-                    />
-                    <datalist id={`datalist-${h}`}>
-                      {STATUS_SUGGESTIONS.map((o) => <option key={o} value={o} />)}
-                    </datalist>
-                  </>
+                  <select
+                    value={fields[h]}
+                    onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white"
+                  >
+                    <option value="">— select status —</option>
+                    {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
                 ) : (
                   <input
                     type="text"
