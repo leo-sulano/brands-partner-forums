@@ -22,7 +22,7 @@ Four `KpiCard` components across the top of the page.
 | Total Accounts | Sum of `total` across all 8 tabs | "across all brand tabs" |
 | Live Reviews | Sum of `live` across all tabs | "active across TP / AG / CG" |
 | Removed | Sum of `removed` across all tabs | "across all tabs" |
-| Last Sync | Most recent `sync_runs.started_at`, formatted as relative time | status badge (success / error / running) |
+| Last Sync | Most recent `sync_runs.started_at`, formatted as relative time | `"last run: success"` / `"last run: error"` as plain hint string |
 
 ### Section 2 — Tab Summary Grid
 
@@ -40,7 +40,9 @@ The bar uses simple inline `style={{ width: '${pct}%' }}` spans inside a relativ
 
 Compact table at the bottom showing the last 5 `sync_runs` rows.
 
-Columns: **Tab** · **Direction** · **Status** (reuse `StatusBadge`) · **Rows Upserted** · **Started At**
+Columns: **Tab** · **Direction** · **Status** · **Rows Upserted** · **Started At**
+
+Status is rendered as an inline pill with Tailwind classes (not `StatusBadge`, which only handles mention statuses). Mapping: `success` → green, `error` → red, `running` → amber, `skipped` → grey.
 
 Direction values mapped to readable labels: `sheet_to_db` → "Sheet → DB", `db_to_sheet` → "DB → Sheet", `initial_import` → "Initial Import".
 
