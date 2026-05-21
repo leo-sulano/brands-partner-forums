@@ -79,7 +79,12 @@
       "Skill(gitnexus-exploring)",
       "Skill(gitnexus-exploring:*)",
       "Skill(superpowers:systematic-debugging)",
-      "Skill(superpowers:systematic-debugging:*)"
+      "Skill(superpowers:systematic-debugging:*)",
+      "Bash(deno test *)",
+      "PowerShell(deno --version)",
+      "Bash(supabase functions *)",
+      "PowerShell(npm list -g deno 2>&1)",
+      "PowerShell(npm install -g deno)"
     ]
   }
 }
