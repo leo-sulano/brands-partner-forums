@@ -21,7 +21,7 @@ interface State {
 }
 
 const EMPTY_KPIS: TabKpis = {
-  total: 0, live: 0, removed: 0,
+  total: 0, live: 0, removed: 0, done: 0, pending: 0, onPause: 0, notDone: 0,
   tp: { live: 0, removed: 0 },
   ag: { live: 0, removed: 0 },
   cg: { live: 0, removed: 0 },
@@ -134,29 +134,36 @@ export default function Overview() {
                 <div key={i} className="h-28 animate-pulse rounded-lg bg-slate-100" />
               ))
             : state.tabs.map(({ tab, kpis }) => {
-                const livePct    = kpis.total > 0 ? (kpis.live    / kpis.total) * 100 : 0;
-                const removedPct = kpis.total > 0 ? (kpis.removed / kpis.total) * 100 : 0;
+                const pct = (n: number) => kpis.total > 0 ? (n / kpis.total) * 100 : 0;
+                const statusItems = [
+                  { count: kpis.done,    label: 'done',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: kpis.pending, label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
+                  { count: kpis.onPause, label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
+                  { count: kpis.notDone, label: 'not done', bar: 'bg-orange-400',  text: 'text-orange-500'  },
+                ].filter((s) => s.count >= 1);
                 return (
                   <Link
                     key={tab}
                     to={`/brands/${tabToSlug(tab)}`}
                     className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
-                    <div className="mt-3 flex gap-4 text-xs text-slate-600">
-                      <span>
+                    <div className="flex items-baseline justify-between gap-2">
+                      <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
+                      <span className="shrink-0 text-xs text-slate-500">
                         <span className="font-medium text-slate-900">{kpis.total}</span> total
                       </span>
-                      <span>
-                        <span className="font-medium text-emerald-600">{kpis.live}</span> live
-                      </span>
-                      <span>
-                        <span className="font-medium text-rose-500">{kpis.removed}</span> removed
-                      </span>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                      {statusItems.map((s) => (
+                        <span key={s.label}>
+                          <span className={`font-medium ${s.text}`}>{s.count}</span> {s.label}
+                        </span>
+                      ))}
                     </div>
                     <div className="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div className="bg-emerald-500 transition-all" style={{ width: `${livePct}%` }} />
-                      <div className="bg-rose-400 transition-all"    style={{ width: `${removedPct}%` }} />
+                      {statusItems.map((s) => (
+                        <div key={s.label} className={`${s.bar} transition-all`} style={{ width: `${pct(s.count)}%` }} />
+                      ))}
                     </div>
                   </Link>
                 );

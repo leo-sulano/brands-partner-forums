@@ -18,6 +18,10 @@ export interface TabKpis {
   total: number;
   live: number;
   removed: number;
+  done: number;
+  pending: number;
+  onPause: number;
+  notDone: number;
   tp: PlatformKpis;
   ag: PlatformKpis;
   cg: PlatformKpis;

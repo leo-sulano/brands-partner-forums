@@ -234,6 +234,10 @@ function isLiveStatus(s: string) {
 function isRemovedStatus(s: string) {
   return s.includes('remove') || s.includes('not pub') || s.includes('refused');
 }
+function isDoneStatus(s: string) { return s === 'done'; }
+function isPendingStatus(s: string) { return s.includes('pending'); }
+function isOnPauseStatus(s: string) { return s.includes('pause'); }
+function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
 export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   const [entries, rawHeaders] = await Promise.all([
@@ -256,7 +260,7 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
   const cgCol = resolveHeader('CG Review Status');
   const genericCol = resolveHeader('Review Status', 'status', 'Status');
 
-  let live = 0, removed = 0;
+  let live = 0, removed = 0, done = 0, pending = 0, onPause = 0, notDone = 0;
   let tpLive = 0, tpRemoved = 0;
   let agLive = 0, agRemoved = 0;
   let cgLive = 0, cgRemoved = 0;
@@ -277,6 +281,10 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
       const statuses = [tp, ag, cg, generic].filter(Boolean);
       if (statuses.some(isLiveStatus)) live++;
       else if (statuses.some(isRemovedStatus)) removed++;
+      else if (statuses.some(isDoneStatus)) done++;
+      else if (statuses.some(isPendingStatus)) pending++;
+      else if (statuses.some(isOnPauseStatus)) onPause++;
+      else if (statuses.some(isNotDoneStatus)) notDone++;
     }
   }
 
@@ -284,6 +292,10 @@ export async function fetchTabKpis(tab: string): Promise<TabKpis> {
     total: entries.length,
     live,
     removed,
+    done,
+    pending,
+    onPause,
+    notDone,
     tp: { live: tpLive, removed: tpRemoved },
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
