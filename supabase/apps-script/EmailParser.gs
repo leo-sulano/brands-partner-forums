@@ -1,3 +1,5 @@
+// Requires SPREADSHEET_ID to be declared in Code.gs within the same GAS project.
+// All .gs files in a GAS project share one global scope at runtime.
 // ─── Configuration ───────────────────────────────────────────────────────────
 var PROCESSED_LABEL = 'ag-cg-processed';
 var BRAND_COL       = 'Brands';
