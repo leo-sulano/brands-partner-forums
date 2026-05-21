@@ -266,3 +266,12 @@ function testFindSheetRow() {
 
   Logger.log('testFindSheetRow: all passed');
 }
+
+function logError_(ss, platform, subject, bodySnippet, reason) {
+  var sheet = ss.getSheetByName(ERROR_TAB_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(ERROR_TAB_NAME);
+    sheet.appendRow(['Timestamp', 'Platform', 'Subject', 'Body Snippet', 'Failure Reason']);
+  }
+  sheet.appendRow([new Date().toISOString(), platform, subject, bodySnippet, reason]);
+}
