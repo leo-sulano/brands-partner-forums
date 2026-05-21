@@ -58,8 +58,8 @@ Deno.test('correlatedReview path → Removed', () => {
 Deno.test('text signal "review removed" → Removed', () =>
   assertEquals(parseReviewStatus('<html><body>Review removed</body></html>'), 'Removed'));
 
-Deno.test('text signal "review pending" → Pending', () =>
-  assertEquals(parseReviewStatus('<html><body>Review pending</body></html>'), 'Pending'));
+Deno.test('text signal "your review is pending" → Pending', () =>
+  assertEquals(parseReviewStatus('<html><body>Your review is pending. Read more</body></html>'), 'Pending'));
 
 Deno.test('text signal "thanks for your review" → Published', () =>
   assertEquals(parseReviewStatus('<html><body>Thanks for your review!</body></html>'), 'Published'));

@@ -9,15 +9,14 @@ const STATE_MAP: Record<string, TpStatus> = {
   removed: 'Removed',
 };
 
-// Text badges visible on the submitted/review?correlationid=... confirmation page.
-// Checked case-insensitively against the full HTML as a fallback when __NEXT_DATA__
-// doesn't contain a recognisable state (e.g. different page structure).
+// Text signals visible on the submitted/review?correlationid=... confirmation page.
+// Checked in order — first match wins. More specific signals come before generic ones.
+// "thanks for your review" appears on ALL TP pages so it is last (Published fallback).
 const TEXT_SIGNALS: Array<[string, TpStatus]> = [
-  ['review removed', 'Removed'],
-  ['review not published', 'Refused'],
-  ['review pending', 'Pending'],
-  ['review published', 'Published'],
-  ['thanks for your review', 'Published'],
+  ['review removed', 'Removed'],            // badge: "Review removed"
+  ['review not published', 'Refused'],       // badge: "Review not published"
+  ['review is pending', 'Pending'],          // banner: "Your review is pending."
+  ['thanks for your review', 'Published'],   // fallback: shown on all TP pages; only reached when none of the above matched
 ];
 
 function fromNextData(html: string): TpStatus | null {
