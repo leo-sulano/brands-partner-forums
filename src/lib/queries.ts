@@ -1,4 +1,4 @@
-import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY } from './supabase';
+import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL } from './supabase';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
@@ -409,4 +409,31 @@ export async function triggerSync(): Promise<void> {
     const body = await res.text();
     throw new Error(`Sync failed: ${res.status} ${body}`);
   }
+}
+
+// ---------------------------------------------------------------------------
+// TP review status check trigger
+// ---------------------------------------------------------------------------
+
+export async function triggerStatusCheck(
+  tab: string,
+): Promise<{ checked: number; updated: number; errors: number }> {
+  if (!CHECK_STATUS_URL) {
+    throw new Error(
+      'VITE_CHECK_STATUS_URL is not configured — check .env',
+    );
+  }
+  const res = await fetch(CHECK_STATUS_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ tab }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Status check failed: ${res.status} ${body}`);
+  }
+  return res.json();
 }
