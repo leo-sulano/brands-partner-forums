@@ -47,3 +47,20 @@ create table public.sync_runs (
 
 create index sync_runs_started_at_idx on public.sync_runs (started_at desc);
 create index sync_runs_direction_idx  on public.sync_runs (direction);
+
+-- ---------------------------------------------------------------------------
+-- Daily Trustpilot review status check — runs at 08:00 UTC
+-- Requires pg_cron and pg_net extensions to be enabled.
+-- Replace the URL with your actual deployed function URL.
+-- ---------------------------------------------------------------------------
+SELECT cron.schedule(
+  'check-tp-review-status-daily',
+  '0 8 * * *',
+  $$
+    SELECT net.http_post(
+      'https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/check-review-status',
+      '{}',
+      'application/json'
+    )
+  $$
+);
