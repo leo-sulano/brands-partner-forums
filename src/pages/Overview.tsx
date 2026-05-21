@@ -38,18 +38,6 @@ function timeAgo(iso: string): string {
   return `${Math.floor(hrs / 24)}d ago`;
 }
 
-const DIRECTION_LABELS: Record<string, string> = {
-  sheet_to_db: 'Sheet → DB',
-  db_to_sheet: 'DB → Sheet',
-  initial_import: 'Initial Import',
-};
-
-const STATUS_CLASSES: Record<string, string> = {
-  success: 'bg-emerald-100 text-emerald-700',
-  error:   'bg-rose-100 text-rose-700',
-  running: 'bg-amber-100 text-amber-700',
-  skipped: 'bg-slate-100 text-slate-600',
-};
 
 export default function Overview() {
   const [state, setState] = useState<State>(initial);
@@ -64,7 +52,7 @@ export default function Overview() {
               .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
           )
         ),
-        fetchSyncRuns(5),
+        fetchSyncRuns(1),
       ]);
       setState({ loading: false, error: null, tabs: tabResults, recentSyncs });
     } catch (err) {
@@ -155,49 +143,6 @@ export default function Overview() {
                 );
               })}
         </div>
-      </section>
-
-      {/* Recent sync runs */}
-      <section>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Recent Syncs</h2>
-        {!state.loading && state.recentSyncs.length === 0 ? (
-          <p className="text-sm text-slate-500">No syncs recorded yet.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="px-4 py-2 text-left">Tab</th>
-                  <th className="px-4 py-2 text-left">Direction</th>
-                  <th className="px-4 py-2 text-left">Status</th>
-                  <th className="px-4 py-2 text-right">Rows Upserted</th>
-                  <th className="px-4 py-2 text-left">Started</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {state.recentSyncs.map((run) => (
-                  <tr key={run.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-2 text-slate-700">{run.tab ?? '—'}</td>
-                    <td className="px-4 py-2 text-slate-600">
-                      {DIRECTION_LABELS[run.direction] ?? run.direction}
-                    </td>
-                    <td className="px-4 py-2">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_CLASSES[run.status] ?? 'bg-slate-100 text-slate-600'}`}
-                      >
-                        {run.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2 text-right tabular-nums text-slate-700">
-                      {run.rows_upserted ?? '—'}
-                    </td>
-                    <td className="px-4 py-2 text-slate-500">{timeAgo(run.started_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </section>
 
     </div>
