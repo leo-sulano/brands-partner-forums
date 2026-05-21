@@ -213,7 +213,7 @@ function findSheetRow_(ss, parsed) {
   var userIdx      = lowerHeaders.indexOf(USERNAME_COL.toLowerCase());
   if (brandIdx === -1 || userIdx === -1) return { error: 'no_matching_row' };
 
-  var normalizedCasino = normalizeCasinoName_(parsed.casinoName);
+  var normalizedCasino = key;
   var normalizedUser   = (parsed.username || '').toLowerCase().trim();
 
   for (var r = 1; r < data.length; r++) {
