@@ -106,3 +106,38 @@ function json(obj) {
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// ---------------------------------------------------------------------------
+// Auto-sync: Sheet → Supabase
+// Run createSyncTrigger() once from the Apps Script editor to install the
+// onChange trigger. After that, any edit to the Sheet triggers a full sync.
+// ---------------------------------------------------------------------------
+
+var IMPORT_TABS_URL = 'https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/import-tabs';
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU';
+
+function onSheetChange(e) {
+  syncToSupabase();
+}
+
+function syncToSupabase() {
+  UrlFetchApp.fetch(IMPORT_TABS_URL, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { 'Authorization': 'Bearer ' + SUPABASE_ANON_KEY },
+    payload: '{}',
+    muteHttpExceptions: true,
+  });
+}
+
+// Run this once from the editor (Run → createSyncTrigger) to install the trigger.
+// Re-running it is safe — it removes any existing onSheetChange triggers first.
+function createSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'onSheetChange') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('onSheetChange')
+    .forSpreadsheet(SpreadsheetApp.openById(SPREADSHEET_ID))
+    .onChange()
+    .create();
+}
