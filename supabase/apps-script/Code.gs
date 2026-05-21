@@ -29,6 +29,9 @@ function doPost(e) {
     if (payload.secret !== SHARED_SECRET) {
       return json({ ok: false, error: 'Unauthorized' });
     }
+    if (payload.op === 'dump') {
+      return dumpAllTabs();
+    }
     if (payload.op === 'upsert_row') {
       return upsertRow(payload.tab, payload.sheet_row_id, payload.fields);
     }
