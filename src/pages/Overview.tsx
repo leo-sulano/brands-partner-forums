@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchSyncRuns } from '../lib/queries';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -75,6 +76,24 @@ export default function Overview() {
   const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
   const lastSync      = state.recentSyncs[0] ?? null;
 
+  const platformData = [
+    {
+      name: 'Trustpilot',
+      Live:    state.tabs.reduce((s, t) => s + t.kpis.tp.live,    0),
+      Removed: state.tabs.reduce((s, t) => s + t.kpis.tp.removed, 0),
+    },
+    {
+      name: 'AskGamblers',
+      Live:    state.tabs.reduce((s, t) => s + t.kpis.ag.live,    0),
+      Removed: state.tabs.reduce((s, t) => s + t.kpis.ag.removed, 0),
+    },
+    {
+      name: 'CasinoGuru',
+      Live:    state.tabs.reduce((s, t) => s + t.kpis.cg.live,    0),
+      Removed: state.tabs.reduce((s, t) => s + t.kpis.cg.removed, 0),
+    },
+  ];
+
   return (
     <div className="space-y-8">
 
@@ -142,6 +161,31 @@ export default function Overview() {
                   </Link>
                 );
               })}
+        </div>
+      </section>
+
+      {/* Platform breakdown chart */}
+      <section>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Platform Breakdown</h2>
+        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+          {state.loading ? (
+            <div className="h-64 animate-pulse rounded bg-slate-100" />
+          ) : (
+            <ResponsiveContainer width="100%" height={260}>
+              <BarChart data={platformData} barCategoryGap="35%" barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                <XAxis dataKey="name" tick={{ fontSize: 13, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}
+                  cursor={{ fill: '#f8fafc' }}
+                />
+                <Legend wrapperStyle={{ fontSize: '13px', paddingTop: '16px' }} />
+                <Bar dataKey="Live"    fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Removed" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
         </div>
       </section>
 
