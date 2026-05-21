@@ -23,6 +23,12 @@ const APPS_SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SECRET')!;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 interface SheetTab {
   name: string;
   headers: string[];
@@ -42,7 +48,9 @@ interface Candidate {
   sheetSyncTag: string | null;
 }
 
-Deno.serve(async () => {
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
+
   const { data: runRow, error: startErr } = await admin
     .from('sync_runs')
     .insert({ direction: 'sheet_to_db', status: 'running' })
@@ -207,5 +215,8 @@ Deno.serve(async () => {
 });
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
+  });
 }
