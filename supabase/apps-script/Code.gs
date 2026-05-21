@@ -141,3 +141,19 @@ function createSyncTrigger() {
     .onChange()
     .create();
 }
+
+// ---------------------------------------------------------------------------
+// Email sync trigger: runs parseAgCgEmails() every hour.
+// Run createEmailSyncTrigger() once from the Apps Script editor to install.
+// Re-running is safe — it removes the old trigger first.
+// ---------------------------------------------------------------------------
+function createEmailSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'parseAgCgEmails') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('parseAgCgEmails')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('Email sync trigger created: parseAgCgEmails runs every 1 hour.');
+}
