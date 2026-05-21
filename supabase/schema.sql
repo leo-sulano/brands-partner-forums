@@ -49,12 +49,12 @@ create index sync_runs_started_at_idx on public.sync_runs (started_at desc);
 create index sync_runs_direction_idx  on public.sync_runs (direction);
 
 -- ---------------------------------------------------------------------------
--- Trustpilot review status check — runs every 3 days at 08:00 UTC (days 1, 4, 7, ...)
+-- Trustpilot review status check — runs every 3 days at 23:50 UTC
 -- Requires pg_cron and pg_net extensions to be enabled in the Supabase dashboard.
 -- ---------------------------------------------------------------------------
 SELECT cron.schedule(
   'check-tp-review-status-daily',
-  '0 8 */3 * *',
+  '50 23 */3 * *',
   $$
     SELECT net.http_post(
       url     := 'https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/check-review-status',
