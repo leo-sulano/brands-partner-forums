@@ -114,3 +114,84 @@ function testParseAgEmail() {
 
   Logger.log('testParseAgEmail: all passed');
 }
+
+function parseCgEmail_(subject, htmlBody) {
+  var isApproved = /approved/i.test(subject);
+  var isRejected = /rejected/i.test(subject);
+  if (!isApproved && !isRejected) return null;
+
+  var status    = isApproved ? 'Published' : 'Refused';
+  var userMatch = htmlBody.match(/Hello\s+([\w.\-]+)\s*[,\.]/i);
+  var username  = userMatch ? userMatch[1] : null;
+  var casinoName = null;
+
+  if (isRejected) {
+    // Body contains "(EmirBet Casino)"
+    var nameMatch = htmlBody.match(/casino review \((.+?)\)/i);
+    if (nameMatch) casinoName = nameMatch[1].trim();
+  } else {
+    // Approved: extract casino slug from the "Show review" link href
+    var hrefMatch = htmlBody.match(/href=["']([^"']*casino\.guru[^"']+)["']/i);
+    if (hrefMatch) {
+      var url   = hrefMatch[1].replace(/[?#].*$/, '');
+      var parts = url.split('/').filter(Boolean);
+      // Walk path segments right-to-left; pick first non-reserved segment
+      for (var i = parts.length - 1; i >= 0; i--) {
+        var seg = parts[i];
+        if (/^[a-z]/i.test(seg) && seg !== 'casino' && seg !== 'guru'
+            && seg !== 'reviews' && seg.length > 2) {
+          casinoName = slugToTitle_(seg);
+          break;
+        }
+      }
+    }
+  }
+
+  if (!casinoName) return null;
+  return { platform: 'CG', casinoName: casinoName, status: status, username: username };
+}
+
+function parseEmail_(subject, body, htmlBody, from) {
+  if (/noreply@askgamblers\.com/i.test(from)) return parseAgEmail_(subject, body);
+  if (/no-reply@casino\.guru/i.test(from))    return parseCgEmail_(subject, htmlBody);
+  return null;
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+function testParseCgEmail() {
+  function assert_(cond, msg) {
+    if (!cond) throw new Error('FAIL: ' + msg);
+    Logger.log('PASS: ' + msg);
+  }
+
+  // Approved — casino name extracted from "Show review" href slug
+  var approvedHtml = 'Hello Peytonn0. We have checked and approved your review. '
+    + '<a href="https://casino.guru/casino/emirbet-casino/reviews/123">Show review</a>';
+  var r1 = parseCgEmail_('Your review has been approved', approvedHtml);
+  assert_(r1 !== null,               'cg approved: not null');
+  assert_(r1.platform === 'CG',      'cg approved: platform');
+  assert_(r1.status === 'Published', 'cg approved: status');
+  assert_(r1.username === 'Peytonn0','cg approved: username');
+  assert_(r1.casinoName === 'Emirbet','cg approved: casino name from slug');
+
+  // Rejected — casino name extracted from body text "(EmirBet Casino)"
+  var rejectedHtml = 'Hello Munuuu. We have checked your casino review (EmirBet Casino) '
+    + 'and it has been rejected for now. REASON: OTHER REASON';
+  var r2 = parseCgEmail_('Your review has been rejected', rejectedHtml);
+  assert_(r2 !== null,                        'cg rejected: not null');
+  assert_(r2.platform === 'CG',               'cg rejected: platform');
+  assert_(r2.status === 'Refused',            'cg rejected: status');
+  assert_(r2.casinoName === 'EmirBet Casino', 'cg rejected: casino name from body');
+  assert_(r2.username === 'Munuuu',           'cg rejected: username');
+
+  // Approved but no casino.guru link → returns null
+  var noUrlHtml = 'Hello Peytonn0. We have checked and approved your review.';
+  var r3 = parseCgEmail_('Your review has been approved', noUrlHtml);
+  assert_(r3 === null, 'cg approved no url: returns null');
+
+  // Unrelated CG email
+  var r4 = parseCgEmail_('New comment reply...', 'Hello User, someone replied.');
+  assert_(r4 === null, 'unrelated cg email: returns null');
+
+  Logger.log('testParseCgEmail: all passed');
+}
