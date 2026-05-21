@@ -533,9 +533,14 @@ export default function BrandGroup() {
 
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+  const closeToast = () => setToast(null);
   const [lastChecked, setLastChecked] = useState<string | null>(
     () => localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null,
   );
+
+  useEffect(() => {
+    setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
+  }, [decodedTab]);
 
   useEffect(() => {
     if (!decodedTab) return;
@@ -851,14 +856,6 @@ export default function BrandGroup() {
     setJumpInput('');
   }
 
-  if (error) {
-    return (
-      <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-        Failed to load: {error}
-      </div>
-    );
-  }
-
   async function handleCheckStatus() {
     setCheckingStatus(true);
     try {
@@ -877,6 +874,14 @@ export default function BrandGroup() {
     } finally {
       setCheckingStatus(false);
     }
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
+        Failed to load: {error}
+      </div>
+    );
   }
 
   return (
@@ -1225,7 +1230,7 @@ export default function BrandGroup() {
         <Toast
           message={toast.message}
           kind={toast.kind}
-          onClose={() => setToast(null)}
+          onClose={closeToast}
         />
       )}
     </div>
