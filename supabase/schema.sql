@@ -50,17 +50,16 @@ create index sync_runs_direction_idx  on public.sync_runs (direction);
 
 -- ---------------------------------------------------------------------------
 -- Daily Trustpilot review status check — runs at 08:00 UTC
--- Requires pg_cron and pg_net extensions to be enabled.
--- Replace the URL with your actual deployed function URL.
+-- Requires pg_cron and pg_net extensions to be enabled in the Supabase dashboard.
 -- ---------------------------------------------------------------------------
 SELECT cron.schedule(
   'check-tp-review-status-daily',
   '0 8 * * *',
   $$
     SELECT net.http_post(
-      'https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/check-review-status',
-      '{}',
-      'application/json'
+      url     := 'https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/check-review-status',
+      body    := '{}'::jsonb,
+      headers := '{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU"}'::jsonb
     )
   $$
 );

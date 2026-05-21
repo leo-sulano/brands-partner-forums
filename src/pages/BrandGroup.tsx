@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
@@ -533,7 +533,7 @@ export default function BrandGroup() {
 
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
-  const closeToast = () => setToast(null);
+  const closeToast = useCallback(() => setToast(null), []);
   const [lastChecked, setLastChecked] = useState<string | null>(
     () => localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null,
   );
