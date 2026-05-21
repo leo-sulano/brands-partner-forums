@@ -195,3 +195,74 @@ function testParseCgEmail() {
 
   Logger.log('testParseCgEmail: all passed');
 }
+
+function findSheetRow_(ss, parsed) {
+  var key = normalizeCasinoName_(parsed.casinoName);
+  var tab = CASINO_TAB_MAP[key];
+  if (!tab) return { error: 'unknown_tab' };
+
+  var sheet = ss.getSheetByName(tab);
+  if (!sheet) return { error: 'unknown_tab' };
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length < 2) return { error: 'no_matching_row' };
+
+  var headers      = data[0].map(function(h) { return String(h).trim(); });
+  var lowerHeaders = headers.map(function(h) { return h.toLowerCase(); });
+  var brandIdx     = lowerHeaders.indexOf(BRAND_COL.toLowerCase());
+  var userIdx      = lowerHeaders.indexOf(USERNAME_COL.toLowerCase());
+  if (brandIdx === -1 || userIdx === -1) return { error: 'no_matching_row' };
+
+  var normalizedCasino = normalizeCasinoName_(parsed.casinoName);
+  var normalizedUser   = (parsed.username || '').toLowerCase().trim();
+
+  for (var r = 1; r < data.length; r++) {
+    var rowCasino = normalizeCasinoName_(String(data[r][brandIdx] || ''));
+    var rowUser   = String(data[r][userIdx] || '').toLowerCase().trim();
+    if (rowCasino === normalizedCasino && rowUser === normalizedUser) {
+      return { sheet: sheet, rowIdx: r + 1, headers: headers };
+    }
+  }
+  return { error: 'no_matching_row' };
+}
+
+function writeStatusToRow_(sheet, rowIdx, headers, platform, status) {
+  var colName      = platform === 'AG' ? AG_STATUS_COL : CG_STATUS_COL;
+  var lowerHeaders = headers.map(function(h) { return h.toLowerCase(); });
+  var colIdx       = lowerHeaders.indexOf(colName.toLowerCase());
+  if (colIdx === -1) return false;
+  sheet.getRange(rowIdx, colIdx + 1).setValue(status);
+  return true;
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+function testFindSheetRow() {
+  function assert_(cond, msg) {
+    if (!cond) throw new Error('FAIL: ' + msg);
+    Logger.log('PASS: ' + msg);
+  }
+
+  var ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+
+  // ── known-good row ──────────────────────────────────────────────────────────
+  // Before running: ensure the Rooster Partners tab has at least one row where
+  //   Brands = "Spinjo" and Account Name = <some username you know>.
+  // Replace 'TestAgent1' with the actual username from your sheet.
+  var knownUsername = 'TestAgent1'; // <-- update this before running
+  var knownCasino   = 'Spinjo Casino'; // normalizes to "spinjo" → "Rooster Partners" tab
+
+  var result = findSheetRow_(ss, { casinoName: knownCasino, username: knownUsername });
+  assert_(!result.error, 'known row found (no error): ' + JSON.stringify(result));
+  assert_(result.rowIdx >= 2, 'rowIdx is a valid sheet row (>=2)');
+  assert_(result.headers.indexOf('AG Review Status') !== -1, 'AG status col in headers');
+
+  // ── unknown casino ──────────────────────────────────────────────────────────
+  var r2 = findSheetRow_(ss, { casinoName: 'ZZZUnknownCasino', username: 'anyone' });
+  assert_(r2.error === 'unknown_tab', 'unknown casino → unknown_tab error');
+
+  // ── wrong username ──────────────────────────────────────────────────────────
+  var r3 = findSheetRow_(ss, { casinoName: knownCasino, username: 'zzz_no_such_user' });
+  assert_(r3.error === 'no_matching_row', 'bad username → no_matching_row error');
+
+  Logger.log('testFindSheetRow: all passed');
+}
