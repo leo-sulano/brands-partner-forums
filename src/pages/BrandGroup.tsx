@@ -3,12 +3,13 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays, Plus,
+  Search, X, Check, CalendarDays, Plus, RefreshCw,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData } from '../lib/queries';
+import Toast, { type ToastKind } from '../components/Toast';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
@@ -530,6 +531,12 @@ export default function BrandGroup() {
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
 
+  const [checkingStatus, setCheckingStatus] = useState(false);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+  const [lastChecked, setLastChecked] = useState<string | null>(
+    () => localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null,
+  );
+
   useEffect(() => {
     if (!decodedTab) return;
     let canceled = false;
@@ -852,6 +859,26 @@ export default function BrandGroup() {
     );
   }
 
+  async function handleCheckStatus() {
+    setCheckingStatus(true);
+    try {
+      const result = await triggerStatusCheck(decodedTab);
+      const now = new Date().toLocaleString();
+      localStorage.setItem(`lastStatusCheck_${decodedTab}`, now);
+      setLastChecked(now);
+      const msg =
+        result.updated > 0
+          ? `${result.updated} review${result.updated !== 1 ? 's' : ''} updated`
+          : 'All reviews up to date';
+      setToast({ message: msg, kind: 'success' });
+    } catch (err) {
+      setToast({ message: 'Check failed — try again', kind: 'error' });
+      console.error(err);
+    } finally {
+      setCheckingStatus(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {/* Page actions */}
@@ -1008,6 +1035,23 @@ export default function BrandGroup() {
               options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
             />
           )}
+          <div className="h-4 w-px bg-slate-200 shrink-0" />
+          <div className="flex items-center gap-2">
+            {lastChecked && (
+              <span className="text-xs text-slate-400 whitespace-nowrap">
+                Last checked: {lastChecked}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleCheckStatus}
+              disabled={checkingStatus}
+              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+              {checkingStatus ? 'Checking…' : 'Check Status'}
+            </button>
+          </div>
         </div>
 
 
@@ -1175,6 +1219,13 @@ export default function BrandGroup() {
           currentTab={decodedTab}
           onClose={() => setShowAddModal(false)}
           onSaved={() => reloadRef.current()}
+        />
+      )}
+      {toast && (
+        <Toast
+          message={toast.message}
+          kind={toast.kind}
+          onClose={() => setToast(null)}
         />
       )}
     </div>
