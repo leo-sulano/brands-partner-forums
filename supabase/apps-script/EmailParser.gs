@@ -67,3 +67,49 @@ function testNormalize() {
   assert_(slugToTitle_('play-mojo')      === 'Play Mojo',    'hyphen becomes space');
   Logger.log('testNormalize: all passed');
 }
+
+function parseAgEmail_(subject, body) {
+  // Subject: "Spinjo Casino Review Approved!" / "PlayMojo Casino Review Rejected"
+  var m = subject.match(/^(.+?)\s+Review\s+(Approved|Rejected)/i);
+  if (!m) return null;
+
+  var casinoName = m[1].trim();
+  var status     = /approved/i.test(m[2]) ? 'Published' : 'Refused';
+  var userMatch  = body.match(/Hello\s+(\w+)\s*[,\.]/i);
+  var username   = userMatch ? userMatch[1] : null;
+
+  return { platform: 'AG', casinoName: casinoName, status: status, username: username };
+}
+
+// ─── Tests ───────────────────────────────────────────────────────────────────
+function testParseAgEmail() {
+  function assert_(cond, msg) {
+    if (!cond) throw new Error('FAIL: ' + msg);
+    Logger.log('PASS: ' + msg);
+  }
+
+  var r1 = parseAgEmail_(
+    'Spinjo Casino Review Approved!',
+    'Hello Tanner12,\nYour Spinjo Casino review has just been approved!'
+  );
+  assert_(r1 !== null,                        'approved: not null');
+  assert_(r1.platform === 'AG',               'approved: platform');
+  assert_(r1.casinoName === 'Spinjo Casino',  'approved: casino name');
+  assert_(r1.status === 'Published',          'approved: status');
+  assert_(r1.username === 'Tanner12',         'approved: username');
+
+  var r2 = parseAgEmail_(
+    'PlayMojo Casino Review Rejected',
+    'Hello Hakina74,\nYour review has been rejected due to following reasons:'
+  );
+  assert_(r2 !== null,                          'rejected: not null');
+  assert_(r2.status === 'Refused',              'rejected: status');
+  assert_(r2.casinoName === 'PlayMojo Casino',  'rejected: casino name');
+  assert_(r2.username === 'Hakina74',           'rejected: username');
+
+  // Non-review AG email must return null
+  var r3 = parseAgEmail_('No Deposit Bonus Inside', 'Hello User, claim your bonus!');
+  assert_(r3 === null, 'promo email returns null');
+
+  Logger.log('testParseAgEmail: all passed');
+}
