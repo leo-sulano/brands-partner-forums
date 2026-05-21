@@ -1,16 +1,16 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, RefreshCw, MessagesSquare, Star, Bird, Dices, Trophy, Gem, Rocket, Globe, Crown, type LucideIcon } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, MessagesSquare, Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, type LucideIcon } from 'lucide-react';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 
 const TAB_ICONS: Record<string, LucideIcon> = {
-  'TP Brand Injection': Star,
-  'Rooster Partners':   Bird,
-  'Revolution Casino':  Dices,
-  'Trybet':             Trophy,
-  'SilverPlay':         Gem,
-  'SuprPlay Limited':   Rocket,
-  'HazEmirates UAE':    Globe,
-  'Hanan':              Crown,
+  'TP Brand Injection': Syringe,
+  'Rooster Partners':   Handshake,
+  'Revolution Casino':  RotateCcw,
+  'Trybet':             Dices,
+  'SilverPlay':         Medal,
+  'SuprPlay Limited':   Gamepad2,
+  'HazEmirates UAE':    Plane,
+  'Hanan':              Heart,
 };
 
 const topLinks = [
@@ -51,7 +51,7 @@ export default function Sidebar() {
         </div>
 
         {OPERATIONAL_TABS.map((tab) => {
-          const Icon = TAB_ICONS[tab] ?? Star;
+          const Icon = TAB_ICONS[tab] ?? Syringe;
           return (
             <NavLink
               key={tab}
