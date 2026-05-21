@@ -276,3 +276,52 @@ function logError_(ss, platform, subject, bodySnippet, reason) {
   var snippet = bodySnippet ? String(bodySnippet).slice(0, 500) : '';
   sheet.appendRow([new Date().toISOString(), platform, subject, snippet, reason]);
 }
+
+function parseAgCgEmails() {
+  var ss     = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var label  = getOrCreateLabel_(PROCESSED_LABEL);
+  var query  = '(from:noreply@askgamblers.com OR from:no-reply@casino.guru) -label:' + PROCESSED_LABEL;
+  var threads = GmailApp.search(query, 0, 50); // max 50 threads per run
+
+  for (var t = 0; t < threads.length; t++) {
+    var messages  = threads[t].getMessages();
+    var threadOk  = true;
+
+    for (var m = 0; m < messages.length; m++) {
+      var msg      = messages[m];
+      var from     = msg.getFrom();
+      if (!/noreply@askgamblers\.com|no-reply@casino\.guru/i.test(from)) continue;
+
+      var subject  = msg.getSubject();
+      var body     = msg.getPlainBody();
+      var htmlBody = msg.getBody();
+      var platform = /askgamblers/i.test(from) ? 'AG' : 'CG';
+      var ok       = false;
+
+      var parsed = parseEmail_(subject, body, htmlBody, from);
+
+      if (!parsed) {
+        var reason = (platform === 'CG' && /approved/i.test(subject))
+          ? 'no_review_url'
+          : 'parse_failed';
+        logError_(ss, platform, subject, body.substring(0, 300), reason);
+      } else if (!parsed.username) {
+        logError_(ss, parsed.platform, subject, body.substring(0, 300), 'no_username');
+      } else if (!parsed.casinoName) {
+        logError_(ss, parsed.platform, subject, body.substring(0, 300), 'no_casino_name');
+      } else {
+        var match = findSheetRow_(ss, parsed);
+        if (match.error) {
+          logError_(ss, parsed.platform, subject, body.substring(0, 300), match.error);
+        } else {
+          ok = writeStatusToRow_(match.sheet, match.rowIdx, match.headers, parsed.platform, parsed.status);
+          if (!ok) logError_(ss, parsed.platform, subject, body.substring(0, 300), 'column_not_found');
+        }
+      }
+
+      if (!ok) threadOk = false;
+    }
+
+    if (threadOk) threads[t].addLabel(label);
+  }
+}
