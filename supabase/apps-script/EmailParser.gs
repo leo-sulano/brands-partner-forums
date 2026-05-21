@@ -75,7 +75,7 @@ function parseAgEmail_(subject, body) {
 
   var casinoName = m[1].trim();
   var status     = /approved/i.test(m[2]) ? 'Published' : 'Refused';
-  var userMatch  = body.match(/Hello\s+(\w+)\s*[,\.]/i);
+  var userMatch  = body.match(/Hello\s+([\w.\-]+)\s*[,\.]/i);
   var username   = userMatch ? userMatch[1] : null;
 
   return { platform: 'AG', casinoName: casinoName, status: status, username: username };
@@ -103,6 +103,7 @@ function testParseAgEmail() {
     'Hello Hakina74,\nYour review has been rejected due to following reasons:'
   );
   assert_(r2 !== null,                          'rejected: not null');
+  assert_(r2.platform === 'AG',                 'rejected: platform');
   assert_(r2.status === 'Refused',              'rejected: status');
   assert_(r2.casinoName === 'PlayMojo Casino',  'rejected: casino name');
   assert_(r2.username === 'Hakina74',           'rejected: username');
