@@ -1,6 +1,17 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, RefreshCw, MessagesSquare, Building2 } from 'lucide-react';
+import { LayoutDashboard, RefreshCw, MessagesSquare, Star, Bird, Dices, Trophy, Gem, Rocket, Globe, Crown, type LucideIcon } from 'lucide-react';
 import { OPERATIONAL_TABS } from '../lib/tabs';
+
+const TAB_ICONS: Record<string, LucideIcon> = {
+  'TP Brand Injection': Star,
+  'Rooster Partners':   Bird,
+  'Revolution Casino':  Dices,
+  'Trybet':             Trophy,
+  'SilverPlay':         Gem,
+  'SuprPlay Limited':   Rocket,
+  'HazEmirates UAE':    Globe,
+  'Hanan':              Crown,
+};
 
 const topLinks = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -39,16 +50,19 @@ export default function Sidebar() {
           Brands
         </div>
 
-        {OPERATIONAL_TABS.map((tab) => (
-          <NavLink
-            key={tab}
-            to={`/brands/${encodeURIComponent(tab)}`}
-            className={({ isActive }) => linkClass(isActive)}
-          >
-            <Building2 className="size-4 shrink-0" />
-            <span className="truncate">{tab}</span>
-          </NavLink>
-        ))}
+        {OPERATIONAL_TABS.map((tab) => {
+          const Icon = TAB_ICONS[tab] ?? Star;
+          return (
+            <NavLink
+              key={tab}
+              to={`/brands/${encodeURIComponent(tab)}`}
+              className={({ isActive }) => linkClass(isActive)}
+            >
+              <Icon className="size-4 shrink-0" />
+              <span className="truncate">{tab}</span>
+            </NavLink>
+          );
+        })}
       </nav>
       <div className="px-4 py-3 text-xs text-slate-500 border-t border-slate-800">
         Internal · v0.1
