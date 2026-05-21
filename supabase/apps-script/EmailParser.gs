@@ -273,5 +273,6 @@ function logError_(ss, platform, subject, bodySnippet, reason) {
     sheet = ss.insertSheet(ERROR_TAB_NAME);
     sheet.appendRow(['Timestamp', 'Platform', 'Subject', 'Body Snippet', 'Failure Reason']);
   }
-  sheet.appendRow([new Date().toISOString(), platform, subject, bodySnippet, reason]);
+  var snippet = bodySnippet ? String(bodySnippet).slice(0, 500) : '';
+  sheet.appendRow([new Date().toISOString(), platform, subject, snippet, reason]);
 }
