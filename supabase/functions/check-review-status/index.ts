@@ -5,6 +5,8 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const DELAY_MS = 600;
 
+const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
+
 const TP_STATUS_COLS = [
   'TP Review Status',
   'Trust Pilot Review Status',
@@ -33,6 +35,7 @@ function findStatusCol(data: Record<string, unknown>): string | null {
 async function fetchTpStatus(url: string): Promise<TpStatus | null> {
   try {
     const res = await fetch(url, {
+      signal: AbortSignal.timeout(10_000),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -60,8 +63,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return new Response('ok', { headers: CORS_HEADERS });
   }
 
-  const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
-
   let tab: string | undefined;
   try {
     const body = await req.json();
@@ -72,7 +73,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Fetch entries that have a profile URL and are not in a final-refused state
   // deno-lint-ignore no-explicit-any
-  let query = (admin as any).from('entries').select('id, tab, data');
+  let query = (admin as any).from('entries').select('id, data');
   if (tab) query = query.eq('tab', tab);
 
   const { data: rows, error: fetchErr } = await query;
@@ -107,7 +108,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const updatedData = { ...entry.data, [statusCol]: newStatus };
       const { error: updateErr } = await admin
         .from('entries')
-        .update({ data: updatedData })
+        .update({ data: updatedData, updated_at: new Date().toISOString() })
         .eq('id', entry.id);
 
       if (updateErr) errors++;
