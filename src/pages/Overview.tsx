@@ -136,7 +136,9 @@ export default function Overview() {
             : state.tabs.map(({ tab, kpis }) => {
                 const pct = (n: number) => kpis.total > 0 ? (n / kpis.total) * 100 : 0;
                 const statusItems = [
-                  { count: kpis.done,    label: 'done',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: kpis.live,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: kpis.removed, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
+                  { count: kpis.done,    label: 'done',     bar: 'bg-teal-500',    text: 'text-teal-600'    },
                   { count: kpis.pending, label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
                   { count: kpis.onPause, label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
                   { count: kpis.notDone, label: 'not done', bar: 'bg-orange-400',  text: 'text-orange-500'  },
