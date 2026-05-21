@@ -33,3 +33,14 @@ Deno.test('malformed JSON → null', () => {
   const html = `<html><script id="__NEXT_DATA__" type="application/json">NOTJSON</script></html>`;
   assertEquals(parseReviewStatus(html), null);
 });
+
+Deno.test('removed → Removed', () =>
+  assertEquals(parseReviewStatus(makeHtml('removed')), 'Removed'));
+
+Deno.test('status field fallback → Published', () => {
+  const payload = JSON.stringify({
+    props: { pageProps: { review: { status: 'published' } } },
+  });
+  const html = `<html><script id="__NEXT_DATA__" type="application/json">${payload}</script></html>`;
+  assertEquals(parseReviewStatus(html), 'Published');
+});
