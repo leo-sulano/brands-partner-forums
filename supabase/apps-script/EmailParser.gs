@@ -273,7 +273,7 @@ function logError_(ss, platform, subject, bodySnippet, reason) {
     sheet = ss.insertSheet(ERROR_TAB_NAME);
     sheet.appendRow(['Timestamp', 'Platform', 'Subject', 'Body Snippet', 'Failure Reason']);
   }
-  var snippet = bodySnippet ? String(bodySnippet).slice(0, 500) : '';
+  var snippet = bodySnippet ? String(bodySnippet).slice(0, 300) : '';
   sheet.appendRow([new Date().toISOString(), platform, subject, snippet, reason]);
 }
 
@@ -300,22 +300,24 @@ function parseAgCgEmails() {
 
       var parsed = parseEmail_(subject, body, htmlBody, from);
 
+      // Error reasons: no_casino_name, no_username, no_matching_row, unknown_tab, no_review_url (spec)
+      // + parse_failed (non-review email / malformed body) and column_not_found (status col missing)
       if (!parsed) {
         var reason = (platform === 'CG' && /approved/i.test(subject))
           ? 'no_review_url'
           : 'parse_failed';
-        logError_(ss, platform, subject, body.substring(0, 300), reason);
+        logError_(ss, platform, subject, body, reason);
       } else if (!parsed.username) {
-        logError_(ss, parsed.platform, subject, body.substring(0, 300), 'no_username');
+        logError_(ss, parsed.platform, subject, body, 'no_username');
       } else if (!parsed.casinoName) {
-        logError_(ss, parsed.platform, subject, body.substring(0, 300), 'no_casino_name');
+        logError_(ss, parsed.platform, subject, body, 'no_casino_name');
       } else {
         var match = findSheetRow_(ss, parsed);
         if (match.error) {
-          logError_(ss, parsed.platform, subject, body.substring(0, 300), match.error);
+          logError_(ss, parsed.platform, subject, body, match.error);
         } else {
           ok = writeStatusToRow_(match.sheet, match.rowIdx, match.headers, parsed.platform, parsed.status);
-          if (!ok) logError_(ss, parsed.platform, subject, body.substring(0, 300), 'column_not_found');
+          if (!ok) logError_(ss, parsed.platform, subject, body, 'column_not_found');
         }
       }
 
