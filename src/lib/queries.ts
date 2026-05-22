@@ -178,7 +178,7 @@ export async function fetchSyncRuns(limit = 10): Promise<SyncRun[]> {
 export interface EditEvent {
   id: string;
   tab: string;
-  account: string;
+  account: string | null;
   updated_at: string;
 }
 
@@ -192,8 +192,7 @@ export async function fetchRecentEdits(limit = 50): Promise<EditEvent[]> {
   if (error) throw error;
   return (data ?? []).map((row) => {
     const d = (row.data ?? {}) as Record<string, string | null>;
-    const account =
-      d['Account Name'] ?? d['Account'] ?? d['Brand Name'] ?? d['Brand'] ?? '—';
+    const account = getField(d, 'Account Name', 'Account', 'Brand Name', 'Brand');
     return {
       id: row.id as string,
       tab: row.tab as string,
