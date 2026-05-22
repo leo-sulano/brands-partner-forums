@@ -1,0 +1,12 @@
+{
+  "name": "forums-dashboard-scripts",
+  "version": "1.0.0",
+  "description": "One-time ops scripts for the Forums Dashboard",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "playwright": "^1.44.0"
+  }
+}

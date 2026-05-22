@@ -32,6 +32,7 @@ var CASINO_TAB_MAP = {
   'olympusbet':  'Hanan',
   'realsin':     'Hanan',
   'lucknation':  'Hanan',
+  'silverplay':  'SilverPlay',
 };
 
 function normalizeCasinoName_(name) {

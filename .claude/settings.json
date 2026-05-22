@@ -84,7 +84,22 @@
       "PowerShell(deno --version)",
       "Bash(supabase functions *)",
       "PowerShell(npm list -g deno 2>&1)",
-      "PowerShell(npm install -g deno)"
+      "PowerShell(npm install -g deno)",
+      "Read(//c/Users/Leo/.claude/projects/c--Users-Leo-OneDrive-Desktop-AI-Automation-Internal-Projects-Forums-Dashboard/memory/**)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff src/lib/queries.ts src/pages/Overview.tsx src/types/brand-entry.ts)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add src/lib/queries.ts src/pages/Overview.tsx src/types/brand-entry.ts)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add src/pages/Overview.tsx)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\src\\\\pages\" -Name)",
+      "Bash(node -e \"const pkg = require\\('./node_modules/@supabase/supabase-js/package.json'\\); console.log\\('supabase-js version:', pkg.version\\);\")",
+      "Bash(node -e ' *)",
+      "Bash(npm test *)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" -Recurse -Directory | Select-Object -ExpandProperty FullName | Where-Object { $_ -match '\\(auth|pages|src|app\\)' } | Sort-Object)",
+      "Bash(Select-Object -First 30)",
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" -Recurse | Select-Object -First 50 | ForEach-Object { $_.FullName })",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/parser.ts supabase/functions/check-review-status/parser_test.ts)",
+      "Bash(supabase projects *)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff .claude/settings.json supabase/apps-script/EmailParser.gs)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add .claude/settings.json supabase/apps-script/EmailParser.gs docs/superpowers/plans/2026-05-22-activity-log.md docs/superpowers/plans/2026-05-22-auth-and-edit-accounts.md docs/superpowers/specs/2026-05-22-auth-and-edit-accounts-design.md scripts/)"
     ]
   }
 }
