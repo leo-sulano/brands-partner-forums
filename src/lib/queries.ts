@@ -3,6 +3,7 @@ import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
+import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
 
 // ---------------------------------------------------------------------------
@@ -453,4 +454,28 @@ export async function triggerStatusCheck(
     throw new Error(`Status check failed: ${res.status} ${body}`);
   }
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Admin — profile management
+// ---------------------------------------------------------------------------
+
+export async function getProfiles(): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as Profile[];
+}
+
+export async function updateProfile(
+  id: string,
+  patch: Partial<Pick<Profile, 'approved' | 'role'>>,
+): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .update(patch)
+    .eq('id', id);
+  if (error) throw error;
 }
