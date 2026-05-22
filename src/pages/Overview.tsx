@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Users, CheckCircle2, XCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis } from '../lib/queries';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -86,24 +86,27 @@ export default function Overview() {
     <div className="space-y-8">
 
       {/* Global KPIs */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <KpiCard
           label="Total Accounts"
           value={state.loading ? '…' : totalAccounts.toLocaleString()}
-          icon={<Users className="size-4" />}
+          icon={<Users className="size-5" />}
           hint="across all brand tabs"
+          color="blue"
         />
         <KpiCard
           label="Live Reviews"
           value={state.loading ? '…' : totalLive.toLocaleString()}
-          icon={<CheckCircle2 className="size-4" />}
+          icon={<CheckCircle2 className="size-5" />}
           hint="active across TP / AG / CG"
+          color="emerald"
         />
         <KpiCard
           label="Removed"
           value={state.loading ? '…' : totalRemoved.toLocaleString()}
-          icon={<XCircle className="size-4" />}
+          icon={<XCircle className="size-5" />}
           hint="across all tabs"
+          color="rose"
         />
       </div>
 
@@ -157,23 +160,68 @@ export default function Overview() {
 
       {/* Platform breakdown chart */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Platform Breakdown</h2>
-        <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="mb-4 flex items-baseline justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
+            <p className="mt-0.5 text-xs text-slate-400">Live vs. removed reviews per platform</p>
+          </div>
+          <div className="flex items-center gap-4 text-xs text-slate-500">
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-sm bg-emerald-500" />Live
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block size-2.5 rounded-sm bg-rose-400" />Removed
+            </span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           {state.loading ? (
-            <div className="h-64 animate-pulse rounded bg-slate-100" />
+            <div className="h-72 animate-pulse rounded-lg bg-slate-100" />
           ) : (
-            <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={platformData} barCategoryGap="35%" barGap={4}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="name" tick={{ fontSize: 13, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 12, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}
-                  cursor={{ fill: '#f8fafc' }}
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={platformData} barCategoryGap="40%" barGap={6} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="gradLive" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#34d399" stopOpacity={0.7} />
+                  </linearGradient>
+                  <linearGradient id="gradRemoved" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#f43f5e" stopOpacity={1} />
+                    <stop offset="100%" stopColor="#fb7185" stopOpacity={0.7} />
+                  </linearGradient>
+                </defs>
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 13, fill: '#64748b', fontWeight: 500 }}
+                  axisLine={false}
+                  tickLine={false}
                 />
-                <Legend wrapperStyle={{ fontSize: '13px', paddingTop: '16px' }} />
-                <Bar dataKey="Live"    fill="#10b981" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Removed" fill="#f43f5e" radius={[4, 4, 0, 0]} />
+                <YAxis
+                  tick={{ fontSize: 11, fill: '#cbd5e1' }}
+                  axisLine={false}
+                  tickLine={false}
+                  tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
+                />
+                <Tooltip
+                  cursor={{ fill: '#f1f5f9', radius: 6 } as object}
+                  contentStyle={{
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                    fontSize: '13px',
+                    padding: '10px 14px',
+                  }}
+                  labelStyle={{ fontWeight: 600, color: '#1e293b', marginBottom: 4 }}
+                  itemStyle={{ color: '#475569' }}
+                />
+                <Bar dataKey="Live" fill="url(#gradLive)" radius={[6, 6, 0, 0]}>
+                  <LabelList dataKey="Live" position="top" style={{ fontSize: 11, fill: '#10b981', fontWeight: 600 }} formatter={(v: number) => v.toLocaleString()} />
+                  {platformData.map((_, i) => <Cell key={i} />)}
+                </Bar>
+                <Bar dataKey="Removed" fill="url(#gradRemoved)" radius={[6, 6, 0, 0]}>
+                  <LabelList dataKey="Removed" position="top" style={{ fontSize: 11, fill: '#f43f5e', fontWeight: 600 }} formatter={(v: number) => v.toLocaleString()} />
+                  {platformData.map((_, i) => <Cell key={i} />)}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           )}
