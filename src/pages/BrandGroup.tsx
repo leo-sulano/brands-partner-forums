@@ -889,7 +889,23 @@ export default function BrandGroup() {
   return (
     <div className="space-y-6">
       {/* Page actions */}
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
+          <DatePicker
+            value={dateFrom}
+            onChange={(v) => { setDateFrom(v); setPage(1); }}
+            placeholder="From date"
+            max={dateTo || undefined}
+          />
+          <span className="text-xs text-slate-400">→</span>
+          <DatePicker
+            value={dateTo}
+            onChange={(v) => { setDateTo(v); setPage(1); }}
+            placeholder="To date"
+            min={dateFrom || undefined}
+          />
+        </div>
         {isApproved && (
           <button
             type="button"
@@ -964,28 +980,6 @@ export default function BrandGroup() {
         );
       })()}
 
-      {/* Date range filter */}
-      <div className="rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
-          <div className="flex items-center gap-2">
-            <DatePicker
-              value={dateFrom}
-              onChange={(v) => { setDateFrom(v); setPage(1); }}
-              placeholder="From date"
-              max={dateTo || undefined}
-            />
-            <span className="text-xs text-slate-400">→</span>
-            <DatePicker
-              value={dateTo}
-              onChange={(v) => { setDateTo(v); setPage(1); }}
-              placeholder="To date"
-              min={dateFrom || undefined}
-            />
-          </div>
-
-        </div>
-      </div>
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Search + filter bar */}
