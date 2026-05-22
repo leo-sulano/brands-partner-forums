@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { Users, CheckCircle2, XCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
-import { fetchTabKpis, fetchSyncRuns } from '../lib/queries';
+import { fetchTabKpis } from '../lib/queries';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
-import type { SyncRun } from '../types/sync';
+
 
 interface TabSummary {
   tab: string;
@@ -17,7 +17,7 @@ interface State {
   loading: boolean;
   error: string | null;
   tabs: TabSummary[];
-  recentSyncs: SyncRun[];
+
 }
 
 const EMPTY_KPIS: TabKpis = {
@@ -27,17 +27,8 @@ const EMPTY_KPIS: TabKpis = {
   cg: { live: 0, removed: 0 },
 };
 
-const initial: State = { loading: true, error: null, tabs: [], recentSyncs: [] };
+const initial: State = { loading: true, error: null, tabs: [] };
 
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
 
 
 export default function Overview() {
@@ -45,17 +36,14 @@ export default function Overview() {
 
   const loadData = useCallback(async () => {
     try {
-      const [tabResults, recentSyncs] = await Promise.all([
-        Promise.all(
-          OPERATIONAL_TABS.map((tab) =>
-            fetchTabKpis(tab)
-              .then((kpis): TabSummary => ({ tab, kpis }))
-              .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
-          )
-        ),
-        fetchSyncRuns(1),
-      ]);
-      setState({ loading: false, error: null, tabs: tabResults, recentSyncs });
+      const tabResults = await Promise.all(
+        OPERATIONAL_TABS.map((tab) =>
+          fetchTabKpis(tab)
+            .then((kpis): TabSummary => ({ tab, kpis }))
+            .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
+        )
+      );
+      setState({ loading: false, error: null, tabs: tabResults });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
@@ -74,7 +62,7 @@ export default function Overview() {
   const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.total,   0);
   const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.live,    0);
   const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
-  const lastSync      = state.recentSyncs[0] ?? null;
+
 
   const platformData = [
     {
@@ -116,12 +104,6 @@ export default function Overview() {
           value={state.loading ? '…' : totalRemoved.toLocaleString()}
           icon={<XCircle className="size-4" />}
           hint="across all tabs"
-        />
-        <KpiCard
-          label="Last Sync"
-          value={state.loading ? '…' : lastSync ? timeAgo(lastSync.started_at) : '—'}
-          icon={<RefreshCw className="size-4" />}
-          hint={lastSync ? `last run: ${lastSync.status}` : 'no syncs yet'}
         />
       </div>
 
