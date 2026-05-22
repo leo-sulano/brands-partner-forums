@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
-import { RefreshCw, AlertCircle } from 'lucide-react';
-import { fetchSyncRuns } from '../lib/queries';
-import type { SyncRun } from '../types/sync';
+import { Pencil, AlertCircle } from 'lucide-react';
+import { fetchRecentEdits, type EditEvent } from '../lib/queries';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -14,28 +13,14 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
-function SyncStatusBadge({ status }: { status: SyncRun['status'] }) {
-  const styles: Record<SyncRun['status'], string> = {
-    success: 'bg-emerald-100 text-emerald-700',
-    error:   'bg-rose-100 text-rose-700',
-    running: 'bg-blue-100 text-blue-700',
-    skipped: 'bg-slate-100 text-slate-500',
-  };
-  return (
-    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${styles[status]}`}>
-      {status}
-    </span>
-  );
-}
-
 export default function ActivityLog() {
-  const [runs, setRuns] = useState<SyncRun[]>([]);
+  const [edits, setEdits] = useState<EditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchSyncRuns(100)
-      .then(setRuns)
+    fetchRecentEdits(100)
+      .then(setEdits)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load log'))
       .finally(() => setLoading(false));
   }, []);
@@ -59,36 +44,25 @@ export default function ActivityLog() {
         </div>
       )}
 
-      {!loading && !error && runs.length === 0 && (
-        <p className="text-sm text-slate-400">No sync runs yet.</p>
+      {!loading && !error && edits.length === 0 && (
+        <p className="text-sm text-slate-400">No edits yet.</p>
       )}
 
-      {!loading && !error && runs.length > 0 && (
+      {!loading && !error && edits.length > 0 && (
         <ul className="space-y-2">
-          {runs.map((run) => (
+          {edits.map((edit) => (
             <li
-              key={run.id}
+              key={edit.id}
               className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
             >
-              <RefreshCw className="mt-0.5 size-4 shrink-0 text-blue-500" />
+              <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
               <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-slate-800">Sync run</span>
-                  <SyncStatusBadge status={run.status} />
-                  {run.tab && (
-                    <span className="text-xs text-slate-400">{run.tab}</span>
-                  )}
-                </div>
-                {run.status !== 'running' && (
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {run.rows_upserted ?? 0} upserted · {run.rows_skipped ?? 0} skipped · {run.rows_seen ?? 0} seen
-                    {run.error_message && (
-                      <span className="ml-2 text-rose-600">{run.error_message}</span>
-                    )}
-                  </p>
-                )}
+                <span className="text-sm font-medium text-slate-800">Entry edited</span>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {edit.tab} · {edit.account ?? '—'}
+                </p>
               </div>
-              <span className="shrink-0 text-xs text-slate-400">{relativeTime(run.started_at)}</span>
+              <span className="shrink-0 text-xs text-slate-400">{relativeTime(edit.updated_at)}</span>
             </li>
           ))}
         </ul>
