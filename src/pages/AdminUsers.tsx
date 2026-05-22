@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Loader2, ShieldCheck, ShieldOff, UserCheck, UserX } from 'lucide-react';
+import { Loader2, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getProfiles, updateProfile } from '../lib/queries';
+import { getProfiles, updateProfile, deleteProfile } from '../lib/queries';
 import type { Profile } from '../types/profile';
 
 export default function AdminUsers() {
@@ -11,6 +11,7 @@ export default function AdminUsers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -21,6 +22,20 @@ export default function AdminUsers() {
   }, [isAdmin]);
 
   if (!isAdmin) return <Navigate to="/" replace />;
+
+  async function remove(id: string) {
+    setUpdating(id);
+    setConfirmRemove(null);
+    setError(null);
+    try {
+      await deleteProfile(id);
+      setProfiles((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setUpdating(null);
+    }
+  }
 
   async function patch(id: string, changes: Partial<Pick<Profile, 'approved' | 'role'>>) {
     setUpdating(id);
@@ -134,6 +149,32 @@ export default function AdminUsers() {
                               >
                                 <ShieldOff className="size-3.5" />
                                 Remove Admin
+                              </button>
+                            )
+                          )}
+                          {!isSelf && (
+                            confirmRemove === p.id ? (
+                              <span className="inline-flex items-center gap-1">
+                                <button
+                                  onClick={() => remove(p.id)}
+                                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700 transition-colors"
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  onClick={() => setConfirmRemove(null)}
+                                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-100 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmRemove(p.id)}
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-rose-500 hover:bg-rose-50 transition-colors"
+                              >
+                                <Trash2 className="size-3.5" />
+                                Remove
                               </button>
                             )
                           )}

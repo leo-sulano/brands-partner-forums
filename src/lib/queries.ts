@@ -506,3 +506,11 @@ export async function updateProfile(
     .eq('id', id);
   if (error) throw error;
 }
+
+export async function deleteProfile(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('profiles')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}
