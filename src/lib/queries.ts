@@ -175,6 +175,34 @@ export async function fetchSyncRuns(limit = 10): Promise<SyncRun[]> {
   return (data ?? []) as SyncRun[];
 }
 
+export interface EditEvent {
+  id: string;
+  tab: string;
+  account: string;
+  updated_at: string;
+}
+
+export async function fetchRecentEdits(limit = 50): Promise<EditEvent[]> {
+  const { data, error } = await supabase
+    .from('entries')
+    .select('id, tab, data, updated_at')
+    .eq('last_edited_by', 'dashboard')
+    .order('updated_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const d = (row.data ?? {}) as Record<string, string | null>;
+    const account =
+      d['Account Name'] ?? d['Account'] ?? d['Brand Name'] ?? d['Brand'] ?? '—';
+    return {
+      id: row.id as string,
+      tab: row.tab as string,
+      account,
+      updated_at: row.updated_at as string,
+    };
+  });
+}
+
 export async function fetchAvailableTabs(): Promise<string[]> {
   const { data, error } = await supabase
     .from('tab_schemas')
