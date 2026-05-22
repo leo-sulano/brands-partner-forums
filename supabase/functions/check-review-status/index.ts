@@ -10,6 +10,27 @@ const FETCH_TIMEOUT_MS = 8_000;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+// Maps the value in entry.data['Proxy Used'] (case-insensitive) to a Supabase secret
+// that holds the full proxy URL: http://user:pass@host:port
+const PROXY_SECRET_MAP: Record<string, string> = {
+  proxylite:   'PROXY_PROXYLITE',
+  spyderproxy: 'PROXY_SPYDERPROXY',
+  enigma:      'PROXY_ENIGMA',
+};
+
+function getProxyClient(proxyName: unknown): Deno.HttpClient | null {
+  if (!proxyName || typeof proxyName !== 'string') return null;
+  const secretKey = PROXY_SECRET_MAP[proxyName.trim().toLowerCase()];
+  if (!secretKey) return null;
+  const proxyUrl = Deno.env.get(secretKey);
+  if (!proxyUrl) return null;
+  try {
+    return Deno.createHttpClient({ proxy: { url: proxyUrl } });
+  } catch {
+    return null;
+  }
+}
+
 const TP_STATUS_COLS = [
   'TP Review Status',
   'Trust Pilot Review Status',
@@ -35,10 +56,12 @@ function findStatusCol(data: Record<string, unknown>): string | null {
   return TP_STATUS_COLS.find((col) => col in data) ?? null;
 }
 
-async function fetchTpStatus(url: string): Promise<TpStatus | null> {
+async function fetchTpStatus(url: string, proxyClient: Deno.HttpClient | null = null): Promise<TpStatus | null> {
   try {
-    const res = await fetch(url, {
+    // deno-lint-ignore no-explicit-any
+    const fetchOpts: any = {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      redirect: 'manual',
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -56,8 +79,10 @@ async function fetchTpStatus(url: string): Promise<TpStatus | null> {
         'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0',
       },
-      redirect: 'manual',
-    });
+    };
+    if (proxyClient) fetchOpts.client = proxyClient;
+
+    const res = await fetch(url, fetchOpts);
 
     // 3xx redirect away from the review URL = review removed/gone
     if (res.status >= 301 && res.status <= 308) {
@@ -138,7 +163,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const statusCol = findStatusCol(entry.data)!;
         const currentStatus: string = entry.data[statusCol] ?? '';
 
-        const newStatus = await fetchTpStatus(profileUrl);
+        const proxyClient = getProxyClient(entry.data['Proxy Used']);
+        const newStatus = await fetchTpStatus(profileUrl, proxyClient);
+        proxyClient?.close();
 
         if (newStatus === null) {
           errors++;
