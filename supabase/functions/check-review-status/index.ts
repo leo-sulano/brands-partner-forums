@@ -4,6 +4,9 @@ import { parseReviewStatus, type TpStatus } from './parser.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const DELAY_MS = 600;
+const BATCH_SIZE = 3;
+const BUDGET_MS = 120_000; // stop well before Supabase's 150s hard kill
+const FETCH_TIMEOUT_MS = 8_000;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
@@ -35,7 +38,7 @@ function findStatusCol(data: Record<string, unknown>): string | null {
 async function fetchTpStatus(url: string): Promise<TpStatus | null> {
   try {
     const res = await fetch(url, {
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -103,35 +106,50 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let checked = 0;
   let updated = 0;
   let errors = 0;
+  let budgetExceeded = false;
 
-  for (const entry of entries) {
-    checked++;
+  const startTime = Date.now();
 
-    const rawUrl: string = entry.data['Link to the profile'].trim();
-    const profileUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
-    const statusCol = findStatusCol(entry.data)!;
-    const currentStatus: string = entry.data[statusCol] ?? '';
-
-    const newStatus = await fetchTpStatus(profileUrl);
-
-    if (newStatus === null) {
-      errors++;
-    } else if (newStatus !== currentStatus) {
-      const updatedData = { ...entry.data, [statusCol]: newStatus };
-      const { error: updateErr } = await admin
-        .from('entries')
-        .update({ data: updatedData, updated_at: new Date().toISOString() })
-        .eq('id', entry.id);
-
-      if (updateErr) errors++;
-      else updated++;
+  for (let i = 0; i < entries.length; i += BATCH_SIZE) {
+    if (Date.now() - startTime > BUDGET_MS) {
+      budgetExceeded = true;
+      break;
     }
 
-    // Rate-limit: wait between requests (skip after the last one)
-    if (checked < entries.length) {
+    const batch = entries.slice(i, i + BATCH_SIZE);
+
+    await Promise.all(
+      // deno-lint-ignore no-explicit-any
+      batch.map(async (entry: any) => {
+        checked++;
+
+        const rawUrl: string = entry.data['Link to the profile'].trim();
+        const profileUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+        const statusCol = findStatusCol(entry.data)!;
+        const currentStatus: string = entry.data[statusCol] ?? '';
+
+        const newStatus = await fetchTpStatus(profileUrl);
+
+        if (newStatus === null) {
+          errors++;
+        } else if (newStatus !== currentStatus) {
+          const updatedData = { ...entry.data, [statusCol]: newStatus };
+          const { error: updateErr } = await admin
+            .from('entries')
+            .update({ data: updatedData, updated_at: new Date().toISOString() })
+            .eq('id', entry.id);
+
+          if (updateErr) errors++;
+          else updated++;
+        }
+      }),
+    );
+
+    // Rate-limit between batches (skip after the last batch)
+    if (i + BATCH_SIZE < entries.length) {
       await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
     }
   }
 
-  return json({ checked, updated, errors });
+  return json({ checked, updated, errors, budgetExceeded, total: entries.length });
 });
