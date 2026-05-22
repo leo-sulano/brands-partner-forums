@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Pencil, AlertCircle } from 'lucide-react';
-import { fetchRecentEdits, type EditEvent } from '../lib/queries';
+import { AlertCircle, Pencil, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
+import { fetchRecentEdits, fetchAdminLogs, type EditEvent, type AdminLogEvent, type AdminAction } from '../lib/queries';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -13,14 +13,37 @@ function relativeTime(iso: string): string {
   return `${days}d ago`;
 }
 
+type FeedItem =
+  | { kind: 'edit'; data: EditEvent }
+  | { kind: 'admin'; data: AdminLogEvent };
+
+const ACTION_META: Record<AdminAction, { label: string; icon: React.ReactNode; color: string }> = {
+  approve:      { label: 'User approved',       icon: <UserCheck className="size-4 shrink-0" />,  color: 'text-green-500' },
+  revoke:       { label: 'Access revoked',       icon: <UserX className="size-4 shrink-0" />,      color: 'text-amber-500' },
+  remove:       { label: 'User removed',         icon: <Trash2 className="size-4 shrink-0" />,     color: 'text-rose-500' },
+  make_admin:   { label: 'Promoted to admin',    icon: <ShieldCheck className="size-4 shrink-0" />, color: 'text-violet-500' },
+  remove_admin: { label: 'Admin role removed',   icon: <ShieldOff className="size-4 shrink-0" />,  color: 'text-slate-400' },
+};
+
 export default function ActivityLog() {
-  const [edits, setEdits] = useState<EditEvent[]>([]);
+  const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchRecentEdits(100)
-      .then(setEdits)
+    Promise.all([fetchRecentEdits(100), fetchAdminLogs(100)])
+      .then(([edits, adminLogs]) => {
+        const items: FeedItem[] = [
+          ...edits.map((e): FeedItem => ({ kind: 'edit', data: e })),
+          ...adminLogs.map((a): FeedItem => ({ kind: 'admin', data: a })),
+        ];
+        items.sort((a, b) => {
+          const ta = a.kind === 'edit' ? a.data.updated_at : a.data.created_at;
+          const tb = b.kind === 'edit' ? b.data.updated_at : b.data.created_at;
+          return tb.localeCompare(ta);
+        });
+        setFeed(items);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load log'))
       .finally(() => setLoading(false));
   }, []);
@@ -44,27 +67,50 @@ export default function ActivityLog() {
         </div>
       )}
 
-      {!loading && !error && edits.length === 0 && (
-        <p className="text-sm text-slate-400">No edits yet.</p>
+      {!loading && !error && feed.length === 0 && (
+        <p className="text-sm text-slate-400">No activity yet.</p>
       )}
 
-      {!loading && !error && edits.length > 0 && (
+      {!loading && !error && feed.length > 0 && (
         <ul className="space-y-2">
-          {edits.map((edit) => (
-            <li
-              key={edit.id}
-              className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
-            >
-              <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
-              <div className="min-w-0 flex-1">
-                <span className="text-sm font-medium text-slate-800">Entry edited</span>
-                <p className="mt-0.5 text-xs text-slate-500">
-                  {edit.tab} · {edit.account ?? '—'}
-                </p>
-              </div>
-              <span className="shrink-0 text-xs text-slate-400">{relativeTime(edit.updated_at)}</span>
-            </li>
-          ))}
+          {feed.map((item) => {
+            if (item.kind === 'edit') {
+              const edit = item.data;
+              return (
+                <li
+                  key={`edit-${edit.id}`}
+                  className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+                >
+                  <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm font-medium text-slate-800">Entry edited</span>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {edit.tab} · {edit.account ?? '—'}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs text-slate-400">{relativeTime(edit.updated_at)}</span>
+                </li>
+              );
+            }
+
+            const log = item.data;
+            const meta = ACTION_META[log.action];
+            return (
+              <li
+                key={`admin-${log.id}`}
+                className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+              >
+                <span className={`mt-0.5 ${meta.color}`}>{meta.icon}</span>
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-slate-800">{meta.label}</span>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {log.target_email} · by {log.actor_email}
+                  </p>
+                </div>
+                <span className="shrink-0 text-xs text-slate-400">{relativeTime(log.created_at)}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

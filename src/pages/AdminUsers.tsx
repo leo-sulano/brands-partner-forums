@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { Loader2, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getProfiles, updateProfile, deleteProfile } from '../lib/queries';
+import { getProfiles, updateProfile, deleteProfile, insertAdminLog, type AdminAction } from '../lib/queries';
 import type { Profile } from '../types/profile';
 
 export default function AdminUsers() {
-  const { isAdmin, profile: self } = useAuth();
+  const { isAdmin, profile: self, session } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -23,12 +23,20 @@ export default function AdminUsers() {
 
   if (!isAdmin) return <Navigate to="/" replace />;
 
-  async function remove(id: string) {
+  function logAction(action: AdminAction, targetEmail: string) {
+    if (!session?.user) return;
+    insertAdminLog(session.user.id, self?.email ?? session.user.email ?? '', action, targetEmail).catch(
+      (err) => console.warn('[admin-log] insert failed:', err),
+    );
+  }
+
+  async function remove(id: string, targetEmail: string) {
     setUpdating(id);
     setConfirmRemove(null);
     setError(null);
     try {
       await deleteProfile(id);
+      logAction('remove', targetEmail);
       setProfiles((prev) => prev.filter((p) => p.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Delete failed');
@@ -37,11 +45,16 @@ export default function AdminUsers() {
     }
   }
 
-  async function patch(id: string, changes: Partial<Pick<Profile, 'approved' | 'role'>>) {
+  async function patch(id: string, changes: Partial<Pick<Profile, 'approved' | 'role'>>, targetEmail: string) {
     setUpdating(id);
     setError(null);
     try {
       await updateProfile(id, changes);
+      const action: AdminAction =
+        'approved' in changes
+          ? changes.approved ? 'approve' : 'revoke'
+          : changes.role === 'admin' ? 'make_admin' : 'remove_admin';
+      logAction(action, targetEmail);
       setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, ...changes } : p)));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Update failed');
@@ -118,7 +131,7 @@ export default function AdminUsers() {
                         <>
                           {!isSelf && (p.approved ? (
                             <button
-                              onClick={() => patch(p.id, { approved: false })}
+                              onClick={() => patch(p.id, { approved: false }, p.email)}
                               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
                             >
                               <UserX className="size-3.5" />
@@ -126,7 +139,7 @@ export default function AdminUsers() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => patch(p.id, { approved: true })}
+                              onClick={() => patch(p.id, { approved: true }, p.email)}
                               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 transition-colors"
                             >
                               <UserCheck className="size-3.5" />
@@ -136,7 +149,7 @@ export default function AdminUsers() {
                           {!isSelf && (
                             p.role === 'member' ? (
                               <button
-                                onClick={() => patch(p.id, { role: 'admin' })}
+                                onClick={() => patch(p.id, { role: 'admin' }, p.email)}
                                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-50 transition-colors"
                               >
                                 <ShieldCheck className="size-3.5" />
@@ -144,7 +157,7 @@ export default function AdminUsers() {
                               </button>
                             ) : (
                               <button
-                                onClick={() => patch(p.id, { role: 'member' })}
+                                onClick={() => patch(p.id, { role: 'member' }, p.email)}
                                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-slate-50 transition-colors"
                               >
                                 <ShieldOff className="size-3.5" />
@@ -156,7 +169,7 @@ export default function AdminUsers() {
                             confirmRemove === p.id ? (
                               <span className="inline-flex items-center gap-1">
                                 <button
-                                  onClick={() => remove(p.id)}
+                                  onClick={() => remove(p.id, p.email)}
                                   className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-white bg-rose-600 hover:bg-rose-700 transition-colors"
                                 >
                                   Confirm

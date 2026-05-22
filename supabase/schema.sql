@@ -144,3 +144,29 @@ create policy "admins can update profiles"
   on public.profiles for update
   using (public.is_admin() and id <> auth.uid())
   with check (public.is_admin() and id <> auth.uid());
+
+create policy "admins can delete profiles"
+  on public.profiles for delete
+  using (public.is_admin() and id <> auth.uid());
+
+-- =============================================================================
+-- Admin action log — run after the profiles block above
+-- =============================================================================
+
+create table if not exists public.admin_logs (
+  id           uuid primary key default gen_random_uuid(),
+  actor_id     uuid references auth.users(id) on delete set null,
+  actor_email  text not null,
+  action       text not null check (action in ('approve','revoke','remove','make_admin','remove_admin')),
+  target_email text not null,
+  created_at   timestamptz not null default now()
+);
+
+create index admin_logs_created_at_idx on public.admin_logs (created_at desc);
+
+alter table public.admin_logs enable row level security;
+
+create policy "admins can read admin_logs"
+  on public.admin_logs for select using (public.is_admin());
+create policy "admins can insert admin_logs"
+  on public.admin_logs for insert with check (public.is_admin());

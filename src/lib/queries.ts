@@ -514,3 +514,35 @@ export async function deleteProfile(id: string): Promise<void> {
     .eq('id', id);
   if (error) throw error;
 }
+
+export type AdminAction = 'approve' | 'revoke' | 'remove' | 'make_admin' | 'remove_admin';
+
+export interface AdminLogEvent {
+  id: string;
+  actor_email: string;
+  action: AdminAction;
+  target_email: string;
+  created_at: string;
+}
+
+export async function insertAdminLog(
+  actorId: string,
+  actorEmail: string,
+  action: AdminAction,
+  targetEmail: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('admin_logs')
+    .insert({ actor_id: actorId, actor_email: actorEmail, action, target_email: targetEmail });
+  if (error) throw error;
+}
+
+export async function fetchAdminLogs(limit = 50): Promise<AdminLogEvent[]> {
+  const { data, error } = await supabase
+    .from('admin_logs')
+    .select('id, actor_email, action, target_email, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as AdminLogEvent[];
+}
