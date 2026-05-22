@@ -6,7 +6,20 @@ import type { Entry } from '../types/entry';
 
 const STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
+const YES_NO_COLS = new Set([
+  'Register from Google acount',
+  'Leaving Review After redirected from  welcome Email',
+  'Sticky IP (Mobile) (Y/N)',
+  'Photo in Account?',
+  'Opening the account via "usefull"',
+  'Opening the account via "Register" when leaving review',
+  'Scrolling and houvering?',
+  'Smart Paste?/ Paste as human typing?',
+  'Native Language?',
+]);
+
 function isStatusCol(h: string) { return h.toLowerCase().includes('status'); }
+function isYesNoCol(h: string) { return YES_NO_COLS.has(h) || YES_NO_COLS.has(h.replace(/^`/, '')); }
 function isLinkCol(h: string) {
   const l = h.toLowerCase();
   return l.includes('link') || l.includes('url') || l.includes('profile');
@@ -87,6 +100,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave }: Prop
                   >
                     <option value="">— select status —</option>
                     {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                ) : isYesNoCol(h) ? (
+                  <select
+                    value={fields[h]}
+                    onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white"
+                  >
+                    <option value="">—</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
                   </select>
                 ) : (
                   <input
