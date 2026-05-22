@@ -1,4 +1,5 @@
 import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL } from './supabase';
+import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
@@ -239,11 +240,15 @@ function isPendingStatus(s: string) { return s.includes('pending'); }
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
-export async function fetchTabKpis(tab: string): Promise<TabKpis> {
-  const [entries, rawHeaders] = await Promise.all([
+export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: string): Promise<TabKpis> {
+  const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
+
+  const entries = (dateFrom || dateTo)
+    ? allEntries.filter(e => inDateRange(e.data, dateFrom ?? '', dateTo ?? ''))
+    : allEntries;
 
   // Resolve the actual sheet column name case-insensitively so minor casing
   // differences between tabs don't cause zeroed-out counts.

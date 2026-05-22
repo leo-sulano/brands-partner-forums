@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Users, CheckCircle2, XCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from 'recharts';
 import KpiCard from '../components/KpiCard';
+import DatePicker from '../components/DatePicker';
 import { fetchTabKpis } from '../lib/queries';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
@@ -33,12 +34,15 @@ const initial: State = { loading: true, error: null, tabs: [] };
 
 export default function Overview() {
   const [state, setState] = useState<State>(initial);
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo]     = useState('');
 
   const loadData = useCallback(async () => {
+    setState(s => ({ ...s, loading: true }));
     try {
       const tabResults = await Promise.all(
         OPERATIONAL_TABS.map((tab) =>
-          fetchTabKpis(tab)
+          fetchTabKpis(tab, dateFrom || undefined, dateTo || undefined)
             .then((kpis): TabSummary => ({ tab, kpis }))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
         )
@@ -47,7 +51,7 @@ export default function Overview() {
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
-  }, []);
+  }, [dateFrom, dateTo]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -82,8 +86,37 @@ export default function Overview() {
     },
   ];
 
+  const dateActive = !!(dateFrom || dateTo);
+
   return (
     <div className="space-y-8">
+
+      {/* Date filter bar */}
+      <div className="flex items-center justify-end gap-2">
+        <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
+        <DatePicker
+          value={dateFrom}
+          onChange={setDateFrom}
+          placeholder="From date"
+          max={dateTo || undefined}
+        />
+        <span className="text-xs text-slate-400">→</span>
+        <DatePicker
+          value={dateTo}
+          onChange={setDateTo}
+          placeholder="To date"
+          min={dateFrom || undefined}
+        />
+        {dateActive && (
+          <button
+            type="button"
+            onClick={() => { setDateFrom(''); setDateTo(''); }}
+            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
       {/* Global KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
