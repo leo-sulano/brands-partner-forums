@@ -14,37 +14,79 @@ const STATE_MAP: Record<string, TpStatus> = {
 // Each language's "thanks" fallback is last so it only fires when no status badge matched.
 const TEXT_SIGNALS: Array<[string, TpStatus]> = [
   // ── Removed ──────────────────────────────────────────────────────────────
-  ['review removed', 'Removed'],                         // EN / AU
+  ['review removed', 'Removed'],                         // EN / AU / NZ / CA / IE
   ['bewertung entfernt', 'Removed'],                     // DE
   ['beoordeling verwijderd', 'Removed'],                 // NL
   ['avis supprimé', 'Removed'],                          // FR
   ['opinión eliminada', 'Removed'],                      // ES
-  ['anmeldelse fjernet', 'Removed'],                     // NO
+  ['recensione rimossa', 'Removed'],                     // IT
+  ['anmeldelse fjernet', 'Removed'],                     // NO / DA (shared word)
+  ['recension borttagen', 'Removed'],                    // SV
+  ['arvostelu poistettu', 'Removed'],                    // FI
+  ['recenzja usunięta', 'Removed'],                      // PL
+  ['avaliação removida', 'Removed'],                     // PT
+  ['отзыв удалён', 'Removed'],                           // RU
+  ['レビューが削除されました', 'Removed'],                    // JA
+  ['리뷰가 삭제되었습니다', 'Removed'],                      // KO
+  ['yorum kaldırıldı', 'Removed'],                       // TR
+  ['تمت إزالة المراجعة', 'Removed'],                     // AR
 
   // ── Refused / Not published ───────────────────────────────────────────────
-  ['review not published', 'Refused'],                   // EN / AU
+  ['review not published', 'Refused'],                   // EN / AU / NZ / CA / IE
   ['nicht veröffentlicht', 'Refused'],                   // DE
   ['niet gepubliceerd', 'Refused'],                      // NL
   ['avis non publié', 'Refused'],                        // FR
   ['opinión no publicada', 'Refused'],                   // ES
+  ['recensione non pubblicata', 'Refused'],              // IT
   ['anmeldelse ikke publisert', 'Refused'],              // NO
+  ['anmeldelse ikke publiceret', 'Refused'],             // DA (note: 'publiceret' vs 'publisert')
+  ['recension inte publicerad', 'Refused'],              // SV
+  ['arvostelua ei julkaistu', 'Refused'],                // FI
+  ['recenzja nie została opublikowana', 'Refused'],      // PL
+  ['avaliação não publicada', 'Refused'],                // PT
+  ['отзыв не опубликован', 'Refused'],                   // RU
+  ['レビューは公開されていません', 'Refused'],                 // JA
+  ['리뷰가 게시되지 않았습니다', 'Refused'],                  // KO
+  ['yorum yayınlanmadı', 'Refused'],                     // TR
+  ['لم يتم نشر المراجعة', 'Refused'],                    // AR
 
   // ── Pending ───────────────────────────────────────────────────────────────
   ['review is pending', 'Pending'],                      // EN / AU: "Your review is pending."
-  ['wartet auf die veröffentlichung', 'Pending'],        // DE: "Ihre Bewertung wartet auf die Veröffentlichung."
+  ['wartet auf die veröffentlichung', 'Pending'],        // DE
   ['wacht op publicatie', 'Pending'],                    // NL
   ['avis en attente', 'Pending'],                        // FR
   ['opinión pendiente', 'Pending'],                      // ES
-  ['anmeldelse venter', 'Pending'],                      // NO: "Din anmeldelse venter på publisering."
+  ['recensione in attesa', 'Pending'],                   // IT
+  ['anmeldelse venter', 'Pending'],                      // NO / DA (shared word)
+  ['recension väntar', 'Pending'],                       // SV
+  ['arvostelu odottaa', 'Pending'],                      // FI
+  ['recenzja oczekuje', 'Pending'],                      // PL
+  ['avaliação pendente', 'Pending'],                     // PT
+  ['отзыв ожидает', 'Pending'],                          // RU
+  ['レビューが審査中', 'Pending'],                           // JA
+  ['리뷰가 검토 중입니다', 'Pending'],                       // KO
+  ['yorum beklemede', 'Pending'],                        // TR
+  ['المراجعة قيد المراجعة', 'Pending'],                  // AR
 
-  // ── Published fallback (one per locale — only reached when no badge matched) ──
+  // ── Published fallback (only reached when no badge matched) ──────────────
   ['thanks for your review', 'Published'],               // EN
-  ['thank you for your review', 'Published'],            // AU (alternate phrasing)
-  ['ihre bewertung zählt', 'Published'],                 // DE: "Vielen Dank! Ihre Bewertung zählt."
+  ['thank you for your review', 'Published'],            // AU / NZ / CA / IE (alternate phrasing)
+  ['ihre bewertung zählt', 'Published'],                 // DE
   ['bedankt voor uw beoordeling', 'Published'],          // NL
   ['merci pour votre avis', 'Published'],                // FR
   ['gracias por tu opinión', 'Published'],               // ES
-  ['takk for din anmeldelse', 'Published'],              // NO: "Takk for din anmeldelse."
+  ['grazie per la tua recensione', 'Published'],         // IT
+  ['takk for din anmeldelse', 'Published'],              // NO
+  ['tak for din anmeldelse', 'Published'],               // DA
+  ['tack för din recension', 'Published'],               // SV
+  ['kiitos arvostelustasi', 'Published'],                // FI
+  ['dziękujemy za recenzję', 'Published'],               // PL
+  ['obrigado pela sua avaliação', 'Published'],          // PT
+  ['спасибо за ваш отзыв', 'Published'],                 // RU
+  ['レビューをありがとうございます', 'Published'],               // JA
+  ['리뷰를 남겨주셔서 감사합니다', 'Published'],                // KO
+  ['yorumunuz için teşekkürler', 'Published'],           // TR
+  ['شكراً على مراجعتك', 'Published'],                    // AR
 ];
 
 function fromNextData(html: string): TpStatus | null {
