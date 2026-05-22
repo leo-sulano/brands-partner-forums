@@ -72,3 +72,14 @@ Deno.test('__NEXT_DATA__ overrides text signal', () => {
   const html = `<html><script id="__NEXT_DATA__" type="application/json">${payload}</script></html><body>Thanks for your review!</body>`;
   assertEquals(parseReviewStatus(html), 'Pending');
 });
+
+// trustBoxReviewStatus='published' must NOT override a pending review —
+// it can be 'published' on the confirmation page even when the review is pending.
+// Without state/status, parser must fall through to text signals.
+Deno.test('trustBoxReviewStatus published + pending text signal → Pending', () => {
+  const payload = JSON.stringify({
+    props: { pageProps: { correlatedReview: { trustBoxReviewStatus: 'published' } } },
+  });
+  const html = `<html><script id="__NEXT_DATA__" type="application/json">${payload}</script></html><body>Thanks for your review! Your review is pending. Read more</body>`;
+  assertEquals(parseReviewStatus(html), 'Pending');
+});

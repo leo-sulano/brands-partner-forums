@@ -43,7 +43,10 @@ function fromNextData(html: string): TpStatus | null {
     d?.props?.pageProps?.reviewData;
 
   if (review) {
-    const rawState: string | undefined = review.state ?? review.status ?? review.trustBoxReviewStatus;
+    // trustBoxReviewStatus is intentionally excluded — it can be 'published' even
+    // when the review is pending, causing false-positive Published results.
+    // Fall through to text signals when state/status are absent.
+    const rawState: string | undefined = review.state ?? review.status;
     if (rawState) return STATE_MAP[rawState.toLowerCase()] ?? null;
   }
 
