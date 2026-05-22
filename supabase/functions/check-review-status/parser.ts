@@ -11,12 +11,35 @@ const STATE_MAP: Record<string, TpStatus> = {
 
 // Text signals visible on the submitted/review?correlationid=... confirmation page.
 // Checked in order — first match wins. More specific signals come before generic ones.
-// "thanks for your review" appears on ALL TP pages so it is last (Published fallback).
+// Each language's "thanks" fallback is last so it only fires when no status badge matched.
 const TEXT_SIGNALS: Array<[string, TpStatus]> = [
-  ['review removed', 'Removed'],            // badge: "Review removed"
-  ['review not published', 'Refused'],       // badge: "Review not published"
-  ['review is pending', 'Pending'],          // banner: "Your review is pending."
-  ['thanks for your review', 'Published'],   // fallback: shown on all TP pages; only reached when none of the above matched
+  // ── Removed ──────────────────────────────────────────────────────────────
+  ['review removed', 'Removed'],                         // EN
+  ['bewertung entfernt', 'Removed'],                     // DE
+  ['beoordeling verwijderd', 'Removed'],                 // NL
+  ['avis supprimé', 'Removed'],                          // FR
+  ['opinión eliminada', 'Removed'],                      // ES
+
+  // ── Refused / Not published ───────────────────────────────────────────────
+  ['review not published', 'Refused'],                   // EN
+  ['nicht veröffentlicht', 'Refused'],                   // DE
+  ['niet gepubliceerd', 'Refused'],                      // NL
+  ['avis non publié', 'Refused'],                        // FR
+  ['opinión no publicada', 'Refused'],                   // ES
+
+  // ── Pending ───────────────────────────────────────────────────────────────
+  ['review is pending', 'Pending'],                      // EN: "Your review is pending."
+  ['wartet auf die veröffentlichung', 'Pending'],        // DE: "Ihre Bewertung wartet auf die Veröffentlichung."
+  ['wacht op publicatie', 'Pending'],                    // NL
+  ['avis en attente', 'Pending'],                        // FR
+  ['opinión pendiente', 'Pending'],                      // ES
+
+  // ── Published fallback (one per locale — only reached when no badge matched) ──
+  ['thanks for your review', 'Published'],               // EN
+  ['ihre bewertung zählt', 'Published'],                 // DE: "Vielen Dank! Ihre Bewertung zählt."
+  ['bedankt voor uw beoordeling', 'Published'],          // NL
+  ['merci pour votre avis', 'Published'],                // FR
+  ['gracias por tu opinión', 'Published'],               // ES
 ];
 
 function fromNextData(html: string): TpStatus | null {
