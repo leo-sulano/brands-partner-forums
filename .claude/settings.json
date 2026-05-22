@@ -103,7 +103,11 @@
       "WebFetch(domain:www.trustpilot.com)",
       "Bash(supabase --help)",
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/index.ts)",
-      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/parser.ts)"
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/parser.ts)",
+      "WebSearch",
+      "WebFetch(domain:au.trustpilot.com)",
+      "WebFetch(domain:no.trustpilot.com)",
+      "WebFetch(domain:support.trustpilot.com)"
     ]
   }
 }
