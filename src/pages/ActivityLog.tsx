@@ -84,9 +84,9 @@ export default function ActivityLog() {
 
       {!loading && !error && items.length > 0 && (
         <ul className="space-y-2">
-          {items.map((item, i) => (
+          {items.map((item) => (
             <li
-              key={i}
+              key={item.kind === 'sync' ? `sync-${item.run.id}` : `edit-${item.event.id}`}
               className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
             >
               {item.kind === 'sync' ? (
