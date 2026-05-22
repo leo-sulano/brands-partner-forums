@@ -82,12 +82,12 @@ create or replace function public.handle_new_user()
 returns trigger as $$
 begin
   insert into public.profiles (id, email)
-  values (new.id, new.email);
+  values (new.id, coalesce(new.email, ''));
   return new;
 end;
 $$ language plpgsql security definer;
 
-create trigger on_auth_user_created
+create or replace trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
@@ -133,7 +133,7 @@ create policy "approved users can read sync_runs"
 create policy "approved users can insert sync_runs"
   on public.sync_runs for insert with check (public.is_approved());
 create policy "approved users can update sync_runs"
-  on public.sync_runs for update using (public.is_approved());
+  on public.sync_runs for update using (public.is_approved()) with check (public.is_approved());
 
 -- profiles: each user can read their own row; admins can read and update all rows
 create policy "users can read own profile"
@@ -141,4 +141,6 @@ create policy "users can read own profile"
 create policy "admins can read all profiles"
   on public.profiles for select using (public.is_admin());
 create policy "admins can update profiles"
-  on public.profiles for update using (public.is_admin()) with check (public.is_admin());
+  on public.profiles for update
+  using (public.is_admin() and id <> auth.uid())
+  with check (public.is_admin() and id <> auth.uid());
