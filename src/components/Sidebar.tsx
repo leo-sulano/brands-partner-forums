@@ -33,7 +33,7 @@ const linkClass = (isActive: boolean) =>
   ].join(' ');
 
 export default function Sidebar() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, session } = useAuth();
 
   return (
     <aside className="hidden md:flex md:w-60 flex-col bg-slate-900 text-slate-100">
@@ -42,17 +42,19 @@ export default function Sidebar() {
         <span className="font-semibold tracking-tight">Brands Partner Forum</span>
       </div>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {topLinks.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) => linkClass(isActive)}
-          >
-            <Icon className="size-4" />
-            {label}
-          </NavLink>
-        ))}
+        {topLinks
+          .filter(({ to }) => to !== '/sync' || !!session)
+          .map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) => linkClass(isActive)}
+            >
+              <Icon className="size-4" />
+              {label}
+            </NavLink>
+          ))}
 
         <div className="pt-3 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
           Brands
