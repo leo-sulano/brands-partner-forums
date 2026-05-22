@@ -14,32 +14,37 @@ const STATE_MAP: Record<string, TpStatus> = {
 // Each language's "thanks" fallback is last so it only fires when no status badge matched.
 const TEXT_SIGNALS: Array<[string, TpStatus]> = [
   // ── Removed ──────────────────────────────────────────────────────────────
-  ['review removed', 'Removed'],                         // EN
+  ['review removed', 'Removed'],                         // EN / AU
   ['bewertung entfernt', 'Removed'],                     // DE
   ['beoordeling verwijderd', 'Removed'],                 // NL
   ['avis supprimé', 'Removed'],                          // FR
   ['opinión eliminada', 'Removed'],                      // ES
+  ['anmeldelse fjernet', 'Removed'],                     // NO
 
   // ── Refused / Not published ───────────────────────────────────────────────
-  ['review not published', 'Refused'],                   // EN
+  ['review not published', 'Refused'],                   // EN / AU
   ['nicht veröffentlicht', 'Refused'],                   // DE
   ['niet gepubliceerd', 'Refused'],                      // NL
   ['avis non publié', 'Refused'],                        // FR
   ['opinión no publicada', 'Refused'],                   // ES
+  ['anmeldelse ikke publisert', 'Refused'],              // NO
 
   // ── Pending ───────────────────────────────────────────────────────────────
-  ['review is pending', 'Pending'],                      // EN: "Your review is pending."
+  ['review is pending', 'Pending'],                      // EN / AU: "Your review is pending."
   ['wartet auf die veröffentlichung', 'Pending'],        // DE: "Ihre Bewertung wartet auf die Veröffentlichung."
   ['wacht op publicatie', 'Pending'],                    // NL
   ['avis en attente', 'Pending'],                        // FR
   ['opinión pendiente', 'Pending'],                      // ES
+  ['anmeldelse venter', 'Pending'],                      // NO: "Din anmeldelse venter på publisering."
 
   // ── Published fallback (one per locale — only reached when no badge matched) ──
   ['thanks for your review', 'Published'],               // EN
+  ['thank you for your review', 'Published'],            // AU (alternate phrasing)
   ['ihre bewertung zählt', 'Published'],                 // DE: "Vielen Dank! Ihre Bewertung zählt."
   ['bedankt voor uw beoordeling', 'Published'],          // NL
   ['merci pour votre avis', 'Published'],                // FR
   ['gracias por tu opinión', 'Published'],               // ES
+  ['takk for din anmeldelse', 'Published'],              // NO: "Takk for din anmeldelse."
 ];
 
 function fromNextData(html: string): TpStatus | null {
