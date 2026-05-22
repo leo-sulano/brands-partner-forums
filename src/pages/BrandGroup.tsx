@@ -12,6 +12,7 @@ import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
+import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 
@@ -525,6 +526,7 @@ export default function BrandGroup() {
 
   const [agentFilter, setAgentFilter] = useState('');
   const [proxyFilter, setProxyFilter] = useState('');
+  const { isApproved } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
@@ -888,14 +890,16 @@ export default function BrandGroup() {
     <div className="space-y-6">
       {/* Page actions */}
       <div className="flex items-center justify-end">
-        <button
-          type="button"
-          onClick={() => setShowAddModal(true)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition-colors"
-        >
-          <Plus className="size-4" />
-          Add Review Account
-        </button>
+        {isApproved && (
+          <button
+            type="button"
+            onClick={() => setShowAddModal(true)}
+            className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition-colors"
+          >
+            <Plus className="size-4" />
+            Add Review Account
+          </button>
+        )}
       </div>
 
       {activePlatforms.length <= 1 && (
@@ -1105,8 +1109,8 @@ export default function BrandGroup() {
                 pageRows.map((entry) => (
                   <tr
                     key={entry.id}
-                    onClick={() => setEditEntry(entry)}
-                    className="cursor-pointer hover:bg-violet-50/50 transition-colors"
+                    onClick={isApproved ? () => setEditEntry(entry) : undefined}
+                    className={isApproved ? 'cursor-pointer hover:bg-violet-50/50 transition-colors' : 'transition-colors'}
                   >
                     {visibleHeaders.map((h) => {
                       // Brand / TP URL PAGE: render brand name as a link to the profile URL
