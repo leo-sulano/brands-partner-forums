@@ -101,7 +101,7 @@ export default function AdminUsers() {
                         <Loader2 className="size-4 animate-spin text-slate-400" />
                       ) : (
                         <>
-                          {p.approved ? (
+                          {!isSelf && (p.approved ? (
                             <button
                               onClick={() => patch(p.id, { approved: false })}
                               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
@@ -117,7 +117,7 @@ export default function AdminUsers() {
                               <UserCheck className="size-3.5" />
                               Approve
                             </button>
-                          )}
+                          ))}
                           {!isSelf && (
                             p.role === 'member' ? (
                               <button
