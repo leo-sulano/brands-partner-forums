@@ -10,6 +10,7 @@ import MentionDetail from './pages/MentionDetail';
 import SyncStatus from './pages/SyncStatus';
 import BrandGroup from './pages/BrandGroup';
 import AdminUsers from './pages/AdminUsers';
+import ActivityLog from './pages/ActivityLog';
 
 function AppLayout() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/brands/:tab" element={<BrandGroup />} />
           <Route element={<ProtectedRoute />}>
             <Route path="/sync" element={<SyncStatus />} />
+            <Route path="/log" element={<ActivityLog />} />
             <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
         </Route>

@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, RefreshCw, MessagesSquare,
+  LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
   Users,
   type LucideIcon,
@@ -22,6 +22,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 const topLinks = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/sync', label: 'Sync Status', icon: RefreshCw, end: false },
+  { to: '/log',  label: 'Log',         icon: ScrollText,  end: false },
 ];
 
 const linkClass = (isActive: boolean) =>
@@ -43,7 +44,7 @@ export default function Sidebar() {
       </div>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {topLinks
-          .filter(({ to }) => to !== '/sync' || !!session)
+          .filter(({ to }) => (to === '/sync' || to === '/log') ? !!session : true)
           .map(({ to, label, icon: Icon, end }) => (
             <NavLink
               key={to}
