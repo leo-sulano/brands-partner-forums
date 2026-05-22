@@ -1045,22 +1045,24 @@ export default function BrandGroup() {
             />
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
-          <div className="flex items-center gap-2">
-            {lastChecked && (
-              <span className="text-xs text-slate-400 whitespace-nowrap">
-                Last checked: {lastChecked}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={handleCheckStatus}
-              disabled={checkingStatus}
-              className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
-              {checkingStatus ? 'Checking…' : 'Check Status'}
-            </button>
-          </div>
+          {isApproved && (
+            <div className="flex items-center gap-2">
+              {lastChecked && (
+                <span className="text-xs text-slate-400 whitespace-nowrap">
+                  Last checked: {lastChecked}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleCheckStatus}
+                disabled={checkingStatus}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                {checkingStatus ? 'Checking…' : 'Check Status'}
+              </button>
+            </div>
+          )}
         </div>
 
 
