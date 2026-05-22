@@ -99,7 +99,11 @@
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/parser.ts supabase/functions/check-review-status/parser_test.ts)",
       "Bash(supabase projects *)",
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff .claude/settings.json supabase/apps-script/EmailParser.gs)",
-      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add .claude/settings.json supabase/apps-script/EmailParser.gs docs/superpowers/plans/2026-05-22-activity-log.md docs/superpowers/plans/2026-05-22-auth-and-edit-accounts.md docs/superpowers/specs/2026-05-22-auth-and-edit-accounts-design.md scripts/)"
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add .claude/settings.json supabase/apps-script/EmailParser.gs docs/superpowers/plans/2026-05-22-activity-log.md docs/superpowers/plans/2026-05-22-auth-and-edit-accounts.md docs/superpowers/specs/2026-05-22-auth-and-edit-accounts-design.md scripts/)",
+      "WebFetch(domain:www.trustpilot.com)",
+      "Bash(supabase --help)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/index.ts)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" add supabase/functions/check-review-status/parser.ts)"
     ]
   }
 }
