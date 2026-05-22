@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Users,
+  Users, ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS } from '../lib/tabs';
@@ -31,8 +32,22 @@ const linkClass = (isActive: boolean) =>
       : 'text-slate-300 hover:bg-slate-800/60 hover:text-white',
   ].join(' ');
 
+function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      className="w-full flex items-center justify-between pt-3 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors"
+    >
+      {label}
+      <ChevronDown className={`size-3 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+    </button>
+  );
+}
+
 export default function Sidebar() {
   const { isAdmin, session } = useAuth();
+  const [brandsOpen, setBrandsOpen] = useState(true);
+  const [adminOpen, setAdminOpen] = useState(true);
 
   return (
     <aside className="hidden md:flex md:w-60 flex-col bg-slate-900 text-slate-100">
@@ -53,11 +68,9 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        <div className="pt-3 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-          Brands
-        </div>
+        <SectionHeader label="Brands" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
 
-        {OPERATIONAL_TABS.map((tab) => {
+        {brandsOpen && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
           return (
             <NavLink
@@ -73,31 +86,34 @@ export default function Sidebar() {
 
         {!!session && (
           <>
-            <div className="pt-3 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Admin
-            </div>
-            <NavLink
-              to="/sync"
-              className={({ isActive }) => linkClass(isActive)}
-            >
-              <RefreshCw className="size-4" />
-              Sync Status
-            </NavLink>
-            <NavLink
-              to="/log"
-              className={({ isActive }) => linkClass(isActive)}
-            >
-              <ScrollText className="size-4" />
-              Log
-            </NavLink>
-            {isAdmin && (
-              <NavLink
-                to="/admin/users"
-                className={({ isActive }) => linkClass(isActive)}
-              >
-                <Users className="size-4" />
-                Users
-              </NavLink>
+            <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
+
+            {adminOpen && (
+              <>
+                <NavLink
+                  to="/sync"
+                  className={({ isActive }) => linkClass(isActive)}
+                >
+                  <RefreshCw className="size-4" />
+                  Sync Status
+                </NavLink>
+                <NavLink
+                  to="/log"
+                  className={({ isActive }) => linkClass(isActive)}
+                >
+                  <ScrollText className="size-4" />
+                  Log
+                </NavLink>
+                {isAdmin && (
+                  <NavLink
+                    to="/admin/users"
+                    className={({ isActive }) => linkClass(isActive)}
+                  >
+                    <Users className="size-4" />
+                    Users
+                  </NavLink>
+                )}
+              </>
             )}
           </>
         )}
