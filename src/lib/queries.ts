@@ -221,8 +221,19 @@ export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   return (data ?? []).map((row) => entryToBrandEntry(row as Entry));
 }
 
+// Simple in-memory cache for tab entries — avoids re-fetching on every navigation.
+const tabEntryCache = new Map<string, { entries: Entry[]; ts: number }>();
+const TAB_CACHE_TTL = 60_000; // 60 seconds
+
+export function invalidateTabCache(tab: string) {
+  tabEntryCache.delete(tab);
+}
+
 // Fetches all rows for a tab, paginating in 1 000-row batches to bypass Supabase's default limit.
 async function fetchAllTabEntries(tab: string): Promise<Entry[]> {
+  const cached = tabEntryCache.get(tab);
+  if (cached && Date.now() - cached.ts < TAB_CACHE_TTL) return cached.entries;
+
   const PAGE = 1000;
   const all: Entry[] = [];
   let from = 0;
@@ -238,6 +249,8 @@ async function fetchAllTabEntries(tab: string): Promise<Entry[]> {
     if ((data ?? []).length < PAGE) break;
     from += PAGE;
   }
+
+  tabEntryCache.set(tab, { entries: all, ts: Date.now() });
   return all;
 }
 
@@ -360,6 +373,8 @@ export async function updateEntryData(
     .update({ data: mergedData, last_edited_by: 'dashboard', last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
+
+  invalidateTabCache(tab);
 
   pushEntryToSheet(tab, sheetRowId, fields).catch(
     (err) => console.warn('[push-to-sheet] entry update failed (non-blocking):', err),
