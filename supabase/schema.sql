@@ -63,3 +63,82 @@ SELECT cron.schedule(
     )
   $$
 );
+
+-- =============================================================================
+-- Auth: profiles table, auto-insert trigger, and RLS policies
+-- Run this block in the Supabase SQL editor after the schema above.
+-- =============================================================================
+
+create table if not exists public.profiles (
+  id          uuid primary key references auth.users(id) on delete cascade,
+  email       text not null,
+  approved    boolean not null default false,
+  role        text not null default 'member' check (role in ('admin', 'member')),
+  created_at  timestamptz not null default now()
+);
+
+-- Auto-insert a profile row whenever a new user signs up
+create or replace function public.handle_new_user()
+returns trigger as $$
+begin
+  insert into public.profiles (id, email)
+  values (new.id, new.email);
+  return new;
+end;
+$$ language plpgsql security definer;
+
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute procedure public.handle_new_user();
+
+-- Helper: returns true if the current session user is approved
+create or replace function public.is_approved()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and approved = true
+  )
+$$ language sql security definer stable;
+
+-- Helper: returns true if the current session user is an approved admin
+create or replace function public.is_admin()
+returns boolean as $$
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and approved = true and role = 'admin'
+  )
+$$ language sql security definer stable;
+
+-- Enable RLS on all data tables
+alter table public.entries     enable row level security;
+alter table public.tab_schemas enable row level security;
+alter table public.sync_runs   enable row level security;
+alter table public.profiles    enable row level security;
+
+-- entries
+create policy "approved users can read entries"
+  on public.entries for select using (public.is_approved());
+create policy "approved users can insert entries"
+  on public.entries for insert with check (public.is_approved());
+create policy "approved users can update entries"
+  on public.entries for update using (public.is_approved()) with check (public.is_approved());
+
+-- tab_schemas
+create policy "approved users can read tab_schemas"
+  on public.tab_schemas for select using (public.is_approved());
+
+-- sync_runs
+create policy "approved users can read sync_runs"
+  on public.sync_runs for select using (public.is_approved());
+create policy "approved users can insert sync_runs"
+  on public.sync_runs for insert with check (public.is_approved());
+create policy "approved users can update sync_runs"
+  on public.sync_runs for update using (public.is_approved());
+
+-- profiles: each user can read their own row; admins can read and update all rows
+create policy "users can read own profile"
+  on public.profiles for select using (id = auth.uid());
+create policy "admins can read all profiles"
+  on public.profiles for select using (public.is_admin());
+create policy "admins can update profiles"
+  on public.profiles for update using (public.is_admin()) with check (public.is_admin());
