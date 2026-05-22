@@ -1,6 +1,12 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, RefreshCw, MessagesSquare, Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, type LucideIcon } from 'lucide-react';
+import {
+  LayoutDashboard, RefreshCw, MessagesSquare,
+  Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
 import { OPERATIONAL_TABS } from '../lib/tabs';
+import { useAuth } from '../contexts/AuthContext';
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection': Syringe,
@@ -27,6 +33,8 @@ const linkClass = (isActive: boolean) =>
   ].join(' ');
 
 export default function Sidebar() {
+  const { isAdmin } = useAuth();
+
   return (
     <aside className="hidden md:flex md:w-60 flex-col bg-slate-900 text-slate-100">
       <div className="px-5 py-5 flex items-center gap-2 border-b border-slate-800">
@@ -63,6 +71,21 @@ export default function Sidebar() {
             </NavLink>
           );
         })}
+
+        {isAdmin && (
+          <>
+            <div className="pt-3 pb-1 px-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Admin
+            </div>
+            <NavLink
+              to="/admin/users"
+              className={({ isActive }) => linkClass(isActive)}
+            >
+              <Users className="size-4" />
+              Users
+            </NavLink>
+          </>
+        )}
       </nav>
       <div className="px-4 py-3 text-xs text-slate-500 border-t border-slate-800">
         Internal · v0.1
