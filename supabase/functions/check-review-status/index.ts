@@ -47,14 +47,26 @@ async function fetchTpStatus(url: string): Promise<TpStatus | null> {
     });
 
     // 3xx redirect away from the review URL = review removed/gone
-    if (res.status >= 301 && res.status <= 308) return 'Removed';
-    if (res.status === 404) return 'Removed';
-    if (res.status !== 200) return null; // unexpected — skip
+    if (res.status >= 301 && res.status <= 308) {
+      console.log(`[check-status] REDIRECT ${res.status} for ${url}`);
+      return 'Removed';
+    }
+    if (res.status === 404) {
+      console.log(`[check-status] 404 for ${url}`);
+      return 'Removed';
+    }
+    if (res.status !== 200) {
+      console.log(`[check-status] HTTP ${res.status} for ${url}`);
+      return null;
+    }
 
     const html = await res.text();
-    return parseReviewStatus(html);
-  } catch {
-    return null; // network error — skip, don't corrupt DB
+    const parsed = parseReviewStatus(html);
+    console.log(`[check-status] ${url} → ${parsed ?? 'null'} (html length: ${html.length})`);
+    return parsed;
+  } catch (err) {
+    console.log(`[check-status] ERROR for ${url}: ${err}`);
+    return null;
   }
 }
 
