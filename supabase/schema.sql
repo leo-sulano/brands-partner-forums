@@ -116,16 +116,16 @@ alter table public.sync_runs   enable row level security;
 alter table public.profiles    enable row level security;
 
 -- entries
-create policy "approved users can read entries"
-  on public.entries for select using (public.is_approved());
+create policy "anyone can read entries"
+  on public.entries for select using (true);
 create policy "approved users can insert entries"
   on public.entries for insert with check (public.is_approved());
 create policy "approved users can update entries"
   on public.entries for update using (public.is_approved()) with check (public.is_approved());
 
 -- tab_schemas
-create policy "approved users can read tab_schemas"
-  on public.tab_schemas for select using (public.is_approved());
+create policy "anyone can read tab_schemas"
+  on public.tab_schemas for select using (true);
 
 -- sync_runs
 create policy "approved users can read sync_runs"

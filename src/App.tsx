@@ -32,11 +32,11 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route element={<AppLayout />}>
+          <Route path="/" element={<Overview />} />
+          <Route path="/mentions/:id" element={<MentionDetail />} />
+          <Route path="/brands/:tab" element={<BrandGroup />} />
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<Overview />} />
-            <Route path="/mentions/:id" element={<MentionDetail />} />
             <Route path="/sync" element={<SyncStatus />} />
-            <Route path="/brands/:tab" element={<BrandGroup />} />
             <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
         </Route>
