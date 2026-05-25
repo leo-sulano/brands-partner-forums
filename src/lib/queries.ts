@@ -165,7 +165,7 @@ function tallyTop(values: string[], limit: number): TopItem[] {
     .slice(0, limit);
 }
 
-export async function fetchSyncRuns(limit = 10): Promise<SyncRun[]> {
+export async function fetchSyncRuns(limit = 500): Promise<SyncRun[]> {
   const { data, error } = await supabase
     .from('sync_runs')
     .select('*')
