@@ -152,12 +152,13 @@ def _from_next_data(html: str) -> Optional[str]:
         or page_props.get("reviewData")
     )
     if review:
+        # isPending takes precedence — state/status can say "published" (meaning
+        # "submitted") while isPending:true means it's still awaiting moderation.
+        if review.get("isPending") is True:
+            return "Pending"
         raw_state: Optional[str] = review.get("state") or review.get("status")
         if raw_state:
             return STATE_MAP.get(raw_state.lower())
-        # Modern pages use isPending boolean instead of state/status
-        if review.get("isPending") is True:
-            return "Pending"
     return None
 
 
