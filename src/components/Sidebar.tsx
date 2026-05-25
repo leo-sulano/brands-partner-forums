@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Users, ChevronDown,
+  Link2, Users, ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS } from '../lib/tabs';
@@ -11,6 +11,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection': Syringe,
+  'TP Affiliate':       Link2,
   'Rooster Partners':   Handshake,
   'Revolution Casino':  RotateCcw,
   'Trybet':             Dices,
