@@ -55,6 +55,16 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Link to the profile',
     'Review Status',
   ],
+  'TP Affiliate': [
+    'Account',
+    'Proxy Used',
+    'Account Name',
+    'Agent',
+    'Brand / TP URL PAGE',
+    'Trust Pilot',
+    'Link to the profile',
+    'Review Status',
+  ],
   'Trybet': [
     'Account',
     'Proxy Used',

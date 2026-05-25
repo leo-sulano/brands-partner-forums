@@ -10,6 +10,7 @@
 
 var OPERATIONAL_TABS = [
   'TP Brand Injection',
+  'TP Affiliate',
   'Rooster Partners',
   'Revolution Casino',
   'Trybet',

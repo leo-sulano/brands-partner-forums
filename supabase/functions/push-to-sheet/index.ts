@@ -24,6 +24,7 @@ const APPS_SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SECRET')!;
 
 const OPERATIONAL_TABS = new Set([
   'TP Brand Injection',
+  'TP Affiliate',
   'Rooster Partners',
   'Revolution Casino',
   'Trybet',
