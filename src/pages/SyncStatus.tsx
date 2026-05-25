@@ -169,10 +169,20 @@ export default function SyncStatus() {
                         </span>
                         <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-80 rounded-md border border-rose-200 bg-white p-3 shadow-xl group-hover:block">
                           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-rose-600">Error reasons</p>
-                          <ul className="max-h-48 space-y-1.5 overflow-y-auto">
-                            {d.errorMessages.map((msg, i) => (
-                              <li key={i} className="break-words text-xs text-slate-700">• {msg}</li>
-                            ))}
+                          <ul className="max-h-48 space-y-2 overflow-y-auto">
+                            {d.errorMessages.map((msg, i) => {
+                              const match = msg.match(/^\[([^\]]+)\]\s*(.*)/s);
+                              const context = match?.[1] ?? null;
+                              const detail  = match?.[2] ?? msg;
+                              return (
+                                <li key={i} className="break-words text-xs">
+                                  {context && (
+                                    <span className="mb-0.5 block font-semibold text-rose-600">{context}</span>
+                                  )}
+                                  <span className="text-slate-700">{detail}</span>
+                                </li>
+                              );
+                            })}
                           </ul>
                         </div>
                       </div>

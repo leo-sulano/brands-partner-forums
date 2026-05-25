@@ -188,12 +188,19 @@ Deno.serve(async (req) => {
             const { error: upsErr } = await admin
               .from('entries')
               .upsert(chunk, { onConflict: 'tab,sheet_row_id' });
-            if (upsErr) throw upsErr;
+            if (upsErr) {
+              // Attach account names so the error shows which rows failed.
+              const samples = chunk.slice(0, 5).map((r) => {
+                const d = r.data as Record<string, string | null>;
+                return d['Account Name'] ?? d['Account'] ?? String(r.sheet_row_id);
+              }).join(', ');
+              throw new Error(`upsert failed (accounts: ${samples}): ${upsErr.message}`);
+            }
           }
           rowsUpserted += toUpsert.length;
         }
       } catch (tabErr) {
-        tabsFailed.push(`${tabName}: ${tabErr instanceof Error ? tabErr.message : String(tabErr)}`);
+        tabsFailed.push(`[${tabName}] ${tabErr instanceof Error ? tabErr.message : String(tabErr)}`);
       }
     }
 
@@ -209,8 +216,9 @@ Deno.serve(async (req) => {
     return json({ ok: tabsFailed.length === 0, rows_seen: rowsSeen, rows_upserted: rowsUpserted, rows_skipped: rowsSkipped, tabs_failed: tabsFailed });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await admin.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: msg }).eq('id', runId);
-    return json({ ok: false, error: msg }, 500);
+    const fullMsg = `[All tabs affected] ${msg}`;
+    await admin.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: fullMsg }).eq('id', runId);
+    return json({ ok: false, error: fullMsg }, 500);
   }
 });
 
