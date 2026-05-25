@@ -14,20 +14,24 @@ interface DaySummary {
   running: number;
   error: number;
   skipped: number;
+  errorMessages: string[];
 }
 
 function groupByDate(runs: SyncRun[]): DaySummary[] {
   const map = new Map<string, DaySummary>();
   for (const r of runs) {
     const d = new Date(r.started_at);
-    const dateKey = d.toISOString().slice(0, 10); // YYYY-MM-DD for sorting
+    const dateKey = d.toISOString().slice(0, 10);
     const label = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     if (!map.has(dateKey)) {
-      map.set(dateKey, { dateKey, label, total: 0, success: 0, running: 0, error: 0, skipped: 0 });
+      map.set(dateKey, { dateKey, label, total: 0, success: 0, running: 0, error: 0, skipped: 0, errorMessages: [] });
     }
     const s = map.get(dateKey)!;
     s.total++;
     s[r.status as SyncRunStatus]++;
+    if (r.status === 'error' && r.error_message) {
+      s.errorMessages.push(r.error_message);
+    }
   }
   return Array.from(map.values()).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
 }
@@ -151,9 +155,19 @@ export default function SyncStatus() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     {d.error > 0 ? (
-                      <span className="inline-flex items-center justify-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums">
-                        {d.error}
-                      </span>
+                      <div className="group relative inline-flex justify-end">
+                        <span className="inline-flex cursor-default items-center justify-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums">
+                          {d.error}
+                        </span>
+                        <div className="pointer-events-none absolute bottom-full right-0 z-10 mb-2 hidden w-72 rounded-md border border-rose-200 bg-white p-3 shadow-lg group-hover:block">
+                          <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-rose-600">Error reasons</p>
+                          <ul className="space-y-1">
+                            {d.errorMessages.map((msg, i) => (
+                              <li key={i} className="text-xs text-slate-700 break-words">• {msg}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
                     ) : (
                       <span className="text-slate-300">—</span>
                     )}
