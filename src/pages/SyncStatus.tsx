@@ -30,7 +30,9 @@ function groupByDate(runs: SyncRun[]): DaySummary[] {
     s.total++;
     s[r.status as SyncRunStatus]++;
     if (r.status === 'error' && r.error_message) {
-      s.errorMessages.push(r.error_message);
+      // Strip HTML tags from Apps Script error pages, collapse whitespace
+      const clean = r.error_message.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      s.errorMessages.push(clean);
     }
   }
   return Array.from(map.values()).sort((a, b) => b.dateKey.localeCompare(a.dateKey));
@@ -159,11 +161,11 @@ export default function SyncStatus() {
                         <span className="inline-flex cursor-default items-center justify-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums">
                           {d.error}
                         </span>
-                        <div className="pointer-events-none absolute bottom-full right-0 z-10 mb-2 hidden w-72 rounded-md border border-rose-200 bg-white p-3 shadow-lg group-hover:block">
+                        <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-80 rounded-md border border-rose-200 bg-white p-3 shadow-xl group-hover:block">
                           <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-rose-600">Error reasons</p>
-                          <ul className="space-y-1">
+                          <ul className="max-h-48 space-y-1.5 overflow-y-auto">
                             {d.errorMessages.map((msg, i) => (
-                              <li key={i} className="text-xs text-slate-700 break-words">• {msg}</li>
+                              <li key={i} className="break-words text-xs text-slate-700">• {msg}</li>
                             ))}
                           </ul>
                         </div>
