@@ -105,16 +105,16 @@ export default function SyncStatus() {
       ) : null}
 
       {/* Grouped history table */}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full divide-y divide-slate-200 text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Date</th>
+              <th className="rounded-tl-lg px-4 py-3">Date</th>
               <th className="px-4 py-3 text-right">Total syncs</th>
               <th className="px-4 py-3 text-right">Success</th>
               <th className="px-4 py-3 text-right">Running</th>
               <th className="px-4 py-3 text-right">Error</th>
-              <th className="px-4 py-3 text-right">Skipped</th>
+              <th className="rounded-tr-lg px-4 py-3 text-right">Skipped</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
