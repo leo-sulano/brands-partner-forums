@@ -30,8 +30,14 @@ function groupByDate(runs: SyncRun[]): DaySummary[] {
     s.total++;
     s[r.status as SyncRunStatus]++;
     if (r.status === 'error' && r.error_message) {
-      // Strip HTML tags from Apps Script error pages, collapse whitespace
-      const clean = r.error_message.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+      // Strip style/script block contents first, then remaining tags, then decode entities
+      const clean = r.error_message
+        .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
       s.errorMessages.push(clean);
     }
   }
