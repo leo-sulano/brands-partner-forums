@@ -110,7 +110,26 @@
       "WebFetch(domain:support.trustpilot.com)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" -Recurse -Filter \"*.ts\" -o File)",
       "Bash(Select-Object -First 20)",
-      "Bash(echo \"Exit: $?\")"
+      "Bash(echo \"Exit: $?\")",
+      "Bash(New-Item -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\.env.example\" -ItemType File -Force)",
+      "Bash(Out-Null)",
+      "Bash(Set-Content -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\.env.example\" -Encoding utf8 -Value \"# Copy to scripts/.env and fill in.`nSUPABASE_URL=https://your-project.supabase.co`nSUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here\")",
+      "PowerShell(New-Item -Path \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\.env.example\" -ItemType File -Force)",
+      "PowerShell(python --version 2>&1)",
+      "PowerShell(pip --version 2>&1)",
+      "PowerShell(python -m pip --version 2>&1)",
+      "PowerShell(python -m pip install -r \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\requirements.txt\" 2>&1)",
+      "PowerShell(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\check_review_status.py\" --dry-run 2>&1)",
+      "PowerShell(python -m pip install setuptools 2>&1)",
+      "PowerShell(python -c \"from dotenv import load_dotenv; import os; load_dotenv\\(r'c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\.env'\\); print\\(os.environ.get\\('SUPABASE_URL', 'NOT FOUND'\\)\\)\")",
+      "PowerShell(python \"C:\\\\Users\\\\Leo\\\\AppData\\\\Local\\\\Temp\\\\inspect_tp.py\" 2>&1)",
+      "PowerShell(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\check_review_status.py\" 2>&1)",
+      "PowerShell(python -m pip install flask flask-cors 2>&1)",
+      "PowerShell(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\status_server.py\" 2>&1)",
+      "Bash(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\status_server.py\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\Leo\\AppData\\Local\\Temp"
     ]
   }
 }
