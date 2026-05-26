@@ -226,3 +226,31 @@ function jsonResponse(obj) {
     .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
 }
+
+// Run once from the editor to register the onEdit installable trigger for the spreadsheet.
+function installOnEditTrigger() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  // Avoid duplicates — delete any existing onEdit trigger for this script first.
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'onEdit') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('onEdit').forSpreadsheet(ss).onEdit().create();
+  Logger.log('onEdit trigger installed.');
+}
+
+// Auto-assign a UUID to any new row that lands in an operational tab without one.
+function onEdit(e) {
+  var sheet = e.range.getSheet();
+  if (OPERATIONAL_TABS.indexOf(sheet.getName()) === -1) return;
+
+  var startRow = e.range.getRow();
+  var numRows  = e.range.getNumRows();
+
+  for (var r = startRow; r < startRow + numRows; r++) {
+    if (r < 2) continue; // skip header
+    var idCell = sheet.getRange(r, ID_COLUMN);
+    if (!idCell.getValue()) {
+      idCell.setValue(Utilities.getUuid());
+    }
+  }
+}

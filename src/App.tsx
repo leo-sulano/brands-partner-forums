@@ -5,8 +5,9 @@ import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ProtectedRoute from './components/ProtectedRoute';
 
-const Login       = lazy(() => import('./pages/Login'));
-const Signup      = lazy(() => import('./pages/Signup'));
+const Login         = lazy(() => import('./pages/Login'));
+const Signup        = lazy(() => import('./pages/Signup'));
+const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Overview    = lazy(() => import('./pages/Overview'));
 const MentionDetail = lazy(() => import('./pages/MentionDetail'));
 const SyncStatus  = lazy(() => import('./pages/SyncStatus'));
@@ -46,6 +47,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Suspense fallback={null}><Login /></Suspense>} />
         <Route path="/signup" element={<Suspense fallback={null}><Signup /></Suspense>} />
+        <Route path="/reset-password" element={<Suspense fallback={null}><ResetPassword /></Suspense>} />
         <Route element={<AppLayout />}>
           <Route path="/" element={<Overview />} />
           <Route path="/mentions/:id" element={<MentionDetail />} />

@@ -13,6 +13,12 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const [resetMode, setResetMode] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -26,6 +32,21 @@ export default function Login() {
     }
   }
 
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setResetError(null);
+    setResetLoading(true);
+    const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    setResetLoading(false);
+    if (err) {
+      setResetError(err.message);
+    } else {
+      setResetSent(true);
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
       <div className="w-full max-w-sm">
@@ -34,57 +55,126 @@ export default function Login() {
             <MessagesSquare className="size-6 text-violet-600" />
             <span className="text-lg font-semibold text-slate-900 tracking-tight">Brands Partner Forum</span>
           </div>
-          <p className="text-sm text-slate-500">Sign in to your account</p>
+          <p className="text-sm text-slate-500">
+            {resetMode ? 'Reset your password' : 'Sign in to your account'}
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Email</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              placeholder="you@example.com"
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
-            />
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Password</label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-              placeholder="••••••••"
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              {error}
+        {resetMode ? (
+          resetSent ? (
+            <div className="space-y-4 text-center">
+              <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-700">
+                Check your email — we sent a password reset link to <strong>{resetEmail}</strong>.
+              </div>
+              <button
+                onClick={() => { setResetMode(false); setResetSent(false); setResetEmail(''); }}
+                className="text-xs text-violet-600 hover:text-violet-700 font-medium"
+              >
+                Back to sign in
+              </button>
             </div>
-          )}
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">Email</label>
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
+                />
+              </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-          >
-            {loading && <Loader2 className="size-4 animate-spin" />}
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
-        </form>
+              {resetError && (
+                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  {resetError}
+                </div>
+              )}
 
-        <p className="mt-4 text-center text-xs text-slate-500">
-          Don't have an account?{' '}
-          <Link to="/signup" className="font-medium text-violet-600 hover:text-violet-700">
-            Sign up
-          </Link>
-        </p>
+              <button
+                type="submit"
+                disabled={resetLoading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+              >
+                {resetLoading && <Loader2 className="size-4 animate-spin" />}
+                {resetLoading ? 'Sending…' : 'Send Reset Link'}
+              </button>
+
+              <p className="text-center text-xs text-slate-500">
+                <button
+                  type="button"
+                  onClick={() => { setResetMode(false); setResetError(null); }}
+                  className="font-medium text-violet-600 hover:text-violet-700"
+                >
+                  Back to sign in
+                </button>
+              </p>
+            </form>
+          )
+        ) : (
+          <>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">Email</label>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
+                />
+              </div>
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <label className="block text-xs font-medium text-slate-500">Password</label>
+                  <button
+                    type="button"
+                    onClick={() => { setResetMode(true); setResetEmail(email); setError(null); }}
+                    className="text-xs text-violet-600 hover:text-violet-700 font-medium"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  autoComplete="current-password"
+                  placeholder="••••••••"
+                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+              >
+                {loading && <Loader2 className="size-4 animate-spin" />}
+                {loading ? 'Signing in…' : 'Sign In'}
+              </button>
+            </form>
+
+            <p className="mt-4 text-center text-xs text-slate-500">
+              Don't have an account?{' '}
+              <Link to="/signup" className="font-medium text-violet-600 hover:text-violet-700">
+                Sign up
+              </Link>
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
