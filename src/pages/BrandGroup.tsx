@@ -270,7 +270,7 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
   { value: 'cg',  label: 'Casino Guru',  dot: 'bg-violet-500' },
 ];
 
-const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'Account Name'];
+const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
 const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay']);
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {

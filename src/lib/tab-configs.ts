@@ -60,7 +60,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Proxy Used',
     'Account Name',
     'Agent',
-    'Brand / TP URL PAGE',
+    'URL PAGE',
     'Trust Pilot',
     'Link to the profile',
     'Review Status',
@@ -130,7 +130,7 @@ export const COLUMN_LABELS: Record<string, string> = {
 // Per-tab label overrides — take precedence over COLUMN_LABELS when tab matches.
 const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
   'TP Affiliate': {
-    'Brand / TP URL PAGE': 'URL Page',
+    'URL PAGE': 'URL Page',
   },
 };
 
