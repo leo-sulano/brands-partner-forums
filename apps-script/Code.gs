@@ -111,16 +111,25 @@ function collectStructures(includeRows) {
         : [];
 
       // Extract hyperlinks for HYPERLINK_COLS and append as <col>__href virtual columns.
+      // Tries rich-text getLinkUrl() first; falls back to parsing =HYPERLINK() formulas.
       var extraHeaders = [];
       var extraByRow = rows.map(function() { return []; });
       for (var h = 0; h < HYPERLINK_COLS.length; h++) {
         var colName = HYPERLINK_COLS[h];
         var colIdx = headers.indexOf(colName);
         if (colIdx >= 0 && lastRow >= 2) {
-          var richVals = sheet.getRange(2, colIdx + 1, lastRow - 1, 1).getRichTextValues();
+          var range = sheet.getRange(2, colIdx + 1, lastRow - 1, 1);
+          var richVals = range.getRichTextValues();
+          var formulas = range.getFormulas();
           extraHeaders.push(colName + '__href');
           for (var r = 0; r < richVals.length; r++) {
             var url = richVals[r][0] ? richVals[r][0].getLinkUrl() : '';
+            if (!url) {
+              // Fallback: parse =HYPERLINK("url","text") formula
+              var formula = formulas[r][0] || '';
+              var match = formula.match(/=HYPERLINK\(\s*"([^"]+)"/i);
+              if (match) url = match[1];
+            }
             extraByRow[r].push(url || '');
           }
         }
