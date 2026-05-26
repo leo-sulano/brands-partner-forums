@@ -224,7 +224,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
         sheetPushError = `Sheet bulk push HTTP ${scriptRes.status}`;
         console.log(`[check-status] ${sheetPushError}`);
       } else {
-        console.log(`[check-status] Bulk pushed ${sheetChanges.length} status change(s) to Sheet`);
+        const scriptBody = await scriptRes.json() as { ok: boolean; updated?: number; errors?: string[] };
+        if (scriptBody.errors?.length) {
+          sheetPushError = `Sheet bulk push partial errors: ${scriptBody.errors.slice(0, 3).join('; ')}`;
+          console.log(`[check-status] ${sheetPushError}`);
+        } else {
+          console.log(`[check-status] Bulk pushed ${scriptBody.updated ?? sheetChanges.length} status change(s) to Sheet`);
+        }
       }
     } catch (pushErr) {
       sheetPushError = String(pushErr);
