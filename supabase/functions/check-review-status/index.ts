@@ -152,6 +152,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let errors = 0;
   let budgetExceeded = false;
 
+  // Collect all status changes so we can bulk-push to the Sheet in one call at the end.
+  const sheetChanges: Array<{ tab: string; sheet_row_id: string; fields: Record<string, string> }> = [];
+
   const startTime = Date.now();
 
   for (let i = 0; i < entries.length; i += BATCH_SIZE) {
@@ -189,28 +192,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
             errors++;
           } else {
             updated++;
-            // Push status change back to Google Sheet
-            if (entry.tab && entry.sheet_row_id && APPS_SCRIPT_URL && APPS_SCRIPT_SECRET) {
-              try {
-                const scriptRes = await fetch(APPS_SCRIPT_URL, {
-                  method: 'POST',
-                  redirect: 'follow',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    secret: APPS_SCRIPT_SECRET,
-                    op: 'upsert_row',
-                    tab: entry.tab,
-                    sheet_row_id: entry.sheet_row_id,
-                    fields: { [statusCol]: newStatus },
-                    sync_tag: crypto.randomUUID(),
-                  }),
-                });
-                if (!scriptRes.ok) {
-                  console.log(`[check-status] Sheet push failed for ${entry.id}: HTTP ${scriptRes.status}`);
-                }
-              } catch (pushErr) {
-                console.log(`[check-status] Sheet push error for ${entry.id}: ${pushErr}`);
-              }
+            if (entry.tab && entry.sheet_row_id) {
+              sheetChanges.push({ tab: entry.tab, sheet_row_id: entry.sheet_row_id, fields: { [statusCol]: newStatus } });
             }
           }
         }
@@ -223,16 +206,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // Bulk-push all status changes to the Sheet in one Apps Script call.
+  let sheetPushError: string | null = null;
+  if (sheetChanges.length > 0 && APPS_SCRIPT_URL && APPS_SCRIPT_SECRET) {
+    try {
+      const scriptRes = await fetch(APPS_SCRIPT_URL, {
+        method: 'POST',
+        redirect: 'follow',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          secret: APPS_SCRIPT_SECRET,
+          op: 'bulk_upsert_rows',
+          rows: sheetChanges.map((c) => ({ tab: c.tab, sheet_row_id: c.sheet_row_id, fields: c.fields, sync_tag: crypto.randomUUID() })),
+        }),
+      });
+      if (!scriptRes.ok) {
+        sheetPushError = `Sheet bulk push HTTP ${scriptRes.status}`;
+        console.log(`[check-status] ${sheetPushError}`);
+      } else {
+        console.log(`[check-status] Bulk pushed ${sheetChanges.length} status change(s) to Sheet`);
+      }
+    } catch (pushErr) {
+      sheetPushError = String(pushErr);
+      console.log(`[check-status] Sheet bulk push error: ${pushErr}`);
+    }
+  }
+
   if (runId) {
+    const errMsg = [
+      errors > 0 ? `${errors} check${errors !== 1 ? 's' : ''} failed (proxy or fetch error)` : null,
+      sheetPushError,
+    ].filter(Boolean).join('; ') || null;
+
     await admin.from('sync_runs').update({
       finished_at: new Date().toISOString(),
       rows_seen: checked,
       rows_upserted: updated,
       rows_skipped: checked - updated - errors,
       status: errors > 0 && updated === 0 ? 'error' : 'success',
-      error_message: errors > 0 ? `${errors} check${errors !== 1 ? 's' : ''} failed (proxy or fetch error)` : null,
+      error_message: errMsg,
     }).eq('id', runId);
   }
 
-  return json({ checked, updated, errors, budgetExceeded, total: entries.length });
+  return json({ checked, updated, errors, sheetPushed: sheetChanges.length, budgetExceeded, total: entries.length });
 });
