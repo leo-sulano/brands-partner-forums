@@ -27,6 +27,7 @@ function isStatusCol(header: string) {
 
 function isLinkCol(header: string) {
   if (header === 'Brand / TP URL PAGE') return false;
+  if (header === 'URL PAGE') return false;
   const h = header.toLowerCase();
   return h.includes('link') || h.includes('url') || h.includes('profile');
 }
@@ -42,9 +43,16 @@ function colWidthClass(header: string): string {
 function StatusPill({ value }: { value: string }) {
   if (!value || value === '—') return <span className="text-slate-400">—</span>;
   const v = value.toLowerCase().trim();
-  if (v === 'published' || v === 'done') {
+  if (v === 'published') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+        <CheckCircle2 className="size-3" /> {value}
+      </span>
+    );
+  }
+  if (v === 'done') {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
         <CheckCircle2 className="size-3" /> {value}
       </span>
     );
@@ -256,7 +264,7 @@ function FilterDropdown<T extends string>({
 const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>[] = [
   { value: 'all',      label: 'All statuses', dot: 'bg-slate-400' },
   { value: 'live',     label: 'Live',         dot: 'bg-green-500' },
-  { value: 'done',     label: 'Done',         dot: 'bg-teal-500' },
+  { value: 'done',     label: 'Done',         dot: 'bg-blue-500' },
   { value: 'removed',  label: 'Removed',      dot: 'bg-rose-500' },
   { value: 'on-pause', label: 'On Pause',     dot: 'bg-slate-500' },
   { value: 'pending',  label: 'Pending',      dot: 'bg-amber-400' },
@@ -1128,6 +1136,35 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
+                            </td>
+                          );
+                        }
+                      }
+                      // URL PAGE: show page name as clickable link using __href hyperlink field
+                      if (h === 'URL PAGE') {
+                        const pageName = entry.data[h];
+                        const pageUrl = entry.data['URL PAGE__href'];
+                        if (pageName) {
+                          if (pageUrl) {
+                            const href = pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`;
+                            return (
+                              <td key={h} className="px-3 py-2.5">
+                                <a
+                                  href={href}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                                >
+                                  <ExternalLink className="size-3 shrink-0" />
+                                  {pageName}
+                                </a>
+                              </td>
+                            );
+                          }
+                          return (
+                            <td key={h} className="px-3 py-2.5">
+                              <span className="text-slate-600 text-sm">{pageName}</span>
                             </td>
                           );
                         }

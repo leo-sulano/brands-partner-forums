@@ -23,6 +23,9 @@ var SHARED_SECRET = 'JkoNDP4JMdpjHRvOtU6HyZKo_TrXDYp2qH9oL7aiJRE';
 
 var ID_COLUMN = 1; // column A, always
 
+// Columns whose hyperlink URLs are extracted and stored as `<col>__href` virtual columns.
+var HYPERLINK_COLS = ['URL PAGE'];
+
 // Per-tab, last_sync_tag goes in (last data column + 1). Computed dynamically.
 
 function backfillAllTabIds() {
@@ -99,13 +102,34 @@ function collectStructures(includeRows) {
     var sheet = ss.getSheetByName(name);
     if (!sheet) continue;
     var lastCol = sheet.getLastColumn();
-    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
-    var tab = { name: name, headers: headers.map(String) };
+    var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String) : [];
+    var tab = { name: name, headers: headers };
     if (includeRows) {
       var lastRow = sheet.getLastRow();
-      tab.rows = lastRow >= 2
+      var rows = lastRow >= 2
         ? sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
         : [];
+
+      // Extract hyperlinks for HYPERLINK_COLS and append as <col>__href virtual columns.
+      var extraHeaders = [];
+      var extraByRow = rows.map(function() { return []; });
+      for (var h = 0; h < HYPERLINK_COLS.length; h++) {
+        var colName = HYPERLINK_COLS[h];
+        var colIdx = headers.indexOf(colName);
+        if (colIdx >= 0 && lastRow >= 2) {
+          var richVals = sheet.getRange(2, colIdx + 1, lastRow - 1, 1).getRichTextValues();
+          extraHeaders.push(colName + '__href');
+          for (var r = 0; r < richVals.length; r++) {
+            var url = richVals[r][0] ? richVals[r][0].getLinkUrl() : '';
+            extraByRow[r].push(url || '');
+          }
+        }
+      }
+
+      tab.headers = extraHeaders.length > 0 ? headers.concat(extraHeaders) : headers;
+      tab.rows = extraHeaders.length > 0
+        ? rows.map(function(row, idx) { return row.concat(extraByRow[idx]); })
+        : rows;
     }
     out.push(tab);
   }
