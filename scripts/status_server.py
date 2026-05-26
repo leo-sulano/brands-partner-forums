@@ -101,10 +101,10 @@ def check_status():
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Local Selenium status-check server')
     ap.add_argument('--port', type=int, default=5001)
-    ap.add_argument('--no-headless', action='store_true', help='Show Chrome window (default: headless)')
+    ap.add_argument('--headless', action='store_true', help='Run Chrome headless (default: visible)')
     args = ap.parse_args()
 
-    app.config['HEADLESS'] = not args.no_headless
+    app.config['HEADLESS'] = args.headless
     print(f'[server] Listening on http://localhost:{args.port}')
     print(f'[server] VITE_CHECK_STATUS_URL=http://localhost:{args.port}/check-status')
     app.run(port=args.port, debug=False, threaded=True)
