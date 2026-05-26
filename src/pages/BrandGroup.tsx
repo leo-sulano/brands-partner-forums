@@ -43,7 +43,7 @@ function colWidthClass(header: string): string {
 function StatusPill({ value }: { value: string }) {
   if (!value || value === '—') return <span className="text-slate-400">—</span>;
   const v = value.toLowerCase().trim();
-  if (v === 'published') {
+  if (v.includes('publish')) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
         <CheckCircle2 className="size-3" /> {value}
@@ -57,7 +57,7 @@ function StatusPill({ value }: { value: string }) {
       </span>
     );
   }
-  if (v === 'removed' || v === 'refused') {
+  if (v.includes('remov') || v.includes('refus')) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
         <XCircle className="size-3" /> {value}
@@ -82,21 +82,6 @@ function StatusPill({ value }: { value: string }) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
         <Circle className="size-3" /> {value}
-      </span>
-    );
-  }
-  // fallback for any legacy / unrecognised values
-  if (v.includes('live') || v.includes('published')) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-        <CheckCircle2 className="size-3" /> {value}
-      </span>
-    );
-  }
-  if (v.includes('remove') || v.includes('refused')) {
-    return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
-        <XCircle className="size-3" /> {value}
       </span>
     );
   }
@@ -769,11 +754,10 @@ export default function BrandGroup() {
   })();
 
   function isLive(v: string) {
-    if (v.includes('not pub') || v === 'refused') return false;
-    return v.includes('live') || v.includes('published');
+    return v.includes('publish');
   }
   function isRemoved(v: string) {
-    return v === 'removed' || v === 'refused' || v.includes('not pub');
+    return v.includes('remov') || v.includes('refus');
   }
   function isDone(v: string) {
     return v === 'done';

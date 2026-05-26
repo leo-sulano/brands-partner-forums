@@ -132,7 +132,10 @@
       "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff HEAD --stat)",
       "Bash(curl -s \"https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/entries?tab=eq.TP%20Affiliate&select=data&limit=3\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODgzOTA3NCwiZXhwIjoyMDk0NDE1MDc0fQ.YTpWimTfG00939edSXDcoync97XAtJzhEV3SyIUIVyk\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODgzOTA3NCwiZXhwIjoyMDk0NDE1MDc0fQ.YTpWimTfG00939edSXDcoync97XAtJzhEV3SyIUIVyk\")",
       "Bash(curl -s \"https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/tab_schemas?tab=eq.TP%20Affiliate&select=headers,refreshed_at\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODgzOTA3NCwiZXhwIjoyMDk0NDE1MDc0fQ.YTpWimTfG00939edSXDcoync97XAtJzhEV3SyIUIVyk\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3ODgzOTA3NCwiZXhwIjoyMDk0NDE1MDc0fQ.YTpWimTfG00939edSXDcoync97XAtJzhEV3SyIUIVyk\")",
-      "Bash(supabase secrets *)"
+      "Bash(supabase secrets *)",
+      "Bash(git log *)",
+      "Bash(curl -s http://localhost:5001/health)",
+      "Bash(python scripts/status_server.py)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Leo\\AppData\\Local\\Temp"
