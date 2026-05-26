@@ -15,7 +15,9 @@ var OPERATIONAL_TABS = [
   'Revolution Casino',
   'Trybet',
   'SilverPlay',
-  'SuprPlay Limited'
+  'SuprPlay Limited',
+  'HazEmirates UAE',
+  'Hanan'
 ];
 
 var SHEET_ID = '1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk';
