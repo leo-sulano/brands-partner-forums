@@ -126,7 +126,10 @@
       "PowerShell(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\check_review_status.py\" 2>&1)",
       "PowerShell(python -m pip install flask flask-cors 2>&1)",
       "PowerShell(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\status_server.py\" 2>&1)",
-      "Bash(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\status_server.py\")"
+      "Bash(python \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\status_server.py\")",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff src/pages/BrandGroup.tsx apps-script/Code.gs --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff --stat)",
+      "Bash(git -C \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\" diff HEAD --stat)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Leo\\AppData\\Local\\Temp"
