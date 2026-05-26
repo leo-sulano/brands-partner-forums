@@ -867,6 +867,7 @@ export default function BrandGroup() {
         kind = 'success';
       }
       setToast({ message: msg, kind });
+      reloadRef.current();
     } catch (err) {
       setToast({ message: 'Check failed — try again', kind: 'error' });
       console.error(err);

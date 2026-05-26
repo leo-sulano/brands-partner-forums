@@ -3,6 +3,8 @@ import { parseReviewStatus, type TpStatus } from './parser.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const APPS_SCRIPT_URL = Deno.env.get('APPS_SCRIPT_URL')!;
+const APPS_SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SECRET')!;
 const DELAY_MS = 600;
 const BATCH_SIZE = 3;
 const BUDGET_MS = 120_000; // stop well before Supabase's 150s hard kill
@@ -123,7 +125,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Fetch entries that have a profile URL and are not in a final-refused state
   // deno-lint-ignore no-explicit-any
-  let query = (admin as any).from('entries').select('id, data');
+  let query = (admin as any).from('entries').select('id, tab, sheet_row_id, data');
   if (tab) query = query.eq('tab', tab);
 
   const { data: rows, error: fetchErr } = await query;
@@ -173,11 +175,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
           const updatedData = { ...entry.data, [statusCol]: newStatus };
           const { error: updateErr } = await admin
             .from('entries')
-            .update({ data: updatedData, updated_at: new Date().toISOString() })
+            .update({ data: updatedData, updated_at: new Date().toISOString(), last_edited_by: 'dashboard' })
             .eq('id', entry.id);
 
-          if (updateErr) errors++;
-          else updated++;
+          if (updateErr) {
+            errors++;
+          } else {
+            updated++;
+            // Push status change back to Google Sheet
+            if (entry.tab && entry.sheet_row_id && APPS_SCRIPT_URL && APPS_SCRIPT_SECRET) {
+              try {
+                const scriptRes = await fetch(APPS_SCRIPT_URL, {
+                  method: 'POST',
+                  redirect: 'follow',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    secret: APPS_SCRIPT_SECRET,
+                    op: 'upsert_row',
+                    tab: entry.tab,
+                    sheet_row_id: entry.sheet_row_id,
+                    fields: { [statusCol]: newStatus },
+                    sync_tag: crypto.randomUUID(),
+                  }),
+                });
+                if (!scriptRes.ok) {
+                  console.log(`[check-status] Sheet push failed for ${entry.id}: HTTP ${scriptRes.status}`);
+                }
+              } catch (pushErr) {
+                console.log(`[check-status] Sheet push error for ${entry.id}: ${pushErr}`);
+              }
+            }
+          }
         }
       }),
     );

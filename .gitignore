@@ -28,3 +28,5 @@ Thumbs.db
 supabase/.branches
 supabase/.temp
 supabase/functions/**/.env
+
+.vercel
