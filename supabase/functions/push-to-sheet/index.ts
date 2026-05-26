@@ -121,9 +121,11 @@ Deno.serve(async (req: Request) => {
         sync_tag: syncTag,
       }),
     });
-    if (!scriptRes.ok) throw new Error(`Apps Script ${scriptRes.status}: ${await scriptRes.text()}`);
-
-    const scriptBody = (await scriptRes.json()) as { ok: boolean; error?: string };
+    const scriptText = await scriptRes.text();
+    if (!scriptRes.ok || scriptText.trimStart().startsWith('<')) {
+      throw new Error(`Apps Script returned non-JSON (HTTP ${scriptRes.status}): ${scriptText.slice(0, 200)}`);
+    }
+    const scriptBody = JSON.parse(scriptText) as { ok: boolean; error?: string };
     if (!scriptBody.ok) throw new Error(`Apps Script error: ${scriptBody.error}`);
 
     await admin.from('sync_runs').update({

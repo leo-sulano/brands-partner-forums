@@ -220,11 +220,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
           rows: sheetChanges.map((c) => ({ tab: c.tab, sheet_row_id: c.sheet_row_id, fields: c.fields, sync_tag: crypto.randomUUID() })),
         }),
       });
-      if (!scriptRes.ok) {
-        sheetPushError = `Sheet bulk push HTTP ${scriptRes.status}`;
+      const scriptText = await scriptRes.text();
+      if (!scriptRes.ok || scriptText.trimStart().startsWith('<')) {
+        sheetPushError = `Apps Script returned non-JSON (HTTP ${scriptRes.status}): ${scriptText.slice(0, 200)}`;
         console.log(`[check-status] ${sheetPushError}`);
       } else {
-        const scriptBody = await scriptRes.json() as { ok: boolean; updated?: number; errors?: string[] };
+        const scriptBody = JSON.parse(scriptText) as { ok: boolean; updated?: number; errors?: string[] };
         if (scriptBody.errors?.length) {
           sheetPushError = `Sheet bulk push partial errors: ${scriptBody.errors.slice(0, 3).join('; ')}`;
           console.log(`[check-status] ${sheetPushError}`);
