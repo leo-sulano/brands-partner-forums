@@ -48,6 +48,11 @@ TP_STATUS_COLS = [
     "Review Status",
 ]
 
+# Only entries with these statuses are eligible for a status check.
+# "Done"    = review was just posted by the agent; TP hasn't processed it yet.
+# "Pending" = TP received the review but moderation hasn't resolved it yet.
+CHECKABLE_STATUSES = {"done", "pending"}
+
 # ─── Status Parsing (mirrors parser.ts) ──────────────────────────────────────
 
 STATE_MAP: dict[str, str] = {
@@ -214,7 +219,8 @@ def load_entries(tab: Optional[str] = None) -> list[dict]:
         status_col = find_status_col(data)
         if not status_col:
             continue
-        if data.get(status_col) == "Refused":
+        current = (data.get(status_col) or "").strip().lower()
+        if current not in CHECKABLE_STATUSES:
             continue
         out.append(row)
     return out
@@ -261,7 +267,7 @@ def fetch_status(driver: uc.Chrome, raw_url: str) -> Optional[str]:
         if "trustpilot.com" not in driver.current_url:
             print(f"    redirected off-site -> {driver.current_url}")
             return "Removed"
-        return parse_review_status(driver.page_source)
+        return parse_review_status(driver.page_source) or "Published"
     except Exception as exc:
         print(f"    ERROR: {exc}")
         return None

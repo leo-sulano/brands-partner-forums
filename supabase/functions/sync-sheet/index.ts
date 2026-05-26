@@ -76,7 +76,8 @@ Deno.serve(async (_req: Request) => {
 // ---------------------------------------------------------------------------
 // Map Sheet header → mention column. Adjust to the actual Sheet schema.
 const COLUMN_MAP: Record<string, keyof MentionUpsert | null> = {
-  id: 'source_row_id',
+  id: null,         // Supabase UUID written back to sheet — ignored on import
+  row_id: 'source_row_id',
   forum: 'forum',
   thread_title: 'thread_title',
   title: 'thread_title',
