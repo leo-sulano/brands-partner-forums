@@ -140,6 +140,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return e.data[statusCol] !== 'Refused';
   });
 
+  const { data: runRow } = await admin
+    .from('sync_runs')
+    .insert({ direction: 'status_check', tab: tab ?? null, status: 'running' })
+    .select('id')
+    .single();
+  const runId = runRow?.id as string | undefined;
+
   let checked = 0;
   let updated = 0;
   let errors = 0;
@@ -214,6 +221,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (i + BATCH_SIZE < entries.length) {
       await new Promise((resolve) => setTimeout(resolve, DELAY_MS));
     }
+  }
+
+  if (runId) {
+    await admin.from('sync_runs').update({
+      finished_at: new Date().toISOString(),
+      rows_seen: checked,
+      rows_upserted: updated,
+      rows_skipped: checked - updated - errors,
+      status: errors > 0 && updated === 0 ? 'error' : 'success',
+      error_message: errors > 0 ? `${errors} check${errors !== 1 ? 's' : ''} failed (proxy or fetch error)` : null,
+    }).eq('id', runId);
   }
 
   return json({ checked, updated, errors, budgetExceeded, total: entries.length });

@@ -231,6 +231,7 @@ export default function SyncStatus() {
                             <thead>
                               <tr className="text-left text-slate-400 uppercase tracking-wide">
                                 <th className="pb-1.5 pr-4 pt-2 font-medium">Time</th>
+                                <th className="pb-1.5 pr-4 pt-2 font-medium">Type</th>
                                 <th className="pb-1.5 pr-4 pt-2 font-medium">Duration</th>
                                 <th className="pb-1.5 pr-4 pt-2 font-medium">Status</th>
                                 <th className="pb-1.5 pr-4 pt-2 text-right font-medium">Seen</th>
@@ -243,6 +244,13 @@ export default function SyncStatus() {
                               {d.runs.map((r) => (
                                 <tr key={r.id}>
                                   <td className="py-1.5 pr-4 tabular-nums text-slate-600">{formatTime(r.started_at)}</td>
+                                  <td className="py-1.5 pr-4">
+                                    {r.direction === 'status_check'
+                                      ? <span className="inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">Status Check</span>
+                                      : r.direction === 'db_to_sheet'
+                                        ? <span className="inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">DB → Sheet</span>
+                                        : <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Sheet → DB</span>}
+                                  </td>
                                   <td className="py-1.5 pr-4 tabular-nums text-slate-500">{formatDuration(r.started_at, r.finished_at)}</td>
                                   <td className="py-1.5 pr-4">
                                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_PILL[r.status]}`}>

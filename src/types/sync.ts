@@ -1,5 +1,5 @@
 export type SyncRunStatus = 'running' | 'success' | 'error' | 'skipped';
-export type SyncDirection = 'sheet_to_db' | 'db_to_sheet' | 'initial_import';
+export type SyncDirection = 'sheet_to_db' | 'db_to_sheet' | 'initial_import' | 'status_check';
 
 export interface SyncRun {
   id: string;
