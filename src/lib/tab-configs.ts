@@ -127,13 +127,23 @@ export const COLUMN_LABELS: Record<string, string> = {
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };
 
+// Per-tab label overrides — take precedence over COLUMN_LABELS when tab matches.
+const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
+  'TP Affiliate': {
+    'Brand / TP URL PAGE': 'URL Page',
+  },
+};
+
 // Returns the ordered column list for a tab, or null if no config exists.
 export function getTabColumns(tab: string): string[] | null {
   return TAB_COLUMN_CONFIGS[tab] ?? null;
 }
 
-// Returns the display label for a column header.
-export function getColLabel(header: string): string {
+// Returns the display label for a column header, with optional tab-specific override.
+export function getColLabel(header: string, tab?: string): string {
+  if (tab && TAB_COLUMN_LABELS[tab]?.[header]) {
+    return TAB_COLUMN_LABELS[tab][header];
+  }
   return COLUMN_LABELS[header] ?? header;
 }
 

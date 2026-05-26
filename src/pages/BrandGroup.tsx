@@ -1008,6 +1008,7 @@ export default function BrandGroup() {
               value={brandFilter}
               onChange={(v) => { setBrandFilter(v); setPage(1); }}
               brands={uniqueBrands}
+              noun={decodedTab === 'TP Affiliate' ? 'URL page' : 'brand'}
             />
           )}
           {uniqueAgents.length > 1 && (
@@ -1077,7 +1078,7 @@ export default function BrandGroup() {
                         className={`px-3 py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                       >
                         <span className="inline-flex items-center gap-1">
-                          {getColLabel(h)}
+                          {getColLabel(h, decodedTab)}
                           {!isLinkCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
                         </span>
                       </th>
