@@ -29,6 +29,15 @@ export function formatRelative(value: string | null | undefined): string {
 
 export function formatCellValue(value: string): string {
   if (/^\d{4}-\d{2}-\d{2}(T|$)/.test(value)) {
+    if (value.length > 10) {
+      const date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        const d = String(date.getDate()).padStart(2, '0');
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const y = date.getFullYear();
+        return `${d}/${m}/${y}`;
+      }
+    }
     const [y, m, d] = value.slice(0, 10).split('-');
     return `${d}/${m}/${y}`;
   }

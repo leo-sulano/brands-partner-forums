@@ -189,7 +189,7 @@ function getEntryDate(data: Record<string, string | null>): Date | null {
 function inDateRange(data: Record<string, string | null>, from: string, to: string): boolean {
   const d = getEntryDate(data);
   if (!d) return false;
-  if (from && d < new Date(from)) return false;
+  if (from && d < new Date(from + 'T00:00:00')) return false;
   if (to && d > new Date(to + 'T23:59:59')) return false;
   return true;
 }
@@ -743,7 +743,7 @@ export default function BrandGroup() {
         if (!raw) return false;
         const d = parseCellDate(raw) ?? new Date(raw);
         if (isNaN(d.getTime())) return false;
-        if (dateFrom && d < new Date(dateFrom)) return false;
+        if (dateFrom && d < new Date(dateFrom + 'T00:00:00')) return false;
         if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
         return true;
       }

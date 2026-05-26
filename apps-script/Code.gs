@@ -98,6 +98,7 @@ function doGet(e) {
 
 function collectStructures(includeRows) {
   var ss = SpreadsheetApp.openById(SHEET_ID);
+  var tz = ss.getSpreadsheetTimeZone();
   var out = [];
   for (var i = 0; i < OPERATIONAL_TABS.length; i++) {
     var name = OPERATIONAL_TABS[i];
@@ -108,9 +109,20 @@ function collectStructures(includeRows) {
     var tab = { name: name, headers: headers };
     if (includeRows) {
       var lastRow = sheet.getLastRow();
-      var rows = lastRow >= 2
+      var rawRows = lastRow >= 2
         ? sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
         : [];
+      // Convert Date objects to dd/MM/yyyy strings in the sheet's timezone so
+      // JSON serialisation never produces UTC-shifted ISO timestamps.
+      var rows = rawRows.map(function(row) {
+        return row.map(function(cell) {
+          if (cell instanceof Date) {
+            if (isNaN(cell.getTime()) || cell.getFullYear() < 1900) return '';
+            return Utilities.formatDate(cell, tz, 'dd/MM/yyyy');
+          }
+          return cell;
+        });
+      });
 
       // Extract hyperlinks for HYPERLINK_COLS and append as <col>__href virtual columns.
       // Tries rich-text getLinkUrl() first; falls back to parsing =HYPERLINK() formulas.

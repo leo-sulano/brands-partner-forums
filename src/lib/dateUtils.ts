@@ -11,7 +11,7 @@ export function parseCellDate(value: string): Date | null {
   const d = new Date(value);
   if (!isNaN(d.getTime())) return d;
   const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) return new Date(`${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
   return null;
 }
 
@@ -28,7 +28,7 @@ export function getEntryDate(data: Record<string, string | null>): Date | null {
 export function inDateRange(data: Record<string, string | null>, from: string, to: string): boolean {
   const d = getEntryDate(data);
   if (!d) return false;
-  if (from && d < new Date(from)) return false;
+  if (from && d < new Date(from + 'T00:00:00')) return false;
   if (to && d > new Date(to + 'T23:59:59')) return false;
   return true;
 }
