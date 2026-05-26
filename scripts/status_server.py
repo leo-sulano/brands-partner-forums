@@ -79,7 +79,8 @@ def check_status():
                         print(f'    -> could not determine (skipped)')
                         errors += 1
                     elif new_status != current:
-                        update_entry(entry['id'], data, status_col, new_status)
+                        update_entry(entry['id'], data, status_col, new_status,
+                                     tab=entry.get('tab'), sheet_row_id=entry.get('sheet_row_id'))
                         print(f'    -> {current!r} -> {new_status!r}')
                         updated += 1
                     else:

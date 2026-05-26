@@ -149,7 +149,10 @@
       "Bash(npx vercel *)",
       "PowerShell(Start-Process \"c:\\\\Users\\\\Leo\\\\OneDrive\\\\Desktop\\\\AI Automation\\\\Internal Projects\\\\Forums Dashboard\\\\scripts\\\\start_status_server.bat\")",
       "PowerShell(Invoke-RestMethod -Uri \"http://localhost:5001/health\" -Method GET)",
-      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })"
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })",
+      "PowerShell(Get-Process pythonw -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Force)",
+      "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })"
     ],
     "additionalDirectories": [
       "c:\\Users\\Leo\\AppData\\Local\\Temp",
