@@ -142,6 +142,7 @@ function doPost(e) {
     if (body.secret !== SHARED_SECRET) {
       return jsonResponse({ ok: false, error: 'unauthorized' });
     }
+    if (body.op === 'dump') return jsonResponse({ ok: true, tabs: collectStructures(true) });
     if (body.op === 'upsert_row') return handleUpsertRow(body);
     return jsonResponse({ ok: false, error: 'unknown op: ' + body.op });
   } catch (err) {
