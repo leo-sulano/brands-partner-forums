@@ -8,10 +8,10 @@ export const ENTRY_DATE_COLS = [
 
 export function parseCellDate(value: string): Date | null {
   if (!value) return null;
-  const d = new Date(value);
-  if (!isNaN(d.getTime())) return d;
   const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  const d = new Date(value);
+  if (!isNaN(d.getTime())) return d;
   return null;
 }
 
@@ -19,6 +19,8 @@ export function getEntryDate(data: Record<string, string | null>): Date | null {
   for (const col of ENTRY_DATE_COLS) {
     const raw = data[col];
     if (!raw) continue;
+    const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slash) return new Date(+slash[3], +slash[2] - 1, +slash[1]);
     const d = new Date(raw);
     if (!isNaN(d.getTime())) return d;
   }

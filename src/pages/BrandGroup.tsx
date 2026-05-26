@@ -175,13 +175,10 @@ function getEntryDate(data: Record<string, string | null>): Date | null {
   for (const col of ENTRY_DATE_COLS) {
     const raw = data[col];
     if (!raw) continue;
+    const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
     const d = new Date(raw);
     if (!isNaN(d.getTime())) return d;
-    const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m) {
-      const p = new Date(+m[3], +m[2] - 1, +m[1]);
-      if (!isNaN(p.getTime())) return p;
-    }
   }
   return null;
 }
@@ -201,13 +198,10 @@ function isDateCol(header: string): boolean {
 
 function parseCellDate(value: string): Date | null {
   if (!value) return null;
+  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
   const d = new Date(value);
   if (!isNaN(d.getTime())) return d;
-  const m = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m) {
-    const p = new Date(+m[3], +m[2] - 1, +m[1]);
-    if (!isNaN(p.getTime())) return p;
-  }
   return null;
 }
 
