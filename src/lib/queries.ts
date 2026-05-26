@@ -523,11 +523,12 @@ export async function updateProfile(
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  const { error } = await supabase
+  const { error, count } = await supabase
     .from('profiles')
-    .delete()
+    .delete({ count: 'exact' })
     .eq('id', id);
   if (error) throw error;
+  if (count === 0) throw new Error('Delete had no effect — the "admins can delete profiles" RLS policy may not be applied in your Supabase project.');
 }
 
 export type AdminAction = 'approve' | 'revoke' | 'remove' | 'make_admin' | 'remove_admin';
