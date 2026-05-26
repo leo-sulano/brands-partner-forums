@@ -107,12 +107,23 @@ Deno.serve(async (req) => {
         if (candidates.length === 0) continue;
 
         // Fetch ALL current DB rows for this tab (not just candidates) so we can
-        // deduplicate and delete orphans in one pass.
-        const { data: allDbRows } = await admin
-          .from('entries')
-          .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at')
-          .eq('tab', tabName)
-          .order('updated_at', { ascending: false });
+        // deduplicate and delete orphans in one pass. Paginate to avoid the
+        // default 1000-row cap which would leave orphans undetected.
+        const allDbRows: Record<string, unknown>[] = [];
+        const DB_PAGE = 1000;
+        let dbFrom = 0;
+        while (true) {
+          const { data: page, error: pageErr } = await admin
+            .from('entries')
+            .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at')
+            .eq('tab', tabName)
+            .order('updated_at', { ascending: false })
+            .range(dbFrom, dbFrom + DB_PAGE - 1);
+          if (pageErr) throw pageErr;
+          allDbRows.push(...(page ?? []));
+          if ((page ?? []).length < DB_PAGE) break;
+          dbFrom += DB_PAGE;
+        }
 
         // --- Step 1: remove duplicate rows (keep the most-recent per sheet_row_id) ---
         const seenSheetIds = new Set<string>();
