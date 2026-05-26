@@ -175,12 +175,11 @@ Deno.serve(async (req) => {
         const toUpsert: Array<Record<string, unknown>> = [];
         for (const c of candidates) {
           const existing = dedupedMap.get(c.sheet_row_id);
-          if (
-            existing?.last_edited_by === 'dashboard' &&
-            existing.last_sync_tag !== null &&
-            c.sheetSyncTag !== null &&
-            existing.last_sync_tag === c.sheetSyncTag
-          ) { rowsSkipped++; continue; }
+          // Skip if the DB row was last edited from the dashboard — the dashboard
+          // is the authority for any row it has touched (Selenium or manual edit).
+          // push-to-sheet keeps the Sheet in sync, so we never let a stale Sheet
+          // value overwrite a dashboard-written value.
+          if (existing?.last_edited_by === 'dashboard') { rowsSkipped++; continue; }
           toUpsert.push({
             tab: c.tab,
             sheet_row_id: c.sheet_row_id,

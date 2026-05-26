@@ -60,7 +60,7 @@ def check_status():
 
         headless: bool = app.config.get('HEADLESS', False)
         driver = build_driver(headless=headless)
-        checked = updated = errors = 0
+        checked = updated = errors = sheet_errors = 0
 
         try:
             for i in range(0, total, BATCH_SIZE):
@@ -79,9 +79,11 @@ def check_status():
                         print(f'    -> could not determine (skipped)')
                         errors += 1
                     elif new_status != current:
-                        update_entry(entry['id'], data, status_col, new_status,
+                        sheet_ok = update_entry(entry['id'], data, status_col, new_status,
                                      tab=entry.get('tab'), sheet_row_id=entry.get('sheet_row_id'))
-                        print(f'    -> {current!r} -> {new_status!r}')
+                        if not sheet_ok:
+                            sheet_errors += 1
+                        print(f'    -> {current!r} -> {new_status!r} (sheet: {"ok" if sheet_ok else "FAILED"})')
                         updated += 1
                     else:
                         print(f'    -> {current!r} (no change)')
@@ -92,8 +94,8 @@ def check_status():
         finally:
             driver.quit()
 
-        print(f'[server] Done. checked={checked} updated={updated} errors={errors}')
-        return jsonify({'checked': checked, 'updated': updated, 'errors': errors, 'total': total})
+        print(f'[server] Done. checked={checked} updated={updated} errors={errors} sheet_errors={sheet_errors}')
+        return jsonify({'checked': checked, 'updated': updated, 'errors': errors, 'sheet_errors': sheet_errors, 'total': total})
 
     finally:
         _lock.release()

@@ -227,7 +227,8 @@ def load_entries(tab: Optional[str] = None) -> list[dict]:
 
 
 def update_entry(entry_id: str, data: dict, status_col: str, new_status: str,
-                 tab: Optional[str] = None, sheet_row_id: Optional[str] = None) -> None:
+                 tab: Optional[str] = None, sheet_row_id: Optional[str] = None) -> bool:
+    """Returns True if the sheet sync succeeded (or was skipped), False on failure."""
     updated_data = {**data, status_col: new_status}
     payload = {"data": updated_data, "updated_at": datetime.now(timezone.utc).isoformat()}
     r = requests.patch(
@@ -238,29 +239,34 @@ def update_entry(entry_id: str, data: dict, status_col: str, new_status: str,
     )
     r.raise_for_status()
 
+    if not (tab and sheet_row_id):
+        return True
+
     # Push status change to Google Sheet via the push-to-sheet edge function
-    if tab and sheet_row_id:
-        try:
-            push_headers = {
-                "apikey": SUPABASE_KEY,
-                "Authorization": f"Bearer {SUPABASE_KEY}",
-                "Content-Type": "application/json",
-            }
-            push_payload = {
-                "tab": tab,
-                "sheet_row_id": sheet_row_id,
-                "fields": {status_col: new_status},
-            }
-            pr = requests.post(
-                f"{SUPABASE_URL}/functions/v1/push-to-sheet",
-                headers=push_headers,
-                json=push_payload,
-                timeout=15,
-            )
-            if not pr.ok:
-                print(f"    [sheet push failed] HTTP {pr.status_code}: {pr.text}")
-        except Exception as exc:
-            print(f"    [sheet push error] {exc}")
+    try:
+        push_headers = {
+            "apikey": SUPABASE_KEY,
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "Content-Type": "application/json",
+        }
+        push_payload = {
+            "tab": tab,
+            "sheet_row_id": sheet_row_id,
+            "fields": {status_col: new_status},
+        }
+        pr = requests.post(
+            f"{SUPABASE_URL}/functions/v1/push-to-sheet",
+            headers=push_headers,
+            json=push_payload,
+            timeout=15,
+        )
+        if not pr.ok:
+            print(f"    [sheet push failed] HTTP {pr.status_code}: {pr.text}")
+            return False
+        return True
+    except Exception as exc:
+        print(f"    [sheet push error] {exc}")
+        return False
 
 
 # ─── Selenium ────────────────────────────────────────────────────────────────

@@ -152,7 +152,8 @@
       "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })",
       "PowerShell(Get-Process pythonw -ErrorAction SilentlyContinue)",
       "PowerShell(Stop-Process -Force)",
-      "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })"
+      "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })",
+      "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running\" })"
     ],
     "additionalDirectories": [
       "c:\\Users\\Leo\\AppData\\Local\\Temp",

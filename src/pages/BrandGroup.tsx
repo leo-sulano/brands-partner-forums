@@ -853,8 +853,15 @@ export default function BrandGroup() {
       setLastChecked(now);
       let msg: string;
       let kind: ToastKind;
+      const sheetFail = result.sheet_errors ?? 0;
       if (result.errors > 0 && result.updated === 0) {
         msg = `${result.errors} check${result.errors !== 1 ? 's' : ''} failed — proxy may not be configured`;
+        kind = 'error';
+      } else if (result.updated > 0 && result.errors > 0 && sheetFail > 0) {
+        msg = `${result.updated} updated, ${result.errors} checks failed, ${sheetFail} sheet sync failed`;
+        kind = 'error';
+      } else if (result.updated > 0 && sheetFail > 0) {
+        msg = `${result.updated} updated in dashboard but ${sheetFail} failed to sync to Google Sheet`;
         kind = 'error';
       } else if (result.updated > 0 && result.errors > 0) {
         msg = `${result.updated} updated, ${result.errors} failed`;
