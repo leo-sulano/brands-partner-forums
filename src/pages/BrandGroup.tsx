@@ -867,11 +867,22 @@ export default function BrandGroup() {
       const now = new Date().toLocaleString();
       localStorage.setItem(`lastStatusCheck_${decodedTab}`, now);
       setLastChecked(now);
-      const msg =
-        result.updated > 0
-          ? `${result.updated} review${result.updated !== 1 ? 's' : ''} updated`
-          : 'All reviews up to date';
-      setToast({ message: msg, kind: 'success' });
+      let msg: string;
+      let kind: ToastKind;
+      if (result.errors > 0 && result.updated === 0) {
+        msg = `${result.errors} check${result.errors !== 1 ? 's' : ''} failed — proxy may not be configured`;
+        kind = 'error';
+      } else if (result.updated > 0 && result.errors > 0) {
+        msg = `${result.updated} updated, ${result.errors} failed`;
+        kind = 'success';
+      } else if (result.updated > 0) {
+        msg = `${result.updated} review${result.updated !== 1 ? 's' : ''} updated`;
+        kind = 'success';
+      } else {
+        msg = 'All reviews up to date';
+        kind = 'success';
+      }
+      setToast({ message: msg, kind });
     } catch (err) {
       setToast({ message: 'Check failed — try again', kind: 'error' });
       console.error(err);

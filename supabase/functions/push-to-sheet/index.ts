@@ -30,6 +30,8 @@ const OPERATIONAL_TABS = new Set([
   'Trybet',
   'SilverPlay',
   'SuprPlay Limited',
+  'HazEmirates UAE',
+  'Hanan',
 ]);
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -40,7 +42,14 @@ interface RequestBody {
   fields: Record<string, string | null>;
 }
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
 Deno.serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (req.method !== 'POST') return json({ ok: false, error: 'method not allowed' }, 405);
 
   let body: RequestBody;
@@ -134,5 +143,5 @@ Deno.serve(async (req: Request) => {
 });
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
 }

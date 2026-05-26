@@ -250,7 +250,34 @@ function installOnEditTrigger() {
   Logger.log('onEdit trigger installed.');
 }
 
-// Auto-assign a UUID to any new row that lands in an operational tab without one.
+// Calls the Supabase import-tabs edge function to pull all Sheet changes into the dashboard.
+// Store the URL and anon key in File > Project properties > Script properties:
+//   IMPORT_TABS_URL  → https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/import-tabs
+//   SUPABASE_ANON_KEY → your anon key
+function syncToDashboard() {
+  var props = PropertiesService.getScriptProperties();
+  var url = props.getProperty('IMPORT_TABS_URL');
+  var key = props.getProperty('SUPABASE_ANON_KEY');
+  if (!url || !key) { Logger.log('Missing IMPORT_TABS_URL or SUPABASE_ANON_KEY in Script Properties'); return; }
+  var res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
+    payload: '{}',
+    muteHttpExceptions: true,
+  });
+  Logger.log('import-tabs: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 200));
+}
+
+// Run once to install a 30-minute recurring sync trigger.
+function installSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncToDashboard') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('syncToDashboard').timeBased().everyMinutes(30).create();
+  Logger.log('syncToDashboard trigger installed — runs every 30 minutes.');
+}
+
+// Auto-assign a UUID to any new row, then immediately push the Sheet to the dashboard.
 function onEdit(e) {
   var sheet = e.range.getSheet();
   if (OPERATIONAL_TABS.indexOf(sheet.getName()) === -1) return;
@@ -265,4 +292,6 @@ function onEdit(e) {
       idCell.setValue(Utilities.getUuid());
     }
   }
+
+  syncToDashboard();
 }
