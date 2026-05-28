@@ -14,6 +14,7 @@ const SyncStatus  = lazy(() => import('./pages/SyncStatus'));
 const BrandGroup  = lazy(() => import('./pages/BrandGroup'));
 const AdminUsers  = lazy(() => import('./pages/AdminUsers'));
 const ActivityLog = lazy(() => import('./pages/ActivityLog'));
+const ScoreSummary = lazy(() => import('./pages/ScoreSummary'));
 
 function PageFallback() {
   return (
@@ -55,6 +56,7 @@ export default function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/sync" element={<SyncStatus />} />
             <Route path="/log" element={<ActivityLog />} />
+            <Route path="/score-summary" element={<ScoreSummary />} />
             <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
         </Route>

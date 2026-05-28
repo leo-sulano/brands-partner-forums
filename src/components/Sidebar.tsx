@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown,
+  Link2, Users, ChevronDown, BarChart3,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -91,6 +91,13 @@ export default function Sidebar() {
 
             {adminOpen && (
               <>
+                <NavLink
+                  to="/score-summary"
+                  className={({ isActive }) => linkClass(isActive)}
+                >
+                  <BarChart3 className="size-4" />
+                  Score Summary
+                </NavLink>
                 <NavLink
                   to="/sync"
                   className={({ isActive }) => linkClass(isActive)}

@@ -34,6 +34,7 @@ export default function Topbar() {
   let title = 'Brands Partner Forum';
   if (pathname === '/') title = 'Overview';
   else if (pathname === '/sync') title = 'Sync Status';
+  else if (pathname === '/score-summary') title = 'Score Summary';
   else if (pathname === '/admin/users') title = 'Admin — Users';
   else if (pathname.startsWith('/mentions/')) title = 'Mention Detail';
   else if (pathname.startsWith('/brands/')) {

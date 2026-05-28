@@ -56,16 +56,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
     return resolvePreset(preset);
   }, [preset, fromIso, toIso]);
 
-  // Always compute against the full entries (All time) so we know whether the
-  // tab has any qualifying TP-Published data at all. If not, render nothing —
-  // hides the panel cleanly on tabs that don't track TP reviews.
-  const allTimeResult = useMemo(
-    () => computeScoreSummary(entries, { from: null, to: null }),
-    [entries],
-  );
   const result = useMemo(() => computeScoreSummary(entries, range), [entries, range]);
-
-  if (allTimeResult.brands.length === 0) return null;
 
   function applyPreset(key: PresetKey) {
     setPreset(key);
@@ -179,11 +170,13 @@ export default function ScoreSummaryPanel({ entries }: Props) {
 
 function SummaryTable({ rows }: { rows: BrandSummary[] }) {
   const stars: (5 | 4 | 3 | 2 | 1)[] = [5, 4, 3, 2, 1];
+  const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   return (
     <div className="overflow-x-auto rounded-md border border-slate-200">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
+            {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium">Group</th>}
             <th scope="col" className="px-3 py-2 text-left font-medium">Brand</th>
             {stars.map((s) => (
               <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
@@ -207,7 +200,10 @@ function SummaryTable({ rows }: { rows: BrandSummary[] }) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.map((r) => (
-            <tr key={r.brand} className="hover:bg-slate-50/60">
+            <tr key={`${r.tab}|${r.brand}`} className="hover:bg-slate-50/60">
+              {showGroup && (
+                <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={r.tab}>{r.tab}</td>
+              )}
               <td className="px-3 py-1.5 font-medium text-slate-800 truncate" title={r.brand}>{r.brand}</td>
               {stars.map((s) => (
                 <td

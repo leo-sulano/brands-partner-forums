@@ -1,12 +1,13 @@
 # Revolution Casino — Score Summary Panel
 
 **Date:** 2026-05-28
-**Scope:** A per-brand TrustPilot star-rating summary panel rendered on every brand-group tab page (BrandGroup). The panel auto-hides on tabs that yield no qualifying TP-Published data, so no per-tab allowlist is needed.
+**Scope:** A standalone admin page (`/score-summary`) that aggregates TrustPilot star-rating counts per (group, brand) across every brand-group tab in one table. Lives under the sidebar Admin section, alongside Sync Status and Log.
 
 **Update history:**
 - 2026-05-28 v1: Built for Revolution Casino tab behind a `SCORE_SUMMARY_TABS` allowlist.
 - 2026-05-28 v2: Card grid → single-row table; added `Unrated` bucket for Published rows without a parsed score; DD/MM/YYYY date parsing.
 - 2026-05-28 v3: Enabled on all brand-group tabs. Removed allowlist and Revolution-Casino-first pin. Brand/status key lists aligned with `BRAND_COLS` / `TP_STATUS_VARIANTS` in `BrandGroup.tsx`.
+- 2026-05-28 v4: Moved from per-tab embedded panel to a dedicated `/score-summary` admin page. Removed from `BrandGroup.tsx`. Aggregates across all brand-group tabs at once; bucketed by (tab, brand) so the same brand name on different tabs stays separated. Adds a `Group` column to the table when more than one tab is present.
 
 ---
 
