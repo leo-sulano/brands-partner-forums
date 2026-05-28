@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
         while (true) {
           const { data: page, error: pageErr } = await admin
             .from('entries')
-            .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at')
+            .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at, data')
             .eq('tab', tabName)
             .order('updated_at', { ascending: false })
             .range(dbFrom, dbFrom + DB_PAGE - 1);
@@ -128,7 +128,12 @@ Deno.serve(async (req) => {
         // --- Step 1: remove duplicate rows (keep the most-recent per sheet_row_id) ---
         const seenSheetIds = new Set<string>();
         const duplicateDbIds: string[] = [];
-        const dedupedMap = new Map<string, { last_edited_by: string; last_sync_tag: string | null }>();
+        const dedupedMap = new Map<string, {
+          last_edited_by: string;
+          last_sync_tag: string | null;
+          updated_at: string | null;
+          data: Record<string, string | null>;
+        }>();
         for (const row of allDbRows ?? []) {
           const srid = row.sheet_row_id as string;
           if (seenSheetIds.has(srid)) {
@@ -138,6 +143,8 @@ Deno.serve(async (req) => {
             dedupedMap.set(srid, {
               last_edited_by: row.last_edited_by as string,
               last_sync_tag: row.last_sync_tag as string | null,
+              updated_at: (row.updated_at as string | null) ?? null,
+              data: (row.data as Record<string, string | null> | null) ?? {},
             });
           }
         }
@@ -172,14 +179,31 @@ Deno.serve(async (req) => {
         }
 
         // --- Step 3: update existing rows / insert genuinely new rows ---
+        // Echo / no-op detection: if the Sheet's values exactly match the DB's
+        // values, nothing to apply (this also catches the loop where push-to-sheet's
+        // own write comes back through onEdit → import-tabs).
+        //
+        // Protection window: a Sheet value that differs from a dashboard edit
+        // made within the last 5 minutes is ignored. This guards against a
+        // failed push-to-sheet (Apps Script error → Sheet still holds the OLD
+        // value) reverting a fresh dashboard edit. After 5 minutes we trust the
+        // Sheet — if the user manually edits the Sheet, that change wins.
+        const PROTECTION_WINDOW_MS = 5 * 60 * 1000;
+        const nowMs = Date.now();
         const toUpsert: Array<Record<string, unknown>> = [];
         for (const c of candidates) {
           const existing = dedupedMap.get(c.sheet_row_id);
-          // Skip if the DB row was last edited from the dashboard — the dashboard
-          // is the authority for any row it has touched (Selenium or manual edit).
-          // push-to-sheet keeps the Sheet in sync, so we never let a stale Sheet
-          // value overwrite a dashboard-written value.
-          if (existing?.last_edited_by === 'dashboard') { rowsSkipped++; continue; }
+          if (existing && dataEquals(existing.data, c.data)) {
+            rowsSkipped++;
+            continue;
+          }
+          if (existing?.last_edited_by === 'dashboard' && existing.updated_at) {
+            const editedAtMs = new Date(existing.updated_at).getTime();
+            if (!Number.isNaN(editedAtMs) && nowMs - editedAtMs < PROTECTION_WINDOW_MS) {
+              rowsSkipped++;
+              continue;
+            }
+          }
           toUpsert.push({
             tab: c.tab,
             sheet_row_id: c.sheet_row_id,
@@ -237,4 +261,22 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   });
+}
+
+// Returns true if two data objects represent the same row values. Empty string,
+// null, and undefined are all treated as "no value", so we don't treat them as
+// differences (matches how import-tabs and push-to-sheet normalize cells).
+function dataEquals(
+  a: Record<string, string | null>,
+  b: Record<string, string | null>,
+): boolean {
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    const av = a[k];
+    const bv = b[k];
+    const an = av == null || av === '' ? null : av;
+    const bn = bv == null || bv === '' ? null : bv;
+    if (an !== bn) return false;
+  }
+  return true;
 }
