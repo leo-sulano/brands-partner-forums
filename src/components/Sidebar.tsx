@@ -6,7 +6,7 @@ import {
   Link2, Users, ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
-import { OPERATIONAL_TABS } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -76,7 +76,7 @@ export default function Sidebar() {
           return (
             <NavLink
               key={tab}
-              to={`/brands/${encodeURIComponent(tab)}`}
+              to={`/brands/${tabToSlug(tab)}`}
               className={({ isActive }) => linkClass(isActive)}
             >
               <Icon className="size-4 shrink-0" />

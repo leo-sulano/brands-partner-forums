@@ -12,6 +12,7 @@ import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
+import { slugToTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -491,7 +492,10 @@ function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | nu
 
 export default function BrandGroup() {
   const { tab } = useParams<{ tab: string }>();
-  const decodedTab = decodeURIComponent(tab ?? '');
+  // URL carries kebab-case slug (e.g. "tp-brand-injection"); resolve to the
+  // canonical tab name ("TP Brand Injection") that the DB and queries expect.
+  // Fall back to a decoded raw param so legacy %20-encoded links still work.
+  const decodedTab = slugToTab(tab ?? '') ?? decodeURIComponent(tab ?? '');
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);
