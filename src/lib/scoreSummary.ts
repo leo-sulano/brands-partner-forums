@@ -6,7 +6,9 @@ export type RatingLabel = 'Excellent' | 'Great' | 'Average' | 'Poor' | 'Bad';
 export interface BrandSummary {
   brand: string;
   counts: Record<Star, number>;
+  unrated: number;
   total: number;
+  rated: number;
   average: number | null;
   label: RatingLabel | null;
 }
@@ -102,8 +104,14 @@ export function computeScoreSummary(
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;
 
-  const buckets = new Map<string, Record<Star, number>>();
+  interface Bucket {
+    counts: Record<Star, number>;
+    unrated: number;
+  }
+
+  const buckets = new Map<string, Bucket>();
   let excludedRows = 0;
+  const dateFilterActive = fromBound !== null || toBound !== null;
 
   for (const e of entries) {
     const d = e.data ?? {};
@@ -114,34 +122,45 @@ export function computeScoreSummary(
     const status = (pick(d, STATUS_KEYS) ?? '').trim().toLowerCase();
     if (status !== 'published') continue;
 
-    const score = parseScore(pick(d, SCORE_KEYS));
     const date = parsePostDate(pick(d, DATE_KEYS));
 
-    if (score == null || date == null) {
-      excludedRows++;
-      continue;
+    if (dateFilterActive) {
+      if (date == null) {
+        excludedRows++;
+        continue;
+      }
+      if (fromBound && date < fromBound) continue;
+      if (toBound && date > toBound) continue;
     }
-    if (fromBound && date < fromBound) continue;
-    if (toBound && date > toBound) continue;
 
     let bucket = buckets.get(brand);
     if (!bucket) {
-      bucket = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+      bucket = { counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, unrated: 0 };
       buckets.set(brand, bucket);
     }
-    bucket[score] += 1;
+
+    const score = parseScore(pick(d, SCORE_KEYS));
+    if (score == null) {
+      bucket.unrated += 1;
+    } else {
+      bucket.counts[score] += 1;
+    }
   }
 
-  const summaries: BrandSummary[] = [...buckets.entries()].map(([brand, counts]) => {
-    const total = counts[1] + counts[2] + counts[3] + counts[4] + counts[5];
+  const summaries: BrandSummary[] = [...buckets.entries()].map(([brand, b]) => {
+    const counts = b.counts;
+    const rated = counts[1] + counts[2] + counts[3] + counts[4] + counts[5];
+    const total = rated + b.unrated;
     const average =
-      total === 0
+      rated === 0
         ? null
-        : Math.round(((counts[1] + 2 * counts[2] + 3 * counts[3] + 4 * counts[4] + 5 * counts[5]) / total) * 10) / 10;
+        : Math.round(((counts[1] + 2 * counts[2] + 3 * counts[3] + 4 * counts[4] + 5 * counts[5]) / rated) * 10) / 10;
     return {
       brand,
       counts,
+      unrated: b.unrated,
       total,
+      rated,
       average,
       label: ratingLabel(average),
     };

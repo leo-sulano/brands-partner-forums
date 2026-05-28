@@ -35,13 +35,13 @@ Panel layout, top to bottom:
 2. **Filter toolbar.** Two date inputs (`From`, `To`) reusing the existing `DatePicker` component, followed by preset chips: `Today`, `This week`, `This month`, `Last 7 days`, `Last 30 days`, `All time`. Default preset is `All time`. A small "Reset" text link appears next to the chips when any non-default preset or custom range is active.
 3. **Brand cards.** One card per distinct non-empty `Brands` value among the entries. Cards are ordered alphabetically, with **Revolution Casino pinned first** when present. Each card shows:
    - Brand name (card title).
-   - Left column: five rows, one per star level — `5★`, `4★`, `3★`, `2★`, `1★` — each with its count. All five rows always render, including zeros, for consistent vertical alignment across brands.
+   - Left column: five star rows — `5★`, `4★`, `3★`, `2★`, `1★` — each with its count, plus an **`Unrated`** row below for Published entries whose `Score added` value is empty/unparseable. All six rows always render, including zeros, for consistent vertical alignment across brands.
    - Right column: three label/value pairs:
-     - `Total reviews` — sum of all five counts.
-     - `Average` — weighted mean, one decimal place, or `—` when total is zero.
+     - `Total reviews` — sum of all five star counts **plus** Unrated.
+     - `Average` — weighted mean over the rated rows only, one decimal place, or `—` when no rows are rated. When some rows are unrated, the value is annotated `of N rated` so the user sees the average was computed from a subset.
      - `Rating` — coloured pill with the TrustPilot label (see §4).
 4. **Empty state.** If no brand has any qualifying review in the active range, the brand-card grid is replaced by a single muted line: "No published reviews in this range."
-5. **Excluded-rows note.** When at least one entry was skipped because its star score or date could not be parsed, a small muted footer line reads: `N row(s) excluded (missing or unreadable score/date).`
+5. **Excluded-rows note.** When at least one Published entry was dropped under an active date filter because its `Trust Pilot` date could not be parsed, a small muted footer line reads: `N row(s) excluded from the selected range (missing or unreadable Trust Pilot date).` Always zero under `All time`.
 
 The panel's filter state is local — changing it does not affect the entries table below.
 
@@ -60,8 +60,14 @@ An entry is **counted** iff all of the following hold:
 
 1. Brand value is a non-empty string after trimming. (Entries with blank brand are silently skipped — they do not appear as an "(Unassigned)" bucket.)
 2. Status value, when lowercased and trimmed, equals `published`.
-3. Star score parses to an integer in `1..5` inclusive. Non-numeric, decimals, zero, or out-of-range values cause the entry to be skipped and counted toward the excluded-rows footer.
-4. Post date parses to a valid local date and falls within `[from, to]` inclusive when a custom range is active. Accepted input formats: `DD/MM/YYYY`, `D/M/YYYY` (European, matches `parseCellDate` in `dateUtils.ts`), `YYYY-MM-DD`. Anything else is treated as unparseable → entry skipped, excluded-rows footer incremented.
+3. Post date passes the date-range gate:
+   - When no date filter is active (`All time`), the date is not consulted at all — the entry passes.
+   - When a date filter is active, the date must parse to a valid local date and fall within `[from, to]` inclusive. Accepted input formats: `DD/MM/YYYY`, `D/M/YYYY` (European, matches `parseCellDate` in `dateUtils.ts`), `YYYY-MM-DD`. Unparseable dates under an active filter are excluded and counted toward the excluded-rows footer.
+
+Counted entries are then bucketed by their **Star score** (`Score added`, fallback `Score Added`, `Score`):
+
+- Parses to an integer in `1..5` → that star count is incremented.
+- Empty, missing, or non-`1..5` → counted in the brand's **Unrated** bucket. (The Selenium Check Status script auto-fills `Score added` for rows it visits; rows that became `Published` before that feature was added live in this bucket until the script touches them.)
 
 Average rating per brand: `sum(score_i × count_i) / total_count`, rounded to one decimal (`toFixed(1)`).
 

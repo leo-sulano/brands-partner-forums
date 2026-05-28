@@ -168,7 +168,7 @@ export default function ScoreSummaryPanel({ tab, entries }: Props) {
 
           {result.excludedRows > 0 && (
             <p className="text-xs text-slate-400">
-              {result.excludedRows} row{result.excludedRows !== 1 ? 's' : ''} excluded (missing or unreadable score/date).
+              {result.excludedRows} row{result.excludedRows !== 1 ? 's' : ''} excluded from the selected range (missing or unreadable Trust Pilot date).
             </p>
           )}
         </div>
@@ -196,11 +196,22 @@ function BrandCard({ summary }: { summary: BrandSummary }) {
               <span className="text-sm tabular-nums text-slate-800">{summary.counts[s].toLocaleString()}</span>
             </div>
           ))}
+          <div
+            className="flex items-center gap-2"
+            title="Published reviews whose 'Score added' value is empty — run Check Status to fill them in."
+          >
+            <span className="w-12 shrink-0 text-xs font-medium text-slate-400">Unrated</span>
+            <span className="text-sm tabular-nums text-slate-500">{summary.unrated.toLocaleString()}</span>
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5 border-l border-slate-100 pl-4">
           <StatRow label="Total reviews" value={summary.total.toLocaleString()} />
-          <StatRow label="Average" value={summary.average == null ? '—' : summary.average.toFixed(1)} />
+          <StatRow
+            label="Average"
+            value={summary.average == null ? '—' : summary.average.toFixed(1)}
+            hint={summary.rated > 0 && summary.rated < summary.total ? `of ${summary.rated} rated` : undefined}
+          />
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs text-slate-500">Rating</span>
             {summary.label ? (
@@ -217,11 +228,14 @@ function BrandCard({ summary }: { summary: BrandSummary }) {
   );
 }
 
-function StatRow({ label, value }: { label: string; value: string }) {
+function StatRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-xs text-slate-500">{label}</span>
-      <span className="text-sm font-semibold tabular-nums text-slate-800">{value}</span>
+      <span className="flex items-baseline gap-1.5">
+        {hint && <span className="text-[10px] text-slate-400">{hint}</span>}
+        <span className="text-sm font-semibold tabular-nums text-slate-800">{value}</span>
+      </span>
     </div>
   );
 }
