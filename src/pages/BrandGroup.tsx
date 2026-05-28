@@ -613,12 +613,27 @@ export default function BrandGroup() {
   }, [decodedTab, reloadSeq]);
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
-    return subscribeEntries(() => {
-      clearTimeout(timer);
-      timer = setTimeout(() => reloadRef.current(), 400);
+    return subscribeEntries((payload) => {
+      // Only react to changes for the current tab — avoids flicker when another
+      // tab gets updated by import-tabs's full-sync sweep.
+      const tabOfChange = (payload.new?.tab ?? payload.old?.tab) as string | undefined;
+      if (tabOfChange && tabOfChange !== decodedTab) return;
+
+      if (payload.eventType === 'UPDATE' && payload.new) {
+        const updated = payload.new as Entry;
+        setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+        return;
+      }
+      if (payload.eventType === 'DELETE' && payload.old) {
+        const deletedId = (payload.old as { id?: string }).id;
+        if (deletedId) setEntries((prev) => prev.filter((e) => e.id !== deletedId));
+        return;
+      }
+      // INSERT or unknown event — fall back to a full refetch so newly-added
+      // rows respect any current filtering/sorting.
+      reloadRef.current();
     });
-  }, []);
+  }, [decodedTab]);
 
   // Derived: search → brand → platform → status → date → sort → paginate
 

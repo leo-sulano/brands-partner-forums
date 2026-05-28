@@ -38,11 +38,18 @@ export function usePresence(email: string | null, userId: string | null): Presen
   return online;
 }
 
+// deno-lint-ignore-file no-explicit-any
 // Returns an unsubscribe function. Call it in a useEffect cleanup.
-export function subscribeEntries(onChange: () => void): () => void {
+// The callback receives the Postgres change payload so the caller can merge
+// the updated row directly into local state instead of re-fetching the table.
+export function subscribeEntries(
+  onChange: (payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any }) => void,
+): () => void {
   const channel = supabase
     .channel(`entries-realtime-${crypto.randomUUID()}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, onChange)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'entries' }, (payload) => {
+      onChange(payload as unknown as { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any });
+    })
     .subscribe();
   return () => {
     supabase.removeChannel(channel);
