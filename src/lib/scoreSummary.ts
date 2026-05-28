@@ -41,21 +41,23 @@ export function parseScore(raw: string | null | undefined): Star | null {
   return Number(s) as Star;
 }
 
+// Date format used in the sheet/dashboard is DD/MM/YYYY (European, matches
+// parseCellDate in src/lib/dateUtils.ts). The DatePicker emits YYYY-MM-DD.
 export function parsePostDate(raw: string | null | undefined): Date | null {
   if (raw == null) return null;
   const s = String(raw).trim();
   if (!s) return null;
 
-  // YYYY-MM-DD
+  // YYYY-MM-DD (DatePicker output, or ISO from elsewhere)
   let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
   if (m) {
     const y = +m[1], mo = +m[2], d = +m[3];
     return buildDate(y, mo, d);
   }
-  // MM/DD/YYYY or M/D/YYYY
+  // DD/MM/YYYY or D/M/YYYY (sheet format)
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
   if (m) {
-    const mo = +m[1], d = +m[2], y = +m[3];
+    const d = +m[1], mo = +m[2], y = +m[3];
     return buildDate(y, mo, d);
   }
   return null;

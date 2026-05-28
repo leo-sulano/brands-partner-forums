@@ -61,7 +61,7 @@ An entry is **counted** iff all of the following hold:
 1. Brand value is a non-empty string after trimming. (Entries with blank brand are silently skipped — they do not appear as an "(Unassigned)" bucket.)
 2. Status value, when lowercased and trimmed, equals `published`.
 3. Star score parses to an integer in `1..5` inclusive. Non-numeric, decimals, zero, or out-of-range values cause the entry to be skipped and counted toward the excluded-rows footer.
-4. Post date parses to a valid local date and falls within `[from, to]` inclusive when a custom range is active. Accepted input formats: `MM/DD/YYYY`, `M/D/YYYY`, `YYYY-MM-DD`. Anything else is treated as unparseable → entry skipped, excluded-rows footer incremented.
+4. Post date parses to a valid local date and falls within `[from, to]` inclusive when a custom range is active. Accepted input formats: `DD/MM/YYYY`, `D/M/YYYY` (European, matches `parseCellDate` in `dateUtils.ts`), `YYYY-MM-DD`. Anything else is treated as unparseable → entry skipped, excluded-rows footer incremented.
 
 Average rating per brand: `sum(score_i × count_i) / total_count`, rounded to one decimal (`toFixed(1)`).
 
@@ -118,7 +118,7 @@ No changes to: `src/lib/queries.ts`, `src/lib/supabase.ts`, `src/lib/realtime.ts
 Pure-function tests for `src/lib/scoreSummary.ts` only — the UI panel is light and exercised manually. Covers:
 
 - `parseScore`: accepts `'1'`–`'5'` and `1`–`5` numerics; rejects `'0'`, `'6'`, `'4.5'`, `''`, `null`, `'abc'`.
-- `parsePostDate`: accepts `'05/18/2026'`, `'5/8/2026'`, `'2026-05-18'`; rejects `''`, `null`, `'not a date'`, `'2026-13-01'`.
+- `parsePostDate`: accepts `'18/05/2026'` (DD/MM/YYYY = 18 May 2026), `'5/8/2026'` (D/M/YYYY = 5 August 2026), `'2026-05-18'` (ISO); rejects `''`, `null`, `'not a date'`, `'2026-13-01'`, `'32/01/2026'`.
 - `ratingLabel`: boundary values 4.5, 4.49, 4.0, 3.99, 3.0, 2.99, 2.0, 1.99, 1.0; null avg → null label.
 - `computeScoreSummary`:
   - Groups by `Brands`, skipping blank-brand rows.
