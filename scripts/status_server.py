@@ -90,14 +90,14 @@ def check_status():
                         updates[score_col] = new_score_str
 
                     if not updates:
-                        print(f'    -> {current!r} ★{current_score or "-"} (no change)')
+                        print(f'    -> {current!r} *{current_score or "-"} (no change)')
                         continue
 
                     sheet_ok = update_entry(entry['id'], data, updates,
                                  tab=entry.get('tab'), sheet_row_id=entry.get('sheet_row_id'))
                     if not sheet_ok:
                         sheet_errors += 1
-                    print(f'    -> {current!r} -> {new_status!r} ★{new_rating or "-"} (sheet: {"ok" if sheet_ok else "FAILED"})')
+                    print(f'    -> {current!r} -> {new_status!r} *{new_rating or "-"} (sheet: {"ok" if sheet_ok else "FAILED"})')
                     updated += 1
 
                 remaining = total - (i + len(batch))

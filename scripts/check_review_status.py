@@ -420,11 +420,11 @@ def main() -> None:
                     updates[score_col] = new_score_str
 
                 if not updates:
-                    print(f"    -> {current!r} ★{current_score or '-'} (no change)")
+                    print(f"    -> {current!r} *{current_score or '-'} (no change)")
                     continue
 
                 tag = " (dry run)" if args.dry_run else ""
-                print(f"    -> {current!r} -> {new_status!r} ★{new_rating or '-'}{tag}")
+                print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'}{tag}")
                 if not args.dry_run:
                     update_entry(entry["id"], data, updates,
                                  tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"))
