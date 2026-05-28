@@ -207,36 +207,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // Bulk-push all status changes to the Sheet in one Apps Script call.
+  // Uses text/plain content-type (Apps Script workaround) with retry on HTML responses.
   let sheetPushError: string | null = null;
   if (sheetChanges.length > 0 && APPS_SCRIPT_URL && APPS_SCRIPT_SECRET) {
-    try {
-      const scriptRes = await fetch(APPS_SCRIPT_URL, {
-        method: 'POST',
-        redirect: 'follow',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          secret: APPS_SCRIPT_SECRET,
-          op: 'bulk_upsert_rows',
-          rows: sheetChanges.map((c) => ({ tab: c.tab, sheet_row_id: c.sheet_row_id, fields: c.fields, sync_tag: crypto.randomUUID() })),
-        }),
-      });
-      const scriptText = await scriptRes.text();
-      if (!scriptRes.ok || scriptText.trimStart().startsWith('<')) {
-        sheetPushError = `Apps Script returned non-JSON (HTTP ${scriptRes.status}): ${scriptText.slice(0, 200)}`;
-        console.log(`[check-status] ${sheetPushError}`);
-      } else {
+    const payload = JSON.stringify({
+      secret: APPS_SCRIPT_SECRET,
+      op: 'bulk_upsert_rows',
+      rows: sheetChanges.map((c) => ({ tab: c.tab, sheet_row_id: c.sheet_row_id, fields: c.fields, sync_tag: crypto.randomUUID() })),
+    });
+    const MAX_ATTEMPTS = 3;
+    let success = false;
+    let lastErr = '';
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && !success; attempt++) {
+      try {
+        const scriptRes = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          redirect: 'follow',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: payload,
+        });
+        const scriptText = await scriptRes.text();
+        if (!scriptRes.ok || scriptText.trimStart().startsWith('<')) {
+          lastErr = `Apps Script returned non-JSON (HTTP ${scriptRes.status}, attempt ${attempt}/${MAX_ATTEMPTS}): ${scriptText.slice(0, 200)}`;
+          console.log(`[check-status] ${lastErr}`);
+          if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 500 * attempt));
+          continue;
+        }
         const scriptBody = JSON.parse(scriptText) as { ok: boolean; updated?: number; errors?: string[] };
         if (scriptBody.errors?.length) {
-          sheetPushError = `Sheet bulk push partial errors: ${scriptBody.errors.slice(0, 3).join('; ')}`;
-          console.log(`[check-status] ${sheetPushError}`);
+          lastErr = `Sheet bulk push partial errors: ${scriptBody.errors.slice(0, 3).join('; ')}`;
+          console.log(`[check-status] ${lastErr}`);
         } else {
           console.log(`[check-status] Bulk pushed ${scriptBody.updated ?? sheetChanges.length} status change(s) to Sheet`);
         }
+        success = true;
+      } catch (pushErr) {
+        lastErr = String(pushErr);
+        console.log(`[check-status] Sheet bulk push error (attempt ${attempt}/${MAX_ATTEMPTS}): ${pushErr}`);
+        if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 500 * attempt));
       }
-    } catch (pushErr) {
-      sheetPushError = String(pushErr);
-      console.log(`[check-status] Sheet bulk push error: ${pushErr}`);
     }
+    if (!success) sheetPushError = lastErr;
   }
 
   if (runId) {

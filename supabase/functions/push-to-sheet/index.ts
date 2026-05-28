@@ -108,24 +108,15 @@ Deno.serve(async (req: Request) => {
       if (insErr) throw insErr;
     }
 
-    const scriptRes = await fetch(APPS_SCRIPT_URL, {
-      method: 'POST',
-      redirect: 'follow',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        secret: APPS_SCRIPT_SECRET,
-        op: 'upsert_row',
-        tab: body.tab,
-        sheet_row_id: body.sheet_row_id,
-        fields: cleanFields,
-        sync_tag: syncTag,
-      }),
+    const payload = JSON.stringify({
+      secret: APPS_SCRIPT_SECRET,
+      op: 'upsert_row',
+      tab: body.tab,
+      sheet_row_id: body.sheet_row_id,
+      fields: cleanFields,
+      sync_tag: syncTag,
     });
-    const scriptText = await scriptRes.text();
-    if (!scriptRes.ok || scriptText.trimStart().startsWith('<')) {
-      throw new Error(`Apps Script returned non-JSON (HTTP ${scriptRes.status}): ${scriptText.slice(0, 200)}`);
-    }
-    const scriptBody = JSON.parse(scriptText) as { ok: boolean; error?: string };
+    const scriptBody = await callAppsScript(payload);
     if (!scriptBody.ok) throw new Error(`Apps Script error: ${scriptBody.error}`);
 
     await admin.from('sync_runs').update({
@@ -146,4 +137,34 @@ Deno.serve(async (req: Request) => {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
+}
+
+// Calls the Apps Script web app with retries. Uses `text/plain` content-type — a
+// documented workaround for Apps Script POST handling that often resolves
+// intermittent HTML-instead-of-JSON responses. Retries up to 2 times on HTML
+// responses to handle transient Apps Script flakiness.
+async function callAppsScript(payload: string): Promise<{ ok: boolean; error?: string; row?: number }> {
+  const MAX_ATTEMPTS = 3;
+  let lastError = '';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      redirect: 'follow',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: payload,
+    });
+    const text = await res.text();
+    const trimmed = text.trimStart();
+    if (res.ok && !trimmed.startsWith('<')) {
+      try {
+        return JSON.parse(text);
+      } catch (parseErr) {
+        lastError = `JSON parse failed (HTTP ${res.status}): ${text.slice(0, 200)}`;
+      }
+    } else {
+      lastError = `Apps Script returned non-JSON (HTTP ${res.status}, attempt ${attempt}/${MAX_ATTEMPTS}): ${text.slice(0, 200)}`;
+    }
+    if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 500 * attempt));
+  }
+  throw new Error(lastError);
 }
