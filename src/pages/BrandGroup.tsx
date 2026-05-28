@@ -9,6 +9,7 @@ import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import Toast, { type ToastKind } from '../components/Toast';
+import ScoreSummaryPanel from '../components/ScoreSummaryPanel';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
@@ -1005,6 +1006,7 @@ export default function BrandGroup() {
         );
       })()}
 
+      <ScoreSummaryPanel tab={decodedTab} entries={entries} />
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Search + filter bar */}
