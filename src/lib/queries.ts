@@ -258,18 +258,23 @@ export async function fetchRawEntriesByTab(tab: string): Promise<Entry[]> {
   return fetchAllTabEntries(tab);
 }
 
-// Fetches every entry across every tab, paginated. Used by the Score Summary
-// admin page which aggregates per-brand counts across all brand-group tabs.
-export async function fetchAllEntries(): Promise<Entry[]> {
+// Fetches every entry across the given tabs, paginated. When `tabs` is omitted
+// (or empty), returns every row in the entries table. Used by the Score
+// Summary admin page to scope to the 9 operational brand-group tabs.
+export async function fetchAllEntries(tabs?: readonly string[]): Promise<Entry[]> {
   const PAGE = 1000;
   const all: Entry[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase
+    let query = supabase
       .from('entries')
       .select('*')
       .order('updated_at', { ascending: false })
       .range(from, from + PAGE - 1);
+    if (tabs && tabs.length > 0) {
+      query = query.in('tab', tabs as string[]);
+    }
+    const { data, error } = await query;
     if (error) throw error;
     all.push(...((data ?? []) as Entry[]));
     if ((data ?? []).length < PAGE) break;

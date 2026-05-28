@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import ScoreSummaryPanel from '../components/ScoreSummaryPanel';
 import { fetchAllEntries } from '../lib/queries';
+import { OPERATIONAL_TABS } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 
 export default function ScoreSummary() {
@@ -12,7 +13,7 @@ export default function ScoreSummary() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchAllEntries()
+    fetchAllEntries(OPERATIONAL_TABS)
       .then((data) => { if (!cancelled) setEntries(data); })
       .catch((err) => {
         if (cancelled) return;
