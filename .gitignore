@@ -10,6 +10,15 @@ dist-ssr/
 .env.local
 .env.*.local
 
+# Claude Code — local settings auto-accumulate approved commands that can embed
+# secrets (keys, tokens). Keep them out of the repo.
+.claude/settings.json
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
