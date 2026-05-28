@@ -131,7 +131,6 @@ Deno.serve(async (req) => {
         const dedupedMap = new Map<string, {
           last_edited_by: string;
           last_sync_tag: string | null;
-          updated_at: string | null;
           data: Record<string, string | null>;
         }>();
         for (const row of allDbRows ?? []) {
@@ -143,7 +142,6 @@ Deno.serve(async (req) => {
             dedupedMap.set(srid, {
               last_edited_by: row.last_edited_by as string,
               last_sync_tag: row.last_sync_tag as string | null,
-              updated_at: (row.updated_at as string | null) ?? null,
               data: (row.data as Record<string, string | null> | null) ?? {},
             });
           }
@@ -180,29 +178,15 @@ Deno.serve(async (req) => {
 
         // --- Step 3: update existing rows / insert genuinely new rows ---
         // Echo / no-op detection: if the Sheet's values exactly match the DB's
-        // values, nothing to apply (this also catches the loop where push-to-sheet's
-        // own write comes back through onEdit → import-tabs).
-        //
-        // Protection window: a Sheet value that differs from a dashboard edit
-        // made within the last 5 minutes is ignored. This guards against a
-        // failed push-to-sheet (Apps Script error → Sheet still holds the OLD
-        // value) reverting a fresh dashboard edit. After 5 minutes we trust the
-        // Sheet — if the user manually edits the Sheet, that change wins.
-        const PROTECTION_WINDOW_MS = 5 * 60 * 1000;
-        const nowMs = Date.now();
+        // values, nothing to apply. This catches the loop where push-to-sheet's
+        // own write comes back through onEdit → import-tabs. Any genuine
+        // difference (manual Sheet edit) is applied — Sheet wins.
         const toUpsert: Array<Record<string, unknown>> = [];
         for (const c of candidates) {
           const existing = dedupedMap.get(c.sheet_row_id);
           if (existing && dataEquals(existing.data, c.data)) {
             rowsSkipped++;
             continue;
-          }
-          if (existing?.last_edited_by === 'dashboard' && existing.updated_at) {
-            const editedAtMs = new Date(existing.updated_at).getTime();
-            if (!Number.isNaN(editedAtMs) && nowMs - editedAtMs < PROTECTION_WINDOW_MS) {
-              rowsSkipped++;
-              continue;
-            }
           }
           toUpsert.push({
             tab: c.tab,
