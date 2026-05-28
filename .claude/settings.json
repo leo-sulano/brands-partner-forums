@@ -153,7 +153,10 @@
       "PowerShell(Get-Process pythonw -ErrorAction SilentlyContinue)",
       "PowerShell(Stop-Process -Force)",
       "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running: $_\" })",
-      "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running\" })"
+      "PowerShell(Start-Sleep -Seconds 12; try { $r = Invoke-WebRequest -Uri \"http://localhost:5001/health\" -UseBasicParsing; $r.Content } catch { \"not running\" })",
+      "Bash(curl -s \"https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/entries?tab=eq.TP%20Brand%20Injection&select=id,sheet_row_id,last_edited_by,last_sync_tag,updated_at,data&data->>Account=eq.047%20%7C%20BI%20TP%20%7C%20Germany\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU\")",
+      "Bash(curl -s \"https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/sync_runs?select=*&order=started_at.desc&limit=15\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU\")",
+      "Bash(curl -s \"https://krxnupmhfiduduvvlumc.supabase.co/rest/v1/tab_schemas?tab=eq.TP%20Brand%20Injection&select=headers\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtyeG51cG1oZmlkdWR1dnZsdW1jIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg4MzkwNzQsImV4cCI6MjA5NDQxNTA3NH0.tXC1El3aCTskejT7rVkSGYqP80nG_Jw-7MDFFQiFGnU\")"
     ],
     "additionalDirectories": [
       "c:\\Users\\Leo\\AppData\\Local\\Temp",
