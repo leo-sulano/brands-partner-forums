@@ -154,7 +154,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
               No published reviews in this range.
             </div>
           ) : (
-            <SummaryTable rows={result.brands} />
+            <GroupedSummary rows={result.brands} />
           )}
 
           {result.excludedRows > 0 && (
@@ -168,11 +168,68 @@ export default function ScoreSummaryPanel({ entries }: Props) {
   );
 }
 
+function GroupedSummary({ rows }: { rows: BrandSummary[] }) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const groups = useMemo(() => {
+    const map = new Map<string, BrandSummary[]>();
+    for (const r of rows) {
+      const list = map.get(r.tab);
+      if (list) list.push(r);
+      else map.set(r.tab, [r]);
+    }
+    return [...map.entries()]
+      .map(([tab, brands]) => ({ tab, brands }))
+      .sort((a, b) => a.tab.localeCompare(b.tab));
+  }, [rows]);
+
+  function toggle(tab: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(tab)) next.delete(tab);
+      else next.add(tab);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      {groups.map(({ tab, brands }) => {
+        const isCollapsed = collapsed.has(tab);
+        const groupTotal = brands.reduce((s, b) => s + b.total, 0);
+        return (
+          <section key={tab} className="rounded-md border border-slate-200">
+            <header className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-slate-700">{tab || '(no tab)'}</h3>
+                <span className="text-xs text-slate-400">
+                  {brands.length} brand{brands.length !== 1 ? 's' : ''} · {groupTotal.toLocaleString()} review{groupTotal !== 1 ? 's' : ''}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => toggle(tab)}
+                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                aria-label={isCollapsed ? `Expand ${tab}` : `Collapse ${tab}`}
+              >
+                <ChevronDown
+                  className={`size-4 transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
+                />
+              </button>
+            </header>
+            {!isCollapsed && <SummaryTable rows={brands} />}
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function SummaryTable({ rows }: { rows: BrandSummary[] }) {
   const stars: (5 | 4 | 3 | 2 | 1)[] = [5, 4, 3, 2, 1];
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   return (
-    <div className="overflow-x-auto rounded-md border border-slate-200">
+    <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
