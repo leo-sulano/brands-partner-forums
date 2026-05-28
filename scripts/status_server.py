@@ -23,7 +23,7 @@ from flask_cors import CORS
 
 from check_review_status import (
     load_entries, build_driver, fetch_status,
-    find_status_col, update_entry,
+    find_status_col, find_score_col, update_entry,
     BATCH_SIZE, DELAY_BETWEEN_BATCHES,
 )
 
@@ -69,24 +69,36 @@ def check_status():
                     checked += 1
                     data: dict = entry['data']
                     status_col = find_status_col(data)
+                    score_col = find_score_col(data)
                     current: str = data.get(status_col, '') or ''
+                    current_score: str = str(data.get(score_col, '') or '') if score_col else ''
                     url: str = data['Link to the profile']
 
                     print(f'  [{checked}/{total}] {url}')
-                    new_status = fetch_status(driver, url)
+                    new_status, new_rating = fetch_status(driver, url)
 
                     if new_status is None:
                         print(f'    -> could not determine (skipped)')
                         errors += 1
-                    elif new_status != current:
-                        sheet_ok = update_entry(entry['id'], data, status_col, new_status,
-                                     tab=entry.get('tab'), sheet_row_id=entry.get('sheet_row_id'))
-                        if not sheet_ok:
-                            sheet_errors += 1
-                        print(f'    -> {current!r} -> {new_status!r} (sheet: {"ok" if sheet_ok else "FAILED"})')
-                        updated += 1
-                    else:
-                        print(f'    -> {current!r} (no change)')
+                        continue
+
+                    updates: dict[str, str] = {}
+                    if new_status != current:
+                        updates[status_col] = new_status
+                    new_score_str = str(new_rating) if new_rating is not None else None
+                    if score_col and new_score_str and new_score_str != current_score:
+                        updates[score_col] = new_score_str
+
+                    if not updates:
+                        print(f'    -> {current!r} ★{current_score or "-"} (no change)')
+                        continue
+
+                    sheet_ok = update_entry(entry['id'], data, updates,
+                                 tab=entry.get('tab'), sheet_row_id=entry.get('sheet_row_id'))
+                    if not sheet_ok:
+                        sheet_errors += 1
+                    print(f'    -> {current!r} -> {new_status!r} ★{new_rating or "-"} (sheet: {"ok" if sheet_ok else "FAILED"})')
+                    updated += 1
 
                 remaining = total - (i + len(batch))
                 if remaining > 0:

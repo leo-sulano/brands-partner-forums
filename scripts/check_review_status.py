@@ -48,6 +48,8 @@ TP_STATUS_COLS = [
     "Review Status",
 ]
 
+SCORE_COLS = ["Score added", "Score Added", "score added", "Score"]
+
 # Only entries with these statuses are eligible for a status check.
 # "Done"    = review was just posted by the agent; TP hasn't processed it yet.
 # "Pending" = TP received the review but moderation hasn't resolved it yet.
@@ -184,6 +186,54 @@ def parse_review_status(html: str) -> Optional[str]:
     return _from_next_data(html) or _from_text_signals(html)
 
 
+def _normalize_rating(raw) -> Optional[int]:
+    if raw is None:
+        return None
+    try:
+        n = int(raw) if isinstance(raw, int) else int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return n if 1 <= n <= 5 else None
+
+
+def _rating_from_next_data(html: str) -> Optional[int]:
+    match = re.search(
+        r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+        html, re.DOTALL,
+    )
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    page_props = data.get("props", {}).get("pageProps", {})
+    review = (
+        page_props.get("review")
+        or page_props.get("correlatedReview")
+        or page_props.get("reviewData")
+    )
+    if not review:
+        return None
+    raw = review.get("stars") or review.get("rating") or review.get("reviewRating")
+    return _normalize_rating(raw)
+
+
+def _rating_from_html(html: str) -> Optional[int]:
+    alt = re.search(r'alt="Rated\s+(\d)\s+out of 5 stars?"', html, re.IGNORECASE)
+    if alt:
+        return _normalize_rating(alt.group(1))
+    data_attr = re.search(r'data-service-review-rating="(\d)"', html, re.IGNORECASE)
+    if data_attr:
+        return _normalize_rating(data_attr.group(1))
+    return None
+
+
+def parse_review_rating(html: str) -> Optional[int]:
+    """Extract the 1-5 star rating from a Trustpilot review/confirmation page."""
+    return _rating_from_next_data(html) or _rating_from_html(html)
+
+
 # ─── Supabase REST helpers (no heavy SDK needed) ─────────────────────────────
 
 def _headers() -> dict:
@@ -197,6 +247,13 @@ def _headers() -> dict:
 
 def find_status_col(data: dict) -> Optional[str]:
     for col in TP_STATUS_COLS:
+        if col in data:
+            return col
+    return None
+
+
+def find_score_col(data: dict) -> Optional[str]:
+    for col in SCORE_COLS:
         if col in data:
             return col
     return None
@@ -226,10 +283,14 @@ def load_entries(tab: Optional[str] = None) -> list[dict]:
     return out
 
 
-def update_entry(entry_id: str, data: dict, status_col: str, new_status: str,
+def update_entry(entry_id: str, data: dict, updates: dict[str, str],
                  tab: Optional[str] = None, sheet_row_id: Optional[str] = None) -> bool:
-    """Returns True if the sheet sync succeeded (or was skipped), False on failure."""
-    updated_data = {**data, status_col: new_status}
+    """Apply `updates` (e.g. {status_col: 'Published', score_col: '5'}) to the
+    entry's data blob, then mirror the same fields to the Sheet. Returns True
+    if the sheet sync succeeded (or was skipped), False on failure."""
+    if not updates:
+        return True
+    updated_data = {**data, **updates}
     payload = {"data": updated_data, "updated_at": datetime.now(timezone.utc).isoformat()}
     r = requests.patch(
         f"{SUPABASE_URL}/rest/v1/entries",
@@ -242,7 +303,7 @@ def update_entry(entry_id: str, data: dict, status_col: str, new_status: str,
     if not (tab and sheet_row_id):
         return True
 
-    # Push status change to Google Sheet via the push-to-sheet edge function
+    # Push changes to Google Sheet via the push-to-sheet edge function
     try:
         push_headers = {
             "apikey": SUPABASE_KEY,
@@ -252,7 +313,7 @@ def update_entry(entry_id: str, data: dict, status_col: str, new_status: str,
         push_payload = {
             "tab": tab,
             "sheet_row_id": sheet_row_id,
-            "fields": {status_col: new_status},
+            "fields": updates,
         }
         pr = requests.post(
             f"{SUPABASE_URL}/functions/v1/push-to-sheet",
@@ -284,7 +345,9 @@ def build_driver(headless: bool = False) -> uc.Chrome:
     return driver
 
 
-def fetch_status(driver: uc.Chrome, raw_url: str) -> Optional[str]:
+def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Optional[int]]:
+    """Load the TP page and return (status, rating). Either may be None.
+    Rating is the 1-5 star count when visible on the page."""
     url = raw_url.strip()
     if not url.startswith("http"):
         url = f"https://{url}"
@@ -297,11 +360,14 @@ def fetch_status(driver: uc.Chrome, raw_url: str) -> Optional[str]:
         time.sleep(POST_LOAD_SLEEP)
         if "trustpilot.com" not in driver.current_url:
             print(f"    redirected off-site -> {driver.current_url}")
-            return "Removed"
-        return parse_review_status(driver.page_source) or "Published"
+            return ("Removed", None)
+        html = driver.page_source
+        status = parse_review_status(html) or "Published"
+        rating = parse_review_rating(html)
+        return (status, rating)
     except Exception as exc:
         print(f"    ERROR: {exc}")
-        return None
+        return (None, None)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -333,24 +399,36 @@ def main() -> None:
                 checked += 1
                 data: dict = entry["data"]
                 status_col = find_status_col(data)
+                score_col = find_score_col(data)
                 current = data.get(status_col, "") or ""
+                current_score = str(data.get(score_col, "") or "") if score_col else ""
                 url: str = data["Link to the profile"]
 
                 print(f"[{checked}/{total}] {url}")
-                new_status = fetch_status(driver, url)
+                new_status, new_rating = fetch_status(driver, url)
 
                 if new_status is None:
                     print(f"    -> could not determine status (skipped)")
                     errors += 1
-                elif new_status == current:
-                    print(f"    -> {current!r} (no change)")
-                else:
-                    tag = " (dry run)" if args.dry_run else ""
-                    print(f"    -> {current!r} -> {new_status!r}{tag}")
-                    if not args.dry_run:
-                        update_entry(entry["id"], data, status_col, new_status,
-                                     tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"))
-                    updated += 1
+                    continue
+
+                updates: dict[str, str] = {}
+                if new_status != current:
+                    updates[status_col] = new_status
+                new_score_str = str(new_rating) if new_rating is not None else None
+                if score_col and new_score_str and new_score_str != current_score:
+                    updates[score_col] = new_score_str
+
+                if not updates:
+                    print(f"    -> {current!r} ★{current_score or '-'} (no change)")
+                    continue
+
+                tag = " (dry run)" if args.dry_run else ""
+                print(f"    -> {current!r} -> {new_status!r} ★{new_rating or '-'}{tag}")
+                if not args.dry_run:
+                    update_entry(entry["id"], data, updates,
+                                 tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"))
+                updated += 1
 
             remaining = total - (i + len(batch))
             if remaining > 0:
