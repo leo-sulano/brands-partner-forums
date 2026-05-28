@@ -477,7 +477,7 @@ export async function triggerSync(): Promise<void> {
 
 export async function triggerStatusCheck(
   tab: string,
-): Promise<{ checked: number; updated: number; errors: number }> {
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_STATUS_URL) {
     throw new Error(
       'VITE_CHECK_STATUS_URL is not configured — check .env',

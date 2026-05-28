@@ -266,5 +266,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }).eq('id', runId);
   }
 
-  return json({ checked, updated, errors, sheetPushed: sheetChanges.length, budgetExceeded, total: entries.length });
+  const sheet_errors = sheetPushError ? sheetChanges.length : 0;
+  return json({ checked, updated, errors, sheet_errors, sheetPushed: sheetChanges.length, budgetExceeded, total: entries.length });
 });
