@@ -134,3 +134,50 @@ function fromTextSignals(html: string): TpStatus | null {
 export function parseReviewStatus(html: string): TpStatus | null {
   return fromNextData(html) ?? fromTextSignals(html);
 }
+
+// Extracts the 1–5 star rating from a Trustpilot review/confirmation page.
+// Prefers __NEXT_DATA__ (review.stars / review.rating) and falls back to
+// common HTML markers like alt="Rated 5 out of 5 stars" and
+// data-service-review-rating="5".
+export function parseReviewRating(html: string): number | null {
+  const fromJson = ratingFromNextData(html);
+  if (fromJson != null) return fromJson;
+  return ratingFromHtml(html);
+}
+
+function ratingFromNextData(html: string): number | null {
+  const match = html.match(
+    /<script id="__NEXT_DATA__" type="application\/json">(.+?)<\/script>/s,
+  );
+  if (!match) return null;
+  let data: unknown;
+  try {
+    data = JSON.parse(match[1]);
+  } catch {
+    return null;
+  }
+  // deno-lint-ignore no-explicit-any
+  const d = data as any;
+  const review =
+    d?.props?.pageProps?.review ??
+    d?.props?.pageProps?.correlatedReview ??
+    d?.props?.pageProps?.reviewData;
+  if (!review) return null;
+  const raw = review.stars ?? review.rating ?? review.reviewRating;
+  return normalizeRating(raw);
+}
+
+function ratingFromHtml(html: string): number | null {
+  const altMatch = html.match(/alt="Rated\s+(\d)\s+out of 5 stars?"/i);
+  if (altMatch) return normalizeRating(altMatch[1]);
+  const dataAttr = html.match(/data-service-review-rating="(\d)"/i);
+  if (dataAttr) return normalizeRating(dataAttr[1]);
+  return null;
+}
+
+function normalizeRating(raw: unknown): number | null {
+  if (raw == null) return null;
+  const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+  if (!Number.isFinite(n) || n < 1 || n > 5) return null;
+  return n;
+}

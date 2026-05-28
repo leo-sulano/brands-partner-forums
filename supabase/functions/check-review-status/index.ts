@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { parseReviewStatus, type TpStatus } from './parser.ts';
+import { parseReviewRating, parseReviewStatus, type TpStatus } from './parser.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -41,6 +41,8 @@ const TP_STATUS_COLS = [
   'Review Status',
 ];
 
+const SCORE_COLS = ['Score added', 'Score Added', 'score added', 'Score'];
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers':
@@ -58,7 +60,16 @@ function findStatusCol(data: Record<string, unknown>): string | null {
   return TP_STATUS_COLS.find((col) => col in data) ?? null;
 }
 
-async function fetchTpStatus(url: string, proxyClient: Deno.HttpClient | null = null): Promise<TpStatus | null> {
+function findScoreCol(data: Record<string, unknown>): string | null {
+  return SCORE_COLS.find((col) => col in data) ?? null;
+}
+
+interface TpReview {
+  status: TpStatus | null;
+  rating: number | null;
+}
+
+async function fetchTpReview(url: string, proxyClient: Deno.HttpClient | null = null): Promise<TpReview> {
   try {
     // deno-lint-ignore no-explicit-any
     const fetchOpts: any = {
@@ -89,24 +100,25 @@ async function fetchTpStatus(url: string, proxyClient: Deno.HttpClient | null = 
     // 3xx redirect away from the review URL = review removed/gone
     if (res.status >= 301 && res.status <= 308) {
       console.log(`[check-status] REDIRECT ${res.status} for ${url}`);
-      return 'Removed';
+      return { status: 'Removed', rating: null };
     }
     if (res.status === 404) {
       console.log(`[check-status] 404 for ${url}`);
-      return 'Removed';
+      return { status: 'Removed', rating: null };
     }
     if (res.status !== 200) {
       console.log(`[check-status] HTTP ${res.status} for ${url}`);
-      return null;
+      return { status: null, rating: null };
     }
 
     const html = await res.text();
-    const parsed = parseReviewStatus(html);
-    console.log(`[check-status] ${url} → ${parsed ?? 'null'} (html length: ${html.length})`);
-    return parsed;
+    const status = parseReviewStatus(html);
+    const rating = parseReviewRating(html);
+    console.log(`[check-status] ${url} → ${status ?? 'null'} / ★${rating ?? '-'} (html length: ${html.length})`);
+    return { status, rating };
   } catch (err) {
     console.log(`[check-status] ERROR for ${url}: ${err}`);
-    return null;
+    return { status: null, rating: null };
   }
 }
 
@@ -173,28 +185,47 @@ Deno.serve(async (req: Request): Promise<Response> => {
         const rawUrl: string = entry.data['Link to the profile'].trim();
         const profileUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
         const statusCol = findStatusCol(entry.data)!;
+        const scoreCol = findScoreCol(entry.data);
         const currentStatus: string = entry.data[statusCol] ?? '';
+        const currentScore: string = scoreCol ? (entry.data[scoreCol] ?? '') : '';
 
         const proxyClient = getProxyClient(entry.data['Proxy Used']);
-        const newStatus = await fetchTpStatus(profileUrl, proxyClient);
+        const { status: newStatus, rating: newRating } = await fetchTpReview(profileUrl, proxyClient);
         proxyClient?.close();
 
         if (newStatus === null) {
           errors++;
-        } else if (newStatus !== currentStatus) {
-          const updatedData = { ...entry.data, [statusCol]: newStatus };
-          const { error: updateErr } = await admin
-            .from('entries')
-            .update({ data: updatedData, updated_at: new Date().toISOString(), last_edited_by: 'dashboard' })
-            .eq('id', entry.id);
+          return;
+        }
 
-          if (updateErr) {
-            errors++;
-          } else {
-            updated++;
-            if (entry.tab && entry.sheet_row_id) {
-              sheetChanges.push({ tab: entry.tab, sheet_row_id: entry.sheet_row_id, fields: { [statusCol]: newStatus } });
-            }
+        const statusChanged = newStatus !== currentStatus;
+        const newScoreStr = newRating != null ? String(newRating) : null;
+        const scoreChanged = !!scoreCol && newScoreStr != null && newScoreStr !== String(currentScore);
+
+        if (!statusChanged && !scoreChanged) return;
+
+        const updatedData: Record<string, string | null> = { ...entry.data };
+        const sheetFields: Record<string, string> = {};
+        if (statusChanged) {
+          updatedData[statusCol] = newStatus;
+          sheetFields[statusCol] = newStatus;
+        }
+        if (scoreChanged && scoreCol && newScoreStr) {
+          updatedData[scoreCol] = newScoreStr;
+          sheetFields[scoreCol] = newScoreStr;
+        }
+
+        const { error: updateErr } = await admin
+          .from('entries')
+          .update({ data: updatedData, updated_at: new Date().toISOString(), last_edited_by: 'dashboard' })
+          .eq('id', entry.id);
+
+        if (updateErr) {
+          errors++;
+        } else {
+          updated++;
+          if (entry.tab && entry.sheet_row_id) {
+            sheetChanges.push({ tab: entry.tab, sheet_row_id: entry.sheet_row_id, fields: sheetFields });
           }
         }
       }),
