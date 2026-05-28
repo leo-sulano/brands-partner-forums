@@ -1,4 +1,4 @@
-import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL } from './supabase';
+import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_TOKEN } from './supabase';
 import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
@@ -512,7 +512,9 @@ export async function triggerStatusCheck(
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
+      // Skip ngrok's free-tier browser-warning interstitial so we always get JSON.
+      'ngrok-skip-browser-warning': 'true',
     },
     body: JSON.stringify({ tab }),
   });

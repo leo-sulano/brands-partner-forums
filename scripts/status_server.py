@@ -28,9 +28,24 @@ from check_review_status import (
 )
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, allow_headers=['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'])
+
+# Shared secret. When set, every /check-status POST must present a matching
+# `Authorization: Bearer <token>`. Required once the server is exposed publicly
+# (e.g. via Cloudflare Tunnel) so strangers who find the URL can't trigger
+# Selenium runs that write to the DB and Sheet. Loaded from scripts/.env
+# (dotenv is already applied by the check_review_status import above).
+CHECK_STATUS_TOKEN = os.environ.get('CHECK_STATUS_TOKEN', '').strip()
 
 _lock = threading.Lock()
+
+
+def _is_authorized() -> bool:
+    if not CHECK_STATUS_TOKEN:
+        return True  # no token configured -> local-only / open mode
+    auth = request.headers.get('Authorization', '')
+    presented = auth[7:].strip() if auth.startswith('Bearer ') else ''
+    return presented == CHECK_STATUS_TOKEN
 
 
 @app.route('/health', methods=['GET'])
@@ -42,6 +57,9 @@ def health():
 def check_status():
     if request.method == 'OPTIONS':
         return '', 204
+
+    if not _is_authorized():
+        return jsonify({'error': 'Unauthorized — missing or invalid token'}), 401
 
     if not _lock.acquire(blocking=False):
         return jsonify({'error': 'A check is already running — wait and retry'}), 409
@@ -122,4 +140,9 @@ if __name__ == '__main__':
     app.config['HEADLESS'] = args.headless
     print(f'[server] Listening on http://localhost:{args.port}')
     print(f'[server] VITE_CHECK_STATUS_URL=http://localhost:{args.port}/check-status')
+    if CHECK_STATUS_TOKEN:
+        print('[server] Token auth ENABLED (CHECK_STATUS_TOKEN is set)')
+    else:
+        print('[server] WARNING: no CHECK_STATUS_TOKEN set — endpoint is OPEN. '
+              'Set one before exposing this server publicly (e.g. via a tunnel).')
     app.run(port=args.port, debug=False, threaded=True)
