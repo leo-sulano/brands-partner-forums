@@ -895,7 +895,8 @@ export default function BrandGroup() {
       setToast({ message: msg, kind });
       reloadRef.current();
     } catch (err) {
-      setToast({ message: 'Check failed — try again', kind: 'error' });
+      const detail = err instanceof Error ? err.message : String(err);
+      setToast({ message: `Check failed: ${detail}`, kind: 'error' });
       console.error(err);
     } finally {
       setCheckingStatus(false);
