@@ -23,8 +23,17 @@ export interface DateRange {
   to: Date | null;
 }
 
-const BRAND_KEYS = ['Brands'] as const;
-const STATUS_KEYS = ['TP Review Status', 'Review Status'] as const;
+// Kept aligned with BRAND_COLS / TP_STATUS_VARIANTS in BrandGroup.tsx so the
+// summary works on any brand-group tab. 'Account Name' is intentionally NOT
+// here — it would bucket one row per account, which isn't a useful summary.
+const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'] as const;
+const STATUS_KEYS = [
+  'TP Review Status',
+  'Trust Pilot Review Status',
+  'Trustpilot Review Status',
+  'Trust pilot Review Status',
+  'Review Status',
+] as const;
 const SCORE_KEYS = ['Score added', 'Score Added', 'Score'] as const;
 const DATE_KEYS = ['Trust Pilot'] as const;
 
@@ -99,7 +108,7 @@ function endOfDay(d: Date): Date {
 export function computeScoreSummary(
   entries: Entry[],
   range: DateRange,
-  pinnedFirst: string[] = ['Revolution Casino'],
+  pinnedFirst: string[] = [],
 ): ScoreSummaryResult {
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;

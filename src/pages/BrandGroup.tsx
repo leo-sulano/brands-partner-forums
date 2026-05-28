@@ -1006,7 +1006,7 @@ export default function BrandGroup() {
         );
       })()}
 
-      <ScoreSummaryPanel tab={decodedTab} entries={entries} />
+      <ScoreSummaryPanel entries={entries} />
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
         {/* Search + filter bar */}

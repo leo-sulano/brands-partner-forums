@@ -12,10 +12,7 @@ import {
 } from '../lib/scoreSummary';
 import type { Entry } from '../types/entry';
 
-export const SCORE_SUMMARY_TABS = new Set<string>(['Revolution Casino']);
-
 interface Props {
-  tab: string;
   entries: Entry[];
 }
 
@@ -46,7 +43,7 @@ const STAR_COLOR: Record<1 | 2 | 3 | 4 | 5, string> = {
   1: 'text-rose-500',
 };
 
-export default function ScoreSummaryPanel({ tab, entries }: Props) {
+export default function ScoreSummaryPanel({ entries }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [preset, setPreset] = useState<PresetKey | 'custom'>('all');
   const [fromIso, setFromIso] = useState('');
@@ -59,9 +56,16 @@ export default function ScoreSummaryPanel({ tab, entries }: Props) {
     return resolvePreset(preset);
   }, [preset, fromIso, toIso]);
 
+  // Always compute against the full entries (All time) so we know whether the
+  // tab has any qualifying TP-Published data at all. If not, render nothing —
+  // hides the panel cleanly on tabs that don't track TP reviews.
+  const allTimeResult = useMemo(
+    () => computeScoreSummary(entries, { from: null, to: null }),
+    [entries],
+  );
   const result = useMemo(() => computeScoreSummary(entries, range), [entries, range]);
 
-  if (!SCORE_SUMMARY_TABS.has(tab)) return null;
+  if (allTimeResult.brands.length === 0) return null;
 
   function applyPreset(key: PresetKey) {
     setPreset(key);

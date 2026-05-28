@@ -1,7 +1,12 @@
 # Revolution Casino — Score Summary Panel
 
 **Date:** 2026-05-28
-**Scope:** A per-brand TrustPilot star-rating summary panel on the Revolution Casino tab page. First brand-group only; config-driven so adding more later is a one-line change.
+**Scope:** A per-brand TrustPilot star-rating summary panel rendered on every brand-group tab page (BrandGroup). The panel auto-hides on tabs that yield no qualifying TP-Published data, so no per-tab allowlist is needed.
+
+**Update history:**
+- 2026-05-28 v1: Built for Revolution Casino tab behind a `SCORE_SUMMARY_TABS` allowlist.
+- 2026-05-28 v2: Card grid → single-row table; added `Unrated` bucket for Published rows without a parsed score; DD/MM/YYYY date parsing.
+- 2026-05-28 v3: Enabled on all brand-group tabs. Removed allowlist and Revolution-Casino-first pin. Brand/status key lists aligned with `BRAND_COLS` / `TP_STATUS_VARIANTS` in `BrandGroup.tsx`.
 
 ---
 
@@ -12,17 +17,17 @@ The Revolution Casino tab lists individual reviewer-account entries. There is no
 ## 2. Goals / Non-goals
 
 **In scope:**
-- Per-brand star-count breakdown (5★, 4★, 3★, 2★, 1★) for the Revolution Casino tab.
+- Per-brand star-count breakdown (5★, 4★, 3★, 2★, 1★) on every brand-group tab.
 - Total review count, average rating (1 decimal), and TrustPilot-style rating label per brand.
 - Date-range filter applied to the review's TrustPilot post date, with quick presets.
-- Counts include only entries whose `TP Review Status` is "Published".
+- Counts include only entries whose TP review status (any of the known variants) equals "Published".
+- Panel auto-hides on tabs where no row has a brand and a Published TP status.
 
 **Out of scope (explicit non-goals):**
 - AskGamblers / CasinoGuru summaries.
 - Bar charts of star distribution.
 - Period-over-period comparison ("vs. last week" deltas).
 - CSV export.
-- Other brand-group tabs (Rooster, Hanan, SuprPlay, …). The implementation is config-driven so future expansion is trivial; this spec does not enable them.
 - Schema changes, new Supabase queries, or Edge Function changes.
 
 ## 3. User Experience
