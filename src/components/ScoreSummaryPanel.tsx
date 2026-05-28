@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { ChevronDown, Star } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Check, ChevronDown, Star, X } from 'lucide-react';
 import DatePicker from './DatePicker';
 import {
   computeScoreSummary,
@@ -48,6 +48,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
   const [preset, setPreset] = useState<PresetKey | 'custom'>('all');
   const [fromIso, setFromIso] = useState('');
   const [toIso, setToIso] = useState('');
+  const [tabFilter, setTabFilter] = useState('');
 
   const range = useMemo(() => {
     if (preset === 'custom') {
@@ -57,6 +58,19 @@ export default function ScoreSummaryPanel({ entries }: Props) {
   }, [preset, fromIso, toIso]);
 
   const result = useMemo(() => computeScoreSummary(entries, range), [entries, range]);
+
+  // Tab options come from the raw entries so the dropdown lists every tab that
+  // has data, not just those that survived the active date filter.
+  const tabOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const e of entries) if (e.tab) set.add(e.tab);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [entries]);
+
+  const filteredBrands = useMemo(
+    () => (tabFilter ? result.brands.filter((b) => b.tab === tabFilter) : result.brands),
+    [result.brands, tabFilter],
+  );
 
   function applyPreset(key: PresetKey) {
     setPreset(key);
@@ -80,7 +94,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
   }
 
   const hasNonDefault = preset !== 'all';
-  const totalAcrossBrands = result.brands.reduce((s, b) => s + b.total, 0);
+  const totalAcrossBrands = filteredBrands.reduce((s, b) => s + b.total, 0);
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -147,14 +161,18 @@ export default function ScoreSummaryPanel({ entries }: Props) {
                 Reset
               </button>
             )}
+            <div className="h-4 w-px bg-slate-200 mx-1" />
+            <TabFilterDropdown value={tabFilter} onChange={setTabFilter} options={tabOptions} />
           </div>
 
-          {result.brands.length === 0 ? (
+          {filteredBrands.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-              No published reviews in this range.
+              {result.brands.length === 0
+                ? 'No published reviews in this range.'
+                : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={result.brands} />
+            <GroupedSummary rows={filteredBrands} />
           )}
 
           {result.excludedRows > 0 && (
@@ -165,6 +183,91 @@ export default function ScoreSummaryPanel({ entries }: Props) {
         </div>
       )}
     </section>
+  );
+}
+
+function TabFilterDropdown({
+  value,
+  onChange,
+  options,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  const active = !!value;
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+          active
+            ? 'border-violet-300 bg-violet-50 text-violet-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+        }`}
+      >
+        {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
+        <span className="max-w-[10rem] truncate">{active ? value : 'All brands'}</span>
+        {active ? (
+          <span
+            onClick={(e) => { e.stopPropagation(); onChange(''); }}
+            className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors"
+            role="button"
+            aria-label="Clear brand filter"
+          >
+            <X className="size-3" />
+          </span>
+        ) : (
+          <ChevronDown className={`size-3 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        )}
+      </button>
+
+      {open && (
+        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-lg">
+          <div className="max-h-72 overflow-y-auto py-1">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${
+                !value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'
+              }`}
+            >
+              <span className="flex-1">All brands</span>
+              {!value && <Check className="size-3 text-violet-500" />}
+            </button>
+            {options.length === 0 && (
+              <div className="px-3 py-4 text-center text-xs text-slate-400">No brands available</div>
+            )}
+            {options.map((opt) => (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { onChange(opt); setOpen(false); }}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${
+                  opt === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'
+                }`}
+              >
+                <span className="flex-1 truncate">{opt}</span>
+                {opt === value && <Check className="size-3 text-violet-500" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
