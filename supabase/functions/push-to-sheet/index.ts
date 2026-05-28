@@ -162,7 +162,10 @@ async function callAppsScript(payload: string): Promise<{ ok: boolean; error?: s
         lastError = `JSON parse failed (HTTP ${res.status}): ${text.slice(0, 200)}`;
       }
     } else {
-      lastError = `Apps Script returned non-JSON (HTTP ${res.status}, attempt ${attempt}/${MAX_ATTEMPTS}): ${text.slice(0, 200)}`;
+      // Apps Script error pages bury the real cause in the <body>. Strip tags
+      // and keep more text so the sync_runs error_message is actually useful.
+      const stripped = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+      lastError = `Apps Script returned non-JSON (HTTP ${res.status}, attempt ${attempt}/${MAX_ATTEMPTS}): ${stripped.slice(0, 1500)}`;
     }
     if (attempt < MAX_ATTEMPTS) await new Promise((r) => setTimeout(r, 500 * attempt));
   }
