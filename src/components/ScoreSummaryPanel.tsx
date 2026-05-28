@@ -159,11 +159,7 @@ export default function ScoreSummaryPanel({ tab, entries }: Props) {
               No published reviews in this range.
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {result.brands.map((b) => (
-                <BrandCard key={b.brand} summary={b} />
-              ))}
-            </div>
+            <SummaryTable rows={result.brands} />
           )}
 
           {result.excludedRows > 0 && (
@@ -177,65 +173,79 @@ export default function ScoreSummaryPanel({ tab, entries }: Props) {
   );
 }
 
-function BrandCard({ summary }: { summary: BrandSummary }) {
-  const stars: (1 | 2 | 3 | 4 | 5)[] = [5, 4, 3, 2, 1];
+function SummaryTable({ rows }: { rows: BrandSummary[] }) {
+  const stars: (5 | 4 | 3 | 2 | 1)[] = [5, 4, 3, 2, 1];
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="mb-3 text-sm font-semibold text-slate-800 truncate" title={summary.brand}>
-        {summary.brand}
-      </h3>
-
-      <div className="grid grid-cols-2 gap-x-4">
-        <div className="space-y-1.5">
-          {stars.map((s) => (
-            <div key={s} className="flex items-center gap-2">
-              <span className="flex w-12 shrink-0 items-center gap-1 text-xs font-medium text-slate-600">
-                <span className="tabular-nums">{s}</span>
-                <Star className={`size-3 fill-current ${STAR_COLOR[s]}`} />
-              </span>
-              <span className="text-sm tabular-nums text-slate-800">{summary.counts[s].toLocaleString()}</span>
-            </div>
+    <div className="overflow-x-auto rounded-md border border-slate-200">
+      <table className="w-full text-sm">
+        <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th scope="col" className="px-3 py-2 text-left font-medium">Brand</th>
+            {stars.map((s) => (
+              <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
+                <span className="inline-flex items-center justify-end gap-0.5">
+                  <span className="tabular-nums">{s}</span>
+                  <Star className={`size-3 fill-current ${STAR_COLOR[s]}`} />
+                </span>
+              </th>
+            ))}
+            <th
+              scope="col"
+              className="px-2 py-2 text-right font-medium"
+              title="Published reviews with no Score added value yet"
+            >
+              Unrtd
+            </th>
+            <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
+            <th scope="col" className="px-2 py-2 text-right font-medium">Avg</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium">Rating</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {rows.map((r) => (
+            <tr key={r.brand} className="hover:bg-slate-50/60">
+              <td className="px-3 py-1.5 font-medium text-slate-800 truncate" title={r.brand}>{r.brand}</td>
+              {stars.map((s) => (
+                <td
+                  key={s}
+                  className={`px-2 py-1.5 text-right tabular-nums ${
+                    r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
+                  }`}
+                >
+                  {r.counts[s].toLocaleString()}
+                </td>
+              ))}
+              <td className={`px-2 py-1.5 text-right tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                {r.unrated.toLocaleString()}
+              </td>
+              <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800">
+                {r.total.toLocaleString()}
+              </td>
+              <td className="px-2 py-1.5 text-right tabular-nums">
+                {r.average == null ? (
+                  <span className="text-slate-300">—</span>
+                ) : (
+                  <span className="inline-flex items-baseline gap-1">
+                    {r.rated > 0 && r.rated < r.total && (
+                      <span className="text-[10px] text-slate-400">/{r.rated}</span>
+                    )}
+                    <span className="font-semibold text-slate-800">{r.average.toFixed(1)}</span>
+                  </span>
+                )}
+              </td>
+              <td className="px-3 py-1.5">
+                {r.label ? (
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${LABEL_PILL[r.label]}`}>
+                    {r.label}
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-300">—</span>
+                )}
+              </td>
+            </tr>
           ))}
-          <div
-            className="flex items-center gap-2"
-            title="Published reviews whose 'Score added' value is empty — run Check Status to fill them in."
-          >
-            <span className="w-12 shrink-0 text-xs font-medium text-slate-400">Unrated</span>
-            <span className="text-sm tabular-nums text-slate-500">{summary.unrated.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-1.5 border-l border-slate-100 pl-4">
-          <StatRow label="Total reviews" value={summary.total.toLocaleString()} />
-          <StatRow
-            label="Average"
-            value={summary.average == null ? '—' : summary.average.toFixed(1)}
-            hint={summary.rated > 0 && summary.rated < summary.total ? `of ${summary.rated} rated` : undefined}
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs text-slate-500">Rating</span>
-            {summary.label ? (
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${LABEL_PILL[summary.label]}`}>
-                {summary.label}
-              </span>
-            ) : (
-              <span className="text-xs text-slate-400">—</span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-xs text-slate-500">{label}</span>
-      <span className="flex items-baseline gap-1.5">
-        {hint && <span className="text-[10px] text-slate-400">{hint}</span>}
-        <span className="text-sm font-semibold tabular-nums text-slate-800">{value}</span>
-      </span>
+        </tbody>
+      </table>
     </div>
   );
 }
