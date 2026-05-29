@@ -261,30 +261,112 @@ function GroupedSummary({ rows }: { rows: BrandSummary[] }) {
           </section>
         );
       })}
+      {groups.length > 1 && <GrandTotal rows={rows} />}
     </div>
   );
 }
 
-function SummaryTable({ rows }: { rows: BrandSummary[] }) {
-  const stars: Star[] = [5, 4, 3, 2, 1];
-  const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
+// Bottom bar summing every column across all brands in every group shown.
+function GrandTotal({ rows }: { rows: BrandSummary[] }) {
+  const t = useMemo(() => computeColumnTotals(rows), [rows]);
+  return (
+    <section className="overflow-x-auto rounded-md border-2 border-violet-200 bg-violet-50/40">
+      <table className="w-full text-sm">
+        <thead className="text-xs uppercase tracking-wide text-slate-500">
+          <tr>
+            <th scope="col" className="px-3 py-2 text-left font-medium">All brands</th>
+            {STARS.map((s) => (
+              <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
+                <span className="inline-flex items-center justify-end gap-0.5">
+                  <span className="tabular-nums">{s}</span>
+                  <Star className={`size-3 fill-current ${STAR_COLOR[s]}`} />
+                </span>
+              </th>
+            ))}
+            <th scope="col" className="px-2 py-2 text-right font-medium">Unrtd</th>
+            <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
+            <th scope="col" className="px-2 py-2 text-right font-medium">Avg</th>
+            <th scope="col" className="px-3 py-2 text-left font-medium">Rating</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr className="font-semibold text-slate-800">
+            <td className="px-3 py-2 text-left text-slate-600">
+              {rows.length} brand{rows.length !== 1 ? 's' : ''}
+            </td>
+            {STARS.map((s) => (
+              <td
+                key={s}
+                className={`px-2 py-2 text-right tabular-nums ${t.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'}`}
+              >
+                {t.counts[s].toLocaleString()}
+              </td>
+            ))}
+            <td className={`px-2 py-2 text-right tabular-nums ${t.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
+              {t.unrated.toLocaleString()}
+            </td>
+            <td className="px-2 py-2 text-right tabular-nums">{t.total.toLocaleString()}</td>
+            <td className="px-2 py-2 text-right tabular-nums">
+              {t.average == null ? (
+                <span className="text-slate-400">—</span>
+              ) : (
+                <span className="inline-flex items-baseline gap-1">
+                  {t.rated > 0 && t.rated < t.total && (
+                    <span className="text-[10px] font-normal text-slate-400">/{t.rated}</span>
+                  )}
+                  <span>{t.average.toFixed(1)}</span>
+                </span>
+              )}
+            </td>
+            <td className="px-3 py-2">
+              {t.label ? (
+                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${LABEL_PILL[t.label]}`}>
+                  {t.label}
+                </span>
+              ) : (
+                <span className="text-xs text-slate-400">—</span>
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  );
+}
 
-  // Column totals across every brand in this table.
-  const totals = useMemo(() => {
-    const counts: Record<Star, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    let unrated = 0;
-    for (const r of rows) {
-      for (const s of stars) counts[s] += r.counts[s];
-      unrated += r.unrated;
-    }
-    const rated = counts[1] + counts[2] + counts[3] + counts[4] + counts[5];
-    const total = rated + unrated;
-    const average =
-      rated === 0
-        ? null
-        : Math.round(((counts[1] + 2 * counts[2] + 3 * counts[3] + 4 * counts[4] + 5 * counts[5]) / rated) * 10) / 10;
-    return { counts, unrated, rated, total, average, label: ratingLabel(average) };
-  }, [rows]);
+const STARS: Star[] = [5, 4, 3, 2, 1];
+
+interface ColumnTotals {
+  counts: Record<Star, number>;
+  unrated: number;
+  rated: number;
+  total: number;
+  average: number | null;
+  label: RatingLabel | null;
+}
+
+// Sums every column across a set of brand rows. Used by both the per-group
+// Total row and the all-brands grand total.
+function computeColumnTotals(rows: BrandSummary[]): ColumnTotals {
+  const counts: Record<Star, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  let unrated = 0;
+  for (const r of rows) {
+    for (const s of STARS) counts[s] += r.counts[s];
+    unrated += r.unrated;
+  }
+  const rated = counts[1] + counts[2] + counts[3] + counts[4] + counts[5];
+  const total = rated + unrated;
+  const average =
+    rated === 0
+      ? null
+      : Math.round(((counts[1] + 2 * counts[2] + 3 * counts[3] + 4 * counts[4] + 5 * counts[5]) / rated) * 10) / 10;
+  return { counts, unrated, rated, total, average, label: ratingLabel(average) };
+}
+
+function SummaryTable({ rows }: { rows: BrandSummary[] }) {
+  const stars = STARS;
+  const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
+  const totals = useMemo(() => computeColumnTotals(rows), [rows]);
 
   return (
     <div className="overflow-x-auto">
