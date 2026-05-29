@@ -263,22 +263,39 @@ export async function fetchRawEntriesByTab(tab: string): Promise<Entry[]> {
 // Summary admin page to scope to the 9 operational brand-group tabs.
 export async function fetchAllEntries(tabs?: readonly string[]): Promise<Entry[]> {
   const PAGE = 1000;
-  const all: Entry[] = [];
-  let from = 0;
-  while (true) {
-    let query = supabase
-      .from('entries')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .range(from, from + PAGE - 1);
+
+  // Each row carries a heavy `data` JSONB, so a single tab set can span several
+  // 1000-row pages. Page sequentially and the round-trips add up (4k+ rows took
+  // ~18s). Instead: one cheap count query, then fetch every page in parallel.
+  // Order by the unique primary key so parallel ranges never overlap or gap —
+  // the caller aggregates regardless of order, so updated_at sorting isn't needed.
+  function pageQuery(head: boolean) {
+    let query = head
+      ? supabase.from('entries').select('id', { count: 'exact', head: true })
+      : supabase.from('entries').select('*').order('id', { ascending: true });
     if (tabs && tabs.length > 0) {
       query = query.in('tab', tabs as string[]);
     }
-    const { data, error } = await query;
+    return query;
+  }
+
+  const { count, error: countError } = await pageQuery(true);
+  if (countError) throw countError;
+  const total = count ?? 0;
+  if (total === 0) return [];
+
+  const pages = Math.ceil(total / PAGE);
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, p) => {
+      const from = p * PAGE;
+      return pageQuery(false).range(from, from + PAGE - 1);
+    }),
+  );
+
+  const all: Entry[] = [];
+  for (const { data, error } of results) {
     if (error) throw error;
     all.push(...((data ?? []) as Entry[]));
-    if ((data ?? []).length < PAGE) break;
-    from += PAGE;
   }
   return all;
 }
