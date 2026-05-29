@@ -271,7 +271,8 @@ function GrandTotal({ rows }: { rows: BrandSummary[] }) {
   const t = useMemo(() => computeColumnTotals(rows), [rows]);
   return (
     <section className="overflow-x-auto rounded-md border-2 border-violet-200 bg-violet-50/40">
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm">
+        <SummaryColgroup />
         <thead className="text-xs uppercase tracking-wide text-slate-500">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-medium">All brands</th>
@@ -363,6 +364,26 @@ function computeColumnTotals(rows: BrandSummary[]): ColumnTotals {
   return { counts, unrated, rated, total, average, label: ratingLabel(average) };
 }
 
+// Shared fixed column widths so every group table (and the grand total) lines
+// up vertically. Brand column flexes; numeric/rating columns are fixed.
+function SummaryColgroup({ showGroup = false }: { showGroup?: boolean }) {
+  return (
+    <colgroup>
+      {showGroup && <col className="w-32" />}
+      <col />
+      <col className="w-16" />
+      <col className="w-16" />
+      <col className="w-16" />
+      <col className="w-16" />
+      <col className="w-16" />
+      <col className="w-20" />
+      <col className="w-20" />
+      <col className="w-24" />
+      <col className="w-32" />
+    </colgroup>
+  );
+}
+
 function SummaryTable({ rows }: { rows: BrandSummary[] }) {
   const stars = STARS;
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
@@ -370,7 +391,8 @@ function SummaryTable({ rows }: { rows: BrandSummary[] }) {
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+      <table className="w-full table-fixed text-sm">
+        <SummaryColgroup showGroup={showGroup} />
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
             {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium">Group</th>}
