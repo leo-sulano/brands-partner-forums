@@ -129,3 +129,58 @@ An hourly time-based trigger installed once by running `createEmailSyncTrigger()
 - Notifying the dashboard UI when a status changes via email (status will appear on next sheet→Supabase sync).
 - Retry logic beyond the label-skip mechanism.
 - Parsing emails other than AG and CG (e.g. Trustpilot — handled by the existing `check-review-status` Edge Function).
+
+---
+
+## Addendum — 2026-05-29: Real-Email Validation & Revisions
+
+The parsers above were written from *assumed* formats. Validating against four real emails
+(AG approved/rejected, CG approved/rejected) revealed two breaks. This addendum is the
+source of truth where it conflicts with the original spec.
+
+### Finding 1 — AskGamblers "approved" greeting is `Congratulations`, not `Hello`
+
+Real AG approved emails open with **`Congratulations <username>,`** (confirmed across two
+samples: `Congratulations Tanner12,` / `Congratulations Trym12,`). AG *rejected* emails use
+`Hello <username>,`. The original username regex matched only `Hello`, so every AG-approved
+email produced `username = null` and was logged `no_username` — never written.
+
+**Fix:** broaden the greeting match to `Hello` **or** `Congratulations`:
+`/(?:Hello|Congratulations)\s+([\w.\-]+)\s*[,\.]/i`. AG casino name still comes from the
+subject (`<Casino> Review Approved!` / `Rejected`), which is correct as-is.
+
+### Finding 2 — Casino Guru "approved" emails contain NO casino name
+
+The casino name is absent from the CG-approved subject *and* body. The only signal is the
+"Show review" button, whose href is a **review-ID** URL with no casino slug, e.g.:
+
+```
+https://casino.guru/userReview/130406/49   →   https://casino.guru/luckyvibe-casino-review
+```
+
+The original spec assumed the email href already contained the casino slug — it does not.
+The slug only appears after following the link to its canonical review page.
+
+**Decision (approved 2026-05-29): follow the link.** For CG-approved emails the parser
+extracts the `casino.guru/userReview/...` href; the orchestrator then resolves it with
+`UrlFetchApp` and reads the canonical `...-casino-review` slug to get the casino name.
+Verified: `userReview/130406/49` resolves to `luckyvibe-casino-review` → `luckyvibe` →
+Rooster Partners. This adds one external request to casino.guru per CG-approved email;
+on fetch failure or unmapped slug the email is logged (`cg_resolve_failed` / `unknown_tab`)
+and NOT labeled, so it retries next run. CG *rejected* is unchanged — its body literally
+contains `casino review (<Name>)`.
+
+It was also confirmed that **one Account Name has at most one pending CG review at a time**,
+so a username-only fallback would be safe; we are not implementing it now (link-following
+is sufficient), but it remains a cheap future option if link resolution proves flaky.
+
+### Finding 3 — Canonical code location is the clasp project, not `supabase/apps-script/`
+
+The live Apps Script project is managed by **clasp** from `apps-script/` (it has
+`.clasp.json`). The earlier `EmailParser.gs` was written into `supabase/apps-script/`, which
+is a **stale, un-deployed** copy whose `Code.gs` still uses the old `SPREADSHEET_ID` /
+`dumpAllTabs` architecture. The current live `Code.gs` uses `SHEET_ID`. Therefore:
+
+- `EmailParser.gs` moves into `apps-script/` and references **`SHEET_ID`** (not `SPREADSHEET_ID`).
+- `createEmailSyncTrigger()` is added to `apps-script/Code.gs`.
+- The stale `supabase/apps-script/` copies are removed to prevent further drift.

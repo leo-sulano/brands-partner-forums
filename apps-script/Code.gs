@@ -242,6 +242,23 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ---------------------------------------------------------------------------
+// Email sync trigger: runs parseAgCgEmails() (in EmailParser.gs) every hour to
+// detect AskGamblers / Casino Guru review-status emails and write the result
+// back to the Sheet. Run createEmailSyncTrigger() once from the editor to install.
+// Re-running is safe — it removes the old trigger first.
+// ---------------------------------------------------------------------------
+function createEmailSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'parseAgCgEmails') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('parseAgCgEmails')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('Email sync trigger created: parseAgCgEmails runs every 1 hour.');
+}
+
 // Run once from the editor to register the onEdit installable trigger for the spreadsheet.
 function installOnEditTrigger() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
