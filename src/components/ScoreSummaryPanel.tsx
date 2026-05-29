@@ -7,7 +7,7 @@ import {
   ratingLabel,
   type BrandSummary,
   type RatingLabel,
-  type Star,
+  type Star as StarRating,
 } from '../lib/scoreSummary';
 import type { Entry } from '../types/entry';
 
@@ -334,10 +334,10 @@ function GrandTotal({ rows }: { rows: BrandSummary[] }) {
   );
 }
 
-const STARS: Star[] = [5, 4, 3, 2, 1];
+const STARS: StarRating[] = [5, 4, 3, 2, 1];
 
 interface ColumnTotals {
-  counts: Record<Star, number>;
+  counts: Record<StarRating, number>;
   unrated: number;
   rated: number;
   total: number;
@@ -348,7 +348,7 @@ interface ColumnTotals {
 // Sums every column across a set of brand rows. Used by both the per-group
 // Total row and the all-brands grand total.
 function computeColumnTotals(rows: BrandSummary[]): ColumnTotals {
-  const counts: Record<Star, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+  const counts: Record<StarRating, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let unrated = 0;
   for (const r of rows) {
     for (const s of STARS) counts[s] += r.counts[s];
