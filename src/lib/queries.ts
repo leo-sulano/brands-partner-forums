@@ -179,13 +179,14 @@ export interface EditEvent {
   id: string;
   tab: string;
   account: string | null;
+  editor: string | null;
   updated_at: string;
 }
 
 export async function fetchRecentEdits(limit = 50): Promise<EditEvent[]> {
   const { data, error } = await supabase
     .from('entries')
-    .select('id, tab, data, updated_at')
+    .select('id, tab, data, last_edited_email, updated_at')
     .eq('last_edited_by', 'dashboard')
     .order('updated_at', { ascending: false })
     .limit(limit);
@@ -197,6 +198,7 @@ export async function fetchRecentEdits(limit = 50): Promise<EditEvent[]> {
       id: row.id as string,
       tab: row.tab as string,
       account,
+      editor: (row.last_edited_email as string | null) ?? null,
       updated_at: row.updated_at as string,
     };
   });
@@ -394,6 +396,14 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
 // Write operations
 // ---------------------------------------------------------------------------
 
+// Email of the signed-in user, for attributing dashboard edits in the Log.
+// Returns null if there's no session (shouldn't happen behind auth, but the
+// column is nullable so unattributed edits degrade gracefully).
+async function currentUserEmail(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user.email ?? null;
+}
+
 export async function updateEntryData(
   id: string,
   tab: string,
@@ -412,7 +422,7 @@ export async function updateEntryData(
   const syncTag = crypto.randomUUID();
   const { error: upErr } = await supabase
     .from('entries')
-    .update({ data: mergedData, last_edited_by: 'dashboard', last_sync_tag: syncTag })
+    .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: await currentUserEmail(), last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
 
@@ -441,7 +451,7 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
   const syncTag = crypto.randomUUID();
   const { error: upErr } = await supabase
     .from('entries')
-    .update({ data: mergedData, last_edited_by: 'dashboard', last_sync_tag: syncTag })
+    .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: await currentUserEmail(), last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
 
@@ -485,6 +495,7 @@ export async function insertEntry(
       sheet_row_id: sheetRowId,
       data: fields,
       last_edited_by: 'dashboard',
+      last_edited_email: await currentUserEmail(),
       last_sync_tag: syncTag,
     });
   if (error) throw error;

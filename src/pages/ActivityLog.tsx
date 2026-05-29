@@ -93,7 +93,9 @@ export default function ActivityLog() {
                 >
                   <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
                   <div className="min-w-0 flex-1">
-                    <span className="text-sm font-medium text-slate-800">Entry edited</span>
+                    <span className="text-sm font-medium text-slate-800">
+                      Entry edited{edit.editor ? <span className="font-normal text-slate-500"> by {edit.editor}</span> : null}
+                    </span>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {edit.tab} · {edit.account ?? '—'}
                     </p>

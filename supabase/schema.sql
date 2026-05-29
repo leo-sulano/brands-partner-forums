@@ -17,6 +17,7 @@ create table public.entries (
   data            jsonb not null default '{}'::jsonb,
   updated_at      timestamptz not null default now(),
   last_edited_by  text not null default 'dashboard',
+  last_edited_email text,
   last_sync_tag   text,
   unique (tab, sheet_row_id)
 );
