@@ -3,11 +3,8 @@ import { Check, ChevronDown, Star, X } from 'lucide-react';
 import DatePicker from './DatePicker';
 import {
   computeScoreSummary,
-  resolvePreset,
-  dateToIso,
   isoToDate,
   type BrandSummary,
-  type PresetKey,
   type RatingLabel,
 } from '../lib/scoreSummary';
 import type { Entry } from '../types/entry';
@@ -15,17 +12,6 @@ import type { Entry } from '../types/entry';
 interface Props {
   entries: Entry[];
 }
-
-interface Preset { key: PresetKey | 'custom'; label: string; }
-
-const PRESETS: Preset[] = [
-  { key: 'all', label: 'All time' },
-  { key: 'today', label: 'Today' },
-  { key: 'this-week', label: 'This week' },
-  { key: 'this-month', label: 'This month' },
-  { key: 'last-7', label: 'Last 7 days' },
-  { key: 'last-30', label: 'Last 30 days' },
-];
 
 const LABEL_PILL: Record<RatingLabel, string> = {
   Excellent: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
@@ -45,17 +31,15 @@ const STAR_COLOR: Record<1 | 2 | 3 | 4 | 5, string> = {
 
 export default function ScoreSummaryPanel({ entries }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const [preset, setPreset] = useState<PresetKey | 'custom'>('all');
   const [fromIso, setFromIso] = useState('');
   const [toIso, setToIso] = useState('');
   const [tabFilter, setTabFilter] = useState('');
 
-  const range = useMemo(() => {
-    if (preset === 'custom') {
-      return { from: isoToDate(fromIso), to: isoToDate(toIso) };
-    }
-    return resolvePreset(preset);
-  }, [preset, fromIso, toIso]);
+  // Range is driven entirely by the From/To date pickers. Both empty = all time.
+  const range = useMemo(
+    () => ({ from: isoToDate(fromIso), to: isoToDate(toIso) }),
+    [fromIso, toIso],
+  );
 
   const result = useMemo(() => computeScoreSummary(entries, range), [entries, range]);
 
@@ -72,28 +56,6 @@ export default function ScoreSummaryPanel({ entries }: Props) {
     [result.brands, tabFilter],
   );
 
-  function applyPreset(key: PresetKey) {
-    setPreset(key);
-    const r = resolvePreset(key);
-    setFromIso(dateToIso(r.from));
-    setToIso(dateToIso(r.to));
-  }
-
-  function onFromChange(v: string) {
-    setFromIso(v);
-    setPreset('custom');
-  }
-  function onToChange(v: string) {
-    setToIso(v);
-    setPreset('custom');
-  }
-  function reset() {
-    setPreset('all');
-    setFromIso('');
-    setToIso('');
-  }
-
-  const hasNonDefault = preset !== 'all';
   const totalAcrossBrands = filteredBrands.reduce((s, b) => s + b.total, 0);
 
   return (
@@ -123,44 +85,17 @@ export default function ScoreSummaryPanel({ entries }: Props) {
           <div className="flex flex-wrap items-center gap-2">
             <DatePicker
               value={fromIso}
-              onChange={onFromChange}
+              onChange={setFromIso}
               placeholder="From date"
               max={toIso || undefined}
             />
             <span className="text-xs text-slate-400">→</span>
             <DatePicker
               value={toIso}
-              onChange={onToChange}
+              onChange={setToIso}
               placeholder="To date"
               min={fromIso || undefined}
             />
-            <div className="h-4 w-px bg-slate-200 mx-1" />
-            {PRESETS.map((p) => {
-              const active = preset === p.key;
-              return (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => applyPreset(p.key as PresetKey)}
-                  className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors ${
-                    active
-                      ? 'bg-violet-600 text-white'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
-            {hasNonDefault && (
-              <button
-                type="button"
-                onClick={reset}
-                className="ml-1 text-xs font-medium text-violet-600 hover:text-violet-700"
-              >
-                Reset
-              </button>
-            )}
             <div className="h-4 w-px bg-slate-200 mx-1" />
             <TabFilterDropdown value={tabFilter} onChange={setTabFilter} options={tabOptions} />
           </div>
