@@ -31,8 +31,19 @@ export default function ActivityLog() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([fetchRecentEdits(100), fetchAdminLogs(100)])
-      .then(([edits, adminLogs]) => {
+    // The two sources are independent: entry edits always exist, but admin_logs
+    // may not be provisioned in every environment. Use allSettled so a missing
+    // admin_logs table degrades to an edits-only feed instead of blanking the
+    // whole page — only surface an error when BOTH sources fail.
+    Promise.allSettled([fetchRecentEdits(100), fetchAdminLogs(100)])
+      .then(([editsRes, adminRes]) => {
+        if (editsRes.status === 'rejected' && adminRes.status === 'rejected') {
+          const reason = editsRes.reason;
+          setError(reason instanceof Error ? reason.message : 'Failed to load log');
+          return;
+        }
+        const edits = editsRes.status === 'fulfilled' ? editsRes.value : [];
+        const adminLogs = adminRes.status === 'fulfilled' ? adminRes.value : [];
         const items: FeedItem[] = [
           ...edits.map((e): FeedItem => ({ kind: 'edit', data: e })),
           ...adminLogs.map((a): FeedItem => ({ kind: 'admin', data: a })),
@@ -44,7 +55,6 @@ export default function ActivityLog() {
         });
         setFeed(items);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load log'))
       .finally(() => setLoading(false));
   }, []);
 
