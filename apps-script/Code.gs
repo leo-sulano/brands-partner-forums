@@ -21,7 +21,10 @@ var OPERATIONAL_TABS = [
 ];
 
 var SHEET_ID = '1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk';
-var SHARED_SECRET = 'JkoNDP4JMdpjHRvOtU6HyZKo_TrXDYp2qH9oL7aiJRE';
+// Secret is stored in Script Properties, never in source.
+// Set it once: Apps Script editor -> Project Settings (gear) -> Script Properties
+//   -> add  SHARED_SECRET = <the value, also set as APPS_SCRIPT_SECRET in Supabase>
+var SHARED_SECRET = PropertiesService.getScriptProperties().getProperty('SHARED_SECRET');
 
 var ID_COLUMN = 1; // column A, always
 
