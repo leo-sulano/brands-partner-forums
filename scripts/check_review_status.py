@@ -51,9 +51,11 @@ TP_STATUS_COLS = [
 SCORE_COLS = ["Score added", "Score Added", "score added", "Score"]
 
 # Only entries with these statuses are eligible for a status check.
-# "Done"    = review was just posted by the agent; TP hasn't processed it yet.
-# "Pending" = TP received the review but moderation hasn't resolved it yet.
-CHECKABLE_STATUSES = {"done", "pending"}
+# "Done"      = review was just posted by the agent; TP hasn't processed it yet.
+# "Pending"   = TP received the review but moderation hasn't resolved it yet.
+# "Published" = already live, but TP can still remove/refuse it later, so we
+#               keep re-checking to catch a Published -> Removed/Refused change.
+CHECKABLE_STATUSES = {"done", "pending", "published"}
 
 # ─── Status Parsing (mirrors parser.ts) ──────────────────────────────────────
 
