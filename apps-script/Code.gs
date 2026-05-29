@@ -3,6 +3,7 @@
 //
 // Endpoints:
 //   doPost  { secret, op: 'upsert_row', tab, sheet_row_id, fields, sync_tag } → writes row
+//   doPost  { secret, op: 'bulk_upsert_rows', rows: [...] } → writes multiple rows
 //   doGet   ?secret=X&op=structure  → returns [{ name, headers }]
 //   doGet   ?secret=X&op=dump       → returns [{ name, headers, rows }]
 //
@@ -115,8 +116,6 @@ function collectStructures(includeRows) {
       var rawRows = lastRow >= 2
         ? sheet.getRange(2, 1, lastRow - 1, lastCol).getValues()
         : [];
-      // Convert Date objects to dd/MM/yyyy strings in the sheet's timezone so
-      // JSON serialisation never produces UTC-shifted ISO timestamps.
       var rows = rawRows.map(function(row) {
         return row.map(function(cell) {
           if (cell instanceof Date) {
@@ -127,8 +126,6 @@ function collectStructures(includeRows) {
         });
       });
 
-      // Extract hyperlinks for HYPERLINK_COLS and append as <col>__href virtual columns.
-      // Tries rich-text getLinkUrl() first; falls back to parsing =HYPERLINK() formulas.
       var extraHeaders = [];
       var extraByRow = rows.map(function() { return []; });
       for (var h = 0; h < HYPERLINK_COLS.length; h++) {
@@ -142,7 +139,6 @@ function collectStructures(includeRows) {
           for (var r = 0; r < richVals.length; r++) {
             var url = richVals[r][0] ? richVals[r][0].getLinkUrl() : '';
             if (!url) {
-              // Fallback: parse =HYPERLINK("url","text") formula
               var formula = formulas[r][0] || '';
               var match = formula.match(/=HYPERLINK\(\s*"([^"]+)"/i);
               if (match) url = match[1];
@@ -170,9 +166,11 @@ function doPost(e) {
     }
     if (body.op === 'dump') return jsonResponse({ ok: true, tabs: collectStructures(true) });
     if (body.op === 'upsert_row') return handleUpsertRow(body);
+    if (body.op === 'bulk_upsert_rows') return jsonResponse(handleBulkUpsertRows(body));
     return jsonResponse({ ok: false, error: 'unknown op: ' + body.op });
   } catch (err) {
-    return jsonResponse({ ok: false, error: err.message });
+    // Hardened: handles null/string throws that would otherwise make err.message itself throw
+    return jsonResponse({ ok: false, error: err ? (err.message || String(err)) : 'unknown error' });
   }
 }
 
@@ -181,46 +179,50 @@ function handleUpsertRow(body) {
   var rowId = body.sheet_row_id;
   var fields = body.fields || {};
   var syncTag = body.sync_tag;
+
   if (!tabName || !rowId) {
     return jsonResponse({ ok: false, error: 'tab and sheet_row_id required' });
   }
   if (OPERATIONAL_TABS.indexOf(tabName) === -1) {
     return jsonResponse({ ok: false, error: 'tab not in OPERATIONAL_TABS: ' + tabName });
   }
+
   var sheet = SpreadsheetApp.openById(SHEET_ID).getSheetByName(tabName);
   if (!sheet) return jsonResponse({ ok: false, error: 'sheet not found: ' + tabName });
 
-  // Locate the row by id (column A). Create a new row at the bottom if not found.
   var rowIdx = findRowById(sheet, rowId);
   if (rowIdx === -1) {
     rowIdx = sheet.getLastRow() + 1;
     sheet.getRange(rowIdx, ID_COLUMN).setValue(rowId);
   }
 
-  // Read row 1 to map header → column index.
   var lastCol = Math.max(sheet.getLastColumn(), 1);
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
   var headerToCol = {};
   for (var i = 0; i < headers.length; i++) headerToCol[headers[i]] = i + 1;
 
-  for (var key in fields) {
-    if (!Object.prototype.hasOwnProperty.call(fields, key)) continue;
-    if (key === 'id' || key === 'last_sync_tag') continue; // never overwrite bookkeeping
+  // Build write map: regular fields + sync_tag — all handled by the same column-finding loop.
+  // This avoids the separate syncTagColumnIndex() scan (one API call per column).
+  var writeMap = {};
+  for (var k in fields) {
+    if (Object.prototype.hasOwnProperty.call(fields, k) && k !== 'id') {
+      writeMap[k] = fields[k];
+    }
+  }
+  if (syncTag) writeMap['last_sync_tag'] = syncTag;
+
+  for (var key in writeMap) {
+    if (!Object.prototype.hasOwnProperty.call(writeMap, key)) continue;
     var col = headerToCol[key];
     if (!col) {
-      // Unknown header — append it after current last column.
+      // Unknown header — append after current last column.
       lastCol++;
       col = lastCol;
       sheet.getRange(1, col).setValue(key);
-      headers.push(key);
       headerToCol[key] = col;
     }
-    var v = fields[key];
+    var v = writeMap[key];
     sheet.getRange(rowIdx, col).setValue(v == null ? '' : v);
-  }
-
-  if (syncTag) {
-    sheet.getRange(rowIdx, syncTagColumnIndex(sheet)).setValue(syncTag);
   }
 
   return jsonResponse({ ok: true, row: rowIdx });
@@ -242,27 +244,8 @@ function jsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-// ---------------------------------------------------------------------------
-// Email sync trigger: runs parseAgCgEmails() (in EmailParser.gs) every hour to
-// detect AskGamblers / Casino Guru review-status emails and write the result
-// back to the Sheet. Run createEmailSyncTrigger() once from the editor to install.
-// Re-running is safe — it removes the old trigger first.
-// ---------------------------------------------------------------------------
-function createEmailSyncTrigger() {
-  ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'parseAgCgEmails') ScriptApp.deleteTrigger(t);
-  });
-  ScriptApp.newTrigger('parseAgCgEmails')
-    .timeBased()
-    .everyHours(1)
-    .create();
-  Logger.log('Email sync trigger created: parseAgCgEmails runs every 1 hour.');
-}
-
-// Run once from the editor to register the onEdit installable trigger for the spreadsheet.
 function installOnEditTrigger() {
   var ss = SpreadsheetApp.openById(SHEET_ID);
-  // Avoid duplicates — delete any existing onEdit trigger for this script first.
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'onEdit') ScriptApp.deleteTrigger(t);
   });
@@ -270,10 +253,24 @@ function installOnEditTrigger() {
   Logger.log('onEdit trigger installed.');
 }
 
-// Calls the Supabase import-tabs edge function to pull all Sheet changes into the dashboard.
-// Store the URL and anon key in File > Project properties > Script properties:
-//   IMPORT_TABS_URL  → https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/import-tabs
-//   SUPABASE_ANON_KEY → your anon key
+function onEdit(e) {
+  var sheet = e.range.getSheet();
+  if (OPERATIONAL_TABS.indexOf(sheet.getName()) === -1) return;
+
+  var startRow = e.range.getRow();
+  var numRows  = e.range.getNumRows();
+
+  for (var r = startRow; r < startRow + numRows; r++) {
+    if (r < 2) continue;
+    var idCell = sheet.getRange(r, ID_COLUMN);
+    if (!idCell.getValue()) {
+      idCell.setValue(Utilities.getUuid());
+    }
+  }
+
+  syncToDashboard();
+}
+
 function syncToDashboard() {
   var props = PropertiesService.getScriptProperties();
   var url = props.getProperty('IMPORT_TABS_URL');
@@ -288,7 +285,6 @@ function syncToDashboard() {
   Logger.log('import-tabs: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 200));
 }
 
-// Run once to install a 30-minute recurring sync trigger.
 function installSyncTrigger() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
     if (t.getHandlerFunction() === 'syncToDashboard') ScriptApp.deleteTrigger(t);
@@ -297,21 +293,40 @@ function installSyncTrigger() {
   Logger.log('syncToDashboard trigger installed — runs every 30 minutes.');
 }
 
-// Auto-assign a UUID to any new row, then immediately push the Sheet to the dashboard.
-function onEdit(e) {
-  var sheet = e.range.getSheet();
-  if (OPERATIONAL_TABS.indexOf(sheet.getName()) === -1) return;
+function handleBulkUpsertRows(data) {
+  var rows = data.rows;
+  if (!rows || !rows.length) return { ok: true, updated: 0 };
 
-  var startRow = e.range.getRow();
-  var numRows  = e.range.getNumRows();
+  var updated = 0;
+  var errors = [];
 
-  for (var r = startRow; r < startRow + numRows; r++) {
-    if (r < 2) continue; // skip header
-    var idCell = sheet.getRange(r, ID_COLUMN);
-    if (!idCell.getValue()) {
-      idCell.setValue(Utilities.getUuid());
+  for (var i = 0; i < rows.length; i++) {
+    try {
+      var result = handleUpsertRow(rows[i]);
+      var content = JSON.parse(result.getContent());
+      if (content.ok !== false) updated++;
+      else errors.push(String(rows[i].sheet_row_id) + ': ' + (content.error || 'failed'));
+    } catch (e) {
+      errors.push(String(rows[i].sheet_row_id) + ': ' + (e ? (e.message || String(e)) : 'unknown'));
     }
   }
 
-  syncToDashboard();
+  return { ok: true, updated: updated, errors: errors };
 }
+
+// ---------------------------------------------------------------------------
+// Email sync trigger: runs parseAgCgEmails() (in EmailParser.gs) every hour.
+// Run createEmailSyncTrigger() once from the editor to install.
+// Re-running is safe — it removes the old trigger first.
+// ---------------------------------------------------------------------------
+function createEmailSyncTrigger() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'parseAgCgEmails') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('parseAgCgEmails')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('Email sync trigger created: parseAgCgEmails runs every 1 hour.');
+}
+
