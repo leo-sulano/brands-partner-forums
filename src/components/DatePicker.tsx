@@ -11,9 +11,10 @@ interface Props {
   placeholder: string;
   min?: string;
   max?: string;
+  align?: 'left' | 'right';
 }
 
-export default function DatePicker({ value, onChange, placeholder, min, max }: Props) {
+export default function DatePicker({ value, onChange, placeholder, min, max, align = 'right' }: Props) {
   const today = new Date();
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(() => value ? +value.slice(0, 4) : today.getFullYear());
@@ -79,7 +80,7 @@ export default function DatePicker({ value, onChange, placeholder, min, max }: P
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+        <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-full z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl`}>
           <div className="mb-3 flex items-center justify-between">
             <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 transition-colors">
               <ChevronLeft className="size-4" />

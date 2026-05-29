@@ -90,6 +90,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
               onChange={setFromIso}
               placeholder="From date"
               max={toIso || undefined}
+              align="left"
             />
             <span className="text-xs text-slate-400">→</span>
             <DatePicker
