@@ -80,20 +80,30 @@ service-role `createClient`, CORS + `json()` helper).
   - Execute read-only tools against Supabase and stream the final answer as SSE.
   - CORS handling and a clean JSON error path (mirror `check-review-status`).
 
+## Data model (reconciled with live schema)
+
+CLAUDE.md describes a `mentions` table, but the **live schema has no such table** — it
+was dropped. All forum data lives in **`public.entries`**: one row per Sheet row, with
+`id`, `tab` (the brand-group tab), `sheet_row_id`, and a `data` jsonb keyed by the exact
+Sheet headers (header names vary per tab). The dashboard derives both "mentions" (via
+`entryToMention`) and the score summary (via `computeScoreSummary`) from `entries` at
+read time. The assistant's tools therefore query `entries` directly and reuse the same
+field-picking / score-parsing logic, ported into the Edge Function.
+
 ## Tools (read-only, server-side)
 
-Each maps to a focused Supabase query. None can write or delete.
+Each maps to a focused query against `entries`. None can write or delete.
 
 | Tool | Purpose |
 |------|---------|
-| `query_mentions` | Filter mentions by forum/brand, date range, sentiment, status; returns rows + count |
-| `get_mention` | Fetch one mention by id with full text — powers summarize / draft-reply |
-| `get_score_summary` | Published-score rollup (reuses the existing score-summary semantics — counts Published-only by design) |
-| `get_counts` | Fast aggregates (e.g. "negative TP mentions this week") |
+| `list_tabs` | Distinct `tab` values (brand-group tabs) so the model knows which brands exist |
+| `query_entries` | Filter entries by `tab`, status, and/or a free-text `contains` match in `data`; returns mapped summary rows (`id`, tab, brand, account, status, score, date) + total count |
+| `get_entry` | Fetch one entry by `id` with its full `data` jsonb — powers summarize / draft-reply |
+| `get_score_summary` | Published-only star rollup per brand (optionally filtered by `tab`), reusing `computeScoreSummary` semantics — counts Published rows only, by design |
 
-Coverage of the four jobs: **Q&A** → `query_mentions` / `get_counts`; **summarize** →
-`get_mention`; **draft reply** → `get_mention` + a drafting system prompt; **general
-chat** → no tool needed.
+Coverage of the four jobs: **Q&A** → `list_tabs` / `query_entries` / `get_score_summary`;
+**summarize** → `get_entry`; **draft reply** → `get_entry` + a drafting system prompt;
+**general chat** → no tool needed.
 
 ## Configuration & Security
 
@@ -121,15 +131,19 @@ chat** → no tool needed.
 
 ## Testing
 
-- **Edge Function:** unit-test the tool-dispatch and the orchestration loop with a
-  mocked OpenAI client (tool-call round-trip, iteration cap, error frames). Verify it
-  always returns/streams something on each failure path.
-- **lib/assistant.ts:** test SSE parsing (partial chunks, multi-frame, error frame)
-  with a mocked fetch stream.
-- **Widget:** smoke-test open/close, sending a message, rendering streamed tokens, and
-  the MentionDetail pre-seed buttons.
-- **Build gate:** `npm run build` must pass (per project convention — `tsc --noEmit`
-  checks nothing here because the root tsconfig is references-only).
+The frontend has **no test runner** (no vitest/jest in `package.json`); the project
+convention is to verify with `npm run build`. Edge Functions, however, do have Deno
+tests (see `check-review-status/parser_test.ts`). Testing strategy reflects this:
+
+- **Edge Function (`tools.ts`):** pure tool-input → SQL-filter / row-mapping helpers are
+  extracted into a `tools.ts` module and covered by a Deno test (`deno test`), mirroring
+  the `parser_test.ts` pattern. Tests cover field-picking variants, score parsing, the
+  Published-only filter, and `query_entries` text matching.
+- **Edge Function loop:** the orchestration loop (iteration cap, error frames) is
+  validated manually against the deployed function; no networked OpenAI mock in v1.
+- **Frontend:** verified via `npm run build` (must pass) plus a manual smoke test —
+  open/close widget, send a message, see streamed tokens, and the MentionDetail
+  Summarize / Draft-reply buttons pre-seed the widget.
 
 ## Scope Boundaries (v1 — explicitly NOT included)
 
