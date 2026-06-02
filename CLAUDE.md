@@ -61,6 +61,16 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-06-02:* Added AI assistant (OpenAI **gpt-4o-mini**). Floating chat widget on
+  every authenticated page, backed by the `ai-assistant` Edge Function (holds
+  `OPENAI_API_KEY`, runs a read-only tool-calling loop over `entries`, streams via SSE).
+  Spec: `docs/superpowers/specs/2026-06-02-ai-assistant-design.md`. Plan:
+  `docs/superpowers/plans/2026-06-02-ai-assistant.md`.
+  **Setup required before it works:**
+  1. `supabase secrets set OPENAI_API_KEY=sk-...`
+  2. `supabase functions deploy ai-assistant`
+  3. Add `VITE_AI_ASSISTANT_URL=<deployed function URL>` to Vercel env, then redeploy.
+  Until `VITE_AI_ASSISTANT_URL` is set, the widget shows "Assistant not configured".
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
