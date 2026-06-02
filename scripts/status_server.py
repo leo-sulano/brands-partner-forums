@@ -37,7 +37,16 @@ CORS(app, allow_headers=['Content-Type', 'Authorization', 'ngrok-skip-browser-wa
 # (dotenv is already applied by the check_review_status import above).
 CHECK_STATUS_TOKEN = os.environ.get('CHECK_STATUS_TOKEN', '').strip()
 
-_lock = threading.Lock()
+_tab_locks: dict[str, threading.Lock] = {}
+_tab_locks_mutex = threading.Lock()
+_active_tabs: set[str] = set()
+
+
+def _get_tab_lock(key: str) -> threading.Lock:
+    with _tab_locks_mutex:
+        if key not in _tab_locks:
+            _tab_locks[key] = threading.Lock()
+        return _tab_locks[key]
 
 
 def _is_authorized() -> bool:
@@ -61,12 +70,16 @@ def check_status():
     if not _is_authorized():
         return jsonify({'error': 'Unauthorized — missing or invalid token'}), 401
 
-    if not _lock.acquire(blocking=False):
-        return jsonify({'error': 'A check is already running — wait and retry'}), 409
+    body = request.get_json(silent=True) or {}
+    tab: str | None = body.get('tab')
+    tab_key = tab or '__all__'
 
+    lock = _get_tab_lock(tab_key)
+    if not lock.acquire(blocking=False):
+        return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
+
+    _active_tabs.add(tab_key)
     try:
-        body = request.get_json(silent=True) or {}
-        tab: str | None = body.get('tab')
 
         entries = load_entries(tab)
         total = len(entries)
@@ -128,7 +141,15 @@ def check_status():
         return jsonify({'checked': checked, 'updated': updated, 'errors': errors, 'sheet_errors': sheet_errors, 'total': total})
 
     finally:
-        _lock.release()
+        _active_tabs.discard(tab_key)
+        lock.release()
+
+
+@app.route('/active-checks', methods=['GET'])
+def active_checks():
+    if not _is_authorized():
+        return jsonify({'error': 'Unauthorized'}), 401
+    return jsonify({'active': list(_active_tabs)})
 
 
 if __name__ == '__main__':

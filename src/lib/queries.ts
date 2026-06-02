@@ -1,4 +1,4 @@
-import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_TOKEN } from './supabase';
+import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN } from './supabase';
 import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
@@ -551,6 +551,23 @@ export async function triggerStatusCheck(
     throw new Error(`Status check failed: ${res.status} ${body}`);
   }
   return res.json();
+}
+
+export async function getActiveChecks(): Promise<string[]> {
+  if (!CHECK_STATUS_BASE_URL) return [];
+  try {
+    const res = await fetch(`${CHECK_STATUS_BASE_URL}/active-checks`, {
+      headers: {
+        Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
+        'ngrok-skip-browser-warning': 'true',
+      },
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.active ?? [];
+  } catch {
+    return [];
+  }
 }
 
 // ---------------------------------------------------------------------------

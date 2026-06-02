@@ -15,6 +15,7 @@ export const IMPORT_TABS_URL = import.meta.env.VITE_IMPORT_TABS_URL ?? '';
 // Alias used by queries.ts — points to the same import-tabs function URL
 export const SYNC_FUNCTION_URL = IMPORT_TABS_URL;
 export const CHECK_STATUS_URL = import.meta.env.VITE_CHECK_STATUS_URL ?? '';
+export const CHECK_STATUS_BASE_URL = CHECK_STATUS_URL.replace(/\/check-status$/, '');
 // Shared secret for the self-hosted status server (behind a Cloudflare Tunnel).
 // Protected by the Vercel password gate; its job is to stop strangers who find
 // the tunnel URL from triggering Selenium runs. Falls back to the anon key so
