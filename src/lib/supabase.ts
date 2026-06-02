@@ -20,3 +20,7 @@ export const CHECK_STATUS_URL = import.meta.env.VITE_CHECK_STATUS_URL ?? '';
 // the tunnel URL from triggering Selenium runs. Falls back to the anon key so
 // local dev against an open server still works.
 export const CHECK_STATUS_TOKEN = import.meta.env.VITE_CHECK_STATUS_TOKEN ?? '';
+
+// AI assistant Edge Function URL (gpt-4o-mini proxy). Set in Vercel env once the
+// `ai-assistant` function is deployed. Empty string disables the assistant.
+export const AI_ASSISTANT_URL = import.meta.env.VITE_AI_ASSISTANT_URL ?? '';
