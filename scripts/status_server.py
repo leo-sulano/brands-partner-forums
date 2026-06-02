@@ -134,7 +134,8 @@ def check_status():
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Local Selenium status-check server')
     ap.add_argument('--port', type=int, default=5001)
-    ap.add_argument('--headless', action='store_true', help='Run Chrome headless (default: visible)')
+    ap.add_argument('--no-headless', dest='headless', action='store_false', help='Show Chrome browser window')
+    ap.set_defaults(headless=True)
     args = ap.parse_args()
 
     app.config['HEADLESS'] = args.headless
