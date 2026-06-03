@@ -1,14 +1,37 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { MessageCircle, X, Send } from 'lucide-react';
+// @ts-ignore – Mic used in Task 2 (voice button)
+import { MessageCircle, X, Send, Mic } from 'lucide-react';
 import { streamAssistant, type ChatMessage } from '../lib/assistant';
 import { useAssistant } from '../contexts/AssistantContext';
+// @ts-ignore – Toast used in Task 2 (voice error feedback)
+import Toast from './Toast';
+
+// SpeechRecognition is vendor-prefixed in some browsers; declare a local alias
+// so TypeScript accepts it as a type before Task 2 wires it fully.
+type SpeechRecognition =
+  typeof window extends { SpeechRecognition: infer T }
+    ? T
+    : typeof window extends { webkitSpeechRecognition: infer T }
+      ? T
+      : never;
+
+// @ts-ignore – used in Task 2 (feature-gate the mic button)
+const speechSupported =
+  typeof window !== 'undefined' &&
+  ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
 
 export default function AssistantWidget() {
   const { open, openWith, close, seed, clearSeed } = useAssistant();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
+  // @ts-ignore – recording state wired in Task 2
+  const [recording, setRecording] = useState(false);
+  // @ts-ignore – toastMsg wired in Task 2
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // @ts-ignore – recognitionRef wired in Task 2
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const location = useLocation();
   const params = useParams();
   const listRef = useRef<HTMLDivElement>(null);
