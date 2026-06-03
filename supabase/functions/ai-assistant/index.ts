@@ -9,7 +9,7 @@ import { TOOL_DEFS, runTool } from './tools.ts';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
-const MODEL = 'gpt-4o-mini';
+const MODEL = 'gpt-4o';
 const MAX_TOOL_LOOPS = 5;
 const MAX_TOKENS = 800;
 
