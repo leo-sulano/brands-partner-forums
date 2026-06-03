@@ -37,6 +37,13 @@ export default function AssistantWidget() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, streaming]);
 
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+    };
+  }, []);
+
   function pageContext(): string | undefined {
     const path = location.pathname;
     if (path.startsWith('/mentions/') && params.id) return `Viewing entry id ${params.id}.`;
@@ -105,9 +112,9 @@ export default function AssistantWidget() {
       recognitionRef.current = null;
     });
 
+    recognition.addEventListener('start', () => setRecording(true));
     recognitionRef.current = recognition;
     recognition.start();
-    setRecording(true);
   }
 
   if (!open) {
