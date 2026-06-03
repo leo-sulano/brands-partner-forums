@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-// @ts-ignore – Mic used in Task 2 (voice button)
+// @ts-ignore – Mic used in Task 3 (mic button JSX)
 import { MessageCircle, X, Send, Mic } from 'lucide-react';
 import { streamAssistant, type ChatMessage } from '../lib/assistant';
 import { useAssistant } from '../contexts/AssistantContext';
-// @ts-ignore – Toast used in Task 2 (voice error feedback)
+// @ts-ignore – Toast used in Task 3 (voice error feedback JSX)
 import Toast from './Toast';
 
-// @ts-ignore – used in Task 2 (feature-gate the mic button)
+// @ts-ignore – used in Task 3 (feature-gate the mic button in JSX)
 const speechSupported =
   typeof window !== 'undefined' &&
   ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
@@ -17,11 +17,9 @@ export default function AssistantWidget() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [streaming, setStreaming] = useState(false);
-  // @ts-ignore – recording state wired in Task 2
   const [recording, setRecording] = useState(false);
-  // @ts-ignore – toastMsg wired in Task 2
+  // @ts-ignore – toastMsg used in Task 3 (Toast JSX)
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  // @ts-ignore – recognitionRef wired in Task 2
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const location = useLocation();
   const params = useParams();
@@ -47,10 +45,10 @@ export default function AssistantWidget() {
     return undefined;
   }
 
-  async function send() {
-    const text = input.trim();
-    if (!text || streaming) return;
-    const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
+  async function send(text?: string) {
+    const msg = (text ?? input).trim();
+    if (!msg || streaming) return;
+    const next: ChatMessage[] = [...messages, { role: 'user', content: msg }];
     setMessages(next);
     setInput('');
     setStreaming(true);
@@ -74,6 +72,42 @@ export default function AssistantWidget() {
       onDone: () => setStreaming(false),
     });
     setStreaming(false);
+  }
+
+  // @ts-ignore – toggleVoice used in Task 3 (mic button onClick)
+  function toggleVoice() {
+    if (recording) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const SR = window.SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    const recognition: SpeechRecognition = new SR();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.addEventListener('result', (e) => {
+      const transcript = e.results[0][0].transcript.trim();
+      if (transcript) send(transcript);
+    });
+
+    recognition.addEventListener('error', (e) => {
+      if (e.error === 'no-speech') return;
+      setToastMsg(
+        e.error === 'not-allowed'
+          ? 'Microphone access denied'
+          : 'Voice recognition unavailable',
+      );
+    });
+
+    recognition.addEventListener('end', () => {
+      setRecording(false);
+      recognitionRef.current = null;
+    });
+
+    recognitionRef.current = recognition;
+    recognition.start();
+    setRecording(true);
   }
 
   if (!open) {
@@ -137,7 +171,7 @@ export default function AssistantWidget() {
           className="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none"
         />
         <button
-          onClick={send}
+          onClick={() => send()}
           disabled={streaming || !input.trim()}
           aria-label="Send"
           className="flex size-9 items-center justify-center rounded-md bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-40"
