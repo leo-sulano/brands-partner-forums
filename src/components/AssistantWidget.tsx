@@ -66,15 +66,16 @@ export default function AssistantWidget() {
           };
           return copy;
         }),
-      onError: (msg) =>
+      onError: (msg) => {
+        setStreaming(false);
         setMessages((m) => {
           const copy = [...m];
           copy[copy.length - 1] = { role: 'assistant', content: `⚠️ ${msg}` };
           return copy;
-        }),
+        });
+      },
       onDone: () => setStreaming(false),
     });
-    setStreaming(false);
   }
 
   function toggleVoice() {
@@ -106,7 +107,7 @@ export default function AssistantWidget() {
 
     recognition.addEventListener('end', () => {
       setRecording(false);
-      recognitionRef.current = null;
+      if (recognitionRef.current === recognition) recognitionRef.current = null;
     });
 
     recognition.addEventListener('start', () => setRecording(true));
