@@ -261,13 +261,15 @@ def find_score_col(data: dict) -> Optional[str]:
     return None
 
 
-def load_entries(tab: Optional[str] = None) -> list[dict]:
+def load_entries(tab: Optional[str] = None, include_published: bool = True) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
     r = requests.get(f"{SUPABASE_URL}/rest/v1/entries", headers=_headers(), params=params)
     r.raise_for_status()
     rows: list[dict] = r.json()
+
+    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
 
     out = []
     for row in rows:
@@ -279,7 +281,7 @@ def load_entries(tab: Optional[str] = None) -> list[dict]:
         if not status_col:
             continue
         current = (data.get(status_col) or "").strip().lower()
-        if current not in CHECKABLE_STATUSES:
+        if current not in statuses:
             continue
         out.append(row)
     return out

@@ -72,6 +72,7 @@ def check_status():
 
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
+    include_published: bool = bool(body.get('include_published', False))
     tab_key = tab or '__all__'
 
     lock = _get_tab_lock(tab_key)
@@ -81,7 +82,7 @@ def check_status():
     _active_tabs.add(tab_key)
     try:
 
-        entries = load_entries(tab)
+        entries = load_entries(tab, include_published=include_published)
         total = len(entries)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] Check started — {total} entries ({scope})')
