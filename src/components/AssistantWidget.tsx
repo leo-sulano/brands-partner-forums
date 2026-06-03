@@ -7,15 +7,6 @@ import { useAssistant } from '../contexts/AssistantContext';
 // @ts-ignore – Toast used in Task 2 (voice error feedback)
 import Toast from './Toast';
 
-// SpeechRecognition is vendor-prefixed in some browsers; declare a local alias
-// so TypeScript accepts it as a type before Task 2 wires it fully.
-type SpeechRecognition =
-  typeof window extends { SpeechRecognition: infer T }
-    ? T
-    : typeof window extends { webkitSpeechRecognition: infer T }
-      ? T
-      : never;
-
 // @ts-ignore – used in Task 2 (feature-gate the mic button)
 const speechSupported =
   typeof window !== 'undefined' &&
