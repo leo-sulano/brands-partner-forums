@@ -82,6 +82,7 @@ export default function AssistantWidget() {
       recognitionRef.current?.stop();
       return;
     }
+    // webkitSpeechRecognition is the vendor-prefixed form; not typed in lib.dom.d.ts
     const SR = window.SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     const recognition: SpeechRecognition = new SR();
     recognition.continuous = false;
@@ -90,6 +91,7 @@ export default function AssistantWidget() {
 
     recognition.addEventListener('result', (e) => {
       const transcript = e.results[0][0].transcript.trim();
+      setRecording(false);
       if (transcript) send(transcript);
     });
 
