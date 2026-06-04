@@ -45,7 +45,7 @@ function colWidthClass(header: string): string {
 function StatusPill({ value }: { value: string }) {
   if (!value || value === '—') return <span className="text-slate-400">—</span>;
   const v = value.toLowerCase().trim();
-  if (v.includes('publish')) {
+  if (v.includes('publish') && !v.includes('not pub')) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
         <CheckCircle2 className="size-3" /> {value}
@@ -170,9 +170,11 @@ function getEntryDate(data: Record<string, string | null>): Date | null {
   return null;
 }
 
-function inDateRange(data: Record<string, string | null>, from: string, to: string): boolean {
+// Only excludes entries that have a date AND it falls outside the range.
+// Entries with no date are always included so pending accounts stay visible.
+function inDateRangeInclusive(data: Record<string, string | null>, from: string, to: string): boolean {
   const d = getEntryDate(data);
-  if (!d) return false;
+  if (!d) return true;
   if (from && d < new Date(from + 'T00:00:00')) return false;
   if (to && d > new Date(to + 'T23:59:59')) return false;
   return true;
@@ -751,15 +753,15 @@ export default function BrandGroup() {
     return rows.filter((e) => {
       if (platformFilter !== 'all') {
         const col = PLATFORM_DATE_COLS[platformFilter];
-        const raw = e.data[col];
-        if (!raw) return false;
+        const raw = e.data[col]?.trim();
+        if (!raw) return true; // no date — always include
         const d = parseCellDate(raw) ?? new Date(raw);
-        if (isNaN(d.getTime())) return false;
+        if (isNaN(d.getTime())) return true; // unparseable — include rather than hide
         if (dateFrom && d < new Date(dateFrom + 'T00:00:00')) return false;
         if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
         return true;
       }
-      return inDateRange(e.data, dateFrom, dateTo);
+      return inDateRangeInclusive(e.data, dateFrom, dateTo);
     });
   }
 
@@ -787,10 +789,10 @@ export default function BrandGroup() {
   })();
 
   function isLive(v: string) {
-    return v.includes('publish');
+    return v.includes('publish') && !v.includes('not pub');
   }
   function isRemoved(v: string) {
-    return v.includes('remov') || v.includes('refus');
+    return v.includes('remov') || v.includes('refus') || v.includes('not pub');
   }
   function isDone(v: string) {
     return v === 'done';
