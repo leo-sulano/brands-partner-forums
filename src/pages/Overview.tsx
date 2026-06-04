@@ -92,7 +92,7 @@ export default function Overview() {
     <div className="space-y-8">
 
       {/* Date filter bar */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-start gap-2">
         <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
         <DatePicker
           value={dateFrom}

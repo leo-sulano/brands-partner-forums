@@ -131,12 +131,15 @@ Status values stored in the database (use EXACTLY as written):
 - "Published"  → live / approved / active reviews
 - "Removed"    → taken down / deleted reviews
 - "Refused"    → rejected / denied reviews
+- "Done"       → completed / submitted (review posted, awaiting publish confirmation)
 - "Not Done"   → pending / not yet completed
 - "On Pause"   → paused / on hold
 
-When user says "approved", "live", "active" → use status="Published"
-When user says "removed", "taken down"      → use status="Removed"
-When user says "refused", "rejected"        → use status="Refused"
+When user says "approved", "live", "active"   → use status="Published"
+When user says "removed", "taken down"        → use status="Removed"
+When user says "refused", "rejected"          → use status="Refused"
+When user says "done", "completed"            → use status="Done"
+When user says "pending", "not done"          → use status="Not Done"
 
 Month filter format: pass as "may 2026" or "2026-05" to the month parameter.
 Date columns are named: "TP Added", "AG Added", "CG Added", "Date Added".
