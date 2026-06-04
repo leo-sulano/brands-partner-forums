@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, BarChart3,
+  Link2, Users, ChevronDown, BarChart3, Bot,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -23,6 +23,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 
 const topLinks = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+  { to: '/ask-ai', label: 'Ask AI', icon: Bot, end: true },
 ];
 
 const linkClass = (isActive: boolean) =>
