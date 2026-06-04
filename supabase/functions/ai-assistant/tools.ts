@@ -185,7 +185,13 @@ export const TOOL_DEFS = [
     function: {
       name: 'query_entries',
       description:
-        'Search forum entries. Filter by tab, status (e.g. Published, Removed, Refused), month (e.g. "may 2026" or "2026-05"), and/or a free-text contains match. Returns summary rows and total count.',
+        'Search forum entries. ' +
+        'Filter by tab (exact tab name from list_tabs), ' +
+        'status — valid values are exactly: "Published" (= live/approved/active), "Removed", "Refused", "Not Done", "On Pause" — ' +
+        'month (e.g. "may 2026" or "2026-05"), and/or a free-text contains match. ' +
+        'Returns summary rows and total count. ' +
+        'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
+        'IMPORTANT: always pass month as "may 2026" style when user mentions a month.',
       parameters: {
         type: 'object',
         properties: {
