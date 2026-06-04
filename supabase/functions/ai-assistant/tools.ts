@@ -27,7 +27,10 @@ const STATUS_KEYS = [
   'Status',
 ];
 const SCORE_KEYS = ['TP Score added', 'Score added', 'Score Added', 'Score'];
-const DATE_KEYS = ['Trust Pilot', 'Score added', 'posted_at', 'Posted At', 'date', 'Date'];
+const DATE_KEYS = [
+  'Date Added', 'Date added', 'date_added',
+  'Trust Pilot', 'Score added', 'posted_at', 'Posted At', 'date', 'Date',
+];
 
 export type Star = 1 | 2 | 3 | 4 | 5;
 
@@ -64,6 +67,46 @@ export function entryMatches(e: EntryRow, contains: string): boolean {
     if (v != null && String(v).toLowerCase().includes(needle)) return true;
   }
   return false;
+}
+
+const MONTH_NAMES: Record<string, number> = {
+  january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+  july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+  jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+// Matches entries whose date field falls in the requested month.
+// `month` accepts: "may", "may 2026", "2026-05".
+export function matchesMonth(e: EntryRow, month: string): boolean {
+  const raw = pick(e.data, DATE_KEYS);
+  if (!raw) return false;
+  const m = month.trim().toLowerCase();
+
+  // Parse requested year (optional)
+  const yearMatch = m.match(/\b(20\d{2})\b/);
+  const wantYear = yearMatch ? parseInt(yearMatch[1]) : null;
+
+  // Parse requested month number
+  let wantMonth: number | null = null;
+  if (/^\d{4}-(\d{2})$/.test(m)) {
+    wantMonth = parseInt(m.split('-')[1]);
+  } else {
+    for (const [name, num] of Object.entries(MONTH_NAMES)) {
+      if (m.includes(name)) { wantMonth = num; break; }
+    }
+  }
+  if (!wantMonth) return false;
+
+  // Try JS Date parse (handles ISO, "May 15 2026", "15/05/2026", etc.)
+  const d = new Date(raw);
+  if (!isNaN(d.getTime())) {
+    return (d.getMonth() + 1 === wantMonth) && (!wantYear || d.getFullYear() === wantYear);
+  }
+
+  // Fallback: substring check for "-MM-" or "/MM/" in raw string
+  const padded = String(wantMonth).padStart(2, '0');
+  const inStr = raw.includes(`-${padded}-`) || raw.includes(`/${padded}/`);
+  return inStr && (!wantYear || raw.includes(String(wantYear)));
 }
 
 export function matchesStatus(e: EntryRow, status: string): boolean {
@@ -123,12 +166,13 @@ export const TOOL_DEFS = [
     function: {
       name: 'query_entries',
       description:
-        'Search forum entries. Filter by tab, status (e.g. Published, Removed, Refused), and/or a free-text contains match. Returns summary rows and total count.',
+        'Search forum entries. Filter by tab, status (e.g. Published, Removed, Refused), month (e.g. "may 2026" or "2026-05"), and/or a free-text contains match. Returns summary rows and total count.',
       parameters: {
         type: 'object',
         properties: {
           tab: { type: 'string' },
           status: { type: 'string' },
+          month: { type: 'string', description: 'filter by month, e.g. "may 2026" or "2026-05"' },
           contains: { type: 'string' },
           limit: { type: 'number', description: 'max rows to return, default 25' },
         },
@@ -171,6 +215,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (error) throw error;
     let rows: EntryRow[] = data ?? [];
     if (args?.status) rows = rows.filter((e) => matchesStatus(e, args.status));
+    if (args?.month) rows = rows.filter((e) => matchesMonth(e, args.month));
     if (args?.contains) rows = rows.filter((e) => entryMatches(e, args.contains));
     const total = rows.length;
     const limit = Math.min(Number(args?.limit) || 25, 50);

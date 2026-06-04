@@ -26,6 +26,9 @@ const SYSTEM_PROMPT =
   `"entries" table; use the provided tools to look things up rather than guessing. ` +
   `Forum platforms are referred to as TP (Trustpilot), AG (AskGamblers), CG (CasinoGuru). ` +
   `When asked to summarize or draft a reply, call get_entry first for the exact text. ` +
+  `When asked about counts or entries for a specific month, use query_entries with the month ` +
+  `parameter (e.g. month: "may 2026"). Always filter by status when the user asks about ` +
+  `"published", "removed", etc. Never guess counts — always call a tool first. ` +
   `Be concise. If a tool returns no data, say so plainly.`;
 
 function jsonResponse(body: unknown, status = 200): Response {
