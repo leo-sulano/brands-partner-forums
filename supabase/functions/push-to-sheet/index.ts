@@ -92,7 +92,7 @@ Deno.serve(async (req: Request) => {
 
     if (existing) {
       const { error: updErr } = await admin.from('entries')
-        .update({ data: mergedData, updated_at: nowIso, last_edited_by: 'dashboard', last_sync_tag: syncTag })
+        .update({ data: mergedData, updated_at: nowIso, last_sync_tag: syncTag })
         .eq('tab', body.tab)
         .eq('sheet_row_id', body.sheet_row_id);
       if (updErr) throw updErr;
@@ -102,7 +102,8 @@ Deno.serve(async (req: Request) => {
         sheet_row_id: body.sheet_row_id,
         data: mergedData,
         updated_at: nowIso,
-        last_edited_by: 'dashboard',
+        last_edited_by: 'push-to-sheet',
+        last_edited_email: 'system',
         last_sync_tag: syncTag,
       });
       if (insErr) throw insErr;

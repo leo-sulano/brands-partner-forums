@@ -217,7 +217,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
         const { error: updateErr } = await admin
           .from('entries')
-          .update({ data: updatedData, updated_at: new Date().toISOString(), last_edited_by: 'dashboard' })
+          .update({ data: updatedData, updated_at: new Date().toISOString(), last_edited_by: 'check-review-status', last_edited_email: 'system' })
           .eq('id', entry.id);
 
         if (updateErr) {
