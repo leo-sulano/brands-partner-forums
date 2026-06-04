@@ -18,6 +18,9 @@ export function pick(data: Record<string, any>, keys: string[]): string | null {
 const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'];
 const ACCOUNT_KEYS = ['Account Name', 'account_name', 'casino', 'Casino', 'name', 'Name'];
 const STATUS_KEYS = [
+  'TP Status',
+  'AG Status',
+  'CG Status',
   'TP Review Status',
   'Trust Pilot Review Status',
   'Trustpilot Review Status',
@@ -28,6 +31,7 @@ const STATUS_KEYS = [
 ];
 const SCORE_KEYS = ['TP Score added', 'Score added', 'Score Added', 'Score'];
 const DATE_KEYS = [
+  'TP Added', 'AG Added', 'CG Added',
   'Date Added', 'Date added', 'date_added',
   'Trust Pilot', 'Score added', 'posted_at', 'Posted At', 'date', 'Date',
 ];
@@ -97,16 +101,31 @@ export function matchesMonth(e: EntryRow, month: string): boolean {
   }
   if (!wantMonth) return false;
 
-  // Try JS Date parse (handles ISO, "May 15 2026", "15/05/2026", etc.)
+  const padded = String(wantMonth).padStart(2, '0');
+
+  // DD/MM/YYYY format (e.g. "11/05/2026") — check /MM/ substring first
+  // JS Date() parses this as MM/DD so we must NOT use new Date() for slash formats
+  const slashMatch = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (slashMatch) {
+    const [, , mm, yyyy] = slashMatch;
+    return mm === padded && (!wantYear || yyyy === String(wantYear));
+  }
+
+  // ISO format "YYYY-MM-DD"
+  const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    const [, yyyy, mm] = isoMatch;
+    return mm === padded && (!wantYear || yyyy === String(wantYear));
+  }
+
+  // Try JS Date parse for text formats ("May 11, 2026" etc.)
   const d = new Date(raw);
   if (!isNaN(d.getTime())) {
     return (d.getMonth() + 1 === wantMonth) && (!wantYear || d.getFullYear() === wantYear);
   }
 
-  // Fallback: substring check for "-MM-" or "/MM/" in raw string
-  const padded = String(wantMonth).padStart(2, '0');
-  const inStr = raw.includes(`-${padded}-`) || raw.includes(`/${padded}/`);
-  return inStr && (!wantYear || raw.includes(String(wantYear)));
+  // Last resort: substring check
+  return raw.includes(`/${padded}/`) && (!wantYear || raw.includes(String(wantYear)));
 }
 
 export function matchesStatus(e: EntryRow, status: string): boolean {
