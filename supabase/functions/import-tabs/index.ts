@@ -23,6 +23,15 @@ const APPS_SCRIPT_SECRET = Deno.env.get('APPS_SCRIPT_SECRET')!;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
+// Column names that check-review-status can update. When the DB row was last
+// edited by that function, these columns are authoritative in the DB and must
+// not be overwritten by a stale Sheet value (the Sheet sync may have failed).
+const STATUS_SCORE_COLS = new Set([
+  'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status',
+  'Trust pilot Review Status', 'Review Status',
+  'Score added', 'Score Added', 'score added', 'Score',
+]);
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -181,18 +190,33 @@ Deno.serve(async (req) => {
         // values, nothing to apply. This catches the loop where push-to-sheet's
         // own write comes back through onEdit → import-tabs. Any genuine
         // difference (manual Sheet edit) is applied — Sheet wins.
+        //
+        // Exception: rows last edited by check-review-status have authoritative
+        // status/score values in the DB (the Sheet sync may have failed). Merge
+        // those columns from the DB so import-tabs never reverts them.
         const toUpsert: Array<Record<string, unknown>> = [];
         for (const c of candidates) {
           const existing = dedupedMap.get(c.sheet_row_id);
-          if (existing && dataEquals(existing.data, c.data)) {
+
+          let mergedData = c.data;
+          if (existing && existing.last_edited_by === 'check-review-status') {
+            mergedData = { ...c.data };
+            for (const col of STATUS_SCORE_COLS) {
+              if (col in existing.data) {
+                mergedData[col] = existing.data[col];
+              }
+            }
+          }
+
+          if (existing && dataEquals(existing.data, mergedData)) {
             rowsSkipped++;
             continue;
           }
           toUpsert.push({
             tab: c.tab,
             sheet_row_id: c.sheet_row_id,
-            data: c.data,
-            last_edited_by: 'sheet',
+            data: mergedData,
+            last_edited_by: existing?.last_edited_by === 'check-review-status' ? 'check-review-status' : 'sheet',
             last_sync_tag: null,
           });
         }
