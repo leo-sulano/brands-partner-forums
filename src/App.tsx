@@ -17,6 +17,7 @@ const BrandGroup  = lazy(() => import('./pages/BrandGroup'));
 const AdminUsers  = lazy(() => import('./pages/AdminUsers'));
 const ActivityLog = lazy(() => import('./pages/ActivityLog'));
 const ScoreSummary = lazy(() => import('./pages/ScoreSummary'));
+const AskAI        = lazy(() => import('./pages/AskAI'));
 
 function PageFallback() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/mentions/:id" element={<MentionDetail />} />
           <Route path="/brands/:tab" element={<BrandGroup />} />
           <Route element={<ProtectedRoute />}>
+            <Route path="/ask-ai" element={<AskAI />} />
             <Route path="/sync" element={<SyncStatus />} />
             <Route path="/log" element={<ActivityLog />} />
             <Route path="/score-summary" element={<ScoreSummary />} />
