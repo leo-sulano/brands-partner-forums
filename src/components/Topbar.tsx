@@ -60,37 +60,38 @@ export default function Topbar() {
 
   return (
     <header className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between">
-      <h1 className="text-base font-semibold text-slate-800">{title}</h1>
-
-      {isOverview && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-slate-500 shrink-0">Overview</span>
-          <DatePicker
-            value={dateFrom}
-            onChange={setDateFrom}
-            placeholder="From date"
-            max={dateTo || undefined}
-            align="right"
-          />
-          <span className="text-xs text-slate-400">→</span>
-          <DatePicker
-            value={dateTo}
-            onChange={setDateTo}
-            placeholder="To date"
-            min={dateFrom || undefined}
-            align="right"
-          />
-          {dateActive && (
-            <button
-              type="button"
-              onClick={() => { setDateFrom(''); setDateTo(''); }}
-              className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
+      <div className="flex items-center gap-4">
+        <h1 className="text-base font-semibold text-slate-800">{title}</h1>
+        {isOverview && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 shrink-0">Date Range</span>
+            <DatePicker
+              value={dateFrom}
+              onChange={setDateFrom}
+              placeholder="From date"
+              max={dateTo || undefined}
+              align="left"
+            />
+            <span className="text-xs text-slate-400">→</span>
+            <DatePicker
+              value={dateTo}
+              onChange={setDateTo}
+              placeholder="To date"
+              min={dateFrom || undefined}
+              align="left"
+            />
+            {dateActive && (
+              <button
+                type="button"
+                onClick={() => { setDateFrom(''); setDateTo(''); }}
+                className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {session ? (
         <div className="flex items-center gap-3">
