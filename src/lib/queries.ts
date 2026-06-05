@@ -378,6 +378,11 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
     }
   }
 
+  const activePlatforms: ('tp' | 'ag' | 'cg')[] = [];
+  if (tpCol) activePlatforms.push('tp');
+  if (agCol) activePlatforms.push('ag');
+  if (cgCol) activePlatforms.push('cg');
+
   return {
     total: entries.length,
     live,
@@ -389,6 +394,7 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
     tp: { live: tpLive, removed: tpRemoved },
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
+    activePlatforms,
   };
 }
 

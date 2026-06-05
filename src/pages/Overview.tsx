@@ -38,6 +38,13 @@ const EMPTY_KPIS: TabKpis = {
   tp: { live: 0, removed: 0 },
   ag: { live: 0, removed: 0 },
   cg: { live: 0, removed: 0 },
+  activePlatforms: [],
+};
+
+const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg', { label: string; cls: string }> = {
+  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200' },
+  ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200' },
+  cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200' },
 };
 
 const initial: State = { loading: true, error: null, tabs: [] };
@@ -136,15 +143,18 @@ export default function Overview() {
                 <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 80 }} />
               ))
             : state.tabs.map(({ tab, kpis }) => {
-                const pct = (n: number) => kpis.total > 0 ? (n / kpis.total) * 100 : 0;
+                const displayLive    = kpis.tp.live    + kpis.ag.live    + kpis.cg.live;
+                const displayRemoved = kpis.tp.removed + kpis.ag.removed + kpis.cg.removed;
                 const statusItems = [
-                  { count: kpis.live,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
-                  { count: kpis.removed, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
-                  { count: kpis.done,    label: 'done',     bar: 'bg-teal-500',    text: 'text-teal-600'    },
-                  { count: kpis.pending, label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
-                  { count: kpis.onPause, label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
-                  { count: kpis.notDone, label: 'not done', bar: 'bg-orange-400',  text: 'text-orange-500'  },
+                  { count: displayLive,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: displayRemoved, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
+                  { count: kpis.done,      label: 'done',     bar: 'bg-teal-500',    text: 'text-teal-600'    },
+                  { count: kpis.pending,   label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
+                  { count: kpis.onPause,   label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
+                  { count: kpis.notDone,   label: 'not done', bar: 'bg-orange-400',  text: 'text-orange-500'  },
                 ].filter((s) => s.count >= 1);
+                const barTotal = statusItems.reduce((s, i) => s + i.count, 0);
+                const pct = (n: number) => barTotal > 0 ? (n / barTotal) * 100 : 0;
                 return (
                   <Link
                     key={tab}
@@ -152,11 +162,18 @@ export default function Overview() {
                     style={{ height: 80 }}
                     className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                   >
-                    <div className="flex items-baseline justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2">
                       <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
-                      <span className="shrink-0 text-xs text-slate-500">
-                        <span className="font-medium text-slate-900">{kpis.total}</span> total
-                      </span>
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {kpis.activePlatforms.map((p) => (
+                          <span key={p} className={`rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[p].cls}`}>
+                            {PLATFORM_BADGE[p].label}
+                          </span>
+                        ))}
+                        <span className="text-xs text-slate-500">
+                          <span className="font-medium text-slate-900">{kpis.total}</span> total
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600">
                       {statusItems.map((s) => (

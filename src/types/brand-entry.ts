@@ -25,4 +25,5 @@ export interface TabKpis {
   tp: PlatformKpis;
   ag: PlatformKpis;
   cg: PlatformKpis;
+  activePlatforms: ('tp' | 'ag' | 'cg')[];
 }
