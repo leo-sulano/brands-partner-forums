@@ -1,7 +1,8 @@
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { LogOut, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
+import DatePicker from './DatePicker';
 
 const AVATAR_COLORS = [
   'bg-violet-500',
@@ -26,6 +27,20 @@ export default function Topbar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { session, signOut } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const isOverview = pathname === '/';
+  const dateFrom = isOverview ? (searchParams.get('from') ?? '') : '';
+  const dateTo   = isOverview ? (searchParams.get('to')   ?? '') : '';
+  const dateActive = !!(dateFrom || dateTo);
+
+  function setDateFrom(v: string) {
+    setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('from', v); else n.delete('from'); return n; }, { replace: true });
+  }
+  function setDateTo(v: string) {
+    setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('to', v); else n.delete('to'); return n; }, { replace: true });
+  }
+
   const onlineUsers = usePresence(
     session?.user.email ?? null,
     session?.user.id ?? null,
@@ -44,6 +59,37 @@ export default function Topbar() {
   return (
     <header className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between">
       <h1 className="text-base font-semibold text-slate-800">{title}</h1>
+
+      {isOverview && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
+          <DatePicker
+            value={dateFrom}
+            onChange={setDateFrom}
+            placeholder="From date"
+            max={dateTo || undefined}
+            align="right"
+          />
+          <span className="text-xs text-slate-400">→</span>
+          <DatePicker
+            value={dateTo}
+            onChange={setDateTo}
+            placeholder="To date"
+            min={dateFrom || undefined}
+            align="right"
+          />
+          {dateActive && (
+            <button
+              type="button"
+              onClick={() => { setDateFrom(''); setDateTo(''); }}
+              className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
+
       {session ? (
         <div className="flex items-center gap-3">
           {onlineUsers.length > 0 && (
