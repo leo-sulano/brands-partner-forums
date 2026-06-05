@@ -11,12 +11,17 @@ The dashboard's VITE_CHECK_STATUS_URL must point to:
 """
 
 import argparse
+import logging
 import os
 import sys
 import time
 import threading
 
 sys.path.insert(0, os.path.dirname(__file__))
+
+# Suppress Flask/Werkzeug's per-request access log so the terminal window
+# doesn't flash on every incoming HTTP request.
+logging.getLogger('werkzeug').setLevel(logging.ERROR)
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
