@@ -41,10 +41,10 @@ const EMPTY_KPIS: TabKpis = {
   activePlatforms: [],
 };
 
-const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg', { label: string; cls: string }> = {
-  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200' },
-  ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200' },
-  cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200' },
+const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg', { label: string; cls: string; icon: string }> = {
+  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200',   icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16' },
+  ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200', icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
+  cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
 };
 
 const initial: State = { loading: true, error: null, tabs: [] };
@@ -166,7 +166,8 @@ export default function Overview() {
                       <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {kpis.activePlatforms.map((p) => (
-                          <span key={p} className={`rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[p].cls}`}>
+                          <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[p].cls}`}>
+                            <img src={PLATFORM_BADGE[p].icon} alt={PLATFORM_BADGE[p].label} className="size-2.5 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                             {PLATFORM_BADGE[p].label}
                           </span>
                         ))}
