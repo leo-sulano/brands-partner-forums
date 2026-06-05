@@ -3,6 +3,7 @@ import { LogOut, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
 import DatePicker from './DatePicker';
+import { slugToTab } from '../lib/tabs';
 
 const AVATAR_COLORS = [
   'bg-violet-500',
@@ -53,7 +54,8 @@ export default function Topbar() {
   else if (pathname === '/admin/users') title = 'Admin — Users';
   else if (pathname.startsWith('/mentions/')) title = 'Mention Detail';
   else if (pathname.startsWith('/brands/')) {
-    title = decodeURIComponent(pathname.slice('/brands/'.length));
+    const slug = pathname.slice('/brands/'.length);
+    title = slugToTab(slug) ?? decodeURIComponent(slug);
   }
 
   return (
