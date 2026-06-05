@@ -32,20 +32,6 @@ const PLATFORM_LOGOS: Record<string, string> = {
   CasinoGuru:  'https://www.google.com/s2/favicons?domain=casino.guru&sz=32',
 };
 
-const RADIAN = Math.PI / 180;
-function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: {
-  cx: number; cy: number; midAngle: number; innerRadius: number; outerRadius: number; percent: number;
-}) {
-  if (percent < 0.04) return null;
-  const r = innerRadius + (outerRadius - innerRadius) * 0.55;
-  const x = cx + r * Math.cos(-midAngle * RADIAN);
-  const y = cy + r * Math.sin(-midAngle * RADIAN);
-  return (
-    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={600}>
-      {`${(percent * 100).toFixed(1)}%`}
-    </text>
-  );
-}
 
 const EMPTY_KPIS: TabKpis = {
   total: 0, live: 0, removed: 0, done: 0, pending: 0, onPause: 0, notDone: 0,
@@ -112,10 +98,6 @@ export default function Overview() {
       Removed: state.tabs.reduce((s, t) => s + t.kpis.cg.removed, 0),
     },
   ];
-
-  const pieData = platformData
-    .map(p => ({ name: p.name, value: p.Live, live: p.Live, removed: p.Removed }))
-    .filter(p => p.value > 0);
 
   return (
     <div className="space-y-8">
@@ -198,74 +180,91 @@ export default function Overview() {
       <section>
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Live review distribution across platforms</p>
+          <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform</p>
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          {state.loading ? (
-            <div className="h-72 animate-pulse rounded-lg bg-slate-100" />
-          ) : pieData.length === 0 ? (
-            <div className="flex h-48 items-center justify-center text-sm text-slate-400">No live reviews yet</div>
-          ) : (
-            <div className="flex flex-col items-center gap-6">
-              <ResponsiveContainer width="100%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={85}
-                    outerRadius={130}
-                    dataKey="value"
-                    labelLine={false}
-                    label={renderPieLabel}
-                    stroke="#fff"
-                    strokeWidth={2}
-                  >
-                    {pieData.map((entry) => (
-                      <Cell key={entry.name} fill={PLATFORM_COLORS[entry.name as keyof typeof PLATFORM_COLORS]} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: number) => [value.toLocaleString(), 'Live']}
-                    contentStyle={{
-                      borderRadius: '10px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                      fontSize: '13px',
-                      padding: '10px 14px',
-                    }}
-                    labelStyle={{ fontWeight: 600, color: '#1e293b', marginBottom: 4 }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-
-              {/* Platform legend with logos */}
-              <div className="flex flex-wrap items-center justify-center gap-6">
-                {pieData.map((p) => (
-                  <div key={p.name} className="flex items-center gap-2.5">
-                    <span
-                      className="size-3 shrink-0 rounded-full"
-                      style={{ background: PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS] }}
-                    />
+        {state.loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {platformData.map((p) => {
+              const total = p.Live + p.Removed;
+              const color = PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS];
+              const slices = total > 0
+                ? [
+                    { label: 'Published', value: p.Live,    fill: '#10b981' },
+                    { label: 'Removed',   value: p.Removed, fill: '#f43f5e' },
+                  ]
+                : [{ label: 'No data', value: 1, fill: '#e2e8f0' }];
+              const livePct = total > 0 ? ((p.Live / total) * 100).toFixed(1) : '0';
+              return (
+                <div key={p.name} className="flex flex-col items-center rounded-xl border border-slate-200 bg-white py-5 px-4 shadow-sm">
+                  {/* Platform header */}
+                  <div className="flex items-center gap-2 mb-1">
                     <img
                       src={PLATFORM_LOGOS[p.name]}
                       alt={p.name}
                       className="size-5 rounded"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
-                    <div className="text-xs text-slate-600">
-                      <span className="font-semibold text-emerald-600">{p.live.toLocaleString()}</span>
-                      <span className="ml-1 text-slate-400">published</span>
-                      <span className="mx-2 text-slate-300">·</span>
-                      <span className="font-semibold text-rose-500">{p.removed.toLocaleString()}</span>
-                      <span className="ml-1 text-slate-400">removed</span>
+                    <span className="text-sm font-semibold text-slate-700">{p.name}</span>
+                  </div>
+
+                  {/* Donut */}
+                  <div className="relative">
+                    <ResponsiveContainer width={180} height={180}>
+                      <PieChart>
+                        <Pie
+                          data={slices}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={58}
+                          outerRadius={82}
+                          dataKey="value"
+                          startAngle={90}
+                          endAngle={-270}
+                          stroke="#fff"
+                          strokeWidth={2}
+                          labelLine={false}
+                        >
+                          {slices.map((s) => (
+                            <Cell key={s.label} fill={s.fill} />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          formatter={(value: number, name: string) => [value.toLocaleString(), name]}
+                          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    {/* Center label */}
+                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                      <span className="text-xl font-bold tabular-nums" style={{ color }}>{livePct}%</span>
+                      <span className="text-[10px] text-slate-400 font-medium">published</span>
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
+
+                  {/* Counts */}
+                  <div className="mt-2 flex items-center gap-4 text-xs">
+                    <span className="flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
+                      <span className="font-semibold text-emerald-600">{p.Live.toLocaleString()}</span>
+                      <span className="text-slate-400">published</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="size-2 rounded-full bg-rose-400 shrink-0" />
+                      <span className="font-semibold text-rose-500">{p.Removed.toLocaleString()}</span>
+                      <span className="text-slate-400">removed</span>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </section>
 
     </div>
