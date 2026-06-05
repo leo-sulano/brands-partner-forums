@@ -154,3 +154,15 @@ export function hasMultiPlatform(tab: string): boolean {
   const set = new Set(cols);
   return set.has('AG Review Status') && set.has('CG Review Status');
 }
+
+// Returns the platforms active for a given tab. All tabs have TP; AG/CG are opt-in via column presence.
+export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg')[] {
+  const platforms: ('tp' | 'ag' | 'cg')[] = ['tp'];
+  const cols = TAB_COLUMN_CONFIGS[tab];
+  if (cols) {
+    const set = new Set(cols);
+    if (set.has('AG Review Status')) platforms.push('ag');
+    if (set.has('CG Review Status')) platforms.push('cg');
+  }
+  return platforms;
+}
