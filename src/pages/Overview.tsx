@@ -255,7 +255,8 @@ export default function Overview() {
                     />
                     <div className="text-xs text-slate-600">
                       <span className="font-semibold text-emerald-600">{p.live.toLocaleString()}</span>
-                      <span className="mx-1 text-slate-300">·</span>
+                      <span className="ml-1 text-slate-400">published</span>
+                      <span className="mx-2 text-slate-300">·</span>
                       <span className="font-semibold text-rose-500">{p.removed.toLocaleString()}</span>
                       <span className="ml-1 text-slate-400">removed</span>
                     </div>
