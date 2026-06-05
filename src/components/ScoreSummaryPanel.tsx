@@ -6,6 +6,7 @@ import {
   isoToDate,
   ratingLabel,
   type BrandSummary,
+  type Platform,
   type RatingLabel,
   type Star as StarRating,
 } from '../lib/scoreSummary';
@@ -31,11 +32,24 @@ const STAR_COLOR: Record<1 | 2 | 3 | 4 | 5, string> = {
   1: 'text-rose-500',
 };
 
+const PLATFORM_OPTS: { value: Platform; label: string; dot: string }[] = [
+  { value: 'tp', label: 'TrustPilot',  dot: 'bg-blue-500' },
+  { value: 'ag', label: 'AskGamblers', dot: 'bg-amber-500' },
+  { value: 'cg', label: 'CasinoGuru',  dot: 'bg-violet-500' },
+];
+
+const PLATFORM_DATE_LABEL: Record<Platform, string> = {
+  tp: 'Trust Pilot date',
+  ag: 'AskGamblers date',
+  cg: 'CasinoGuru date',
+};
+
 export default function ScoreSummaryPanel({ entries }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [fromIso, setFromIso] = useState('');
   const [toIso, setToIso] = useState('');
   const [tabFilter, setTabFilter] = useState('');
+  const [platform, setPlatform] = useState<Platform>('tp');
 
   // Range is driven entirely by the From/To date pickers. Both empty = all time.
   const range = useMemo(
@@ -43,7 +57,10 @@ export default function ScoreSummaryPanel({ entries }: Props) {
     [fromIso, toIso],
   );
 
-  const result = useMemo(() => computeScoreSummary(entries, range), [entries, range]);
+  const result = useMemo(
+    () => computeScoreSummary(entries, range, [], platform),
+    [entries, range, platform],
+  );
 
   // Tab options come from the raw entries so the dropdown lists every tab that
   // has data, not just those that survived the active date filter.
@@ -66,7 +83,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-800">Score Summary</h2>
           <span className="text-xs text-slate-400">
-            TrustPilot · Published reviews
+            {PLATFORM_OPTS.find((o) => o.value === platform)?.label} · Published reviews
             {totalAcrossBrands > 0 ? ` · ${totalAcrossBrands.toLocaleString()} total` : ''}
           </span>
         </div>
@@ -85,6 +102,8 @@ export default function ScoreSummaryPanel({ entries }: Props) {
       {!collapsed && (
         <div className="px-4 py-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
+            <PlatformFilter value={platform} onChange={setPlatform} />
+            <div className="h-4 w-px bg-slate-200 mx-1" />
             <DatePicker
               value={fromIso}
               onChange={setFromIso}
@@ -115,12 +134,42 @@ export default function ScoreSummaryPanel({ entries }: Props) {
 
           {result.excludedRows > 0 && (
             <p className="text-xs text-slate-400">
-              {result.excludedRows} row{result.excludedRows !== 1 ? 's' : ''} excluded from the selected range (missing or unreadable Trust Pilot date).
+              {result.excludedRows} row{result.excludedRows !== 1 ? 's' : ''} excluded from the selected range (missing or unreadable {PLATFORM_DATE_LABEL[platform]}).
             </p>
           )}
         </div>
       )}
     </section>
+  );
+}
+
+function PlatformFilter({
+  value,
+  onChange,
+}: {
+  value: Platform;
+  onChange: (v: Platform) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-md border border-slate-200 bg-white shadow-sm overflow-hidden">
+      {PLATFORM_OPTS.map((opt, i) => (
+        <button
+          key={opt.value}
+          type="button"
+          onClick={() => onChange(opt.value)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+            i > 0 ? 'border-l border-slate-200' : ''
+          } ${
+            opt.value === value
+              ? 'bg-slate-800 text-white'
+              : 'text-slate-600 hover:bg-slate-50'
+          }`}
+        >
+          <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />
+          {opt.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
