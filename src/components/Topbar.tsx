@@ -64,7 +64,7 @@ export default function Topbar() {
 
       {isOverview && (
         <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
+          <span className="text-xs font-medium text-slate-500 shrink-0">Overview</span>
           <DatePicker
             value={dateFrom}
             onChange={setDateFrom}
