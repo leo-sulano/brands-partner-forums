@@ -4,6 +4,19 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
 import DatePicker from './DatePicker';
 import { slugToTab } from '../lib/tabs';
+import { getTabPlatforms } from '../lib/tab-configs';
+
+const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
+  tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
+  ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
+  cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
+};
+
+const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg', string> = {
+  tp: 'bg-blue-100 text-blue-700 border border-blue-200',
+  ag: 'bg-amber-100 text-amber-700 border border-amber-200',
+  cg: 'bg-violet-100 text-violet-700 border border-violet-200',
+};
 
 const AVATAR_COLORS = [
   'bg-violet-500',
@@ -48,6 +61,7 @@ export default function Topbar() {
   );
 
   let title = 'Brands Partner Forum';
+  let brandTab: string | null = null;
   if (pathname === '/') title = 'Overview';
   else if (pathname === '/sync') title = 'Sync Status';
   else if (pathname === '/score-summary') title = 'Score Summary';
@@ -55,13 +69,28 @@ export default function Topbar() {
   else if (pathname.startsWith('/mentions/')) title = 'Mention Detail';
   else if (pathname.startsWith('/brands/')) {
     const slug = pathname.slice('/brands/'.length);
-    title = slugToTab(slug) ?? decodeURIComponent(slug);
+    brandTab = slugToTab(slug) ?? decodeURIComponent(slug);
+    title = brandTab;
   }
+
+  const platforms = brandTab ? getTabPlatforms(brandTab) : [];
 
   return (
     <header className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between">
       <div className="flex items-center gap-4">
-        <h1 className="text-base font-semibold text-slate-800">{title}</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-base font-semibold text-slate-800">{title}</h1>
+          {platforms.length > 0 && (
+            <div className="flex items-center gap-1">
+              {platforms.map((p) => (
+                <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE_CLS[p]}`}>
+                  <img src={PLATFORM_FAVICON[p]} alt={p} className="size-3" />
+                  {p.toUpperCase()}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
         {isOverview && (
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-slate-500 shrink-0">Date Range</span>
