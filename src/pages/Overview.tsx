@@ -76,9 +76,9 @@ export default function Overview() {
     );
   }
 
-  const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.total,   0);
-  const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.live,    0);
-  const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
+  const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.total, 0);
+  const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.tp.live    + t.kpis.ag.live    + t.kpis.cg.live,    0);
+  const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.tp.removed + t.kpis.ag.removed + t.kpis.cg.removed, 0);
 
 
   const platformData = [

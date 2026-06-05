@@ -9,8 +9,7 @@ import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, getActiveChecks } from '../lib/queries';
-import { CHECK_STATUS_URL } from '../lib/supabase';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
@@ -528,7 +527,6 @@ export default function BrandGroup() {
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
 
   const [checkingStatus, setCheckingStatus] = useState(false);
-  const [serverChecking, setServerChecking] = useState(false);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [lastChecked, setLastChecked] = useState<string | null>(
@@ -537,18 +535,6 @@ export default function BrandGroup() {
 
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
-  }, [decodedTab]);
-
-  useEffect(() => {
-    if (!CHECK_STATUS_URL) return;
-    let cancelled = false;
-    const poll = async () => {
-      const active = await getActiveChecks();
-      if (!cancelled) setServerChecking(active.includes(decodedTab));
-    };
-    poll();
-    const id = setInterval(poll, 3000);
-    return () => { cancelled = true; clearInterval(id); };
   }, [decodedTab]);
 
   useEffect(() => {
@@ -1091,11 +1077,11 @@ export default function BrandGroup() {
               <button
                 type="button"
                 onClick={handleCheckStatus}
-                disabled={checkingStatus || serverChecking}
+                disabled={checkingStatus}
                 className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
-                <RefreshCw className={`size-3.5 ${(checkingStatus || serverChecking) ? 'animate-spin' : ''}`} />
-                {(checkingStatus || serverChecking) ? 'Checking…' : 'Check Status'}
+                <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                {checkingStatus ? 'Checking…' : 'Check Status'}
               </button>
             </div>
           )}
