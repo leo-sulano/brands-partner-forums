@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Users, CheckCircle2, XCircle } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LabelList, Cell } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis } from '../lib/queries';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -18,6 +18,33 @@ interface State {
   error: string | null;
   tabs: TabSummary[];
 
+}
+
+const PLATFORM_COLORS = {
+  Trustpilot:  '#3b82f6',
+  AskGamblers: '#10b981',
+  CasinoGuru:  '#f59e0b',
+} as const;
+
+const PLATFORM_LOGOS: Record<string, string> = {
+  Trustpilot:  'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32',
+  AskGamblers: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32',
+  CasinoGuru:  'https://www.google.com/s2/favicons?domain=casino.guru&sz=32',
+};
+
+const RADIAN = Math.PI / 180;
+function renderPieLabel({ cx, cy, midAngle, innerRadius, outerRadius, percent }: {
+  cx: number; cy: number; midAngle: number; innerRadius: number; outerRadius: number; percent: number;
+}) {
+  if (percent < 0.04) return null;
+  const r = innerRadius + (outerRadius - innerRadius) * 0.55;
+  const x = cx + r * Math.cos(-midAngle * RADIAN);
+  const y = cy + r * Math.sin(-midAngle * RADIAN);
+  return (
+    <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={13} fontWeight={600}>
+      {`${(percent * 100).toFixed(1)}%`}
+    </text>
+  );
 }
 
 const EMPTY_KPIS: TabKpis = {
@@ -86,6 +113,10 @@ export default function Overview() {
     },
   ];
 
+  const pieData = platformData
+    .map(p => ({ name: p.name, value: p.Live, live: p.Live, removed: p.Removed }))
+    .filter(p => p.value > 0);
+
   return (
     <div className="space-y-8">
 
@@ -117,10 +148,10 @@ export default function Overview() {
       {/* Tab summary grid */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Brand Tabs</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {state.loading
-            ? Array.from({ length: 8 }).map((_, i) => (
-                <div key={i} className="h-28 animate-pulse rounded-lg bg-slate-100" />
+            ? Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 80 }} />
               ))
             : state.tabs.map(({ tab, kpis }) => {
                 const pct = (n: number) => kpis.total > 0 ? (n / kpis.total) * 100 : 0;
@@ -136,7 +167,8 @@ export default function Overview() {
                   <Link
                     key={tab}
                     to={`/brands/${tabToSlug(tab)}`}
-                    className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    style={{ height: 80 }}
+                    className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <div className="flex items-baseline justify-between gap-2">
                       <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
@@ -144,14 +176,14 @@ export default function Overview() {
                         <span className="font-medium text-slate-900">{kpis.total}</span> total
                       </span>
                     </div>
-                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600">
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600">
                       {statusItems.map((s) => (
                         <span key={s.label}>
                           <span className={`font-medium ${s.text}`}>{s.count}</span> {s.label}
                         </span>
                       ))}
                     </div>
-                    <div className="mt-3 flex h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                    <div className="flex h-1 w-full overflow-hidden rounded-full bg-slate-100">
                       {statusItems.map((s) => (
                         <div key={s.label} className={`${s.bar} transition-all`} style={{ width: `${pct(s.count)}%` }} />
                       ))}
@@ -164,70 +196,73 @@ export default function Overview() {
 
       {/* Platform breakdown chart */}
       <section>
-        <div className="mb-4 flex items-baseline justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Live vs. removed reviews per platform</p>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-slate-500">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block size-2.5 rounded-sm bg-emerald-500" />Live
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block size-2.5 rounded-sm bg-rose-400" />Removed
-            </span>
-          </div>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
+          <p className="mt-0.5 text-xs text-slate-400">Live review distribution across platforms</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           {state.loading ? (
             <div className="h-72 animate-pulse rounded-lg bg-slate-100" />
+          ) : pieData.length === 0 ? (
+            <div className="flex h-48 items-center justify-center text-sm text-slate-400">No live reviews yet</div>
           ) : (
-            <ResponsiveContainer width="100%" height={280}>
-              <BarChart data={platformData} barCategoryGap="40%" barGap={6} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="gradLive" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#10b981" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#34d399" stopOpacity={0.7} />
-                  </linearGradient>
-                  <linearGradient id="gradRemoved" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#f43f5e" stopOpacity={1} />
-                    <stop offset="100%" stopColor="#fb7185" stopOpacity={0.7} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 13, fill: '#64748b', fontWeight: 500 }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: '#cbd5e1' }}
-                  axisLine={false}
-                  tickLine={false}
-                  tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v)}
-                />
-                <Tooltip
-                  cursor={{ fill: '#f1f5f9', radius: 6 } as object}
-                  contentStyle={{
-                    borderRadius: '10px',
-                    border: '1px solid #e2e8f0',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
-                    fontSize: '13px',
-                    padding: '10px 14px',
-                  }}
-                  labelStyle={{ fontWeight: 600, color: '#1e293b', marginBottom: 4 }}
-                  itemStyle={{ color: '#475569' }}
-                />
-                <Bar dataKey="Live" fill="url(#gradLive)" radius={[6, 6, 0, 0]}>
-                  <LabelList dataKey="Live" position="top" style={{ fontSize: 11, fill: '#10b981', fontWeight: 600 }} formatter={(v: number) => v.toLocaleString()} />
-                  {platformData.map((_, i) => <Cell key={i} />)}
-                </Bar>
-                <Bar dataKey="Removed" fill="url(#gradRemoved)" radius={[6, 6, 0, 0]}>
-                  <LabelList dataKey="Removed" position="top" style={{ fontSize: 11, fill: '#f43f5e', fontWeight: 600 }} formatter={(v: number) => v.toLocaleString()} />
-                  {platformData.map((_, i) => <Cell key={i} />)}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+            <div className="flex flex-col items-center gap-6">
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={85}
+                    outerRadius={130}
+                    dataKey="value"
+                    labelLine={false}
+                    label={renderPieLabel}
+                    stroke="#fff"
+                    strokeWidth={2}
+                  >
+                    {pieData.map((entry) => (
+                      <Cell key={entry.name} fill={PLATFORM_COLORS[entry.name as keyof typeof PLATFORM_COLORS]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number) => [value.toLocaleString(), 'Live']}
+                    contentStyle={{
+                      borderRadius: '10px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+                      fontSize: '13px',
+                      padding: '10px 14px',
+                    }}
+                    labelStyle={{ fontWeight: 600, color: '#1e293b', marginBottom: 4 }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Platform legend with logos */}
+              <div className="flex flex-wrap items-center justify-center gap-6">
+                {pieData.map((p) => (
+                  <div key={p.name} className="flex items-center gap-2.5">
+                    <span
+                      className="size-3 shrink-0 rounded-full"
+                      style={{ background: PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS] }}
+                    />
+                    <img
+                      src={PLATFORM_LOGOS[p.name]}
+                      alt={p.name}
+                      className="size-5 rounded"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    <div className="text-xs text-slate-600">
+                      <span className="font-semibold text-emerald-600">{p.live.toLocaleString()}</span>
+                      <span className="mx-1 text-slate-300">·</span>
+                      <span className="font-semibold text-rose-500">{p.removed.toLocaleString()}</span>
+                      <span className="ml-1 text-slate-400">removed</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       </section>

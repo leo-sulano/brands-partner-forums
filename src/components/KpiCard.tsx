@@ -26,12 +26,12 @@ export default function KpiCard({ label, value, hint, icon, color = 'blue', brea
   return (
     <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
       <div className={`absolute inset-x-0 top-0 h-1 ${c.bar}`} />
-      <div className="p-5 pt-6">
+      <div className="px-5 py-4" style={{ minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</p>
-            <p className={`mt-2 text-4xl font-bold tabular-nums tracking-tight ${c.value}`}>{value}</p>
-            {hint ? <p className="mt-1.5 text-xs text-slate-400">{hint}</p> : null}
+            <p className={`mt-1 font-bold tabular-nums tracking-tight ${c.value}`} style={{ fontSize: '30px' }}>{value}</p>
+            {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
           </div>
           {icon ? (
             <div className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${c.icon}`}>
