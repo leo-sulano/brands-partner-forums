@@ -651,6 +651,7 @@ export interface TabStatusRow {
   tab: string;
   published: number;
   removed: number;
+  pending: number;
   brands: string[];
 }
 
@@ -671,7 +672,7 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
       const cgCol = rawHeaders.find((h) => h === 'CG Review Status');
       const brandCol = SUMMARY_BRAND_COLS.find((c) => headerSet.has(c)) ?? null;
 
-      let published = 0, removed = 0;
+      let published = 0, removed = 0, pending = 0;
       const brandSet = new Set<string>();
 
       for (const entry of entries) {
@@ -681,13 +682,14 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
           .map((c) => (d[c] ?? '').toLowerCase());
         if (statuses.some(isLiveStatus)) published++;
         else if (statuses.some(isRemovedStatus)) removed++;
+        else if (statuses.some(isPendingStatus)) pending++;
         if (brandCol) {
           const brand = d[brandCol]?.trim();
           if (brand) brandSet.add(brand);
         }
       }
 
-      return { tab, published, removed, brands: [...brandSet].sort() };
+      return { tab, published, removed, pending, brands: [...brandSet].sort() };
     }),
   );
 }
