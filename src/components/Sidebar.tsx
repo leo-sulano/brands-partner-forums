@@ -7,7 +7,14 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
+import { getTabPlatforms } from '../lib/tab-configs';
 import { useAuth } from '../contexts/AuthContext';
+
+const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
+  tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
+  ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
+  cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
+};
 
 
 const TAB_ICONS: Record<string, LucideIcon> = {
@@ -75,6 +82,7 @@ export default function Sidebar() {
 
         {brandsOpen && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
+          const platforms = getTabPlatforms(tab);
           return (
             <NavLink
               key={tab}
@@ -83,6 +91,17 @@ export default function Sidebar() {
             >
               <Icon className="size-4 shrink-0" />
               <span className="truncate flex-1">{tab}</span>
+              <span className="flex items-center gap-0.5 shrink-0">
+                {platforms.map((p) => (
+                  <img
+                    key={p}
+                    src={PLATFORM_FAVICON[p]}
+                    alt={p}
+                    className="size-3.5 rounded-sm"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ))}
+              </span>
             </NavLink>
           );
         })}
