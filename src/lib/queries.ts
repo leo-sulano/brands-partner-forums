@@ -654,6 +654,7 @@ export interface TabStatusRow {
   removed: number;
   pending: number;
   brands: string[];
+  removedBrands: string[];
 }
 
 export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStatusRow[]> {
@@ -675,6 +676,7 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
 
       let published = 0, removed = 0, pending = 0;
       const brandSet = new Set<string>();
+      const removedBrandSet = new Set<string>();
 
       for (const entry of entries) {
         const d = entry.data;
@@ -682,15 +684,20 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
           .filter((c): c is string => !!c)
           .map((c) => (d[c] ?? '').toLowerCase());
         if (statuses.some(isLiveStatus)) published++;
-        else if (statuses.some(isRemovedStatus)) removed++;
-        else if (statuses.some(isPendingStatus)) pending++;
+        else if (statuses.some(isRemovedStatus)) {
+          removed++;
+          if (brandCol) {
+            const brand = d[brandCol]?.trim();
+            if (brand) removedBrandSet.add(brand);
+          }
+        } else if (statuses.some(isPendingStatus)) pending++;
         if (brandCol) {
           const brand = d[brandCol]?.trim();
           if (brand) brandSet.add(brand);
         }
       }
 
-      return { tab, published, removed, pending, brands: [...brandSet].sort() };
+      return { tab, published, removed, pending, brands: [...brandSet].sort(), removedBrands: [...removedBrandSet].sort() };
     }),
   );
 }

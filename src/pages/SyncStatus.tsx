@@ -510,54 +510,31 @@ export default function SyncStatus() {
                       </tr>
                       {isOpen && (
                         <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
-                          <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-0">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="text-left text-slate-400 uppercase tracking-wide">
-                                  <th className="pb-1.5 pr-4 pt-2 font-medium">Brand Tab</th>
-                                  <th className="pb-1.5 pr-4 pt-2 text-right font-medium">Published</th>
-                                  <th className="pb-1.5 pr-4 pt-2 text-right font-medium">Removed</th>
-                                  <th className="pb-1.5 pr-4 pt-2 text-right font-medium">Pending</th>
-                                  <th className="pb-1.5 pt-2 font-medium">Brands</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-100">
-                                {snap.summary.map((row) => (
-                                  <tr key={row.tab}>
-                                    <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap">{row.tab}</td>
-                                    <td className="py-1.5 pr-4 text-right">
-                                      {row.published > 0
-                                        ? <span className="inline-flex items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 tabular-nums">{row.published}</span>
-                                        : <span className="text-slate-300">—</span>}
-                                    </td>
-                                    <td className="py-1.5 pr-4 text-right">
-                                      {row.removed > 0
-                                        ? <span className="inline-flex items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700 tabular-nums">{row.removed}</span>
-                                        : <span className="text-slate-300">—</span>}
-                                    </td>
-                                    <td className="py-1.5 pr-4 text-right">
-                                      {(row.pending ?? 0) > 0
-                                        ? <span className="inline-flex items-center justify-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 tabular-nums">{row.pending}</span>
-                                        : <span className="text-slate-300">—</span>}
-                                    </td>
-                                    <td className="py-1.5">
-                                      {row.brands.length === 0 ? (
-                                        <span className="text-slate-300">—</span>
-                                      ) : (
-                                        <div className="flex flex-wrap gap-1">
-                                          {row.brands.slice(0, 6).map((b) => (
-                                            <span key={b} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{b}</span>
-                                          ))}
-                                          {row.brands.length > 6 && (
-                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-400">+{row.brands.length - 6} more</span>
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                          <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-1">
+                            <div className="space-y-1">
+                              {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
+                                <p className="py-2 text-xs text-slate-400">No removed entries in this run.</p>
+                              ) : (
+                                snap.summary.filter((row) => row.removed > 0).map((row) => (
+                                  <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
+                                    <span className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap">{row.tab}</span>
+                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
+                                    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
+                                    {row.removedBrands.length > 0 && (
+                                      <>
+                                        <span className="text-slate-300">→</span>
+                                        {row.removedBrands.slice(0, 5).map((b) => (
+                                          <span key={b} className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">{b}</span>
+                                        ))}
+                                        {row.removedBrands.length > 5 && (
+                                          <span className="text-slate-400">+{row.removedBrands.length - 5} more</span>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
                           </td>
                         </tr>
                       )}
