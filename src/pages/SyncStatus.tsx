@@ -107,8 +107,6 @@ export default function SyncStatus() {
   const [toast, setToast]     = useState<{ message: string; kind: ToastKind } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const [tabSummary, setTabSummary]         = useState<TabStatusRow[]>([]);
-  const [summaryLoading, setSummaryLoading] = useState(true);
   const [checkHistory, setCheckHistory]     = useState<FullCheckSnapshot[]>(() => loadHistory());
   const [expandedRun, setExpandedRun]       = useState<Set<string>>(new Set());
 
@@ -134,14 +132,7 @@ export default function SyncStatus() {
   }
 
   async function loadSummary(): Promise<TabStatusRow[]> {
-    setSummaryLoading(true);
-    try {
-      const data = await fetchAllTabsStatusSummary(ALL_TABS);
-      setTabSummary(data);
-      return data;
-    } finally {
-      setSummaryLoading(false);
-    }
+    return fetchAllTabsStatusSummary(ALL_TABS);
   }
 
   useEffect(() => { load(); loadSummary(); }, []);
@@ -395,172 +386,151 @@ export default function SyncStatus() {
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-              <tr className="border-b border-slate-200">
-                <th className="rounded-tl-lg px-4 py-3">Brand Tab</th>
-                <th className="px-4 py-3 text-right">Published</th>
-                <th className="px-4 py-3 text-right">Removed</th>
-                <th className="px-4 py-3 text-right">Pending</th>
-                <th className="rounded-tr-lg px-4 py-3">Brands</th>
-              </tr>
-            </thead>
-            <tbody>
-              {summaryLoading ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-slate-500">Loading…</td>
+        {/* Delta message */}
+        {checkHistory.length > 0 && (() => {
+          const latest = checkHistory[0];
+          const prev = checkHistory[1];
+          const latestRem = latest.summary.reduce((s, r) => s + r.removed, 0);
+          if (!prev) {
+            return (
+              <p className="text-sm text-slate-500">
+                <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums mr-1.5">{latestRem}</span>
+                removed reviews detected in the last check.
+              </p>
+            );
+          }
+          const prevRem = prev.summary.reduce((s, r) => s + r.removed, 0);
+          const delta = latestRem - prevRem;
+          if (delta === 0) {
+            return <p className="text-sm text-slate-500">No new removed reviews since last check.</p>;
+          }
+          if (delta > 0) {
+            return (
+              <p className="text-sm text-slate-700">
+                <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums mr-1.5">↑ {delta}</span>
+                new removed review{delta !== 1 ? 's' : ''} detected since last check.
+              </p>
+            );
+          }
+          return (
+            <p className="text-sm text-slate-700">
+              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 tabular-nums mr-1.5">↓ {Math.abs(delta)}</span>
+              fewer removed reviews since last check.
+            </p>
+          );
+        })()}
+
+        {/* Run History */}
+        {checkHistory.length > 0 && (
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200">
+                  <th className="rounded-tl-lg px-4 py-3">Run</th>
+                  <th className="rounded-tr-lg px-4 py-3">Summary</th>
                 </tr>
-              ) : (
-                tabSummary.map((row, i) => (
-                  <tr key={row.tab} className={i < tabSummary.length - 1 ? 'border-b border-slate-100' : ''}>
-                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{row.tab}</td>
-                    <td className="px-4 py-3 text-right">
-                      {row.published > 0
-                        ? <span className="inline-flex items-center justify-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 tabular-nums">{row.published}</span>
-                        : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {row.removed > 0
-                        ? <span className="inline-flex items-center justify-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums">{row.removed}</span>
-                        : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {row.pending > 0
-                        ? <span className="inline-flex items-center justify-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700 tabular-nums">{row.pending}</span>
-                        : <span className="text-slate-300">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.brands.length === 0 ? (
-                        <span className="text-slate-300">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {row.brands.slice(0, 8).map((b) => (
-                            <span key={b} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{b}</span>
-                          ))}
-                          {row.brands.length > 8 && (
-                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-400">+{row.brands.length - 8} more</span>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
+              </thead>
+              <tbody>
+                {checkHistory.map((snap, si) => {
+                  const isOpen = expandedRun.has(snap.runAt);
+                  const isLast = si === checkHistory.length - 1;
+                  const label = new Date(snap.runAt).toLocaleString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  });
 
-            {/* ── Run History section ── */}
-            {checkHistory.length > 0 && (
-              <>
-                <tbody>
-                  <tr className="border-t border-slate-200">
-                    <td colSpan={5} className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                      Run History
-                    </td>
-                  </tr>
-                </tbody>
-                <tbody>
-                  {checkHistory.map((snap, si) => {
-                    const isOpen = expandedRun.has(snap.runAt);
-                    const isLast = si === checkHistory.length - 1;
-                    const label = new Date(snap.runAt).toLocaleString('en-US', {
-                      month: 'short', day: 'numeric', year: 'numeric',
-                      hour: '2-digit', minute: '2-digit',
-                    });
+                  const totPub = snap.summary.reduce((s, r) => s + r.published, 0);
+                  const totRem = snap.summary.reduce((s, r) => s + r.removed, 0);
+                  const totPen = snap.summary.reduce((s, r) => s + (r.pending ?? 0), 0);
 
-                    const totPub = snap.summary.reduce((s, r) => s + r.published, 0);
-                    const totRem = snap.summary.reduce((s, r) => s + r.removed, 0);
-                    const totPen = snap.summary.reduce((s, r) => s + (r.pending ?? 0), 0);
+                  const prev = checkHistory[si + 1];
+                  const hasPrev = !!prev;
+                  const prevPub = prev ? prev.summary.reduce((s, r) => s + r.published, 0) : 0;
+                  const prevRem = prev ? prev.summary.reduce((s, r) => s + r.removed, 0) : 0;
+                  const prevPen = prev ? prev.summary.reduce((s, r) => s + (r.pending ?? 0), 0) : 0;
+                  const dPub = totPub - prevPub;
+                  const dRem = totRem - prevRem;
+                  const dPen = totPen - prevPen;
 
-                    const prev = checkHistory[si + 1];
-                    const hasPrev = !!prev;
-                    const prevPub = prev ? prev.summary.reduce((s, r) => s + r.published, 0) : 0;
-                    const prevRem = prev ? prev.summary.reduce((s, r) => s + r.removed, 0) : 0;
-                    const prevPen = prev ? prev.summary.reduce((s, r) => s + (r.pending ?? 0), 0) : 0;
-                    const dPub = totPub - prevPub;
-                    const dRem = totRem - prevRem;
-                    const dPen = totPen - prevPen;
-
-                    return (
-                      <>
-                        <tr
-                          key={snap.runAt}
-                          onClick={() => toggleRun(snap.runAt)}
-                          className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
-                        >
-                          <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
-                            <span className="inline-flex items-center gap-2">
-                              {isOpen
-                                ? <ChevronDown className="size-4 text-slate-400" />
-                                : <ChevronRight className="size-4 text-slate-400" />}
-                              {label}
+                  return (
+                    <>
+                      <tr
+                        key={snap.runAt}
+                        onClick={() => toggleRun(snap.runAt)}
+                        className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
+                      >
+                        <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
+                          <span className="inline-flex items-center gap-2">
+                            {isOpen
+                              ? <ChevronDown className="size-4 text-slate-400" />
+                              : <ChevronRight className="size-4 text-slate-400" />}
+                            {label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {hasPrev ? (
+                            <span className="inline-flex flex-wrap items-center gap-2 text-xs">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPub > 0 ? 'bg-emerald-100 text-emerald-700' : dPub < 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-100 text-slate-500'}`}>
+                                {dPub > 0 ? '↑' : dPub < 0 ? '↓' : '='}{Math.abs(dPub)} published
+                              </span>
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dRem > 0 ? 'bg-rose-100 text-rose-700' : dRem < 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                                {dRem > 0 ? '↑' : dRem < 0 ? '↓' : '='}{Math.abs(dRem)} removed
+                              </span>
+                              {dPen !== 0 && (
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPen > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                                  {dPen > 0 ? '↑' : '↓'}{Math.abs(dPen)} pending
+                                </span>
+                              )}
+                              {dPub === 0 && dRem === 0 && dPen === 0 && (
+                                <span className="text-slate-400">No changes</span>
+                              )}
                             </span>
-                          </td>
-                          <td colSpan={4} className="px-4 py-3">
-                            {hasPrev ? (
-                              <span className="inline-flex flex-wrap items-center gap-2 text-xs">
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPub > 0 ? 'bg-emerald-100 text-emerald-700' : dPub < 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-100 text-slate-500'}`}>
-                                  {dPub > 0 ? '↑' : dPub < 0 ? '↓' : '='}{Math.abs(dPub)} published
-                                </span>
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dRem > 0 ? 'bg-rose-100 text-rose-700' : dRem < 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                                  {dRem > 0 ? '↑' : dRem < 0 ? '↓' : '='}{Math.abs(dRem)} removed
-                                </span>
-                                {dPen !== 0 && (
-                                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPen > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
-                                    {dPen > 0 ? '↑' : '↓'}{Math.abs(dPen)} pending
-                                  </span>
-                                )}
-                                {dPub === 0 && dRem === 0 && dPen === 0 && (
-                                  <span className="text-slate-400">No changes</span>
-                                )}
-                              </span>
-                            ) : (
-                              <span className="inline-flex flex-wrap items-center gap-2 text-xs">
-                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700 tabular-nums">{totPub} published</span>
-                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
-                                {totPen > 0 && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-medium text-amber-700 tabular-nums">{totPen} pending</span>}
-                              </span>
-                            )}
+                          ) : (
+                            <span className="inline-flex flex-wrap items-center gap-2 text-xs">
+                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700 tabular-nums">{totPub} published</span>
+                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
+                              {totPen > 0 && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-medium text-amber-700 tabular-nums">{totPen} pending</span>}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
+                          <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-1">
+                            <div className="space-y-1">
+                              {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
+                                <p className="py-2 text-xs text-slate-400">No removed entries in this run.</p>
+                              ) : (
+                                snap.summary.filter((row) => row.removed > 0).map((row) => (
+                                  <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
+                                    <span className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap">{row.tab}</span>
+                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
+                                    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
+                                    {row.removedBrands.length > 0 && (
+                                      <>
+                                        <span className="text-slate-300">→</span>
+                                        {row.removedBrands.slice(0, 5).map((b) => (
+                                          <span key={b} className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">{b}</span>
+                                        ))}
+                                        {row.removedBrands.length > 5 && (
+                                          <span className="text-slate-400">+{row.removedBrands.length - 5} more</span>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                ))
+                              )}
+                            </div>
                           </td>
                         </tr>
-                        {isOpen && (
-                          <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
-                            <td colSpan={5} className="bg-slate-50 px-6 pb-3 pt-1">
-                              <div className="space-y-1">
-                                {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
-                                  <p className="py-2 text-xs text-slate-400">No removed entries in this run.</p>
-                                ) : (
-                                  snap.summary.filter((row) => row.removed > 0).map((row) => (
-                                    <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
-                                      <span className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap">{row.tab}</span>
-                                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
-                                      <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
-                                      {row.removedBrands.length > 0 && (
-                                        <>
-                                          <span className="text-slate-300">→</span>
-                                          {row.removedBrands.slice(0, 5).map((b) => (
-                                            <span key={b} className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">{b}</span>
-                                          ))}
-                                          {row.removedBrands.length > 5 && (
-                                            <span className="text-slate-400">+{row.removedBrands.length - 5} more</span>
-                                          )}
-                                        </>
-                                      )}
-                                    </div>
-                                  ))
-                                )}
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
-                    );
-                  })}
-                </tbody>
-              </>
-            )}
-          </table>
-        </div>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {toast ? <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} /> : null}
