@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useReducer, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { fetchSyncRuns, triggerSync, triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
 import type { SyncRun, SyncRunStatus } from '../types/sync';
@@ -6,6 +6,20 @@ import { subscribeSyncRuns } from '../lib/realtime';
 import Toast, { type ToastKind } from '../components/Toast';
 import { formatRelative } from '../lib/format';
 import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
+
+// Module-level singleton — survives React unmount/remount during navigation
+let _fullCheckRunning = false;
+let _fullCheckProgress = '';
+const _fullCheckListeners = new Set<() => void>();
+function setFullCheckRunning(v: boolean) {
+  _fullCheckRunning = v;
+  if (!v) _fullCheckProgress = '';
+  _fullCheckListeners.forEach(fn => fn());
+}
+function setFullCheckProgress(v: string) {
+  _fullCheckProgress = v;
+  _fullCheckListeners.forEach(fn => fn());
+}
 
 const ALL_TABS = Object.keys(TAB_COLUMN_CONFIGS);
 
@@ -95,10 +109,17 @@ export default function SyncStatus() {
 
   const [tabSummary, setTabSummary]         = useState<TabStatusRow[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  const [checkingAll, setCheckingAll]       = useState(false);
-  const [checkProgress, setCheckProgress]   = useState('');
   const [checkHistory, setCheckHistory]     = useState<FullCheckSnapshot[]>(() => loadHistory());
   const [expandedRun, setExpandedRun]       = useState<Set<string>>(new Set());
+
+  // Mirror module-level singleton into render via forceUpdate
+  const [, tick] = useReducer(x => x + 1, 0);
+  useEffect(() => {
+    _fullCheckListeners.add(tick);
+    return () => { _fullCheckListeners.delete(tick); };
+  }, []);
+  const checkingAll    = _fullCheckRunning;
+  const checkProgress  = _fullCheckProgress;
 
   async function load() {
     try {
@@ -127,11 +148,11 @@ export default function SyncStatus() {
   useEffect(() => { return subscribeSyncRuns(() => { load(); }); }, []);
 
   async function handleFullCheck() {
-    setCheckingAll(true);
+    setFullCheckRunning(true);
     let succeeded = 0, failed = 0;
     for (let i = 0; i < ALL_TABS.length; i++) {
       const tab = ALL_TABS[i];
-      setCheckProgress(`Checking "${tab}" (${i + 1}/${ALL_TABS.length})…`);
+      setFullCheckProgress(`Checking "${tab}" (${i + 1}/${ALL_TABS.length})…`);
       try {
         await triggerStatusCheck(tab, true);
         succeeded++;
@@ -139,8 +160,7 @@ export default function SyncStatus() {
         failed++;
       }
     }
-    setCheckProgress('');
-    setCheckingAll(false);
+    setFullCheckRunning(false);
     setToast({
       message: failed > 0
         ? `${succeeded} tab${succeeded !== 1 ? 's' : ''} checked, ${failed} failed`
@@ -428,124 +448,120 @@ export default function SyncStatus() {
                 ))
               )}
             </tbody>
+
+            {/* ── Run History section ── */}
+            {checkHistory.length > 0 && (
+              <>
+                <tbody>
+                  <tr className="border-t border-slate-200">
+                    <td colSpan={5} className="bg-slate-50 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Run History
+                    </td>
+                  </tr>
+                </tbody>
+                <tbody>
+                  {checkHistory.map((snap, si) => {
+                    const isOpen = expandedRun.has(snap.runAt);
+                    const isLast = si === checkHistory.length - 1;
+                    const label = new Date(snap.runAt).toLocaleString('en-US', {
+                      month: 'short', day: 'numeric', year: 'numeric',
+                      hour: '2-digit', minute: '2-digit',
+                    });
+
+                    const totPub = snap.summary.reduce((s, r) => s + r.published, 0);
+                    const totRem = snap.summary.reduce((s, r) => s + r.removed, 0);
+                    const totPen = snap.summary.reduce((s, r) => s + (r.pending ?? 0), 0);
+
+                    const prev = checkHistory[si + 1];
+                    const hasPrev = !!prev;
+                    const prevPub = prev ? prev.summary.reduce((s, r) => s + r.published, 0) : 0;
+                    const prevRem = prev ? prev.summary.reduce((s, r) => s + r.removed, 0) : 0;
+                    const prevPen = prev ? prev.summary.reduce((s, r) => s + (r.pending ?? 0), 0) : 0;
+                    const dPub = totPub - prevPub;
+                    const dRem = totRem - prevRem;
+                    const dPen = totPen - prevPen;
+
+                    return (
+                      <>
+                        <tr
+                          key={snap.runAt}
+                          onClick={() => toggleRun(snap.runAt)}
+                          className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
+                            <span className="inline-flex items-center gap-2">
+                              {isOpen
+                                ? <ChevronDown className="size-4 text-slate-400" />
+                                : <ChevronRight className="size-4 text-slate-400" />}
+                              {label}
+                            </span>
+                          </td>
+                          <td colSpan={4} className="px-4 py-3">
+                            {hasPrev ? (
+                              <span className="inline-flex flex-wrap items-center gap-2 text-xs">
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPub > 0 ? 'bg-emerald-100 text-emerald-700' : dPub < 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-100 text-slate-500'}`}>
+                                  {dPub > 0 ? '↑' : dPub < 0 ? '↓' : '='}{Math.abs(dPub)} published
+                                </span>
+                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dRem > 0 ? 'bg-rose-100 text-rose-700' : dRem < 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                                  {dRem > 0 ? '↑' : dRem < 0 ? '↓' : '='}{Math.abs(dRem)} removed
+                                </span>
+                                {dPen !== 0 && (
+                                  <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPen > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {dPen > 0 ? '↑' : '↓'}{Math.abs(dPen)} pending
+                                  </span>
+                                )}
+                                {dPub === 0 && dRem === 0 && dPen === 0 && (
+                                  <span className="text-slate-400">No changes</span>
+                                )}
+                              </span>
+                            ) : (
+                              <span className="inline-flex flex-wrap items-center gap-2 text-xs">
+                                <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700 tabular-nums">{totPub} published</span>
+                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
+                                {totPen > 0 && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-medium text-amber-700 tabular-nums">{totPen} pending</span>}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
+                            <td colSpan={5} className="bg-slate-50 px-6 pb-3 pt-1">
+                              <div className="space-y-1">
+                                {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
+                                  <p className="py-2 text-xs text-slate-400">No removed entries in this run.</p>
+                                ) : (
+                                  snap.summary.filter((row) => row.removed > 0).map((row) => (
+                                    <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
+                                      <span className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap">{row.tab}</span>
+                                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
+                                      <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
+                                      {row.removedBrands.length > 0 && (
+                                        <>
+                                          <span className="text-slate-300">→</span>
+                                          {row.removedBrands.slice(0, 5).map((b) => (
+                                            <span key={b} className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">{b}</span>
+                                          ))}
+                                          {row.removedBrands.length > 5 && (
+                                            <span className="text-slate-400">+{row.removedBrands.length - 5} more</span>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
+                </tbody>
+              </>
+            )}
           </table>
         </div>
       </div>
-
-      {/* ── Full Check History ── */}
-      {checkHistory.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-slate-700">Run History</h3>
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr className="border-b border-slate-200">
-                  <th className="rounded-tl-lg px-4 py-3">Run</th>
-                  <th className="rounded-tr-lg px-4 py-3">Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {checkHistory.map((snap, si) => {
-                  const isOpen = expandedRun.has(snap.runAt);
-                  const isLast = si === checkHistory.length - 1;
-                  const label = new Date(snap.runAt).toLocaleString('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  });
-
-                  const totPub = snap.summary.reduce((s, r) => s + r.published, 0);
-                  const totRem = snap.summary.reduce((s, r) => s + r.removed, 0);
-                  const totPen = snap.summary.reduce((s, r) => s + (r.pending ?? 0), 0);
-
-                  const prev = checkHistory[si + 1];
-                  const hasPrev = !!prev;
-                  const prevPub = prev ? prev.summary.reduce((s, r) => s + r.published, 0) : 0;
-                  const prevRem = prev ? prev.summary.reduce((s, r) => s + r.removed, 0) : 0;
-                  const prevPen = prev ? prev.summary.reduce((s, r) => s + (r.pending ?? 0), 0) : 0;
-                  const dPub = totPub - prevPub;
-                  const dRem = totRem - prevRem;
-                  const dPen = totPen - prevPen;
-
-                  return (
-                    <>
-                      <tr
-                        key={snap.runAt}
-                        onClick={() => toggleRun(snap.runAt)}
-                        className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
-                      >
-                        <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-2">
-                            {isOpen
-                              ? <ChevronDown className="size-4 text-slate-400" />
-                              : <ChevronRight className="size-4 text-slate-400" />}
-                            {label}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {hasPrev ? (
-                            <span className="inline-flex flex-wrap items-center gap-2 text-xs">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPub > 0 ? 'bg-emerald-100 text-emerald-700' : dPub < 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-100 text-slate-500'}`}>
-                                {dPub > 0 ? '↑' : dPub < 0 ? '↓' : '='}{Math.abs(dPub)} published
-                              </span>
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dRem > 0 ? 'bg-rose-100 text-rose-700' : dRem < 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                                {dRem > 0 ? '↑' : dRem < 0 ? '↓' : '='}{Math.abs(dRem)} removed
-                              </span>
-                              {dPen !== 0 && (
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPen > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
-                                  {dPen > 0 ? '↑' : '↓'}{Math.abs(dPen)} pending
-                                </span>
-                              )}
-                              {dPub === 0 && dRem === 0 && dPen === 0 && (
-                                <span className="text-slate-400">No changes</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span className="inline-flex flex-wrap items-center gap-2 text-xs">
-                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700 tabular-nums">{totPub} published</span>
-                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
-                              {totPen > 0 && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-medium text-amber-700 tabular-nums">{totPen} pending</span>}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
-                          <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-1">
-                            <div className="space-y-1">
-                              {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
-                                <p className="py-2 text-xs text-slate-400">No removed entries in this run.</p>
-                              ) : (
-                                snap.summary.filter((row) => row.removed > 0).map((row) => (
-                                  <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
-                                    <span className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap">{row.tab}</span>
-                                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
-                                    <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
-                                    {row.removedBrands.length > 0 && (
-                                      <>
-                                        <span className="text-slate-300">→</span>
-                                        {row.removedBrands.slice(0, 5).map((b) => (
-                                          <span key={b} className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">{b}</span>
-                                        ))}
-                                        {row.removedBrands.length > 5 && (
-                                          <span className="text-slate-400">+{row.removedBrands.length - 5} more</span>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                ))
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
 
       {toast ? <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} /> : null}
     </div>
