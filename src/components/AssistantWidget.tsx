@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useParams } from 'react-router-dom';
-import { X, Send, Mic, Bot } from 'lucide-react';
+import { X, Send, Mic, MessagesSquare } from 'lucide-react';
 import { streamAssistant, type ChatMessage } from '../lib/assistant';
 import { useAssistant } from '../contexts/AssistantContext';
 import Toast from './Toast';
@@ -124,7 +124,7 @@ export default function AssistantWidget() {
         aria-label="Open assistant"
         className="fixed bottom-5 right-5 z-50 flex size-12 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg hover:bg-brand-700"
       >
-        <Bot className="size-6" />
+        <MessagesSquare className="size-6" />
       </button>
     );
   }
