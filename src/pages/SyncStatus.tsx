@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import { fetchSyncRuns, triggerSync } from '../lib/queries';
+import { fetchSyncRuns, triggerSync, triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
 import type { SyncRun, SyncRunStatus } from '../types/sync';
 import { subscribeSyncRuns } from '../lib/realtime';
 import Toast, { type ToastKind } from '../components/Toast';
 import { formatRelative } from '../lib/format';
+import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
+
+const ALL_TABS = Object.keys(TAB_COLUMN_CONFIGS);
 
 interface DaySummary {
   dateKey: string;
@@ -74,6 +77,11 @@ export default function SyncStatus() {
   const [toast, setToast]     = useState<{ message: string; kind: ToastKind } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
+  const [tabSummary, setTabSummary]       = useState<TabStatusRow[]>([]);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [checkingAll, setCheckingAll]     = useState(false);
+  const [checkProgress, setCheckProgress] = useState('');
+
   async function load() {
     try {
       const data = await fetchSyncRuns();
@@ -86,8 +94,42 @@ export default function SyncStatus() {
     }
   }
 
-  useEffect(() => { load(); }, []);
+  async function loadSummary() {
+    setSummaryLoading(true);
+    try {
+      const data = await fetchAllTabsStatusSummary(ALL_TABS);
+      setTabSummary(data);
+    } finally {
+      setSummaryLoading(false);
+    }
+  }
+
+  useEffect(() => { load(); loadSummary(); }, []);
   useEffect(() => { return subscribeSyncRuns(() => { load(); }); }, []);
+
+  async function handleFullCheck() {
+    setCheckingAll(true);
+    let succeeded = 0, failed = 0;
+    for (let i = 0; i < ALL_TABS.length; i++) {
+      const tab = ALL_TABS[i];
+      setCheckProgress(`Checking "${tab}" (${i + 1}/${ALL_TABS.length})…`);
+      try {
+        await triggerStatusCheck(tab);
+        succeeded++;
+      } catch {
+        failed++;
+      }
+    }
+    setCheckProgress('');
+    setCheckingAll(false);
+    setToast({
+      message: failed > 0
+        ? `${succeeded} tab${succeeded !== 1 ? 's' : ''} checked, ${failed} failed`
+        : `All ${succeeded} tabs checked successfully`,
+      kind: failed > 0 ? 'error' : 'success',
+    });
+    await loadSummary();
+  }
 
   function toggleDate(dateKey: string) {
     setExpanded((prev) => {
@@ -278,6 +320,79 @@ export default function SyncStatus() {
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* ── Full Check Status ── */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Full Check Status</h2>
+            <p className="mt-1 text-sm text-slate-500">Published vs. removed across all brand tabs — run manually to refresh</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {checkProgress && (
+              <span className="text-sm text-slate-500 tabular-nums">{checkProgress}</span>
+            )}
+            <button
+              onClick={handleFullCheck}
+              disabled={checkingAll}
+              className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
+            >
+              <RefreshCw className={`size-4 ${checkingAll ? 'animate-spin' : ''}`} />
+              {checkingAll ? 'Checking…' : 'Run Full Check'}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr className="border-b border-slate-200">
+                <th className="rounded-tl-lg px-4 py-3">Brand Tab</th>
+                <th className="px-4 py-3 text-right">Published</th>
+                <th className="px-4 py-3 text-right">Removed</th>
+                <th className="rounded-tr-lg px-4 py-3">Brands</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summaryLoading ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-6 text-center text-slate-500">Loading…</td>
+                </tr>
+              ) : (
+                tabSummary.map((row, i) => (
+                  <tr key={row.tab} className={i < tabSummary.length - 1 ? 'border-b border-slate-100' : ''}>
+                    <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">{row.tab}</td>
+                    <td className="px-4 py-3 text-right">
+                      {row.published > 0
+                        ? <span className="inline-flex items-center justify-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 tabular-nums">{row.published}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {row.removed > 0
+                        ? <span className="inline-flex items-center justify-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums">{row.removed}</span>
+                        : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      {row.brands.length === 0 ? (
+                        <span className="text-slate-300">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {row.brands.slice(0, 8).map((b) => (
+                            <span key={b} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{b}</span>
+                          ))}
+                          {row.brands.length > 8 && (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-400">+{row.brands.length - 8} more</span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {toast ? <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} /> : null}

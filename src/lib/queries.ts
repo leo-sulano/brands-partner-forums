@@ -640,3 +640,54 @@ export async function fetchAdminLogs(limit = 50): Promise<AdminLogEvent[]> {
   if (error) throw error;
   return (data ?? []) as AdminLogEvent[];
 }
+
+// ---------------------------------------------------------------------------
+// Full check status summary — per-tab published / removed counts + brand names
+// ---------------------------------------------------------------------------
+
+const SUMMARY_BRAND_COLS = ['Brands', 'Brand Name'];
+
+export interface TabStatusRow {
+  tab: string;
+  published: number;
+  removed: number;
+  brands: string[];
+}
+
+export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStatusRow[]> {
+  return Promise.all(
+    tabs.map(async (tab): Promise<TabStatusRow> => {
+      const [entries, rawHeaders] = await Promise.all([
+        fetchRawEntriesByTab(tab),
+        fetchTabHeaders(tab),
+      ]);
+      const headerSet = new Set(rawHeaders);
+      const TP_VARIANTS = [
+        'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status',
+        'Trust pilot Review Status', 'Review Status',
+      ];
+      const tpCol = rawHeaders.find((h) => TP_VARIANTS.includes(h));
+      const agCol = rawHeaders.find((h) => h === 'AG Review Status');
+      const cgCol = rawHeaders.find((h) => h === 'CG Review Status');
+      const brandCol = SUMMARY_BRAND_COLS.find((c) => headerSet.has(c)) ?? null;
+
+      let published = 0, removed = 0;
+      const brandSet = new Set<string>();
+
+      for (const entry of entries) {
+        const d = entry.data;
+        const statuses = [tpCol, agCol, cgCol]
+          .filter((c): c is string => !!c)
+          .map((c) => (d[c] ?? '').toLowerCase());
+        if (statuses.some(isLiveStatus)) published++;
+        else if (statuses.some(isRemovedStatus)) removed++;
+        if (brandCol) {
+          const brand = d[brandCol]?.trim();
+          if (brand) brandSet.add(brand);
+        }
+      }
+
+      return { tab, published, removed, brands: [...brandSet].sort() };
+    }),
+  );
+}
