@@ -9,6 +9,22 @@ import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
 
 const ALL_TABS = Object.keys(TAB_COLUMN_CONFIGS);
 
+const HISTORY_KEY = 'fullCheckHistory';
+const MAX_HISTORY = 30;
+
+interface FullCheckSnapshot {
+  runAt: string;
+  summary: TabStatusRow[];
+}
+
+function loadHistory(): FullCheckSnapshot[] {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
+  } catch {
+    return [];
+  }
+}
+
 interface DaySummary {
   dateKey: string;
   label: string;
@@ -77,10 +93,12 @@ export default function SyncStatus() {
   const [toast, setToast]     = useState<{ message: string; kind: ToastKind } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const [tabSummary, setTabSummary]       = useState<TabStatusRow[]>([]);
+  const [tabSummary, setTabSummary]         = useState<TabStatusRow[]>([]);
   const [summaryLoading, setSummaryLoading] = useState(true);
-  const [checkingAll, setCheckingAll]     = useState(false);
-  const [checkProgress, setCheckProgress] = useState('');
+  const [checkingAll, setCheckingAll]       = useState(false);
+  const [checkProgress, setCheckProgress]   = useState('');
+  const [checkHistory, setCheckHistory]     = useState<FullCheckSnapshot[]>(() => loadHistory());
+  const [expandedRun, setExpandedRun]       = useState<Set<string>>(new Set());
 
   async function load() {
     try {
@@ -94,11 +112,12 @@ export default function SyncStatus() {
     }
   }
 
-  async function loadSummary() {
+  async function loadSummary(): Promise<TabStatusRow[]> {
     setSummaryLoading(true);
     try {
       const data = await fetchAllTabsStatusSummary(ALL_TABS);
       setTabSummary(data);
+      return data;
     } finally {
       setSummaryLoading(false);
     }
@@ -128,7 +147,19 @@ export default function SyncStatus() {
         : `All ${succeeded} tabs checked successfully`,
       kind: failed > 0 ? 'error' : 'success',
     });
-    await loadSummary();
+    const latest = await loadSummary();
+    const snapshot: FullCheckSnapshot = { runAt: new Date().toISOString(), summary: latest };
+    const updated = [snapshot, ...checkHistory].slice(0, MAX_HISTORY);
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
+    setCheckHistory(updated);
+  }
+
+  function toggleRun(runAt: string) {
+    setExpandedRun((prev) => {
+      const next = new Set(prev);
+      next.has(runAt) ? next.delete(runAt) : next.add(runAt);
+      return next;
+    });
   }
 
   function toggleDate(dateKey: string) {
@@ -394,6 +425,107 @@ export default function SyncStatus() {
           </table>
         </div>
       </div>
+
+      {/* ── Full Check History ── */}
+      {checkHistory.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-slate-700">Run History</h3>
+          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
+            <table className="min-w-full text-sm">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="border-b border-slate-200">
+                  <th className="rounded-tl-lg px-4 py-3">Run</th>
+                  <th className="px-4 py-3 text-right">Total Published</th>
+                  <th className="rounded-tr-lg px-4 py-3 text-right">Total Removed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {checkHistory.map((snap, si) => {
+                  const isOpen = expandedRun.has(snap.runAt);
+                  const isLast = si === checkHistory.length - 1;
+                  const totalPub = snap.summary.reduce((s, r) => s + r.published, 0);
+                  const totalRem = snap.summary.reduce((s, r) => s + r.removed, 0);
+                  const label = new Date(snap.runAt).toLocaleString('en-US', {
+                    month: 'short', day: 'numeric', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit',
+                  });
+                  return (
+                    <>
+                      <tr
+                        key={snap.runAt}
+                        onClick={() => toggleRun(snap.runAt)}
+                        className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
+                      >
+                        <td className="px-4 py-3 font-medium text-slate-800">
+                          <span className="inline-flex items-center gap-2">
+                            {isOpen
+                              ? <ChevronDown className="size-4 text-slate-400" />
+                              : <ChevronRight className="size-4 text-slate-400" />}
+                            {label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="inline-flex items-center justify-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-medium text-emerald-700 tabular-nums">{totalPub}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="inline-flex items-center justify-center rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-medium text-rose-700 tabular-nums">{totalRem}</span>
+                        </td>
+                      </tr>
+                      {isOpen && (
+                        <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
+                          <td colSpan={3} className="bg-slate-50 px-6 pb-3 pt-0">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-slate-400 uppercase tracking-wide">
+                                  <th className="pb-1.5 pr-4 pt-2 font-medium">Brand Tab</th>
+                                  <th className="pb-1.5 pr-4 pt-2 text-right font-medium">Published</th>
+                                  <th className="pb-1.5 pr-4 pt-2 text-right font-medium">Removed</th>
+                                  <th className="pb-1.5 pt-2 font-medium">Brands</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {snap.summary.map((row) => (
+                                  <tr key={row.tab}>
+                                    <td className="py-1.5 pr-4 font-medium text-slate-700 whitespace-nowrap">{row.tab}</td>
+                                    <td className="py-1.5 pr-4 text-right">
+                                      {row.published > 0
+                                        ? <span className="inline-flex items-center justify-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 tabular-nums">{row.published}</span>
+                                        : <span className="text-slate-300">—</span>}
+                                    </td>
+                                    <td className="py-1.5 pr-4 text-right">
+                                      {row.removed > 0
+                                        ? <span className="inline-flex items-center justify-center rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-700 tabular-nums">{row.removed}</span>
+                                        : <span className="text-slate-300">—</span>}
+                                    </td>
+                                    <td className="py-1.5">
+                                      {row.brands.length === 0 ? (
+                                        <span className="text-slate-300">—</span>
+                                      ) : (
+                                        <div className="flex flex-wrap gap-1">
+                                          {row.brands.slice(0, 6).map((b) => (
+                                            <span key={b} className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{b}</span>
+                                          ))}
+                                          {row.brands.length > 6 && (
+                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-400">+{row.brands.length - 6} more</span>
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {toast ? <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} /> : null}
     </div>
