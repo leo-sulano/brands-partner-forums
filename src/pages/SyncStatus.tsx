@@ -439,18 +439,11 @@ export default function SyncStatus() {
                     hour: '2-digit', minute: '2-digit',
                   });
 
-                  const totPub = snap.summary.reduce((s, r) => s + r.published, 0);
                   const totRem = snap.summary.reduce((s, r) => s + r.removed, 0);
-                  const totPen = snap.summary.reduce((s, r) => s + (r.pending ?? 0), 0);
-
                   const prev = checkHistory[si + 1];
                   const hasPrev = !!prev;
-                  const prevPub = prev ? prev.summary.reduce((s, r) => s + r.published, 0) : 0;
                   const prevRem = prev ? prev.summary.reduce((s, r) => s + r.removed, 0) : 0;
-                  const prevPen = prev ? prev.summary.reduce((s, r) => s + (r.pending ?? 0), 0) : 0;
-                  const dPub = totPub - prevPub;
-                  const dRem = totRem - prevRem;
-                  const dPen = totPen - prevPen;
+                  const newlyRemoved = totRem - prevRem;
 
                   return (
                     <React.Fragment key={snap.runAt}>
@@ -466,30 +459,18 @@ export default function SyncStatus() {
                             {label}
                           </span>
                         </td>
-                        <td className="px-4 py-3">
-                          {hasPrev ? (
-                            <span className="inline-flex flex-wrap items-center gap-2 text-xs">
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPub > 0 ? 'bg-emerald-100 text-emerald-700' : dPub < 0 ? 'bg-rose-50 text-rose-500' : 'bg-slate-100 text-slate-500'}`}>
-                                {dPub > 0 ? '↑' : dPub < 0 ? '↓' : '='}{Math.abs(dPub)} published
-                              </span>
-                              <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dRem > 0 ? 'bg-rose-100 text-rose-700' : dRem < 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                                {dRem > 0 ? '↑' : dRem < 0 ? '↓' : '='}{Math.abs(dRem)} removed
-                              </span>
-                              {dPen !== 0 && (
-                                <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-medium tabular-nums ${dPen > 0 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
-                                  {dPen > 0 ? '↑' : '↓'}{Math.abs(dPen)} pending
-                                </span>
-                              )}
-                              {dPub === 0 && dRem === 0 && dPen === 0 && (
-                                <span className="text-slate-400">No changes</span>
-                              )}
+                        <td className="px-4 py-3 text-xs">
+                          {!hasPrev ? (
+                            <span className="inline-flex items-center gap-2">
+                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
+                              <span className="text-slate-400">(baseline)</span>
+                            </span>
+                          ) : newlyRemoved > 0 ? (
+                            <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">
+                              +{newlyRemoved} newly removed from Published
                             </span>
                           ) : (
-                            <span className="inline-flex flex-wrap items-center gap-2 text-xs">
-                              <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 font-medium text-emerald-700 tabular-nums">{totPub} published</span>
-                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
-                              {totPen > 0 && <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 font-medium text-amber-700 tabular-nums">{totPen} pending</span>}
-                            </span>
+                            <span className="text-slate-400">No new removals</span>
                           )}
                         </td>
                       </tr>
@@ -497,10 +478,18 @@ export default function SyncStatus() {
                         <tr className={!isLast ? 'border-b border-slate-100' : ''}>
                           <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-1">
                             <div className="space-y-1">
-                              {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
-                                <p className="py-2 text-xs text-slate-400">No removed entries in this run.</p>
-                              ) : (
-                                snap.summary.filter((row) => row.removed > 0).map((row) => {
+                              {(() => {
+                                const prevSnap = checkHistory[si + 1];
+                                const rows = snap.summary.filter((row) => {
+                                  if (row.removed <= 0) return false;
+                                  if (!prevSnap) return true;
+                                  const prevRow = prevSnap.summary.find((r) => r.tab === row.tab);
+                                  return row.removed > (prevRow?.removed ?? 0);
+                                });
+                                if (rows.length === 0) return (
+                                  <p className="py-2 text-xs text-slate-400">No newly removed entries in this run.</p>
+                                );
+                                return rows.map((row) => {
                                   const rb = row.removedBrands ?? [];
                                   return (
                                     <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
@@ -520,8 +509,8 @@ export default function SyncStatus() {
                                       )}
                                     </div>
                                   );
-                                })
-                              )}
+                                });
+                              })()}
                             </div>
                           </td>
                         </tr>
