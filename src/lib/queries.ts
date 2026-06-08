@@ -536,6 +536,7 @@ export async function triggerSync(): Promise<void> {
 
 export async function triggerStatusCheck(
   tab: string,
+  includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_STATUS_URL) {
     throw new Error(
@@ -550,7 +551,7 @@ export async function triggerStatusCheck(
       // Skip ngrok's free-tier browser-warning interstitial so we always get JSON.
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab }),
+    body: JSON.stringify({ tab, include_published: includePublished }),
   });
   if (!res.ok) {
     const body = await res.text();

@@ -133,7 +133,7 @@ export default function SyncStatus() {
       const tab = ALL_TABS[i];
       setCheckProgress(`Checking "${tab}" (${i + 1}/${ALL_TABS.length})…`);
       try {
-        await triggerStatusCheck(tab);
+        await triggerStatusCheck(tab, true);
         succeeded++;
       } catch {
         failed++;
@@ -358,7 +358,7 @@ export default function SyncStatus() {
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-base font-semibold text-slate-800">Full Check Status</h2>
-            <p className="mt-1 text-sm text-slate-500">Published vs. removed across all brand tabs — run manually to refresh</p>
+            <p className="mt-1 text-sm text-slate-500">Checks all TP links including Published — detects reviews that have been removed</p>
           </div>
           <div className="flex items-center gap-3">
             {checkProgress && (
