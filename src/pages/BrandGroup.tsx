@@ -585,10 +585,15 @@ export default function BrandGroup() {
                   //    but sheet header is 'Trust pilot Review Status')
                   (TP_STATUS_VARIANTS.has(col)
                     ? tabHeaders.find((h) => TP_STATUS_VARIANTS.has(h))
-                    : undefined)
+                    : undefined) ??
+                  // 4. Fallback to the config col name itself — keeps whitelisted columns
+                  //    (e.g. Brands) visible even when tab_schemas is stale and doesn't
+                  //    yet include that column. Once a sync runs the tabHeaders match
+                  //    takes over; until then the column shows (possibly empty) and the
+                  //    brand filter uses it instead of falling back to Account Name.
+                  col
                 );
               })
-              .filter((h): h is string => h !== undefined)
           : tabHeaders.filter((h) => !HIDDEN_COLS.has(h.toLowerCase()));
         // For configured tabs (explicit whitelist), show all whitelisted columns even
         // if some have no data yet — prevents Brands from being dropped and falling
