@@ -7,20 +7,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
-import { getTabPlatforms } from '../lib/tab-configs';
 import { useAuth } from '../contexts/AuthContext';
 
-const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
-  tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
-  ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
-  cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
-};
-
-const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg', string> = {
-  tp: 'bg-blue-500/20 text-blue-200 border border-blue-500/40',
-  ag: 'bg-amber-500/20 text-amber-200 border border-amber-500/40',
-  cg: 'bg-violet-500/20 text-violet-200 border border-violet-500/40',
-};
 
 const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection': Syringe,
@@ -87,7 +75,6 @@ export default function Sidebar() {
 
         {brandsOpen && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
-          const platforms = getTabPlatforms(tab);
           return (
             <NavLink
               key={tab}
@@ -96,19 +83,6 @@ export default function Sidebar() {
             >
               <Icon className="size-4 shrink-0" />
               <span className="truncate flex-1">{tab}</span>
-              <div className="flex items-center gap-0.5 shrink-0">
-                {platforms.map((p) => (
-                  <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold leading-none ${PLATFORM_BADGE_CLS[p]}`}>
-                    <img
-                      src={PLATFORM_FAVICON[p]}
-                      alt={p.toUpperCase()}
-                      className="size-2.5 rounded-sm"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                    {p.toUpperCase()}
-                  </span>
-                ))}
-              </div>
             </NavLink>
           );
         })}

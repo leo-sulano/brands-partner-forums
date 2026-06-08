@@ -353,6 +353,12 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
   );
 }
 
+const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
+  tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
+  ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
+  cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
+};
+
 const PLATFORM_CARDS = [
   { key: 'tp' as const, label: 'Trust Pilot', dot: 'bg-blue-500' },
   { key: 'ag' as const, label: 'Ask Gambler', dot: 'bg-amber-500' },
@@ -956,11 +962,13 @@ export default function BrandGroup() {
             label="Live"
             value={loading ? '…' : displayTotals.live.toLocaleString()}
             hint="Reviews currently published"
+            color="emerald"
           />
           <KpiCard
             label="Removed"
             value={loading ? '…' : displayTotals.removed.toLocaleString()}
             hint="Reviews taken down"
+            color="rose"
           />
         </div>
       )}
@@ -972,7 +980,7 @@ export default function BrandGroup() {
         const cols = visibleCards.length === 1 ? 'sm:grid-cols-1' : visibleCards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
         return (
         <div className={`grid grid-cols-1 gap-3 ${cols}`}>
-          {visibleCards.map(({ key, label, dot }) => {
+          {visibleCards.map(({ key, label }) => {
             const active = platformFilter === key;
             return (
               <button
@@ -982,7 +990,12 @@ export default function BrandGroup() {
                 className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
               >
                 <div className="flex items-center gap-2 mb-3">
-                  <span className={`size-2 shrink-0 rounded-full ${dot}`} />
+                  <img
+                    src={PLATFORM_FAVICON[key]}
+                    alt={label}
+                    className="size-4 rounded-sm"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
                   {active && <Check className="size-3 ml-auto text-violet-500" />}
                 </div>
