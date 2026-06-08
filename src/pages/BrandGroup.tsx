@@ -3,13 +3,13 @@ import { useParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays, Plus,
+  Search, X, Check, CalendarDays, Plus, RefreshCw,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
@@ -532,8 +532,16 @@ export default function BrandGroup() {
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
 
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
+  const [lastChecked, setLastChecked] = useState<string | null>(
+    () => localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null,
+  );
+
+  useEffect(() => {
+    setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
+  }, [decodedTab]);
 
   useEffect(() => {
     if (!decodedTab) return;
@@ -863,6 +871,46 @@ export default function BrandGroup() {
     setJumpInput('');
   }
 
+  async function handleCheckStatus() {
+    setCheckingStatus(true);
+    try {
+      const result = await triggerStatusCheck(decodedTab);
+      const now = new Date().toLocaleString();
+      localStorage.setItem(`lastStatusCheck_${decodedTab}`, now);
+      setLastChecked(now);
+      let msg: string;
+      let kind: ToastKind;
+      const sheetFail = result.sheet_errors ?? 0;
+      if (result.errors > 0 && result.updated === 0) {
+        msg = `${result.errors} check${result.errors !== 1 ? 's' : ''} failed — proxy may not be configured`;
+        kind = 'error';
+      } else if (result.updated > 0 && result.errors > 0 && sheetFail > 0) {
+        msg = `${result.updated} updated, ${result.errors} checks failed, ${sheetFail} sheet sync failed`;
+        kind = 'error';
+      } else if (result.updated > 0 && sheetFail > 0) {
+        msg = `${result.updated} updated in dashboard but ${sheetFail} failed to sync to Google Sheet`;
+        kind = 'error';
+      } else if (result.updated > 0 && result.errors > 0) {
+        msg = `${result.updated} updated, ${result.errors} failed`;
+        kind = 'success';
+      } else if (result.updated > 0) {
+        msg = `${result.updated} review${result.updated !== 1 ? 's' : ''} updated`;
+        kind = 'success';
+      } else {
+        msg = 'All reviews up to date';
+        kind = 'success';
+      }
+      setToast({ message: msg, kind });
+      reloadRef.current();
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      setToast({ message: `Check failed: ${detail}`, kind: 'error' });
+      console.error(err);
+    } finally {
+      setCheckingStatus(false);
+    }
+  }
+
   if (error) {
     return (
       <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
@@ -1030,6 +1078,25 @@ export default function BrandGroup() {
               onChange={(v) => { setPlatformFilter(v); setPage(1); }}
               options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
             />
+          )}
+          <div className="h-4 w-px bg-slate-200 shrink-0" />
+          {isApproved && (
+            <div className="flex items-center gap-2">
+              {lastChecked && (
+                <span className="text-xs text-slate-400 whitespace-nowrap">
+                  Last checked: {lastChecked}
+                </span>
+              )}
+              <button
+                type="button"
+                onClick={handleCheckStatus}
+                disabled={checkingStatus}
+                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                {checkingStatus ? 'Checking…' : 'Check Status'}
+              </button>
+            </div>
           )}
         </div>
 
