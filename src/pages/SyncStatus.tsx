@@ -1,4 +1,4 @@
-import { useEffect, useReducer, useState } from 'react';
+import React, { useEffect, useReducer, useState } from 'react';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { fetchSyncRuns, triggerSync, triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
 import type { SyncRun, SyncRunStatus } from '../types/sync';
@@ -453,9 +453,8 @@ export default function SyncStatus() {
                   const dPen = totPen - prevPen;
 
                   return (
-                    <>
+                    <React.Fragment key={snap.runAt}>
                       <tr
-                        key={snap.runAt}
                         onClick={() => toggleRun(snap.runAt)}
                         className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
                       >
@@ -495,7 +494,7 @@ export default function SyncStatus() {
                         </td>
                       </tr>
                       {isOpen && (
-                        <tr key={`${snap.runAt}-detail`} className={!isLast ? 'border-b border-slate-100' : ''}>
+                        <tr className={!isLast ? 'border-b border-slate-100' : ''}>
                           <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-1">
                             <div className="space-y-1">
                               {snap.summary.filter((row) => row.removed > 0).length === 0 ? (
@@ -524,7 +523,7 @@ export default function SyncStatus() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
