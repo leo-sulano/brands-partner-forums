@@ -104,7 +104,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const platforms = brandTab ? getTabPlatforms(brandTab) : [];
 
   return (
-    <header className="h-14 border-b border-slate-200 bg-white px-4 md:px-6 flex items-center justify-between">
+    <header className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between">
       <div className="flex items-center gap-2 md:gap-4">
         <button
           type="button"
