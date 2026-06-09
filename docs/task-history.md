@@ -200,4 +200,32 @@ Wrote complete documentation for all 9 pages of the Forums Sheet Dashboard docum
 
 ---
 
-*Last updated: June 2, 2026*
+## Task 29: Ask AI Full-Page Chat
+**Date:** June 4, 2026
+
+Added a dedicated full-page Ask AI chat interface at `/ask-ai` (protected route). The page (`AskAI.tsx`) provides a focused chat experience without the floating widget overlay. Added "Ask AI" nav link to the sidebar. Suppressed the floating assistant widget when on the `/ask-ai` route to avoid duplication. Improved AI assistant accuracy: added month filter to `query_entries`, TP/AG/CG date and status column key mappings, and richer status vocabulary and data column descriptions in the system prompt.
+
+---
+
+## Task 30: Overview Per-Platform Badges & Import-Tabs Fix
+**Date:** June 4–5, 2026
+
+Added per-platform live/removed totals and TP/AG/CG badges to each brand tab card on the Overview page. Each card now shows a favicon-labeled breakdown (TP / AG / CG) with live and removed counts summed correctly per platform. Fixed a sync regression in `import-tabs`: when `check-review-status` was the last editor, a subsequent Sheet onEdit trigger would overwrite auto-detected statuses and scores. Now `import-tabs` merges DB values for status/score columns when `last_edited_by` is `check-review-status`, preserving automated detections through the next sync cycle.
+
+---
+
+## Task 31: Full Check Status
+**Date:** June 8, 2026
+
+Consolidated per-brand status checking into a single "Run Full Check" operation on the Sync Status page. A new Full Check section shows a live status table (published/removed/pending counts + brand names per tab) and a single button that runs `triggerStatusCheck` across all tabs sequentially. Each run saves a snapshot to localStorage (up to 30 retained) and displays in a collapsible Run History accordion. History rows show delta changes vs. the previous run (↑/↓N published/removed/pending); the first run shows absolute totals. The history surfaces only brands newly transitioned away from Published per run so noise is minimised. Also restored per-tab Check Status buttons in BrandGroup (kept alongside Full Check), restored platform favicon icons to sidebar brand tabs, and fixed the Brands column filter for tabs whose `tab_schemas` hadn't yet received a newly-added Sheet column.
+
+---
+
+## Task 32: Mobile Responsiveness
+**Date:** June 9, 2026
+
+Overhauled the dashboard layout for mobile screens. Sidebar redesigned with overlay/slide-in behaviour and a hamburger toggle for small viewports. Topbar rebuilt (137-line rewrite) to collapse nav items and surface the mobile menu trigger. DatePicker and pagination controls adjusted for touch-friendly sizing and layout on narrow screens.
+
+---
+
+*Last updated: June 9, 2026*
