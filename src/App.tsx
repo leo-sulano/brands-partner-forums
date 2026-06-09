@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { AssistantProvider } from './contexts/AssistantContext';
@@ -30,11 +30,12 @@ function PageFallback() {
 }
 
 function AppLayout() {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   return (
     <div className="min-h-screen flex bg-slate-50 text-slate-900">
-      <Sidebar />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
       <div className="flex-1 flex flex-col min-w-0">
-        <Topbar />
+        <Topbar onMenuClick={() => setSidebarOpen(true)} />
         <main className="flex-1 p-6 md:p-8 overflow-x-hidden">
           <Suspense fallback={<PageFallback />}>
             <Outlet />

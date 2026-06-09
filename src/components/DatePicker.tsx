@@ -69,7 +69,7 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
         }`}
       >
         <CalendarDays className="size-3.5 shrink-0" />
-        <span>{active ? isoToDisplay(value) : placeholder}</span>
+        <span className="hidden sm:inline">{active ? isoToDisplay(value) : placeholder}</span>
         {active ? (
           <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
             <X className="size-3" />
