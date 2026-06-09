@@ -167,7 +167,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             <div className="px-5 py-5 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <MessagesSquare className="size-5 text-brand-500" />
-                <span className="font-semibold tracking-tight">BRF</span>
+                <span className="font-semibold tracking-tight">Brands Partner Forum</span>
               </div>
               <button
                 type="button"

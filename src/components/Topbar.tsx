@@ -5,6 +5,7 @@ import { usePresence } from '../lib/realtime';
 import DatePicker from './DatePicker';
 import { slugToTab } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { useState, useRef, useEffect } from 'react';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
@@ -59,6 +60,33 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     session?.user.email ?? null,
     session?.user.id ?? null,
   );
+
+  const [avatarPopupOpen, setAvatarPopupOpen] = useState(false);
+  const avatarRef = useRef<HTMLDivElement>(null);
+  const [authPopupOpen, setAuthPopupOpen] = useState(false);
+  const authRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!avatarPopupOpen) return;
+    function onDown(e: MouseEvent) {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setAvatarPopupOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [avatarPopupOpen]);
+
+  useEffect(() => {
+    if (!authPopupOpen) return;
+    function onDown(e: MouseEvent) {
+      if (authRef.current && !authRef.current.contains(e.target as Node)) {
+        setAuthPopupOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [authPopupOpen]);
 
   let title = 'Brands Partner Forum';
   let brandTab: string | null = null;
@@ -133,34 +161,109 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
       {session ? (
         <div className="flex items-center gap-3">
           {onlineUsers.length > 0 && (
-            <div className="flex items-center -space-x-2">
-              {onlineUsers.map((u) => (
-                <div
-                  key={u.userId}
-                  title={u.email}
-                  className={`size-7 rounded-full ${avatarColor(u.email)} flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white cursor-default select-none`}
-                >
-                  {initials(u.email)}
+            <div className="relative" ref={avatarRef}>
+              <button
+                type="button"
+                onClick={() => setAvatarPopupOpen(o => !o)}
+                className="md:cursor-default flex items-center -space-x-2 focus:outline-none"
+                aria-label="Online users"
+              >
+                {onlineUsers.map((u) => (
+                  <div
+                    key={u.userId}
+                    title={u.email}
+                    className={`size-7 rounded-full ${avatarColor(u.email)} flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white select-none`}
+                  >
+                    {initials(u.email)}
+                  </div>
+                ))}
+              </button>
+
+              {avatarPopupOpen && (
+                <div className="md:hidden absolute right-0 top-full mt-2 z-50 min-w-[180px] rounded-xl border border-slate-200 bg-white shadow-xl py-1">
+                  <p className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                    Online now
+                  </p>
+                  {onlineUsers.map((u) => (
+                    <div key={u.userId} className="flex items-center gap-2.5 px-3 py-2">
+                      <div className={`size-6 rounded-full ${avatarColor(u.email)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>
+                        {initials(u.email)}
+                      </div>
+                      <span className="text-xs text-slate-700 truncate">{u.email}</span>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
             </div>
           )}
+          {/* Desktop: full button */}
           <button
             onClick={signOut}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
           >
             <LogOut className="size-3.5" />
             Sign Out
           </button>
+
+          {/* Mobile: icon only + dropdown */}
+          <div className="relative sm:hidden" ref={authRef}>
+            <button
+              type="button"
+              onClick={() => setAuthPopupOpen(o => !o)}
+              className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+              aria-label="Account"
+            >
+              <LogOut className="size-4" />
+            </button>
+            {authPopupOpen && (
+              <div className="absolute right-0 top-full mt-2 z-50 min-w-[140px] rounded-xl border border-slate-200 bg-white shadow-xl py-1">
+                <button
+                  type="button"
+                  onClick={() => { setAuthPopupOpen(false); signOut(); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-rose-600 hover:bg-rose-50 transition-colors"
+                >
+                  <LogOut className="size-4 shrink-0" />
+                  Sign Out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
-        <button
-          onClick={() => navigate('/login')}
-          className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
-        >
-          <LogIn className="size-3.5" />
-          Sign In
-        </button>
+        <>
+          {/* Desktop: full button */}
+          <button
+            onClick={() => navigate('/login')}
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+          >
+            <LogIn className="size-3.5" />
+            Sign In
+          </button>
+
+          {/* Mobile: icon only + dropdown */}
+          <div className="relative sm:hidden" ref={authRef}>
+            <button
+              type="button"
+              onClick={() => setAuthPopupOpen(o => !o)}
+              className="p-1.5 rounded-md bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+              aria-label="Account"
+            >
+              <LogIn className="size-4" />
+            </button>
+            {authPopupOpen && (
+              <div className="absolute right-0 top-full mt-2 z-50 min-w-[140px] rounded-xl border border-slate-200 bg-white shadow-xl py-1">
+                <button
+                  type="button"
+                  onClick={() => { setAuthPopupOpen(false); navigate('/login'); }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-violet-700 hover:bg-violet-50 transition-colors"
+                >
+                  <LogIn className="size-4 shrink-0" />
+                  Sign In
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
     </header>
   );
