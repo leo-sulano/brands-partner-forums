@@ -308,30 +308,37 @@ def update_entry(entry_id: str, data: dict, updates: dict[str, str],
         return True
 
     # Push changes to Google Sheet via the push-to-sheet edge function
-    try:
-        push_headers = {
-            "apikey": SUPABASE_KEY,
-            "Authorization": f"Bearer {SUPABASE_KEY}",
-            "Content-Type": "application/json",
-        }
-        push_payload = {
-            "tab": tab,
-            "sheet_row_id": sheet_row_id,
-            "fields": updates,
-        }
-        pr = requests.post(
-            f"{SUPABASE_URL}/functions/v1/push-to-sheet",
-            headers=push_headers,
-            json=push_payload,
-            timeout=15,
-        )
-        if not pr.ok:
-            print(f"    [sheet push failed] HTTP {pr.status_code}: {pr.text}")
+    push_headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+    push_payload = {
+        "tab": tab,
+        "sheet_row_id": sheet_row_id,
+        "fields": updates,
+    }
+    for attempt in range(1, 3):
+        try:
+            pr = requests.post(
+                f"{SUPABASE_URL}/functions/v1/push-to-sheet",
+                headers=push_headers,
+                json=push_payload,
+                timeout=30,
+            )
+            if not pr.ok:
+                print(f"    [sheet push failed] HTTP {pr.status_code}: {pr.text}")
+                return False
+            return True
+        except requests.exceptions.Timeout:
+            if attempt < 2:
+                print(f"    [sheet push timeout] retrying…")
+            else:
+                print(f"    [sheet push error] timed out after 2 attempts")
+                return False
+        except Exception as exc:
+            print(f"    [sheet push error] {exc}")
             return False
-        return True
-    except Exception as exc:
-        print(f"    [sheet push error] {exc}")
-        return False
 
 
 # ─── Selenium ────────────────────────────────────────────────────────────────
