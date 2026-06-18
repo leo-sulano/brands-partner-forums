@@ -48,7 +48,9 @@ TP_STATUS_COLS = [
     "Review Status",
 ]
 
-SCORE_COLS = ["Score added", "Score Added", "score added", "Score"]
+# Columns that hold a numeric 1-5 star rating (written as "1"–"5").
+# "Score added" / "Score Added" are Yes/No boolean columns — excluded intentionally.
+SCORE_COLS = ["Score"]
 
 # Only entries with these statuses are eligible for a status check.
 # "Done"      = review was just posted by the agent; TP hasn't processed it yet.
@@ -427,7 +429,9 @@ def main() -> None:
                 if new_status != current:
                     updates[status_col] = new_status
                 new_score_str = str(new_rating) if new_rating is not None else None
-                if score_col and new_score_str and new_score_str != current_score:
+                # Skip writing numeric rating to Yes/No boolean columns
+                is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
+                if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
 
                 if not updates:

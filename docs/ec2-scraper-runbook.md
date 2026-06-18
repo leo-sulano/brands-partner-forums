@@ -167,6 +167,75 @@ The instance may be stopped. Go to AWS Console → EC2 → Instances → select 
 
 ---
 
+## Status Server (Flask API for dashboard "Check Status" button)
+
+The dashboard's Check Status button can call `status_server.py` running on EC2 instead of a local/ngrok instance. Traffic flows: **Dashboard → Supabase Edge Function (`proxy-check-status`) → EC2 `status_server.py`**.
+
+### First-time setup
+
+```bash
+# SSH in
+ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.255.237.245
+
+# Install Flask dependencies (in addition to the scraper ones)
+pip3 install flask flask-cors
+
+# Upload status_server.py (from local terminal)
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.255.237.245:~/status_server.py
+
+# Add CHECK_STATUS_TOKEN to ~/.env (use the same value set in Vercel VITE_CHECK_STATUS_TOKEN)
+echo "CHECK_STATUS_TOKEN=your_token_here" >> ~/.env
+```
+
+Open port 5001 in the EC2 security group: **AWS Console → EC2 → Security Groups → scraper-leo-sg → Inbound rules → Add rule: TCP 5001, Source 0.0.0.0/0**.
+
+### Start the server
+
+```bash
+nohup python3 ~/status_server.py --port 5001 --headless > ~/server.log 2>&1 &
+echo "PID: $!"
+```
+
+### Check if it's running / view logs
+
+```bash
+ps aux | grep status_server
+tail -f ~/server.log
+```
+
+### Stop the server
+
+```bash
+pkill -f status_server
+```
+
+### Update the server script
+
+```bash
+# From local terminal:
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.255.237.245:~/status_server.py
+
+# Then SSH in and restart:
+pkill -f status_server
+nohup python3 ~/status_server.py --port 5001 --headless > ~/server.log 2>&1 &
+```
+
+### Supabase Edge Function configuration
+
+After deploying `proxy-check-status`, set its secret once:
+
+```bash
+supabase secrets set EC2_STATUS_URL=http://54.255.237.245:5001
+```
+
+Update this secret whenever the EC2 IP changes (or assign an Elastic IP to avoid this entirely).
+
+Set Vercel env vars (baked at build time — redeploy after changing):
+- `VITE_CHECK_STATUS_URL` = `https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/proxy-check-status`
+- `VITE_CHECK_STATUS_TOKEN` = same token as `CHECK_STATUS_TOKEN` on EC2
+
+---
+
 ## Scheduling (Cron)
 
 To run the script automatically every day at a fixed time on the EC2 instance:

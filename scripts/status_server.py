@@ -123,7 +123,8 @@ def check_status():
                     if new_status != current:
                         updates[status_col] = new_status
                     new_score_str = str(new_rating) if new_rating is not None else None
-                    if score_col and new_score_str and new_score_str != current_score:
+                    is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
+                    if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                         updates[score_col] = new_score_str
 
                     if not updates:
@@ -173,4 +174,4 @@ if __name__ == '__main__':
     else:
         print('[server] WARNING: no CHECK_STATUS_TOKEN set — endpoint is OPEN. '
               'Set one before exposing this server publicly (e.g. via a tunnel).')
-    app.run(port=args.port, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=args.port, debug=False, threaded=True)
