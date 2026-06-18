@@ -10,7 +10,7 @@ Maintenance, troubleshooting, and update guide for the `scraper-leo` EC2 instanc
 |---|---|
 | Instance name | scraper-leo |
 | Instance ID | i-053ee746559bb2cc4 |
-| Public IP | 54.255.237.245 (auto-assigned — changes on stop/start) |
+| Public IP | 54.179.186.205 (auto-assigned — changes on stop/start) |
 | Region | ap-southeast-1 (Singapore) |
 | Type | t2.small |
 | OS | Amazon Linux 2023 |
@@ -23,7 +23,7 @@ Maintenance, troubleshooting, and update guide for the `scraper-leo` EC2 instanc
 ## Connecting
 
 ```bash
-ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.255.237.245
+ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.179.186.205
 ```
 
 If the IP has changed, get the new one from the AWS Console → EC2 → Instances → scraper-leo.
@@ -77,7 +77,7 @@ pkill -f check_review_status
 Whenever `scripts/check_review_status.py` is changed locally, re-upload it:
 
 ```bash
-scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_review_status.py" ec2-user@54.255.237.245:~/check_review_status.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_review_status.py" ec2-user@54.179.186.205:~/check_review_status.py
 ```
 
 ---
@@ -175,13 +175,13 @@ The dashboard's Check Status button can call `status_server.py` running on EC2 i
 
 ```bash
 # SSH in
-ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.255.237.245
+ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.179.186.205
 
 # Install Flask dependencies (in addition to the scraper ones)
 pip3 install flask flask-cors
 
 # Upload status_server.py (from local terminal)
-scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.255.237.245:~/status_server.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.179.186.205:~/status_server.py
 
 # Add CHECK_STATUS_TOKEN to ~/.env (use the same value set in Vercel VITE_CHECK_STATUS_TOKEN)
 echo "CHECK_STATUS_TOKEN=your_token_here" >> ~/.env
@@ -213,7 +213,7 @@ pkill -f status_server
 
 ```bash
 # From local terminal:
-scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.255.237.245:~/status_server.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.179.186.205:~/status_server.py
 
 # Then SSH in and restart:
 pkill -f status_server
@@ -225,7 +225,7 @@ nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
 After deploying `proxy-check-status`, set its secret once:
 
 ```bash
-supabase secrets set EC2_STATUS_URL=http://54.255.237.245:5001
+supabase secrets set EC2_STATUS_URL=http://54.179.186.205:5001
 ```
 
 Update this secret whenever the EC2 IP changes (or assign an Elastic IP to avoid this entirely).
@@ -272,7 +272,7 @@ crontab -e  # delete the line and save
 
 ## Elastic IP
 
-The public IP (`54.255.237.245`) changes every time the instance stops and starts. To fix it permanently:
+The public IP (`54.179.186.205`) changes every time the instance stops and starts. To fix it permanently:
 
 1. AWS Console → EC2 → Elastic IPs → Allocate Elastic IP
 2. Associate it with `scraper-leo`
