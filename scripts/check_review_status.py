@@ -344,7 +344,7 @@ def build_driver(headless: bool = False) -> uc.Chrome:
     options.add_argument("--lang=en-US")
     if headless:
         options.add_argument("--headless=new")
-    driver = uc.Chrome(options=options, version_main=148)
+    driver = uc.Chrome(options=options, version_main=149)
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
     return driver
 

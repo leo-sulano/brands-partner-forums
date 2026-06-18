@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Users, CheckCircle2, XCircle } from 'lucide-react';
+import { Users, CheckCircle2, XCircle, X } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis } from '../lib/queries';
@@ -47,12 +47,109 @@ const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg', { label: string; cls: string; i
   cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
 };
 
+type KpiModalKind = 'total' | 'live' | 'removed';
+
+interface KpiModalState {
+  kind: KpiModalKind;
+  title: string;
+  color: 'blue' | 'emerald' | 'rose';
+}
+
+function KpiBreakdownModal({
+  modal,
+  tabs,
+  onClose,
+}: {
+  modal: KpiModalState;
+  tabs: TabSummary[];
+  onClose: () => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  function getCount(kpis: TabKpis): number {
+    if (modal.kind === 'total') return kpis.total;
+    if (modal.kind === 'live') return kpis.tp.live + kpis.ag.live + kpis.cg.live;
+    return kpis.tp.removed + kpis.ag.removed + kpis.cg.removed;
+  }
+
+  const rows = tabs
+    .map((t) => ({ tab: t.tab, count: getCount(t.kpis) }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  const grandTotal = rows.reduce((s, r) => s + r.count, 0);
+
+  const barColor =
+    modal.color === 'blue' ? 'bg-blue-500' :
+    modal.color === 'emerald' ? 'bg-emerald-500' : 'bg-rose-500';
+
+  const valueColor =
+    modal.color === 'blue' ? 'text-blue-600' :
+    modal.color === 'emerald' ? 'text-emerald-600' : 'text-rose-600';
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    >
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{modal.title}</p>
+            <p className={`text-2xl font-bold tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Brand rows */}
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-3">
+          {rows.map((r) => {
+            const pct = grandTotal > 0 ? (r.count / grandTotal) * 100 : 0;
+            return (
+              <Link
+                key={r.tab}
+                to={`/brands/${tabToSlug(r.tab)}`}
+                onClick={onClose}
+                className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-slate-50 transition-colors -mx-3"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-sm font-medium text-slate-700 group-hover:text-violet-700 transition-colors truncate">{r.tab}</span>
+                    <span className={`text-sm font-bold tabular-nums ml-2 shrink-0 ${valueColor}`}>{r.count.toLocaleString()}</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100">
+                    <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const initial: State = { loading: true, error: null, tabs: [] };
 
 
 
 export default function Overview() {
   const [state, setState] = useState<State>(initial);
+  const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
   const [searchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
@@ -111,27 +208,48 @@ export default function Overview() {
 
       {/* Global KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <KpiCard
-          label="Total Accounts"
-          value={state.loading ? '…' : totalAccounts.toLocaleString()}
-          icon={<Users className="size-5" />}
-          hint="across all brand tabs"
-          color="blue"
-        />
-        <KpiCard
-          label="Live Reviews"
-          value={state.loading ? '…' : totalLive.toLocaleString()}
-          icon={<CheckCircle2 className="size-5" />}
-          hint="active across TP / AG / CG"
-          color="emerald"
-        />
-        <KpiCard
-          label="Removed"
-          value={state.loading ? '…' : totalRemoved.toLocaleString()}
-          icon={<XCircle className="size-5" />}
-          hint="across all tabs"
-          color="rose"
-        />
+        <button
+          type="button"
+          disabled={state.loading}
+          onClick={() => setKpiModal({ kind: 'total', title: 'Total Accounts', color: 'blue' })}
+          className="text-left disabled:cursor-default"
+        >
+          <KpiCard
+            label="Total Accounts"
+            value={state.loading ? '…' : totalAccounts.toLocaleString()}
+            icon={<Users className="size-5" />}
+            hint="across all brand tabs"
+            color="blue"
+          />
+        </button>
+        <button
+          type="button"
+          disabled={state.loading}
+          onClick={() => setKpiModal({ kind: 'live', title: 'Live Reviews', color: 'emerald' })}
+          className="text-left disabled:cursor-default"
+        >
+          <KpiCard
+            label="Live Reviews"
+            value={state.loading ? '…' : totalLive.toLocaleString()}
+            icon={<CheckCircle2 className="size-5" />}
+            hint="active across TP / AG / CG"
+            color="emerald"
+          />
+        </button>
+        <button
+          type="button"
+          disabled={state.loading}
+          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed', color: 'rose' })}
+          className="text-left disabled:cursor-default"
+        >
+          <KpiCard
+            label="Removed"
+            value={state.loading ? '…' : totalRemoved.toLocaleString()}
+            icon={<XCircle className="size-5" />}
+            hint="across all tabs"
+            color="rose"
+          />
+        </button>
       </div>
 
       {/* Tab summary grid */}
@@ -285,6 +403,13 @@ export default function Overview() {
         )}
       </section>
 
+      {kpiModal && (
+        <KpiBreakdownModal
+          modal={kpiModal}
+          tabs={state.tabs}
+          onClose={() => setKpiModal(null)}
+        />
+      )}
     </div>
   );
 }

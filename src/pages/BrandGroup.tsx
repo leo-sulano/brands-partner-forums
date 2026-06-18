@@ -146,7 +146,7 @@ const PLATFORM_STATUS_COL = {
 
 // Columns that belong to each platform — used to hide non-selected platform cols.
 const PLATFORM_OWN_COLS: Record<'tp' | 'ag' | 'cg', Set<string>> = {
-  tp: new Set(['Trust Pilot', 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status']),
+  tp: new Set(['Trust Pilot', 'Link to the profile', 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status']),
   ag: new Set(['Ask Gambler review added', 'AG Review Status']),
   cg: new Set(['Casino Guru review added', 'CG Review Status']),
 };

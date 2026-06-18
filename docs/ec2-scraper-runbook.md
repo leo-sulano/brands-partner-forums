@@ -1,0 +1,244 @@
+# EC2 Scraper Runbook
+
+Maintenance, troubleshooting, and update guide for the `scraper-leo` EC2 instance running `check_review_status.py`.
+
+---
+
+## Instance Details
+
+| Field | Value |
+|---|---|
+| Instance name | scraper-leo |
+| Instance ID | i-053ee746559bb2cc4 |
+| Public IP | 54.255.237.245 (auto-assigned — changes on stop/start) |
+| Region | ap-southeast-1 (Singapore) |
+| Type | t2.small |
+| OS | Amazon Linux 2023 |
+| Key file | `C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem` |
+
+> **Note:** The public IP changes every time the instance is stopped and restarted. See [Elastic IP](#elastic-ip) if this becomes a problem.
+
+---
+
+## Connecting
+
+```bash
+ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.255.237.245
+```
+
+If the IP has changed, get the new one from the AWS Console → EC2 → Instances → scraper-leo.
+
+---
+
+## Running the Script
+
+### Dry run (no writes — always test first)
+```bash
+python3 ~/check_review_status.py --dry-run --headless
+```
+
+### Real run (writes to Supabase + syncs Sheet)
+```bash
+python3 ~/check_review_status.py --headless
+```
+
+### Restrict to one tab
+```bash
+python3 ~/check_review_status.py --headless --tab "Rooster Partners"
+```
+
+### Run in background (so SSH disconnect doesn't kill it)
+```bash
+nohup python3 ~/check_review_status.py --headless > ~/scraper.log 2>&1 &
+echo "PID: $!"
+```
+
+### Tail the log while it runs in background
+```bash
+tail -f ~/scraper.log
+```
+
+### Check if it's still running
+```bash
+ps aux | grep check_review_status
+```
+
+### Kill a running job
+```bash
+kill <PID>
+# or kill all at once:
+pkill -f check_review_status
+```
+
+---
+
+## Updating the Script
+
+Whenever `scripts/check_review_status.py` is changed locally, re-upload it:
+
+```bash
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_review_status.py" ec2-user@54.255.237.245:~/check_review_status.py
+```
+
+---
+
+## Updating the .env (Supabase credentials)
+
+If credentials rotate, SSH in and overwrite the file:
+
+```bash
+cat > ~/.env << 'EOF'
+SUPABASE_URL=https://krxnupmhfiduduvvlumc.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_new_key_here
+EOF
+```
+
+Verify it saved:
+```bash
+cat ~/.env
+```
+
+---
+
+## Updating Python Dependencies
+
+### If a new package is added to `requirements.txt`:
+```bash
+pip3 install undetected-chromedriver python-dotenv requests
+```
+
+### Upgrade all packages:
+```bash
+pip3 install --upgrade undetected-chromedriver python-dotenv requests
+```
+
+---
+
+## Chrome Version Mismatch
+
+The script hardcodes `version_main=149` in `build_driver()`. If Chrome auto-updates and the version changes, `undetected-chromedriver` will fail.
+
+**Check installed Chrome version:**
+```bash
+google-chrome --version
+```
+
+**Fix:** Update line 347 of `check_review_status.py` locally to match the new version number, then re-upload the script.
+
+To prevent Chrome from auto-updating on the instance:
+```bash
+sudo dnf versionlock add google-chrome-stable
+```
+(Install `dnf-plugins-core` first if versionlock isn't available: `sudo dnf install -y python3-dnf-plugins-core`)
+
+---
+
+## Troubleshooting
+
+### "No module named X"
+```bash
+pip3 install undetected-chromedriver python-dotenv requests
+```
+
+### "KeyError: SUPABASE_URL" or "KeyError: SUPABASE_SERVICE_ROLE_KEY"
+The `.env` file is missing or in the wrong location.
+```bash
+cat ~/.env   # should show both vars
+```
+The script loads from `os.path.dirname(__file__)` which for `~/check_review_status.py` resolves to `~/.env`. If you moved the script, move the `.env` too.
+
+### Chrome crashes or hangs
+```bash
+# Kill any zombie Chrome processes
+pkill -f chrome
+pkill -f chromedriver
+# Then retry
+python3 ~/check_review_status.py --dry-run --headless
+```
+
+### "redirected off-site" messages
+Trustpilot redirected away from the review URL — the script correctly marks those as `Removed`. Not an error.
+
+### Script exits with 0 entries
+All entries have statuses outside `CHECKABLE_STATUSES` (`done`, `pending`, `published`). Check the Supabase `entries` table for the current status distribution.
+
+### Connection refused / SSH timeout
+The instance may be stopped. Go to AWS Console → EC2 → Instances → select `scraper-leo` → Instance state → Start.
+
+---
+
+## Scheduling (Cron)
+
+To run the script automatically every day at a fixed time on the EC2 instance:
+
+```bash
+crontab -e
+```
+
+Add a line (example: 6 PM UTC daily):
+```
+0 18 * * * python3 /home/ec2-user/check_review_status.py --headless >> /home/ec2-user/scraper.log 2>&1
+```
+
+View the cron log:
+```bash
+tail -100 ~/scraper.log
+```
+
+Remove the cron job:
+```bash
+crontab -e  # delete the line and save
+```
+
+---
+
+## Cost Management
+
+- The instance runs ~**$0.023/hour** (t2.small, ap-southeast-1).
+- **Stop it when not in use** to avoid charges: AWS Console → EC2 → Instance state → Stop.
+- Storage is charged even when stopped (~$0.10/GB/month for the root volume).
+- To stop from SSH: `sudo shutdown -h now`
+
+---
+
+## Elastic IP
+
+The public IP (`54.255.237.245`) changes every time the instance stops and starts. To fix it permanently:
+
+1. AWS Console → EC2 → Elastic IPs → Allocate Elastic IP
+2. Associate it with `scraper-leo`
+3. Cost: free while the instance is running; ~$0.005/hour if the IP is allocated but the instance is stopped.
+
+---
+
+## Full Fresh Setup (if the instance is ever replaced)
+
+```bash
+# 1. SSH in
+ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@<new-ip>
+
+# 2. Install everything
+sudo dnf update -y && sudo dnf install -y python3 python3-pip
+sudo tee /etc/yum.repos.d/google-chrome.repo << 'EOF'
+[google-chrome]
+name=google-chrome
+baseurl=http://dl.google.com/linux/chrome/rpm/stable/x86_64
+enabled=1
+gpgcheck=1
+gpgkey=https://dl-ssl.google.com/linux/linux_signing_key.pub
+EOF
+sudo dnf install -y google-chrome-stable
+pip3 install undetected-chromedriver python-dotenv requests
+
+# 3. Upload script (from local terminal)
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_review_status.py" ec2-user@<new-ip>:~/check_review_status.py
+
+# 4. Create .env
+cat > ~/.env << 'EOF'
+SUPABASE_URL=https://krxnupmhfiduduvvlumc.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<key>
+EOF
+
+# 5. Verify
+python3 ~/check_review_status.py --dry-run --headless
+```
