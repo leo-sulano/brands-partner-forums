@@ -192,7 +192,7 @@ Open port 5001 in the EC2 security group: **AWS Console → EC2 → Security Gro
 ### Start the server
 
 ```bash
-nohup python3 ~/status_server.py --port 5001 --headless > ~/server.log 2>&1 &
+nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
 echo "PID: $!"
 ```
 
@@ -217,7 +217,7 @@ scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo
 
 # Then SSH in and restart:
 pkill -f status_server
-nohup python3 ~/status_server.py --port 5001 --headless > ~/server.log 2>&1 &
+nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
 ```
 
 ### Supabase Edge Function configuration
