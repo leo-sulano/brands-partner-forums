@@ -52,6 +52,7 @@ type KpiModalKind = 'total' | 'live' | 'removed';
 interface KpiModalState {
   kind: KpiModalKind;
   title: string;
+  tagline: string;
   color: 'blue' | 'emerald' | 'rose';
 }
 
@@ -104,7 +105,8 @@ function KpiBreakdownModal({
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{modal.title}</p>
-            <p className={`text-2xl font-bold tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+            <p className={`mt-0.5 text-2xl font-bold tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+            <p className="mt-1 text-xs text-slate-400">{modal.tagline}</p>
           </div>
           <button
             onClick={onClose}
@@ -211,7 +213,7 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'total', title: 'Total Accounts', color: 'blue' })}
+          onClick={() => setKpiModal({ kind: 'total', title: 'Total Accounts', tagline: 'All registered review accounts across every brand tab', color: 'blue' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
@@ -225,7 +227,7 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'live', title: 'Live Reviews', color: 'emerald' })}
+          onClick={() => setKpiModal({ kind: 'live', title: 'Live Reviews', tagline: 'Currently published reviews across Trustpilot, AskGamblers & Casino Guru', color: 'emerald' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
@@ -239,7 +241,7 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed', color: 'rose' })}
+          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed', tagline: 'Reviews removed or refused across all brand tabs and platforms', color: 'rose' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
