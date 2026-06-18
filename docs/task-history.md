@@ -235,15 +235,17 @@ Set up EC2 instance `scraper-leo` (t2.small, ap-southeast-1/Singapore) running `
 
 ---
 
-## Task 34: EC2 Status Server Proxy + Supabase Edge Function
+## Task 34: Clickable KPI Cards with Brand Breakdown Modal
 **Date:** June 18, 2026
 
-Deployed `status_server.py` on EC2 bound to 0.0.0.0 (was localhost-only) so it accepts connections from the Supabase Edge Function. Added `supabase/functions/proxy-check-status` Edge Function that proxies dashboard check-status requests (POST `/check-status` and GET `/active-checks`) to the EC2 Flask server. EC2 URL is read from the `EC2_STATUS_URL` Supabase secret rather than hardcoded, so it survives EC2 IP changes. Raised Google Sheet push timeout to 30s with one retry on timeout to handle slow Sheets responses. Added descriptive taglines to KPI breakdown modals on the Overview page.
+KPI cards on the Overview page (Total Accounts, Live Reviews, Removed) are now clickable buttons. Clicking opens a modal showing a per-brand breakdown: count, proportional progress bar, and a direct link to that brand tab. Rows are sorted by count descending and filtered to non-zero entries. Taglines added below the grand total in the modal header. Escape key and overlay click close the modal.
 
-**Remaining user steps to go live:**
-1. `supabase secrets set EC2_STATUS_URL=http://<ec2-ip>:5001` (update with current EC2 IP)
-2. Run `status_server.py` on EC2 (see runbook Status Server section)
-3. Vercel: set `VITE_CHECK_STATUS_URL=https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/proxy-check-status` and redeploy
+---
+
+## Task 35: EC2 Status Server Proxy + Supabase Edge Function
+**Date:** June 18, 2026
+
+Deployed `status_server.py` on EC2 bound to 0.0.0.0 (was localhost-only) so it accepts connections from the Supabase Edge Function. Added `supabase/functions/proxy-check-status` Edge Function that proxies dashboard check-status requests (POST `/check-status` and GET `/active-checks`) to the EC2 Flask server. EC2 URL is read from the `EC2_STATUS_URL` Supabase secret rather than hardcoded, so it survives EC2 IP changes. Raised Google Sheet push timeout to 30s with one retry on timeout to handle slow Sheets responses.
 
 ---
 
