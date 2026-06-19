@@ -249,4 +249,11 @@ Deployed `status_server.py` on EC2 bound to 0.0.0.0 (was localhost-only) so it a
 
 ---
 
-*Last updated: June 18, 2026*
+## Task 36: SuprPlay Limited Tab Sync Fix
+**Date:** June 19, 2026
+
+Diagnosed and fixed a data sync gap where SuprPlay Limited entries from June 15–19 were not appearing in the dashboard and 5 rows were missing IDs. Root cause: the Google Sheet tab had been renamed from "SuprPlay Limited" to "SuprPlay", causing `collectStructures` (Apps Script) and `import-tabs` to skip it entirely since both match against OPERATIONAL_TABS by exact name. The `onEdit` trigger was also not firing for the tab (same name mismatch), so new rows never received UUIDs in column A and `import-tabs` was skipping them anyway (empty `sheet_row_id` → `rowsSkipped++`). Fix: renamed the tab back to "SuprPlay Limited" in the Google Sheet, then ran `backfillAllTabIds()` to assign UUIDs to the 5 blank rows, followed by `syncToDashboard()` to trigger an immediate import.
+
+---
+
+*Last updated: June 19, 2026*
