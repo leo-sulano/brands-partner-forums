@@ -266,12 +266,8 @@ export default function Overview() {
                 const displayLive    = kpis.live;
                 const displayRemoved = kpis.removed;
                 const statusItems = [
-                  { count: displayLive,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
-                  { count: displayRemoved, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
-                  { count: kpis.done,      label: 'done',     bar: 'bg-teal-500',    text: 'text-teal-600'    },
-                  { count: kpis.pending,   label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
-                  { count: kpis.onPause,   label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
-                  { count: kpis.notDone,   label: 'not done', bar: 'bg-orange-400',  text: 'text-orange-500'  },
+                  { count: displayLive,    label: 'live',    bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: displayRemoved, label: 'removed', bar: 'bg-rose-400',    text: 'text-rose-500'    },
                 ].filter((s) => s.count >= 1);
                 const barTotal = statusItems.reduce((s, i) => s + i.count, 0);
                 const pct = (n: number) => barTotal > 0 ? (n / barTotal) * 100 : 0;
