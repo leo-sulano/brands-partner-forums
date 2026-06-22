@@ -227,7 +227,7 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'live', title: 'Live / Published', tagline: 'Live or published reviews across Trustpilot, AskGamblers & Casino Guru', color: 'emerald' })}
+          onClick={() => setKpiModal({ kind: 'live', title: 'Live', tagline: 'Live or published reviews across Trustpilot, AskGamblers & Casino Guru', color: 'emerald' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
@@ -241,7 +241,7 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed / Rejected / Refused', tagline: 'Reviews removed, rejected, or refused across all brand tabs and platforms', color: 'rose' })}
+          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed', tagline: 'Reviews removed, rejected, or refused across all brand tabs and platforms', color: 'rose' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
