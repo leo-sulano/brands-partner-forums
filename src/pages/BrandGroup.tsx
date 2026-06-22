@@ -245,9 +245,9 @@ function FilterDropdown<T extends string>({
 
 const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>[] = [
   { value: 'all',      label: 'All statuses', dot: 'bg-slate-400' },
-  { value: 'live',     label: 'Live',         dot: 'bg-green-500' },
-  { value: 'done',     label: 'Done',         dot: 'bg-blue-500' },
-  { value: 'removed',  label: 'Removed',      dot: 'bg-rose-500' },
+  { value: 'live',     label: 'Live / Published', dot: 'bg-green-500' },
+  { value: 'done',     label: 'Done',             dot: 'bg-blue-500' },
+  { value: 'removed',  label: 'Removed / Rejected / Refused', dot: 'bg-rose-500' },
   { value: 'on-pause', label: 'On Pause',     dot: 'bg-slate-500' },
   { value: 'pending',  label: 'Pending',      dot: 'bg-amber-400' },
   { value: 'not-done', label: 'Not Done',     dot: 'bg-orange-500' },
@@ -786,10 +786,10 @@ export default function BrandGroup() {
   })();
 
   function isLive(v: string) {
-    return v.includes('publish') && !v.includes('not pub');
+    return v.includes('live') || (v.includes('publish') && !v.includes('not pub'));
   }
   function isRemoved(v: string) {
-    return v.includes('remov') || v.includes('refus') || v.includes('not pub');
+    return v.includes('remov') || v.includes('refus') || v.includes('reject');
   }
   function isDone(v: string) {
     return v === 'done';
@@ -964,15 +964,15 @@ export default function BrandGroup() {
             icon={<Building2 className="size-4" />}
           />
           <KpiCard
-            label="Live"
+            label="Live / Published"
             value={loading ? '…' : displayTotals.live.toLocaleString()}
-            hint="Reviews currently published"
+            hint="Reviews live or published"
             color="emerald"
           />
           <KpiCard
-            label="Removed"
+            label="Removed / Rejected / Refused"
             value={loading ? '…' : displayTotals.removed.toLocaleString()}
-            hint="Reviews taken down"
+            hint="Reviews removed or refused"
             color="rose"
           />
         </div>
@@ -1010,11 +1010,11 @@ export default function BrandGroup() {
                   <div className="flex items-center gap-4">
                     <div className="flex items-baseline gap-1">
                       <span className="text-xl font-semibold text-emerald-700">{displayKpis[key].live.toLocaleString()}</span>
-                      <span className="text-xs text-slate-400">live</span>
+                      <span className="text-xs text-slate-400">live/pub</span>
                     </div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-xl font-semibold text-rose-600">{displayKpis[key].removed.toLocaleString()}</span>
-                      <span className="text-xs text-slate-400">removed</span>
+                      <span className="text-xs text-slate-400">rem/rej/ref</span>
                     </div>
                   </div>
                 )}

@@ -318,7 +318,7 @@ function isLiveStatus(s: string) {
   return s.includes('published') || s.includes('live');
 }
 function isRemovedStatus(s: string) {
-  return s.includes('remove') || s.includes('not pub') || s.includes('refused');
+  return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
 function isDoneStatus(s: string) { return s === 'done'; }
 function isPendingStatus(s: string) { return s.includes('pending'); }
