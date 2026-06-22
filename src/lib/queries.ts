@@ -384,7 +384,7 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
   if (cgCol) activePlatforms.push('cg');
 
   return {
-    total: entries.length,
+    total: live + removed,
     live,
     removed,
     done,

@@ -8,6 +8,7 @@ import {
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
+import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
@@ -514,6 +515,7 @@ export default function BrandGroup() {
   const [search, setSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>('all');
+  const [showTotalModal, setShowTotalModal] = useState(false);
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -962,18 +964,23 @@ export default function BrandGroup() {
             label="Total"
             value={loading ? '…' : displayTotals.total.toLocaleString()}
             icon={<Building2 className="size-4" />}
+            onClick={() => setShowTotalModal(true)}
           />
           <KpiCard
             label="Live / Published"
             value={loading ? '…' : displayTotals.live.toLocaleString()}
             hint="Reviews live or published"
             color="emerald"
+            onClick={() => { setStatusFilter(statusFilter === 'live' ? 'all' : 'live'); setPage(1); }}
+            active={statusFilter === 'live'}
           />
           <KpiCard
             label="Removed / Rejected / Refused"
             value={loading ? '…' : displayTotals.removed.toLocaleString()}
             hint="Reviews removed or refused"
             color="rose"
+            onClick={() => { setStatusFilter(statusFilter === 'removed' ? 'all' : 'removed'); setPage(1); }}
+            active={statusFilter === 'removed'}
           />
         </div>
       )}
@@ -1299,6 +1306,17 @@ export default function BrandGroup() {
           currentTab={decodedTab}
           onClose={() => setShowAddModal(false)}
           onSaved={() => reloadRef.current()}
+        />
+      )}
+
+      {showTotalModal && (
+        <TotalBreakdownModal
+          total={displayTotals.total}
+          live={displayTotals.live}
+          removed={displayTotals.removed}
+          onClose={() => setShowTotalModal(false)}
+          onFilterLive={() => { setStatusFilter('live'); setPage(1); }}
+          onFilterRemoved={() => { setStatusFilter('removed'); setPage(1); }}
         />
       )}
       {toast && (

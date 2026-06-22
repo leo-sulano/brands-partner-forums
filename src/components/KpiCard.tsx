@@ -12,6 +12,8 @@ interface Props {
   icon?: ReactNode;
   color?: 'blue' | 'emerald' | 'rose';
   breakdown?: BreakdownItem[];
+  onClick?: () => void;
+  active?: boolean;
 }
 
 const colorMap = {
@@ -20,11 +22,16 @@ const colorMap = {
   rose:    { bar: 'bg-rose-500',    icon: 'bg-rose-50 text-rose-500',    value: 'text-rose-600'    },
 };
 
-export default function KpiCard({ label, value, hint, icon, color = 'blue', breakdown }: Props) {
+export default function KpiCard({ label, value, hint, icon, color = 'blue', breakdown, onClick, active }: Props) {
   const c = colorMap[color];
   const visibleBreakdown = breakdown?.filter((b) => b.count > 0);
+  const Tag = onClick ? 'button' : 'div';
+  const activeRing = active ? 'ring-2 ring-offset-0 ' + (color === 'emerald' ? 'ring-emerald-400 border-emerald-300' : color === 'rose' ? 'ring-rose-400 border-rose-300' : 'ring-blue-400 border-blue-300') : '';
   return (
-    <div className="relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+    <Tag
+      {...(onClick ? { type: 'button' as const, onClick } : {})}
+      className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md w-full text-left ${onClick ? 'cursor-pointer' : ''} ${activeRing}`}
+    >
       <div className={`absolute inset-x-0 top-0 h-1 ${c.bar}`} />
       <div className="px-5 py-4" style={{ minHeight: '100px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className="flex items-start justify-between gap-4">
@@ -50,6 +57,6 @@ export default function KpiCard({ label, value, hint, icon, color = 'blue', brea
           </div>
         )}
       </div>
-    </div>
+    </Tag>
   );
 }
