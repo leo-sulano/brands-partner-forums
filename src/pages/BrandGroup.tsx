@@ -44,7 +44,7 @@ function colWidthClass(header: string): string {
 function StatusPill({ value }: { value: string }) {
   if (!value || value === '—') return <span className="text-slate-400">—</span>;
   const v = value.toLowerCase().trim();
-  if (v.includes('publish') && !v.includes('not pub')) {
+  if (v.includes('live') || (v.includes('publish') && !v.includes('not pub'))) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
         <CheckCircle2 className="size-3" /> {value}
@@ -58,7 +58,7 @@ function StatusPill({ value }: { value: string }) {
       </span>
     );
   }
-  if (v.includes('remov') || v.includes('refus')) {
+  if (v.includes('remov') || v.includes('refus') || v.includes('reject')) {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-700">
         <XCircle className="size-3" /> {value}

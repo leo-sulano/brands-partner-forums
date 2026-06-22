@@ -182,7 +182,7 @@ export default function Overview() {
     );
   }
 
-  const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.total, 0);
+  const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.live + t.kpis.removed, 0);
   const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.live,    0);
   const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
 
@@ -227,11 +227,11 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'live', title: 'Live Reviews', tagline: 'Currently published reviews across Trustpilot, AskGamblers & Casino Guru', color: 'emerald' })}
+          onClick={() => setKpiModal({ kind: 'live', title: 'Live / Published', tagline: 'Live or published reviews across Trustpilot, AskGamblers & Casino Guru', color: 'emerald' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
-            label="Live Reviews"
+            label="Live / Published"
             value={state.loading ? '…' : totalLive.toLocaleString()}
             icon={<CheckCircle2 className="size-5" />}
             hint="active across TP / AG / CG"
@@ -241,11 +241,11 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed', tagline: 'Reviews removed or refused across all brand tabs and platforms', color: 'rose' })}
+          onClick={() => setKpiModal({ kind: 'removed', title: 'Removed / Rejected / Refused', tagline: 'Reviews removed, rejected, or refused across all brand tabs and platforms', color: 'rose' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
-            label="Removed"
+            label="Removed / Rejected / Refused"
             value={state.loading ? '…' : totalRemoved.toLocaleString()}
             icon={<XCircle className="size-5" />}
             hint="across all tabs"
@@ -266,8 +266,8 @@ export default function Overview() {
                 const displayLive    = kpis.live;
                 const displayRemoved = kpis.removed;
                 const statusItems = [
-                  { count: displayLive,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
-                  { count: displayRemoved, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
+                  { count: displayLive,    label: 'live/pub',       bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: displayRemoved, label: 'rem/rej/ref',   bar: 'bg-rose-400',    text: 'text-rose-500'    },
                   { count: kpis.done,      label: 'done',     bar: 'bg-teal-500',    text: 'text-teal-600'    },
                   { count: kpis.pending,   label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
                   { count: kpis.onPause,   label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
@@ -292,7 +292,7 @@ export default function Overview() {
                           </span>
                         ))}
                         <span className="text-xs text-slate-500">
-                          <span className="font-medium text-slate-900">{kpis.total}</span> total
+                          <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
                         </span>
                       </div>
                     </div>
