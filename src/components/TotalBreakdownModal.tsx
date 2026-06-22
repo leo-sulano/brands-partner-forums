@@ -7,9 +7,10 @@ interface Props {
   onClose: () => void;
   onFilterLive: () => void;
   onFilterRemoved: () => void;
+  onFilterTotal: () => void;
 }
 
-export default function TotalBreakdownModal({ total, live, removed, onClose, onFilterLive, onFilterRemoved }: Props) {
+export default function TotalBreakdownModal({ total, live, removed, onClose, onFilterLive, onFilterRemoved, onFilterTotal }: Props) {
   const livePct = total > 0 ? Math.round((live / total) * 100) : 0;
   const removedPct = total > 0 ? Math.round((removed / total) * 100) : 0;
 
@@ -46,7 +47,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
           >
             <div className="flex items-center gap-3">
               <span className="size-2.5 rounded-full bg-emerald-500 shrink-0" />
-              <span className="text-sm font-medium text-slate-700">Live / Published</span>
+              <span className="text-sm font-medium text-slate-700">Live</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">{livePct}%</span>
@@ -60,7 +61,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
           >
             <div className="flex items-center gap-3">
               <span className="size-2.5 rounded-full bg-rose-500 shrink-0" />
-              <span className="text-sm font-medium text-slate-700">Removed / Rejected</span>
+              <span className="text-sm font-medium text-slate-700">Removed</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">{removedPct}%</span>
@@ -70,13 +71,16 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
         </div>
 
         {/* Total row */}
-        <div className="mx-4 mb-4 mt-1 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+        <button
+          onClick={() => { onFilterTotal(); onClose(); }}
+          className="mx-4 mb-4 mt-1 w-[calc(100%-2rem)] flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-slate-100 transition-colors"
+        >
           <div className="flex items-center gap-3">
             <span className="size-2.5 rounded-full bg-blue-500 shrink-0" />
             <span className="text-sm font-medium text-slate-700">Total</span>
           </div>
           <span className="text-lg font-bold text-blue-600 tabular-nums">{total.toLocaleString()}</span>
-        </div>
+        </button>
 
         <p className="pb-4 text-center text-xs text-slate-400">Click a row to filter the table</p>
       </div>
