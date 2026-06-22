@@ -256,17 +256,31 @@ Diagnosed and fixed a data sync gap where SuprPlay Limited entries from June 15â
 
 ---
 
-## Task 37: Live / Removed Status Overhaul
+## Task 37: Fix Double-Counting on Multi-Platform Brand Tabs
 **Date:** June 22, 2026
 
-Simplified all status counting and display to two buckets: Live (Live + Published) and Removed (Removed + Rejected + Refused). Fixed a double-counting bug on multi-platform brand tab cards (Rooster Partners, Revolution Casino, SilverPlay, Hanan) where TP + AG + CG platform sums were added together â€” one account live on all three platforms counted as 3 instead of 1. Switched to entry-level `kpis.live` / `kpis.removed` counts throughout. Simplified brand tab status labels to "live" and "removed". KPI cards and brand tab cards now show only these two counts. Made the Total KPI card show live + removed combined, added clickable Live / Removed filter buttons, and introduced the Total Breakdown modal with a proportional bar and per-bucket counts.
+Fixed a bug on multi-platform brand tab cards (Rooster Partners, Revolution Casino, SilverPlay, Hanan) where live and removed counts were being summed per platform (TP + AG + CG), causing one account live on all three platforms to count as 3 instead of 1. Switched Overview brand tab cards to use entry-level `kpis.live` / `kpis.removed` so counts are per account, not per platform-presence.
 
 ---
 
-## Task 38: Clickable Total Row in Breakdown Modal
+## Task 38: Status Bucket Simplification
 **Date:** June 22, 2026
 
-Made the Total row in the Total Breakdown modal a clickable button. Clicking it clears the status filter (sets it back to "All") and closes the modal, mirroring the existing Live and Removed row behaviour. Also shortened the KPI modal titles on the Overview page from "Live / Published" and "Removed / Rejected / Refused" to "Live" and "Removed" for cleaner display.
+Merged all status variants into two display buckets: Live (Live + Published) and Removed (Removed + Rejected + Refused). Updated `queries.ts` status grouping logic and BrandGroup filter conditions to match. Simplified Overview brand tab card labels to "live" and "removed" and removed extra status counts, showing only the two core buckets. KPI cards and brand tab cards on Overview updated throughout.
+
+---
+
+## Task 39: Total KPI Card & Total Breakdown Modal
+**Date:** June 22, 2026
+
+Made the Total KPI card show live + removed combined (previously showed all-statuses count). Added clickable Live / Removed filter pill buttons on the BrandGroup page that toggle the status filter and reset pagination. Created the `TotalBreakdownModal` component: shows a proportional bar (green = live %, red = removed %), per-bucket counts with percentages, and per-brand breakdown rows sorted by count. Modal opens from the Total KPI card copy icon and closes on overlay click or Escape.
+
+---
+
+## Task 40: Clickable Total Row & Modal Label Cleanup
+**Date:** June 22, 2026
+
+Made the Total row in the Total Breakdown modal a clickable button that clears the status filter (resets to "All") and closes the modal, consistent with the Live and Removed rows. Shortened KPI modal titles on the Overview page from "Live / Published" and "Removed / Rejected / Refused" to "Live" and "Removed" for cleaner display.
 
 ---
 
