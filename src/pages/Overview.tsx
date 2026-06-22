@@ -231,7 +231,7 @@ export default function Overview() {
           className="text-left disabled:cursor-default"
         >
           <KpiCard
-            label="Live / Published"
+            label="Live"
             value={state.loading ? '…' : totalLive.toLocaleString()}
             icon={<CheckCircle2 className="size-5" />}
             hint="active across TP / AG / CG"
@@ -245,7 +245,7 @@ export default function Overview() {
           className="text-left disabled:cursor-default"
         >
           <KpiCard
-            label="Removed / Rejected / Refused"
+            label="Removed"
             value={state.loading ? '…' : totalRemoved.toLocaleString()}
             icon={<XCircle className="size-5" />}
             hint="across all tabs"
@@ -266,8 +266,8 @@ export default function Overview() {
                 const displayLive    = kpis.live;
                 const displayRemoved = kpis.removed;
                 const statusItems = [
-                  { count: displayLive,    label: 'live/pub',       bar: 'bg-emerald-500', text: 'text-emerald-600' },
-                  { count: displayRemoved, label: 'rem/rej/ref',   bar: 'bg-rose-400',    text: 'text-rose-500'    },
+                  { count: displayLive,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
+                  { count: displayRemoved, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
                   { count: kpis.done,      label: 'done',     bar: 'bg-teal-500',    text: 'text-teal-600'    },
                   { count: kpis.pending,   label: 'pending',  bar: 'bg-amber-400',   text: 'text-amber-500'   },
                   { count: kpis.onPause,   label: 'on pause', bar: 'bg-slate-400',   text: 'text-slate-500'   },
