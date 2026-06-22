@@ -256,4 +256,18 @@ Diagnosed and fixed a data sync gap where SuprPlay Limited entries from June 15â
 
 ---
 
-*Last updated: June 19, 2026*
+## Task 37: Live / Removed Status Overhaul
+**Date:** June 22, 2026
+
+Simplified all status counting and display to two buckets: Live (Live + Published) and Removed (Removed + Rejected + Refused). Fixed a double-counting bug on multi-platform brand tab cards (Rooster Partners, Revolution Casino, SilverPlay, Hanan) where TP + AG + CG platform sums were added together â€” one account live on all three platforms counted as 3 instead of 1. Switched to entry-level `kpis.live` / `kpis.removed` counts throughout. Simplified brand tab status labels to "live" and "removed". KPI cards and brand tab cards now show only these two counts. Made the Total KPI card show live + removed combined, added clickable Live / Removed filter buttons, and introduced the Total Breakdown modal with a proportional bar and per-bucket counts.
+
+---
+
+## Task 38: Clickable Total Row in Breakdown Modal
+**Date:** June 22, 2026
+
+Made the Total row in the Total Breakdown modal a clickable button. Clicking it clears the status filter (sets it back to "All") and closes the modal, mirroring the existing Live and Removed row behaviour. Also shortened the KPI modal titles on the Overview page from "Live / Published" and "Removed / Rejected / Refused" to "Live" and "Removed" for cleaner display.
+
+---
+
+*Last updated: June 22, 2026*
