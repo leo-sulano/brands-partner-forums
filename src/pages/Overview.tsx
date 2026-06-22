@@ -183,8 +183,8 @@ export default function Overview() {
   }
 
   const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.total, 0);
-  const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.tp.live    + t.kpis.ag.live    + t.kpis.cg.live,    0);
-  const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.tp.removed + t.kpis.ag.removed + t.kpis.cg.removed, 0);
+  const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.live,    0);
+  const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
 
 
   const platformData = [
@@ -263,8 +263,8 @@ export default function Overview() {
                 <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 80 }} />
               ))
             : state.tabs.map(({ tab, kpis }) => {
-                const displayLive    = kpis.tp.live    + kpis.ag.live    + kpis.cg.live;
-                const displayRemoved = kpis.tp.removed + kpis.ag.removed + kpis.cg.removed;
+                const displayLive    = kpis.live;
+                const displayRemoved = kpis.removed;
                 const statusItems = [
                   { count: displayLive,    label: 'live',     bar: 'bg-emerald-500', text: 'text-emerald-600' },
                   { count: displayRemoved, label: 'removed',  bar: 'bg-rose-400',    text: 'text-rose-500'    },
