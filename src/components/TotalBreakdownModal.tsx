@@ -10,54 +10,75 @@ interface Props {
 }
 
 export default function TotalBreakdownModal({ total, live, removed, onClose, onFilterLive, onFilterRemoved }: Props) {
+  const livePct = total > 0 ? Math.round((live / total) * 100) : 0;
+  const removedPct = total > 0 ? Math.round((removed / total) * 100) : 0;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative w-full max-w-sm rounded-xl bg-white shadow-xl">
+      <div className="relative w-full max-w-xs rounded-2xl bg-white shadow-2xl">
 
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Total Breakdown</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Total = Live + Removed</p>
+            <h2 className="text-sm font-semibold text-slate-800">Total Breakdown</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Total = Live + Removed</p>
           </div>
           <button
             onClick={onClose}
-            className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
           </button>
         </div>
 
-        <div className="px-5 py-6">
-          <div className="flex items-center justify-center gap-3 flex-wrap">
-            <button
-              onClick={() => { onFilterLive(); onClose(); }}
-              className="flex flex-col items-center rounded-lg border border-emerald-200 bg-emerald-50 px-6 py-4 hover:bg-emerald-100 transition-colors cursor-pointer"
-            >
-              <span className="text-3xl font-bold text-emerald-600 tabular-nums">{live.toLocaleString()}</span>
-              <span className="mt-1 text-xs font-medium text-emerald-700 uppercase tracking-wide">Live</span>
-            </button>
-
-            <span className="text-2xl font-light text-slate-400">+</span>
-
-            <button
-              onClick={() => { onFilterRemoved(); onClose(); }}
-              className="flex flex-col items-center rounded-lg border border-rose-200 bg-rose-50 px-6 py-4 hover:bg-rose-100 transition-colors cursor-pointer"
-            >
-              <span className="text-3xl font-bold text-rose-600 tabular-nums">{removed.toLocaleString()}</span>
-              <span className="mt-1 text-xs font-medium text-rose-700 uppercase tracking-wide">Removed</span>
-            </button>
-
-            <span className="text-2xl font-light text-slate-400">=</span>
-
-            <div className="flex flex-col items-center rounded-lg border border-blue-200 bg-blue-50 px-6 py-4">
-              <span className="text-3xl font-bold text-blue-600 tabular-nums">{total.toLocaleString()}</span>
-              <span className="mt-1 text-xs font-medium text-blue-700 uppercase tracking-wide">Total</span>
-            </div>
-          </div>
-
-          <p className="mt-5 text-center text-xs text-slate-400">Click Live or Removed to filter the table</p>
+        {/* Proportion bar */}
+        <div className="mx-5 h-2 rounded-full overflow-hidden bg-slate-100 flex">
+          <div className="h-full bg-emerald-400 transition-all" style={{ width: `${livePct}%` }} />
+          <div className="h-full bg-rose-400 transition-all" style={{ width: `${removedPct}%` }} />
         </div>
+
+        {/* Rows */}
+        <div className="px-4 pt-3 pb-2 space-y-2">
+          <button
+            onClick={() => { onFilterLive(); onClose(); }}
+            className="w-full flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 hover:bg-emerald-100 transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <span className="size-2.5 rounded-full bg-emerald-500 shrink-0" />
+              <span className="text-sm font-medium text-slate-700">Live / Published</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">{livePct}%</span>
+              <span className="text-lg font-bold text-emerald-600 tabular-nums">{live.toLocaleString()}</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => { onFilterRemoved(); onClose(); }}
+            className="w-full flex items-center justify-between rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 hover:bg-rose-100 transition-colors group"
+          >
+            <div className="flex items-center gap-3">
+              <span className="size-2.5 rounded-full bg-rose-500 shrink-0" />
+              <span className="text-sm font-medium text-slate-700">Removed / Rejected</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">{removedPct}%</span>
+              <span className="text-lg font-bold text-rose-600 tabular-nums">{removed.toLocaleString()}</span>
+            </div>
+          </button>
+        </div>
+
+        {/* Total row */}
+        <div className="mx-4 mb-4 mt-1 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="size-2.5 rounded-full bg-blue-500 shrink-0" />
+            <span className="text-sm font-medium text-slate-700">Total</span>
+          </div>
+          <span className="text-lg font-bold text-blue-600 tabular-nums">{total.toLocaleString()}</span>
+        </div>
+
+        <p className="pb-4 text-center text-xs text-slate-400">Click a row to filter the table</p>
       </div>
     </div>
   );

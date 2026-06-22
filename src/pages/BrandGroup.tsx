@@ -818,14 +818,13 @@ export default function BrandGroup() {
       const removed = selectedPlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
       return { total: live + removed, live, removed };
     }
-    let total = 0, live = 0, removed = 0;
+    let live = 0, removed = 0;
     for (const e of kpiBase) {
-      total++;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
       if (statuses.some(isLive)) live++;
       else if (statuses.some(isRemoved)) removed++;
     }
-    return { total, live, removed };
+    return { total: live + removed, live, removed };
   })();
 
   const sorted = sortCol
@@ -1017,11 +1016,11 @@ export default function BrandGroup() {
                   <div className="flex items-center gap-4">
                     <div className="flex items-baseline gap-1">
                       <span className="text-xl font-semibold text-emerald-700">{displayKpis[key].live.toLocaleString()}</span>
-                      <span className="text-xs text-slate-400">live/pub</span>
+                      <span className="text-xs text-slate-400">Live / Published</span>
                     </div>
                     <div className="flex items-baseline gap-1">
                       <span className="text-xl font-semibold text-rose-600">{displayKpis[key].removed.toLocaleString()}</span>
-                      <span className="text-xs text-slate-400">rem/rej/ref</span>
+                      <span className="text-xs text-slate-400">Removed / Rejected / Refused</span>
                     </div>
                   </div>
                 )}
