@@ -1,11 +1,9 @@
 import { lazy, Suspense, useState } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
-import { AssistantProvider } from './contexts/AssistantContext';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ProtectedRoute from './components/ProtectedRoute';
-import AssistantWidget from './components/AssistantWidget';
 
 const Login         = lazy(() => import('./pages/Login'));
 const Signup        = lazy(() => import('./pages/Signup'));
@@ -42,7 +40,6 @@ function AppLayout() {
           </Suspense>
         </main>
       </div>
-      <AssistantWidget />
     </div>
   );
 }
@@ -50,7 +47,6 @@ function AppLayout() {
 export default function App() {
   return (
     <AuthProvider>
-      <AssistantProvider>
       <Routes>
         <Route path="/login" element={<Suspense fallback={null}><Login /></Suspense>} />
         <Route path="/signup" element={<Suspense fallback={null}><Signup /></Suspense>} />
@@ -69,7 +65,6 @@ export default function App() {
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-      </AssistantProvider>
     </AuthProvider>
   );
 }

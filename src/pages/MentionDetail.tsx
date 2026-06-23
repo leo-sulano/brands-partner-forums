@@ -6,8 +6,6 @@ import type { Mention, MentionStatus } from '../types/mention';
 import StatusBadge from '../components/StatusBadge';
 import Toast, { type ToastKind } from '../components/Toast';
 import { formatDateTime } from '../lib/format';
-import { useAssistant } from '../contexts/AssistantContext';
-
 const STATUSES: MentionStatus[] = ['new', 'reviewed', 'ignored'];
 
 export default function MentionDetail() {
@@ -16,8 +14,6 @@ export default function MentionDetail() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
-  const { openWith } = useAssistant();
-
   useEffect(() => {
     if (!id) return;
     let cancelled = false;
@@ -119,24 +115,6 @@ export default function MentionDetail() {
               Mark as {s}
             </button>
           ))}
-        </div>
-      </div>
-
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <h2 className="text-sm font-semibold text-slate-700">AI assistant</h2>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button
-            onClick={() => openWith(`Summarize this entry (id ${mention.id}) in 2-3 sentences.`)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Summarize
-          </button>
-          <button
-            onClick={() => openWith(`Draft a polite, professional reply to this entry (id ${mention.id}).`)}
-            className="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          >
-            Draft reply
-          </button>
         </div>
       </div>
 
