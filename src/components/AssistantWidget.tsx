@@ -21,8 +21,6 @@ export default function AssistantWidget() {
   const params = useParams();
   const listRef = useRef<HTMLDivElement>(null);
 
-  if (location.pathname === '/ask-ai') return null;
-
   // Pre-seed the input when a page requests it (e.g. MentionDetail buttons).
   useEffect(() => {
     if (seed) {
@@ -116,6 +114,8 @@ export default function AssistantWidget() {
     recognitionRef.current = recognition;
     recognition.start();
   }
+
+  if (location.pathname === '/ask-ai') return null;
 
   if (!open) {
     return (
