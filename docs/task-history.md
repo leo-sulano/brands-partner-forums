@@ -284,4 +284,18 @@ Made the Total row in the Total Breakdown modal a clickable button that clears t
 
 ---
 
-*Last updated: June 22, 2026*
+## Task 41: Fix Ask AI Page (Rules of Hooks Violation)
+**Date:** June 23, 2026
+
+Fixed a React Rules of Hooks violation in `AssistantWidget` that crashed the Ask AI page. The early-return guard `if (location.pathname === '/ask-ai') return null` was placed after some hooks but before three `useEffect` calls, causing React to detect a hook count mismatch when navigating to `/ask-ai`. Moved the guard to after all hooks so the count is consistent on every render.
+
+---
+
+## Task 42: Remove Floating AI Assistant Bubble
+**Date:** June 23, 2026
+
+Removed the floating `AssistantWidget` bubble from the app layout while keeping the `/ask-ai` page and `ai-assistant` Edge Function fully intact. Removed `AssistantWidget` and `AssistantProvider` from `App.tsx`, and removed the Summarize / Draft reply buttons in `MentionDetail` that depended on the widget's `openWith` context.
+
+---
+
+*Last updated: June 23, 2026*
