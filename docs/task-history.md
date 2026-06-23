@@ -299,3 +299,5 @@ Removed the floating `AssistantWidget` bubble from the app layout while keeping 
 ---
 
 *Last updated: June 23, 2026*
+
+---
