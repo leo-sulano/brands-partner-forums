@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays, Plus, RefreshCw,
+  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
@@ -162,8 +162,8 @@ const PLATFORM_STATUS_COL = {
 // Columns that belong to each platform — used to hide non-selected platform cols.
 const PLATFORM_OWN_COLS: Record<'tp' | 'ag' | 'cg', Set<string>> = {
   tp: new Set(['Trust Pilot', 'Link to the profile', 'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status']),
-  ag: new Set(['Ask Gambler review added', 'AG Review Status', 'AG Review Link']),
-  cg: new Set(['Casino Guru review added', 'CG Review Status', 'CG Review Link']),
+  ag: new Set(['Ask Gambler review added', 'AG Review Status', 'AG Review Link', 'AG User']),
+  cg: new Set(['Casino Guru review added', 'CG Review Status', 'CG Review Link', 'CG User']),
 };
 
 // All known Trust Pilot status column variants across tabs.
@@ -291,8 +291,26 @@ const INLINE_EDIT_COLS = new Set([
   'Review Status',
   'AG Review Status',
   'CG Review Status',
+  'AG User',
+  'CG User',
 ]);
+const INLINE_TEXT_COLS = new Set(['AG User', 'CG User']);
 const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
+
+const CLEARED_FIELDS = new Set([
+  'Trust Pilot',
+  'TP Review Status',
+  'Trust Pilot Review Status',
+  'Trustpilot Review Status',
+  'Trust pilot Review Status',
+  'Review Status',
+  'Ask Gambler review added',
+  'AG Review Status',
+  'AG Review Link',
+  'Casino Guru review added',
+  'CG Review Status',
+  'CG Review Link',
+]);
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
   value: string; onChange: (v: string) => void; brands: string[]; noun?: string;
@@ -579,8 +597,6 @@ export default function BrandGroup() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
-  // Scaffolded for Tasks 3-4; suppress noUnusedLocals until consumed by duplicate UI
-  void [showDuplicateModal, duplicating, setDuplicating, insertEntry];
 
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
@@ -816,6 +832,34 @@ export default function BrandGroup() {
     } finally {
       setSavingCell(false);
       setEditingCell(null);
+    }
+  }
+
+  async function handleDuplicate() {
+    const toInsert = entries.filter((e) => selectedIds.has(e.id));
+    setDuplicating(true);
+    let done = 0;
+    try {
+      for (const entry of toInsert) {
+        const fields: Record<string, string | null> = {};
+        for (const [k, v] of Object.entries(entry.data)) {
+          fields[k] = CLEARED_FIELDS.has(k) ? null : v;
+        }
+        await insertEntry(entry.tab, fields);
+        done++;
+      }
+      reloadRef.current();
+      setSelectedIds(new Set());
+      setToast({ message: `${done} row${done === 1 ? '' : 's'} duplicated`, kind: 'success' });
+    } catch {
+      reloadRef.current();
+      setToast({
+        message: `Duplicated ${done} of ${toInsert.length} rows — an error occurred`,
+        kind: 'error',
+      });
+    } finally {
+      setDuplicating(false);
+      setShowDuplicateModal(false);
     }
   }
 
@@ -1480,7 +1524,7 @@ export default function BrandGroup() {
                                     if (e.key === 'Enter') { e.currentTarget.blur(); }
                                     if (e.key === 'Escape') setEditingCell(null);
                                   }}
-                                  placeholder="DD/MM/YYYY"
+                                  placeholder={INLINE_TEXT_COLS.has(h) ? 'Enter username…' : 'DD/MM/YYYY'}
                                   className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
                                 />
                               )}
@@ -1614,6 +1658,45 @@ export default function BrandGroup() {
           onFilterTotal={() => { setStatusFilter('all'); setPage(1); }}
         />
       )}
+
+      {showDuplicateModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => { if (!duplicating) setShowDuplicateModal(false); }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-slate-900 mb-2">
+              Duplicate {selectedIds.size} row{selectedIds.size === 1 ? '' : 's'}?
+            </h2>
+            <p className="text-sm text-slate-500 mb-6">
+              This will create {selectedIds.size} new{' '}
+              {selectedIds.size === 1 ? 'entry' : 'entries'} copying account details.
+              Review dates and statuses will be blank.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setShowDuplicateModal(false)}
+                disabled={duplicating}
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDuplicate}
+                disabled={duplicating}
+                className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+              >
+                {duplicating && <Loader2 className="size-4 animate-spin" />}
+                {duplicating ? 'Duplicating…' : 'Duplicate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && (
         <Toast
           message={toast.message}
