@@ -10,9 +10,9 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, insertEntry } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -34,10 +34,12 @@ function isLinkCol(header: string) {
   return h.includes('link') || h.includes('url') || h.includes('profile');
 }
 
-function colWidthClass(header: string): string {
+function colWidthClass(header: string, isMultiPlatform = false): string {
+  if (isMultiPlatform && header !== 'Account') return '';
   if (isLinkCol(header)) return 'w-24';
   if (isStatusCol(header)) return 'w-36';
   const h = header.toLowerCase();
+  if (h === 'agent') return 'w-5';
   if (h.includes('account') || h.includes('brand') || h.includes('name')) return 'w-40';
   return 'w-32';
 }
@@ -574,6 +576,12 @@ export default function BrandGroup() {
     () => localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null,
   );
 
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  // Scaffolded for Tasks 2-4; suppress noUnusedLocals until consumed by checkbox/duplicate UI
+  void [selectedIds, showDuplicateModal, setShowDuplicateModal, duplicating, setDuplicating, insertEntry];
+
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
   }, [decodedTab]);
@@ -598,6 +606,7 @@ export default function BrandGroup() {
     setSortDir('asc');
     setPage(1);
     setJumpInput('');
+    setSelectedIds(new Set());
 
     (async () => {
       try {
@@ -708,6 +717,10 @@ export default function BrandGroup() {
 
     return () => { canceled = true; };
   }, [decodedTab, reloadSeq]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [page]);
 
   useEffect(() => {
     return subscribeEntries((payload) => {
@@ -1253,7 +1266,7 @@ export default function BrandGroup() {
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
                 {loading
                   ? Array.from({ length: 5 }).map((_, i) => (
-                      <th key={i} className="px-4 py-3">
+                      <th key={i} className="px-[3px] py-3">
                         <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                       </th>
                     ))
@@ -1261,7 +1274,7 @@ export default function BrandGroup() {
                       <th
                         key={h}
                         onClick={() => handleSort(h)}
-                        className={`px-3 py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                        className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                       >
                         <span className="inline-flex items-center gap-1">
                           {getColLabel(h, decodedTab)}
@@ -1276,7 +1289,7 @@ export default function BrandGroup() {
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 5 }).map((_, j) => (
-                      <td key={j} className="px-4 py-3">
+                      <td key={j} className="px-[3px] py-3">
                         <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                       </td>
                     ))}
@@ -1302,7 +1315,7 @@ export default function BrandGroup() {
                         if (brandName && profileUrl) {
                           const href = profileUrl.startsWith('http') ? profileUrl : `https://${profileUrl}`;
                           return (
-                            <td key={h} className="px-3 py-2.5">
+                            <td key={h} className="px-[3px] py-2.5">
                               <a
                                 href={href}
                                 target="_blank"
@@ -1325,7 +1338,7 @@ export default function BrandGroup() {
                           if (pageUrl) {
                             const href = pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`;
                             return (
-                              <td key={h} className="px-3 py-2.5">
+                              <td key={h} className="px-[3px] py-2.5">
                                 <a
                                   href={href}
                                   target="_blank"
@@ -1340,7 +1353,7 @@ export default function BrandGroup() {
                             );
                           }
                           return (
-                            <td key={h} className="px-3 py-2.5">
+                            <td key={h} className="px-[3px] py-2.5">
                               <span className="text-slate-600 text-sm">{pageName}</span>
                             </td>
                           );
@@ -1351,7 +1364,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-3 py-2.5 cursor-pointer hover:bg-violet-50 select-none"
+                            className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none"
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
@@ -1404,7 +1417,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-3 py-2.5 cursor-text hover:bg-slate-50 group"
+                            className="px-[3px] py-2.5 cursor-text hover:bg-slate-50 group"
                             onClick={() => {
                               const raw = entry.data[h] ?? '';
                               const display = raw ? formatCellValue(raw) : '';
@@ -1417,8 +1430,12 @@ export default function BrandGroup() {
                       }
 
                       return (
-                        <td key={h} className="px-3 py-2.5">
-                          <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                        <td key={h} className="px-[3px] py-2.5">
+                          <CellValue
+                            header={h}
+                            value={entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)}
+                            rowData={entry.data}
+                          />
                         </td>
                       );
                     })}
