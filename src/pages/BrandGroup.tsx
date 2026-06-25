@@ -579,8 +579,8 @@ export default function BrandGroup() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
-  // Scaffolded for Tasks 2-4; suppress noUnusedLocals until consumed by checkbox/duplicate UI
-  void [selectedIds, showDuplicateModal, setShowDuplicateModal, duplicating, setDuplicating, insertEntry];
+  // Scaffolded for Tasks 3-4; suppress noUnusedLocals until consumed by duplicate UI
+  void [showDuplicateModal, setShowDuplicateModal, duplicating, setDuplicating, insertEntry];
 
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
@@ -1270,18 +1270,50 @@ export default function BrandGroup() {
                         <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                       </th>
                     ))
-                  : visibleHeaders.map((h) => (
-                      <th
-                        key={h}
-                        onClick={() => handleSort(h)}
-                        className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          {getColLabel(h, decodedTab)}
-                          {!isLinkCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
-                        </span>
-                      </th>
-                    ))}
+                  : <>
+                      {isApproved && (
+                        <th className="w-8 px-2 py-2.5">
+                          <input
+                            type="checkbox"
+                            aria-label="Select all on this page"
+                            checked={pageRows.length > 0 && pageRows.every((e) => selectedIds.has(e.id))}
+                            ref={(el) => {
+                              if (el) {
+                                const someSelected = pageRows.some((e) => selectedIds.has(e.id));
+                                const allSelected = pageRows.every((e) => selectedIds.has(e.id));
+                                el.indeterminate = someSelected && !allSelected;
+                              }
+                            }}
+                            onChange={() => {
+                              const allSelected = pageRows.every((e) => selectedIds.has(e.id));
+                              setSelectedIds((prev) => {
+                                const next = new Set(prev);
+                                if (allSelected) {
+                                  pageRows.forEach((e) => next.delete(e.id));
+                                } else {
+                                  pageRows.forEach((e) => next.add(e.id));
+                                }
+                                return next;
+                              });
+                            }}
+                            className="rounded border-slate-300 text-violet-600 focus:ring-violet-400 cursor-pointer"
+                          />
+                        </th>
+                      )}
+                      {visibleHeaders.map((h) => (
+                        <th
+                          key={h}
+                          onClick={() => handleSort(h)}
+                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            {getColLabel(h, decodedTab)}
+                            {!isLinkCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
+                          </span>
+                        </th>
+                      ))}
+                    </>
+                }
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -1307,6 +1339,27 @@ export default function BrandGroup() {
                     key={entry.id}
                     className="transition-colors"
                   >
+                    {isApproved && (
+                      <td className="w-8 px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          aria-label="Select row"
+                          checked={selectedIds.has(entry.id)}
+                          onChange={() =>
+                            setSelectedIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(entry.id)) {
+                                next.delete(entry.id);
+                              } else {
+                                next.add(entry.id);
+                              }
+                              return next;
+                            })
+                          }
+                          className="rounded border-slate-300 text-violet-600 focus:ring-violet-400 cursor-pointer"
+                        />
+                      </td>
+                    )}
                     {visibleHeaders.map((h) => {
                       // Brand / TP URL PAGE: render brand name as a link to the profile URL
                       if (h === 'Brand / TP URL PAGE') {
