@@ -10,7 +10,7 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, insertEntry } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
@@ -599,6 +599,9 @@ export default function BrandGroup() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
@@ -870,6 +873,23 @@ export default function BrandGroup() {
     } finally {
       setDuplicating(false);
       setShowDuplicateModal(false);
+    }
+  }
+
+  async function handleDelete() {
+    const ids = [...selectedIds];
+    setDeleting(true);
+    try {
+      await deleteEntries(ids, decodedTab);
+      reloadRef.current();
+      setSelectedIds(new Set());
+      setToast({ message: `${ids.length} row${ids.length === 1 ? '' : 's'} deleted`, kind: 'success' });
+    } catch {
+      setToast({ message: 'Delete failed — please try again', kind: 'error' });
+    } finally {
+      setDeleting(false);
+      setShowDeleteModal(false);
+      setDeleteConfirmText('');
     }
   }
 
@@ -1242,6 +1262,12 @@ export default function BrandGroup() {
               className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
             >
               Duplicate
+            </button>
+            <button
+              onClick={() => { setDeleteConfirmText(''); setShowDeleteModal(true); }}
+              className="inline-flex items-center gap-1.5 rounded-md bg-rose-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-rose-700 transition-colors"
+            >
+              Delete
             </button>
             <button
               onClick={() => setSelectedIds(new Set())}
@@ -1701,6 +1727,55 @@ export default function BrandGroup() {
               >
                 {duplicating && <Loader2 className="size-4 animate-spin" />}
                 {duplicating ? 'Duplicating…' : 'Duplicate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => { if (!deleting) { setShowDeleteModal(false); setDeleteConfirmText(''); } }}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-slate-900 mb-2">
+              Delete {selectedIds.size} row{selectedIds.size === 1 ? '' : 's'}?
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              This will permanently delete {selectedIds.size}{' '}
+              {selectedIds.size === 1 ? 'entry' : 'entries'}. This cannot be undone.
+            </p>
+            <p className="text-sm text-slate-700 mb-2">
+              Type <strong>delete</strong> to confirm:
+            </p>
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && deleteConfirmText === 'delete') handleDelete(); }}
+              placeholder="delete"
+              disabled={deleting}
+              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-400/20 mb-4 disabled:opacity-50"
+            />
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
+                disabled={deleting}
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting || deleteConfirmText !== 'delete'}
+                className="inline-flex items-center gap-2 rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white hover:bg-rose-700 disabled:opacity-50 transition-colors"
+              >
+                {deleting && <Loader2 className="size-4 animate-spin" />}
+                {deleting ? 'Deleting…' : 'Delete'}
               </button>
             </div>
           </div>

@@ -521,6 +521,12 @@ export async function insertEntry(
   );
 }
 
+export async function deleteEntries(ids: string[], tab: string): Promise<void> {
+  const { error } = await supabase.from('entries').delete().in('id', ids);
+  if (error) throw error;
+  invalidateTabCache(tab);
+}
+
 // ---------------------------------------------------------------------------
 // Sync trigger
 // ---------------------------------------------------------------------------
