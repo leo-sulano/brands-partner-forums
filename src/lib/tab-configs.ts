@@ -15,8 +15,10 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'TP Review Status',
     'Ask Gambler review added',
     'AG Review Status',
+    'AG Review Link',
     'Casino Guru review added',
     'CG Review Status',
+    'CG Review Link',
   ],
   'Hanan': [
     'Account',
@@ -28,8 +30,10 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'TP Review Status',
     'Ask Gambler review added',
     'AG Review Status',
+    'AG Review Link',
     'Casino Guru review added',
     'CG Review Status',
+    'CG Review Link',
   ],
   'Revolution Casino': [
     'Account',
@@ -41,8 +45,10 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'TP Review Status',
     'Ask Gambler review added',
     'AG Review Status',
+    'AG Review Link',
     'Casino Guru review added',
     'CG Review Status',
+    'CG Review Link',
   ],
   // 1-platform tabs
   'TP Brand Injection': [
@@ -103,8 +109,10 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'TP Review Status',
     'Ask Gambler review added',
     'AG Review Status',
+    'AG Review Link',
     'Casino Guru review added',
     'CG Review Status',
+    'CG Review Link',
   ],
 };
 
@@ -121,8 +129,10 @@ export const COLUMN_LABELS: Record<string, string> = {
   'Review Status':                                    'TP Status',
   'Ask Gambler review added':                         'AG Added',
   'AG Review Status':                                 'AG Status',
+  'AG Review Link':                                   'AG Link',
   'Casino Guru review added':                         'CG Added',
   'CG Review Status':                                 'CG Status',
+  'CG Review Link':                                   'CG Link',
   'Brand / TP URL PAGE':                              'Brands',
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };
