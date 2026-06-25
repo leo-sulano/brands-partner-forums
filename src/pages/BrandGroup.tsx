@@ -580,7 +580,7 @@ export default function BrandGroup() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   // Scaffolded for Tasks 3-4; suppress noUnusedLocals until consumed by duplicate UI
-  void [showDuplicateModal, setShowDuplicateModal, duplicating, setDuplicating, insertEntry];
+  void [showDuplicateModal, duplicating, setDuplicating, insertEntry];
 
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
@@ -1177,7 +1177,26 @@ export default function BrandGroup() {
 
 
       <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        {/* Search + filter bar */}
+        {/* Search + filter bar / action bar */}
+        {selectedIds.size > 0 ? (
+          <div className="flex items-center gap-3 px-1 py-2">
+            <span className="text-sm font-medium text-violet-700">
+              ✓ {selectedIds.size} selected
+            </span>
+            <button
+              onClick={() => setShowDuplicateModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
+            >
+              Duplicate
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="text-sm text-slate-500 hover:text-slate-700 transition-colors"
+            >
+              Clear selection
+            </button>
+          </div>
+        ) : (
         <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
           <Search className="size-4 text-slate-400 shrink-0" />
           <input
@@ -1258,6 +1277,7 @@ export default function BrandGroup() {
             </div>
           )}
         </div>
+        )}
 
 
         <div className="overflow-x-auto">
