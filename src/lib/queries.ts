@@ -6,6 +6,10 @@ import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
 
+// Columns that exist only in the dashboard (not in the Google Sheet).
+// These are saved to Supabase data JSONB but never pushed to the sheet.
+const DASHBOARD_ONLY_COLS = new Set(['AG User', 'CG User']);
+
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
 // Column names in `data` must match the exact headers from the Google Sheet.
@@ -434,9 +438,14 @@ export async function updateEntryData(
 
   invalidateTabCache(tab);
 
-  pushEntryToSheet(tab, sheetRowId, fields).catch(
-    (err) => console.warn('[push-to-sheet] entry update failed (non-blocking):', err),
+  const sheetFields = Object.fromEntries(
+    Object.entries(fields).filter(([k]) => !DASHBOARD_ONLY_COLS.has(k)),
   );
+  if (Object.keys(sheetFields).length > 0) {
+    pushEntryToSheet(tab, sheetRowId, sheetFields).catch(
+      (err) => console.warn('[push-to-sheet] entry update failed (non-blocking):', err),
+    );
+  }
 }
 
 export async function updateMentionStatus(id: string, status: MentionStatus): Promise<void> {
@@ -505,6 +514,7 @@ export async function insertEntry(
       last_sync_tag: syncTag,
     });
   if (error) throw error;
+  invalidateTabCache(tab);
 
   pushEntryToSheet(tab, sheetRowId, fields).catch(
     (err) => console.warn('[push-to-sheet] new entry push failed (non-blocking):', err),

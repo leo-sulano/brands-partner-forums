@@ -1393,7 +1393,7 @@ export default function BrandGroup() {
                 ))
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={visibleHeaders.length || 5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={(isApproved ? visibleHeaders.length + 1 : visibleHeaders.length) || 5} className="px-4 py-8 text-center text-slate-400">
                     {search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Sync Status page.'}
                   </td>
                 </tr>
