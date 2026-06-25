@@ -665,7 +665,12 @@ export default function BrandGroup() {
           : visible.filter((h) =>
               rawEntries.some((e) => { const v = e.data[h]; return v != null && v !== ''; }),
             );
-        setEntries(rawEntries);
+        // Filter out ghost rows — sheet auto-generates IDs for blank rows; skip any
+        // entry where every data field is null or empty.
+        const realEntries = rawEntries.filter((e) =>
+          Object.values(e.data).some((v) => v != null && v.trim() !== ''),
+        );
+        setEntries(realEntries);
         setHeaders(populated);
         setFullHeaders(tabHeaders);
         setError(null);
