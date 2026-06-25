@@ -69,7 +69,7 @@ foreach ($section in $sections) {
     if ($num -in $synced) { continue }
 
     # Strip heading + date line; keep the description body
-    $desc = $section -replace '(?s).*## Task \d+: .+\r?\n', ''
+    $desc = $section -replace '(?s).*## Task \d+: [^\r\n]+\r?\n', ''
     $desc = ($desc -replace '\*\*Date:\*\*[^\n]+\n?', '').Trim()
 
     $labelId = Get-LabelId $title $desc
