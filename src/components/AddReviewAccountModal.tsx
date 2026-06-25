@@ -2,17 +2,20 @@ import { useState } from 'react';
 import { X, Plus, Loader2, Eye, EyeOff } from 'lucide-react';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
+import { hasMultiPlatform } from '../lib/tab-configs';
 
 const STATUS_SUGGESTIONS = ['Not done', 'Done', 'Published', 'Live', 'Refused', 'Removed', 'Pending', 'On Pause', 'Not Published'];
 
-const FIELDS: {
+type FieldDef = {
   key: string;
   label: string;
   sensitive?: boolean;
   status?: boolean;
   link?: boolean;
   span?: boolean;
-}[] = [
+};
+
+const BASE_FIELDS: FieldDef[] = [
   { key: 'Account',           label: 'Account' },
   { key: 'Country',           label: 'Country' },
   { key: 'Proxy Used',        label: 'Proxy Used' },
@@ -32,20 +35,41 @@ const FIELDS: {
   { key: 'TP Review Status',  label: 'TP Review Status',      status: true },
 ];
 
+const MULTI_PLATFORM_FIELDS: FieldDef[] = [
+  { key: 'Ask Gambler review added', label: 'AG Added' },
+  { key: 'AG Review Status',         label: 'AG Status',      status: true },
+  { key: 'AG Review Link',           label: 'AG Review Link', link: true },
+  { key: 'Casino Guru review added', label: 'CG Added' },
+  { key: 'CG Review Status',         label: 'CG Status',      status: true },
+  { key: 'CG Review Link',           label: 'CG Review Link', link: true },
+];
+
+const ALL_KEYS = [
+  ...BASE_FIELDS.map((f) => f.key),
+  ...MULTI_PLATFORM_FIELDS.map((f) => f.key),
+];
+
 interface Props {
   currentTab: string;
   onClose: () => void;
   onSaved: () => void;
+  brandProfiles?: Record<string, Record<string, string>>;
 }
 
-export default function AddReviewAccountModal({ currentTab, onClose, onSaved }: Props) {
+export default function AddReviewAccountModal({ currentTab, onClose, onSaved, brandProfiles = {} }: Props) {
   const [selectedTab, setSelectedTab] = useState(currentTab);
   const [fields, setFields] = useState<Record<string, string>>(
-    () => Object.fromEntries(FIELDS.map((f) => [f.key, ''])),
+    () => Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),
   );
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isMulti = hasMultiPlatform(selectedTab);
+  const activeFields = isMulti ? [...BASE_FIELDS, ...MULTI_PLATFORM_FIELDS] : BASE_FIELDS;
+
+  // Brands available for the current page tab (from preloaded entries)
+  const availableBrands = selectedTab === currentTab ? Object.keys(brandProfiles).sort() : [];
 
   function toggleReveal(key: string) {
     setRevealed((s) => {
@@ -55,12 +79,45 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved }: 
     });
   }
 
+  function handleTabChange(tab: string) {
+    setSelectedTab(tab);
+    // Reset brand + link fields when switching tabs
+    setFields((s) => ({
+      ...s,
+      'Brand Name': '',
+      'Link to the profile': '',
+      'Ask Gambler review added': '',
+      'AG Review Status': '',
+      'AG Review Link': '',
+      'Casino Guru review added': '',
+      'CG Review Status': '',
+      'CG Review Link': '',
+    }));
+  }
+
+  function handleBrandChange(brand: string) {
+    setFields((s) => {
+      const next: Record<string, string> = { ...s, 'Brand Name': brand };
+      if (!brand) return next;
+      const profile = brandProfiles[brand];
+      if (!profile) return next;
+      // Auto-fill platform fields from existing entries for the same brand (TP link excluded — unique per account)
+      if (profile['Ask Gambler review added']) next['Ask Gambler review added'] = profile['Ask Gambler review added'];
+      if (profile['AG Review Status'])         next['AG Review Status']         = profile['AG Review Status'];
+
+      if (profile['Casino Guru review added']) next['Casino Guru review added'] = profile['Casino Guru review added'];
+      if (profile['CG Review Status'])         next['CG Review Status']         = profile['CG Review Status'];
+
+      return next;
+    });
+  }
+
   async function handleSave() {
     setSaving(true);
     setError(null);
     try {
       const out: Record<string, string | null> = {};
-      for (const f of FIELDS) out[f.key] = fields[f.key] || null;
+      for (const f of activeFields) out[f.key] = fields[f.key] || null;
       await insertEntry(selectedTab, out);
       onSaved();
       onClose();
@@ -103,7 +160,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved }: 
             </label>
             <select
               value={selectedTab}
-              onChange={(e) => setSelectedTab(e.target.value)}
+              onChange={(e) => handleTabChange(e.target.value)}
               className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
             >
               {OPERATIONAL_TABS.map((t) => (
@@ -114,13 +171,25 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved }: 
 
           {/* Field grid */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {FIELDS.map((f) => (
+            {activeFields.map((f) => (
               <div key={f.key} className={f.span ? 'sm:col-span-2' : ''}>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">
                   {f.label}
                 </label>
 
-                {f.status ? (
+                {/* Brand Name: dropdown when brands available for this tab */}
+                {f.key === 'Brand Name' && availableBrands.length > 0 ? (
+                  <select
+                    value={fields[f.key]}
+                    onChange={(e) => handleBrandChange(e.target.value)}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
+                  >
+                    <option value="">— Select brand —</option>
+                    {availableBrands.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                ) : f.status ? (
                   <>
                     <input
                       list={`datalist-add-${f.key}`}

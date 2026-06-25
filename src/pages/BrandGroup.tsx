@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
@@ -73,7 +73,7 @@ function StatusPill({ value }: { value: string }) {
       </span>
     );
   }
-  if (v === 'not done') {
+  if (v === 'not done' || v === 'no review') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
         <Circle className="size-3" /> {value}
@@ -95,7 +95,12 @@ function StatusPill({ value }: { value: string }) {
 }
 
 
-function CellValue({ header, value }: { header: string; value: string | null }) {
+const LINK_STATUS_COL: Record<string, string> = {
+  'AG Review Link': 'AG Review Status',
+  'CG Review Link': 'CG Review Status',
+};
+
+function CellValue({ header, value, rowData }: { header: string; value: string | null; rowData?: Record<string, string | null> }) {
   if (isDateCol(header) && (!value || value.trim() === '')) {
     return (
       <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-500">
@@ -106,6 +111,13 @@ function CellValue({ header, value }: { header: string; value: string | null }) 
   const display = value ? formatCellValue(value) : '—';
   if (isStatusCol(header)) return <StatusPill value={display} />;
   if (isLinkCol(header) && value) {
+    const statusCol = LINK_STATUS_COL[header];
+    if (statusCol && rowData) {
+      const status = rowData[statusCol];
+      if (!status || status.trim().toLowerCase() === 'no review') {
+        return <span className="text-slate-600">—</span>;
+      }
+    }
     const href = value.startsWith('http') ? value : `https://${value}`;
     return (
       <a
@@ -262,7 +274,23 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
 ];
 
 const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
+const BRAND_LINK_COLS = ['AG Review Link', 'CG Review Link'];
 const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay']);
+
+// Columns that support inline editing directly in the table cell.
+const INLINE_EDIT_COLS = new Set([
+  'Trust Pilot',
+  'Ask Gambler review added',
+  'Casino Guru review added',
+  'TP Review Status',
+  'Trust Pilot Review Status',
+  'Trustpilot Review Status',
+  'Trust pilot Review Status',
+  'Review Status',
+  'AG Review Status',
+  'CG Review Status',
+]);
+const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
   value: string; onChange: (v: string) => void; brands: string[]; noun?: string;
@@ -532,6 +560,8 @@ export default function BrandGroup() {
   const [proxyFilter, setProxyFilter] = useState('');
   const { isApproved } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
+  const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
+  const [savingCell, setSavingCell] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const [reloadSeq, setReloadSeq] = useState(0);
@@ -612,6 +642,55 @@ export default function BrandGroup() {
         setHeaders(populated);
         setFullHeaders(tabHeaders);
         setError(null);
+
+        // Auto-fill AG/CG links: for each brand, propagate any existing link to
+        // rows of the same brand that are still missing it.
+        const activeLinkCols = BRAND_LINK_COLS.filter((c) => populated.includes(c));
+        const detectedBrandCol = BRAND_COLS.find((c) => populated.includes(c)) ?? null;
+        if (activeLinkCols.length > 0 && detectedBrandCol) {
+          const brandLinks: Record<string, Record<string, string>> = {};
+          for (const entry of rawEntries) {
+            const brand = entry.data[detectedBrandCol];
+            if (!brand || brand.trim() === '') continue;
+            for (const col of activeLinkCols) {
+              const link = entry.data[col];
+              if (link && link.trim() !== '' && link !== '—') {
+                if (!brandLinks[brand]) brandLinks[brand] = {};
+                if (!brandLinks[brand][col]) brandLinks[brand][col] = link.trim();
+              }
+            }
+          }
+          const toUpdate: Array<{ entry: typeof rawEntries[0]; fields: Record<string, string> }> = [];
+          for (const entry of rawEntries) {
+            const brand = entry.data[detectedBrandCol];
+            if (!brand || !brandLinks[brand]) continue;
+            const fields: Record<string, string> = {};
+            for (const col of activeLinkCols) {
+              const existing = entry.data[col];
+              const brandLink = brandLinks[brand][col];
+              if (brandLink && (!existing || existing.trim() === '' || existing === '—')) {
+                fields[col] = brandLink;
+              }
+            }
+            if (Object.keys(fields).length > 0) toUpdate.push({ entry, fields });
+          }
+          if (toUpdate.length > 0) {
+            let filled = 0;
+            await Promise.allSettled(
+              toUpdate.map(async ({ entry, fields }) => {
+                try {
+                  await updateEntryData(entry.id, entry.tab, entry.sheet_row_id, fields);
+                  filled++;
+                } catch (err) {
+                  console.warn('[auto-fill-links] update failed:', err);
+                }
+              }),
+            );
+            if (!canceled && filled > 0) {
+              setToast({ message: `${filled} row${filled !== 1 ? 's' : ''} auto-filled`, kind: 'success' });
+            }
+          }
+        }
         const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
           populated.some((h) => h.toLowerCase() === col.toLowerCase()),
         );
@@ -682,6 +761,50 @@ export default function BrandGroup() {
   const uniqueBrands = brandCol
     ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
     : [];
+
+  const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
+    if (!brandCol) return {};
+    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link'];
+    const profiles: Record<string, Record<string, string>> = {};
+    for (const entry of entries) {
+      const brand = entry.data[brandCol]?.trim();
+      if (!brand) continue;
+      if (!profiles[brand]) profiles[brand] = {};
+      for (const col of LINK_COLS) {
+        const val = entry.data[col];
+        if (val && val.trim() && val !== '—' && !profiles[brand][col]) {
+          profiles[brand][col] = val.trim();
+        }
+      }
+    }
+    return profiles;
+  }, [entries, brandCol]);
+
+  async function saveInlineEdit(entry: Entry, header: string, value: string) {
+    const fields: Record<string, string | null> = { [header]: value || null };
+    // When AG Added date is set, auto-populate AG Review Link from this brand's profile
+    if (header === 'Ask Gambler review added' && value && brandCol) {
+      const brand = entry.data[brandCol]?.trim();
+      const link = brand ? brandProfiles[brand]?.['AG Review Link'] : undefined;
+      if (link) fields['AG Review Link'] = link;
+    }
+    // When CG Added date is set, auto-populate CG Review Link from this brand's profile
+    if (header === 'Casino Guru review added' && value && brandCol) {
+      const brand = entry.data[brandCol]?.trim();
+      const link = brand ? brandProfiles[brand]?.['CG Review Link'] : undefined;
+      if (link) fields['CG Review Link'] = link;
+    }
+    setSavingCell(true);
+    try {
+      await updateEntryData(entry.id, entry.tab, entry.sheet_row_id, fields);
+      reloadRef.current();
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
+    } finally {
+      setSavingCell(false);
+      setEditingCell(null);
+    }
+  }
 
   const agentCol = headers.includes('Agent') ? 'Agent' : null;
   const uniqueAgents = agentCol
@@ -1169,8 +1292,7 @@ export default function BrandGroup() {
                 pageRows.map((entry) => (
                   <tr
                     key={entry.id}
-                    onClick={isApproved ? () => setEditEntry(entry) : undefined}
-                    className={isApproved ? 'cursor-pointer hover:bg-violet-50/50 transition-colors' : 'transition-colors'}
+                    className="transition-colors"
                   >
                     {visibleHeaders.map((h) => {
                       // Brand / TP URL PAGE: render brand name as a link to the profile URL
@@ -1224,9 +1346,79 @@ export default function BrandGroup() {
                           );
                         }
                       }
+                      // Account column: click opens the full edit modal
+                      if (h === 'Account' && isApproved) {
+                        return (
+                          <td
+                            key={h}
+                            className="px-3 py-2.5 cursor-pointer hover:bg-violet-50 select-none"
+                            onClick={() => setEditEntry(entry)}
+                          >
+                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                          </td>
+                        );
+                      }
+
+                      // Inline-editable columns: click edits that cell in place
+                      if (INLINE_EDIT_COLS.has(h) && isApproved) {
+                        const isEditing = editingCell?.entryId === entry.id && editingCell.header === h;
+                        if (isEditing) {
+                          const isStat = isStatusCol(h);
+                          return (
+                            <td key={h} className="px-1 py-1" onClick={(e) => e.stopPropagation()}>
+                              {isStat ? (
+                                <select
+                                  autoFocus
+                                  disabled={savingCell}
+                                  value={editingCell.value}
+                                  onChange={(e) => setEditingCell((c) => c ? { ...c, value: e.target.value } : c)}
+                                  onBlur={() => saveInlineEdit(entry, h, editingCell.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.currentTarget.blur(); }
+                                    if (e.key === 'Escape') setEditingCell(null);
+                                  }}
+                                  className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white disabled:opacity-50"
+                                >
+                                  <option value="">— select —</option>
+                                  {INLINE_STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                                </select>
+                              ) : (
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  disabled={savingCell}
+                                  value={editingCell.value}
+                                  onChange={(e) => setEditingCell((c) => c ? { ...c, value: e.target.value } : c)}
+                                  onBlur={() => saveInlineEdit(entry, h, editingCell.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') { e.currentTarget.blur(); }
+                                    if (e.key === 'Escape') setEditingCell(null);
+                                  }}
+                                  placeholder="DD/MM/YYYY"
+                                  className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
+                                />
+                              )}
+                            </td>
+                          );
+                        }
+                        return (
+                          <td
+                            key={h}
+                            className="px-3 py-2.5 cursor-text hover:bg-slate-50 group"
+                            onClick={() => {
+                              const raw = entry.data[h] ?? '';
+                              const display = raw ? formatCellValue(raw) : '';
+                              setEditingCell({ entryId: entry.id, header: h, value: display });
+                            }}
+                          >
+                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                          </td>
+                        );
+                      }
+
                       return (
                         <td key={h} className="px-3 py-2.5">
-                          <CellValue header={h} value={entry.data[h] ?? null} />
+                          <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
                         </td>
                       );
                     })}
@@ -1315,6 +1507,7 @@ export default function BrandGroup() {
       {showAddModal && (
         <AddReviewAccountModal
           currentTab={decodedTab}
+          brandProfiles={brandProfiles}
           onClose={() => setShowAddModal(false)}
           onSaved={() => reloadRef.current()}
         />
