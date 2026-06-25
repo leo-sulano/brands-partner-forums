@@ -47,9 +47,14 @@ function Invoke-PmsJson($method, $uri, $obj) {
     return $body | ConvertFrom-Json
 }
 
-function Invoke-PmsCreate($title, $desc, $labelText) {
+function Invoke-PmsCreate($title, $desc, $labelText, $taskDate) {
     $labelId = Get-LabelId $title $labelText
-    $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
+    if ($taskDate) {
+        try { $dueDate = ([datetime]::ParseExact($taskDate.Trim(), 'MMMM d, yyyy', $null)).ToString('yyyy-MM-dd') + 'T23:59:59.000Z' }
+        catch { $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z' }
+    } else {
+        $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
+    }
     $res = Invoke-PmsJson 'POST' "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" ([ordered]@{
         title       = $title
         description = $desc
@@ -107,6 +112,10 @@ foreach ($section in $sections) {
     $gm    = [regex]::Match($section, '\*\*Group:\*\*\s*([^\r\n]+)')
     $group = if ($gm.Success) { $gm.Groups[1].Value.Trim() } else { $null }
 
+    # Extract date
+    $dm   = [regex]::Match($section, '\*\*Date:\*\*\s*([^\r\n]+)')
+    $date = if ($dm.Success) { $dm.Groups[1].Value.Trim() -replace '–.*','' } else { $null }
+
     # Strip heading, group, and date lines to isolate description
     $desc = $section -replace '(?s).*## Task \d+: [^\r\n]+\r?\n', ''
     $desc = ($desc -replace '\*\*Group:\*\*[^\n]+\n?', '').Trim()
@@ -116,6 +125,7 @@ foreach ($section in $sections) {
         Num   = $num
         Title = $title
         Group = $group
+        Date  = $date
         Desc  = $desc
     })
 }
@@ -128,14 +138,15 @@ foreach ($g in $grouped) {
     $anyAlreadySynced = $members | Where-Object { $_.Num -in $synced }
     if ($anyAlreadySynced) { continue }
 
-    $groupName   = $g.Name
+    $groupName    = $g.Name
     $combinedDesc = ($members | ForEach-Object {
         "### $($_.Title)`n$($_.Desc)"
     }) -join "`n`n"
-    $labelText   = $groupName + ' ' + $combinedDesc
+    $labelText    = $groupName + ' ' + $combinedDesc
+    $groupDate    = ($members | Select-Object -First 1).Date
 
     try {
-        Invoke-PmsCreate "[$groupName]" $combinedDesc $labelText
+        Invoke-PmsCreate "[$groupName]" $combinedDesc $labelText $groupDate
         foreach ($t in $members) { $newSynced.Add($t.Num) }
     } catch { }
 }
@@ -144,7 +155,7 @@ foreach ($g in $grouped) {
 $ungrouped = $parsed | Where-Object { -not $_.Group }
 foreach ($task in $ungrouped) {
     try {
-        Invoke-PmsCreate "Task $($task.Num): $($task.Title)" $task.Desc "$($task.Title) $($task.Desc)"
+        Invoke-PmsCreate "Task $($task.Num): $($task.Title)" $task.Desc "$($task.Title) $($task.Desc)" $task.Date
         $newSynced.Add($task.Num)
     } catch { }
 }
