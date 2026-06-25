@@ -293,12 +293,14 @@ const INLINE_EDIT_COLS = new Set([
   'CG Review Status',
   'AG User',
   'CG User',
+  'Link to the profile',
 ]);
-const INLINE_TEXT_COLS = new Set(['AG User', 'CG User']);
+const INLINE_TEXT_COLS = new Set(['AG User', 'CG User', 'Link to the profile']);
 const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
 const CLEARED_FIELDS = new Set([
   'Trust Pilot',
+  'Link to the profile',
   'TP Review Status',
   'Trust Pilot Review Status',
   'Trustpilot Review Status',
