@@ -326,10 +326,24 @@ Added `AG Review Link` and `CG Review Link` columns to the three multi-platform 
 
 ---
 
-## Task 47: Fix Duplicate "dup" Suffix Field
+## Task 47: Inline Cell Editing & AG/CG Link Auto-fill
 **Date:** June 25, 2026
 
-Moved the " dup" suffix appended on row duplication from the `Account Name` field to the `Account` field (e.g. "1219 | Silver | Norway dup"). The Account field is the unique identifier shown in the first column, making it the correct target to distinguish duplicates at a glance without polluting the display name.
+Added inline cell editing to BrandGroup: clicking a TP Link, AG Review Link, or CG Review Link cell opens a small inline input instead of the full edit modal, letting users paste a URL directly in the table. Account column click still opens the full edit modal. AG Review Link and CG Review Link auto-fill the corresponding date column on save.
+
+---
+
+## Task 48: Row Selection, Duplicate & Delete
+**Date:** June 25, 2026
+
+Added a checkbox column to BrandGroup for multi-row selection. A floating action bar appears when rows are selected offering Duplicate and Delete actions. Duplicate creates copies with cleared status/link fields, appends " dup" to the Account field, resets sort, and returns the user to page 1 so new rows appear at the top. Delete requires typing "delete" in a confirmation modal before proceeding. Ghost rows (all data fields empty after dedup) are filtered out after duplication. Null-date rows float to the top when sorting a date column descending. TP link cleared on duplicate. Tab cache invalidated after insert so the count reflects immediately.
+
+---
+
+## Task 49: Fix Duplicate "dup" Suffix Field
+**Date:** June 25, 2026
+
+Moved the " dup" suffix from `Account Name` to the `Account` field so the unique identifier (e.g. "1219 | Silver | Norway dup") marks the duplicate rather than the display name.
 
 ---
 
