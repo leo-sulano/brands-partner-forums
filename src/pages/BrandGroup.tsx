@@ -847,6 +847,7 @@ export default function BrandGroup() {
         for (const [k, v] of Object.entries(entry.data)) {
           fields[k] = CLEARED_FIELDS.has(k) ? null : v;
         }
+        if (fields['Account Name']) fields['Account Name'] = `${fields['Account Name']} dup`;
         await insertEntry(entry.tab, fields);
         done++;
       }
