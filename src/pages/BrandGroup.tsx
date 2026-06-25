@@ -855,7 +855,7 @@ export default function BrandGroup() {
         for (const [k, v] of Object.entries(entry.data)) {
           fields[k] = CLEARED_FIELDS.has(k) ? null : v;
         }
-        if (fields['Account Name']) fields['Account Name'] = `${fields['Account Name']} dup`;
+        if (fields['Account']) fields['Account'] = `${fields['Account']} dup`;
         await insertEntry(entry.tab, fields);
         done++;
       }
@@ -1048,8 +1048,8 @@ export default function BrandGroup() {
           const da = parseCellDate(av);
           const db = parseCellDate(bv);
           if (!da && !db) return 0;
-          if (!da) return 1;
-          if (!db) return -1;
+          if (!da) return sortDir === 'desc' ? -1 : 1;
+          if (!db) return sortDir === 'desc' ? 1 : -1;
           return sortDir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
         }
         const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
