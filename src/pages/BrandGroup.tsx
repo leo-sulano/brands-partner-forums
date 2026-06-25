@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
@@ -516,7 +516,10 @@ export default function BrandGroup() {
   const [brandFilter, setBrandFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>('all');
   const [showTotalModal, setShowTotalModal] = useState(false);
-  const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>('all');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>(
+    (['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all')
+  );
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(null);
@@ -556,7 +559,7 @@ export default function BrandGroup() {
     setSearch('');
     setBrandFilter('');
     setStatusFilter('all');
-    setPlatformFilter('all');
+    setPlatformFilter((['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all'));
     setAgentFilter('');
     setProxyFilter('');
     setDateFrom('');
@@ -997,7 +1000,12 @@ export default function BrandGroup() {
               <button
                 key={key}
                 type="button"
-                onClick={() => { setPlatformFilter(active ? 'all' : key); setPage(1); }}
+                onClick={() => {
+                  const next = active ? 'all' : key;
+                  setPlatformFilter(next);
+                  setSearchParams(next === 'all' ? {} : { platform: next });
+                  setPage(1);
+                }}
                 className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
               >
                 <div className="flex items-center gap-2 mb-3">
@@ -1086,7 +1094,11 @@ export default function BrandGroup() {
           {activePlatforms.length > 1 && (
             <FilterDropdown
               value={platformFilter}
-              onChange={(v) => { setPlatformFilter(v); setPage(1); }}
+              onChange={(v) => {
+                setPlatformFilter(v);
+                setSearchParams(v === 'all' ? {} : { platform: v });
+                setPage(1);
+              }}
               options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
             />
           )}

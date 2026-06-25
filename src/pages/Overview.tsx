@@ -226,13 +226,21 @@ function PlatformBreakdownModal({
             return (
               <Link
                 key={r.tab}
-                to={`/brands/${tabToSlug(r.tab)}`}
+                to={`/brands/${tabToSlug(r.tab)}?platform=${modal.platformKey}`}
                 onClick={onClose}
                 className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-slate-50"
               >
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex items-center justify-between">
-                    <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-violet-700">{r.tab}</span>
+                    <span className="flex items-center gap-1.5 min-w-0">
+                      <img
+                        src={PLATFORM_LOGOS[modal.platform]}
+                        alt={modal.platform}
+                        className="size-3.5 shrink-0 rounded-sm"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-violet-700">{r.tab}</span>
+                    </span>
                     <span className={`ml-2 shrink-0 text-sm font-bold tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-100">
