@@ -32,35 +32,35 @@ function Get-LabelId($title, $desc) {
     return $LABEL_FEAT
 }
 
+function Invoke-PmsJson($method, $uri, $obj) {
+    $json  = $obj | ConvertTo-Json -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+    $req   = [System.Net.HttpWebRequest]::Create($uri)
+    $req.Method        = $method
+    $req.ContentType   = 'application/json; charset=utf-8'
+    $req.ContentLength = $bytes.Length
+    $req.Headers.Add('Authorization', "Bearer $token")
+    $stream = $req.GetRequestStream(); $stream.Write($bytes, 0, $bytes.Length); $stream.Close()
+    $resp   = $req.GetResponse()
+    $body   = (New-Object System.IO.StreamReader($resp.GetResponseStream())).ReadToEnd()
+    $resp.Close()
+    return $body | ConvertFrom-Json
+}
+
 function Invoke-PmsCreate($title, $desc, $labelText) {
-    $labelId  = Get-LabelId $title $labelText
-    $dueDate  = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
-    $body = [ordered]@{
+    $labelId = Get-LabelId $title $labelText
+    $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
+    $res = Invoke-PmsJson 'POST' "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" ([ordered]@{
         title       = $title
         description = $desc
         columnId    = $PMS_COLUMN
         priority    = 'MEDIUM'
         dueDate     = $dueDate
-    } | ConvertTo-Json -Compress
-
-    $res = Invoke-RestMethod `
-        -Uri     "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" `
-        -Method  POST `
-        -Headers $headers `
-        -Body    $body `
-        -ErrorAction Stop
-
-    $patch = @{
+    })
+    Invoke-PmsJson 'PATCH' "https://pms-nu-eight.vercel.app/api/tasks/$($res.id)" @{
         assigneeIds = @($PMS_ASSIGNEE)
         labelIds    = @($labelId)
-    } | ConvertTo-Json -Compress
-
-    Invoke-RestMethod `
-        -Uri     "https://pms-nu-eight.vercel.app/api/tasks/$($res.id)" `
-        -Method  PATCH `
-        -Headers $headers `
-        -Body    $patch `
-        -ErrorAction Stop | Out-Null
+    } | Out-Null
 }
 
 # --- Read PMS token ---
