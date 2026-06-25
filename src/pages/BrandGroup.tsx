@@ -853,6 +853,8 @@ export default function BrandGroup() {
       }
       reloadRef.current();
       setSelectedIds(new Set());
+      setSortCol(null);
+      setPage(1);
       setToast({ message: `${done} row${done === 1 ? '' : 's'} duplicated`, kind: 'success' });
     } catch {
       reloadRef.current();
