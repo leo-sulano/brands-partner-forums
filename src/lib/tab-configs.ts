@@ -16,9 +16,11 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Ask Gambler review added',
     'AG Review Status',
     'AG Review Link',
+    'AG User',
     'Casino Guru review added',
     'CG Review Status',
     'CG Review Link',
+    'CG User',
   ],
   'Hanan': [
     'Account',
@@ -31,9 +33,11 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Ask Gambler review added',
     'AG Review Status',
     'AG Review Link',
+    'AG User',
     'Casino Guru review added',
     'CG Review Status',
     'CG Review Link',
+    'CG User',
   ],
   'Revolution Casino': [
     'Account',
@@ -46,9 +50,11 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Ask Gambler review added',
     'AG Review Status',
     'AG Review Link',
+    'AG User',
     'Casino Guru review added',
     'CG Review Status',
     'CG Review Link',
+    'CG User',
   ],
   // 1-platform tabs
   'TP Brand Injection': [
@@ -110,9 +116,11 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Ask Gambler review added',
     'AG Review Status',
     'AG Review Link',
+    'AG User',
     'Casino Guru review added',
     'CG Review Status',
     'CG Review Link',
+    'CG User',
   ],
 };
 
@@ -120,7 +128,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
 // Applied globally across all tabs.
 export const COLUMN_LABELS: Record<string, string> = {
   'Account Name':                                     'Acc. Name',
-  'Link to the profile':                              'TP Profile Links',
+  'Link to the profile':                              'TP Links',
   'Trust Pilot':                                      'TP Added',
   'TP Review Status':                                 'TP Status',
   'Trust Pilot Review Status':                        'TP Status',
@@ -148,6 +156,13 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
 export function getTabColumns(tab: string): string[] | null {
   return TAB_COLUMN_CONFIGS[tab] ?? null;
 }
+
+// Default brand name shown in the Brands column when the sheet value is empty.
+export const TAB_DEFAULT_BRAND: Record<string, string> = {
+  'Trybet': 'Trybet',
+  'HazEmirates UAE': 'HazEmirates UAE',
+  'SilverPlay': 'Silverplay',
+};
 
 // Returns the display label for a column header, with optional tab-specific override.
 export function getColLabel(header: string, tab?: string): string {

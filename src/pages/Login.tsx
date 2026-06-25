@@ -6,8 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const { session } = useAuth();
-  if (session) return <Navigate to="/" replace />;
   const navigate = useNavigate();
+  if (session) return <Navigate to="/" replace />;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -36,8 +36,9 @@ export default function Login() {
     e.preventDefault();
     setResetError(null);
     setResetLoading(true);
+    const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
     const { error: err } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-      redirectTo: `${window.location.origin}/reset-password`,
+      redirectTo: `${siteUrl}/reset-password`,
     });
     setResetLoading(false);
     if (err) {

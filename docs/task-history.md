@@ -298,6 +298,41 @@ Removed the floating `AssistantWidget` bubble from the app layout while keeping 
 
 ---
 
-*Last updated: June 23, 2026*
+## Task 43: Platform Breakdown Modal (Donut Chart Drill-Down)
+**Date:** June 25, 2026
+
+Added a `PlatformBreakdownModal` to the Overview page. Clicking a slice on the platform donut chart opens a modal showing a per-brand breakdown for that platform (TP / AG / CG) — count, proportional bar, and a direct link to the brand tab. Added to `Overview.tsx` alongside the existing chart component.
+
+---
+
+## Task 44: Sync Platform Filter to URL
+**Date:** June 25, 2026
+
+Platform filter state in `BrandGroup` is now reflected in the URL when the user clicks a platform card or selects from the dropdown. Navigating back or sharing the URL preserves the active platform filter. Also synced the Overview → BrandGroup navigation to pass the platform context through the URL.
+
+---
+
+## Task 45: AG/CG Review Link Columns (3-Platform Tabs)
+**Date:** June 25, 2026
+
+Added `AG Review Link` and `CG Review Link` columns to the three multi-platform brand tabs (Rooster Partners, Revolution Casino, SilverPlay, Hanan) in `tab-configs.ts`. Updated the platform filter column sets in `BrandGroup.tsx` so these link columns appear when the AG or CG platform filter is active.
+
+---
+
+## Task 46: Fix Reset Password Email Link (Localhost → Production)
+**Date:** June 25, 2026
+
+`resetPasswordForEmail` was using `window.location.origin` as the `redirectTo` base, which produced `http://localhost:5173` when triggered from the dev server — making the reset email link unreachable. Added `VITE_SITE_URL` env var and updated `Login.tsx` to use it with a fallback to `window.location.origin`. Also updated Supabase Auth Site URL and added the production redirect URL to the Supabase allowlist.
+
+---
+
+## Task 47: Fix Duplicate "dup" Suffix Field
+**Date:** June 25, 2026
+
+Moved the " dup" suffix appended on row duplication from the `Account Name` field to the `Account` field (e.g. "1219 | Silver | Norway dup"). The Account field is the unique identifier shown in the first column, making it the correct target to distinguish duplicates at a glance without polluting the display name.
+
+---
+
+*Last updated: June 25, 2026*
 
 ---

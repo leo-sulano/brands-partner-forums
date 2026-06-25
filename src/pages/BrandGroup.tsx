@@ -881,6 +881,7 @@ export default function BrandGroup() {
     setDeleting(true);
     try {
       await deleteEntries(ids, decodedTab);
+      setEntries((prev) => prev.filter((e) => !new Set(ids).has(e.id)));
       reloadRef.current();
       setSelectedIds(new Set());
       setToast({ message: `${ids.length} row${ids.length === 1 ? '' : 's'} deleted`, kind: 'success' });

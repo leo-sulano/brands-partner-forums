@@ -123,6 +123,8 @@ create policy "approved users can insert entries"
   on public.entries for insert with check (public.is_approved());
 create policy "approved users can update entries"
   on public.entries for update using (public.is_approved()) with check (public.is_approved());
+create policy "approved users can delete entries"
+  on public.entries for delete using (public.is_approved());
 
 -- tab_schemas
 create policy "anyone can read tab_schemas"
