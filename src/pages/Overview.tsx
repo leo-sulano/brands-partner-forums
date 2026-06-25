@@ -56,6 +56,20 @@ interface KpiModalState {
   color: 'blue' | 'emerald' | 'rose';
 }
 
+type PlatformKey = 'tp' | 'ag' | 'cg';
+
+const PLATFORM_KEY: Record<string, PlatformKey> = {
+  Trustpilot: 'tp',
+  AskGamblers: 'ag',
+  CasinoGuru: 'cg',
+};
+
+interface PlatformSliceModalState {
+  platform: string;
+  platformKey: PlatformKey;
+  kind: 'live' | 'removed';
+}
+
 function KpiBreakdownModal({
   modal,
   tabs,
@@ -145,6 +159,95 @@ function KpiBreakdownModal({
   );
 }
 
+function PlatformBreakdownModal({
+  modal,
+  tabs,
+  onClose,
+}: {
+  modal: PlatformSliceModalState;
+  tabs: TabSummary[];
+  onClose: () => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const rows = tabs
+    .map((t) => ({ tab: t.tab, count: t.kpis[modal.platformKey][modal.kind] }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  const grandTotal = rows.reduce((s, r) => s + r.count, 0);
+  const isLive = modal.kind === 'live';
+  const barColor = isLive ? 'bg-emerald-500' : 'bg-rose-500';
+  const valueColor = isLive ? 'text-emerald-600' : 'text-rose-600';
+  const kindLabel = isLive ? 'Published' : 'Removed';
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    >
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl mx-4">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <img
+                src={PLATFORM_LOGOS[modal.platform]}
+                alt={modal.platform}
+                className="size-4 rounded"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+              <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+                {modal.platform} — {kindLabel}
+              </p>
+            </div>
+            <p className={`text-2xl font-bold tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+            <p className="mt-1 text-xs text-slate-400">{kindLabel} reviews by brand tab</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-3">
+          {rows.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-400">No data</p>
+          ) : rows.map((r) => {
+            const pct = grandTotal > 0 ? (r.count / grandTotal) * 100 : 0;
+            return (
+              <Link
+                key={r.tab}
+                to={`/brands/${tabToSlug(r.tab)}`}
+                onClick={onClose}
+                className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-slate-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-violet-700">{r.tab}</span>
+                    <span className={`ml-2 shrink-0 text-sm font-bold tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100">
+                    <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const initial: State = { loading: true, error: null, tabs: [] };
 
 
@@ -152,6 +255,7 @@ const initial: State = { loading: true, error: null, tabs: [] };
 export default function Overview() {
   const [state, setState] = useState<State>(initial);
   const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
+  const [platformSliceModal, setPlatformSliceModal] = useState<PlatformSliceModalState | null>(null);
   const [searchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
@@ -363,6 +467,13 @@ export default function Overview() {
                           stroke="#fff"
                           strokeWidth={2}
                           labelLine={false}
+                          style={{ cursor: total > 0 ? 'pointer' : 'default' }}
+                          onClick={(data) => {
+                            if (total === 0 || data.label === 'No data') return;
+                            const platformKey = PLATFORM_KEY[p.name];
+                            const kind: 'live' | 'removed' = data.label === 'Published' ? 'live' : 'removed';
+                            setPlatformSliceModal({ platform: p.name, platformKey, kind });
+                          }}
                         >
                           {slices.map((s) => (
                             <Cell key={s.label} fill={s.fill} />
@@ -406,6 +517,14 @@ export default function Overview() {
           modal={kpiModal}
           tabs={state.tabs}
           onClose={() => setKpiModal(null)}
+        />
+      )}
+
+      {platformSliceModal && (
+        <PlatformBreakdownModal
+          modal={platformSliceModal}
+          tabs={state.tabs}
+          onClose={() => setPlatformSliceModal(null)}
         />
       )}
     </div>
