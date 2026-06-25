@@ -1,7 +1,10 @@
 # .claude/scripts/ship-to-pms.ps1
 # Runs on every session Stop. Reads docs/task-history.md, finds tasks not yet
-# in .claude/pms-synced-tasks.txt, and creates them in PMS Review/QA with
-# title, description, due date, auto-detected label, and assignee.
+# in .claude/pms-synced-tasks.txt, and creates them in PMS Review/QA.
+#
+# Grouping: tasks with the same **Group:** marker are merged into ONE PMS task
+# titled with the group name and a combined description listing each sub-task.
+# Ungrouped tasks create individual PMS tasks as before.
 # Silent on all errors so it never blocks Claude.
 
 $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
@@ -29,6 +32,37 @@ function Get-LabelId($title, $desc) {
     return $LABEL_FEAT
 }
 
+function Invoke-PmsCreate($title, $desc, $labelText) {
+    $labelId  = Get-LabelId $title $labelText
+    $dueDate  = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
+    $body = [ordered]@{
+        title       = $title
+        description = $desc
+        columnId    = $PMS_COLUMN
+        priority    = 'MEDIUM'
+        dueDate     = $dueDate
+    } | ConvertTo-Json -Compress
+
+    $res = Invoke-RestMethod `
+        -Uri     "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" `
+        -Method  POST `
+        -Headers $headers `
+        -Body    $body `
+        -ErrorAction Stop
+
+    $patch = @{
+        assigneeIds = @($PMS_ASSIGNEE)
+        labelIds    = @($labelId)
+    } | ConvertTo-Json -Compress
+
+    Invoke-RestMethod `
+        -Uri     "https://pms-nu-eight.vercel.app/api/tasks/$($res.id)" `
+        -Method  PATCH `
+        -Headers $headers `
+        -Body    $patch `
+        -ErrorAction Stop | Out-Null
+}
+
 # --- Read PMS token ---
 $token = ''
 if (Test-Path $EnvFile) {
@@ -36,6 +70,11 @@ if (Test-Path $EnvFile) {
     if ($line) { $token = $line.Split('=', 2)[1].Trim() }
 }
 if (-not $token) { exit 0 }
+
+$headers = @{
+    'Authorization' = "Bearer $token"
+    'Content-Type'  = 'application/json'
+}
 
 # --- Load already-synced task numbers ---
 $synced = @()
@@ -51,63 +90,63 @@ $content = Get-Content $HistoryFile -Raw
 # Split on "---" dividers to isolate each task block
 $sections = $content -split '\r?\n---\r?\n'
 
-$headers = @{
-    'Authorization' = "Bearer $token"
-    'Content-Type'  = 'application/json'
-}
-
 $newSynced = [System.Collections.Generic.List[int]]::new()
 foreach ($n in $synced) { $newSynced.Add($n) }
 
+# --- Parse all unsynced tasks ---
+$parsed = [System.Collections.Generic.List[PSCustomObject]]::new()
 foreach ($section in $sections) {
     $m = [regex]::Match($section, '## Task (\d+): (.+)')
     if (-not $m.Success) { continue }
 
     $num   = [int]$m.Groups[1].Value
     $title = $m.Groups[2].Value.Trim()
-
     if ($num -in $synced) { continue }
 
-    # Strip heading + date line; keep the description body
+    # Extract optional group name
+    $gm    = [regex]::Match($section, '\*\*Group:\*\*\s*([^\r\n]+)')
+    $group = if ($gm.Success) { $gm.Groups[1].Value.Trim() } else { $null }
+
+    # Strip heading, group, and date lines to isolate description
     $desc = $section -replace '(?s).*## Task \d+: [^\r\n]+\r?\n', ''
+    $desc = ($desc -replace '\*\*Group:\*\*[^\n]+\n?', '').Trim()
     $desc = ($desc -replace '\*\*Date:\*\*[^\n]+\n?', '').Trim()
 
-    $labelId = Get-LabelId $title $desc
-    $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
+    $parsed.Add([PSCustomObject]@{
+        Num   = $num
+        Title = $title
+        Group = $group
+        Desc  = $desc
+    })
+}
 
-    $createBody = [ordered]@{
-        title       = "Task $num`: $title"
-        description = $desc
-        columnId    = $PMS_COLUMN
-        priority    = 'MEDIUM'
-        dueDate     = $dueDate
-    } | ConvertTo-Json -Compress
+# --- Ship grouped tasks (one PMS task per group) ---
+$grouped = $parsed | Where-Object { $_.Group } | Group-Object Group
+foreach ($g in $grouped) {
+    $members = @($g.Group)
+    # Only create the group task if ALL members are unsynced (avoids partial re-ship)
+    $anyAlreadySynced = $members | Where-Object { $_.Num -in $synced }
+    if ($anyAlreadySynced) { continue }
+
+    $groupName   = $g.Name
+    $combinedDesc = ($members | ForEach-Object {
+        "### $($_.Title)`n$($_.Desc)"
+    }) -join "`n`n"
+    $labelText   = $groupName + ' ' + $combinedDesc
 
     try {
-        $res = Invoke-RestMethod `
-            -Uri     "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" `
-            -Method  POST `
-            -Headers $headers `
-            -Body    $createBody `
-            -ErrorAction Stop
+        Invoke-PmsCreate "[$groupName]" $combinedDesc $labelText
+        foreach ($t in $members) { $newSynced.Add($t.Num) }
+    } catch { }
+}
 
-        # Assign + label in one PATCH
-        $patchBody = @{
-            assigneeIds = @($PMS_ASSIGNEE)
-            labelIds    = @($labelId)
-        } | ConvertTo-Json -Compress
-
-        Invoke-RestMethod `
-            -Uri     "https://pms-nu-eight.vercel.app/api/tasks/$($res.id)" `
-            -Method  PATCH `
-            -Headers $headers `
-            -Body    $patchBody `
-            -ErrorAction Stop | Out-Null
-
-        $newSynced.Add($num)
-    } catch {
-        # Silent fail — never block the session
-    }
+# --- Ship ungrouped tasks individually ---
+$ungrouped = $parsed | Where-Object { -not $_.Group }
+foreach ($task in $ungrouped) {
+    try {
+        Invoke-PmsCreate "Task $($task.Num): $($task.Title)" $task.Desc "$($task.Title) $($task.Desc)"
+        $newSynced.Add($task.Num)
+    } catch { }
 }
 
 # Persist updated synced list

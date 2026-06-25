@@ -334,6 +334,7 @@ Added inline cell editing to BrandGroup: clicking a TP Link, AG Review Link, or 
 ---
 
 ## Task 48: Row Selection, Duplicate & Delete
+**Group:** Duplication
 **Date:** June 25, 2026
 
 Added a checkbox column to BrandGroup for multi-row selection. A floating action bar appears when rows are selected offering Duplicate and Delete actions. Duplicate creates copies with cleared status/link fields, appends " dup" to the Account field, resets sort, and returns the user to page 1 so new rows appear at the top. Delete requires typing "delete" in a confirmation modal before proceeding. Ghost rows (all data fields empty after dedup) are filtered out after duplication. Null-date rows float to the top when sorting a date column descending. TP link cleared on duplicate. Tab cache invalidated after insert so the count reflects immediately.
@@ -341,6 +342,7 @@ Added a checkbox column to BrandGroup for multi-row selection. A floating action
 ---
 
 ## Task 49: Fix Duplicate "dup" Suffix Field
+**Group:** Duplication
 **Date:** June 25, 2026
 
 Moved the " dup" suffix from `Account Name` to the `Account` field so the unique identifier (e.g. "1219 | Silver | Norway dup") marks the duplicate rather than the display name.
