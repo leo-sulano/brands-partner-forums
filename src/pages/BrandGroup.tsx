@@ -585,7 +585,7 @@ export default function BrandGroup() {
 
   const [agentFilter, setAgentFilter] = useState('');
   const [proxyFilter, setProxyFilter] = useState('');
-  const { isApproved } = useAuth();
+  const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
@@ -803,15 +803,18 @@ export default function BrandGroup() {
     return result;
   })();
 
+  const GUEST_HIDDEN_COLS = new Set(['User Name', 'AG User', 'CG User']);
+
   // Hide other platforms' columns when a specific platform is selected.
-  const visibleHeaders = platformFilter !== 'all' && activePlatforms.length > 1
+  const visibleHeaders = (platformFilter !== 'all' && activePlatforms.length > 1
     ? headers.filter((h) => {
         for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as ['tp' | 'ag' | 'cg', Set<string>][]) {
           if (key !== platformFilter && cols.has(h)) return false;
         }
         return true;
       })
-    : headers;
+    : headers
+  ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
 
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
   const uniqueBrands = brandCol
