@@ -1069,8 +1069,8 @@ export default function BrandGroup() {
           const da = parseCellDate(av);
           const db = parseCellDate(bv);
           if (!da && !db) return 0;
-          if (!da) return sortDir === 'desc' ? -1 : 1;
-          if (!db) return sortDir === 'desc' ? 1 : -1;
+          if (!da) return 1;
+          if (!db) return -1;
           return sortDir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
         }
         const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
