@@ -1401,13 +1401,6 @@ export default function BrandGroup() {
                 </div>
                 {checkDropdownOpen && (
                   <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-md border border-slate-200 bg-white shadow-lg py-1">
-                    <button
-                      type="button"
-                      onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
-                      className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      Check All
-                    </button>
                     {getTabPlatforms(decodedTab).map((p) => (
                       <button
                         key={p}
