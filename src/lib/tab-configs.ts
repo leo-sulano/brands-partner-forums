@@ -198,10 +198,11 @@ export function hasMultiPlatform(tab: string): boolean {
   return set.has('AG Review Status') && set.has('CG Review Status');
 }
 
-// Returns the platforms active for a given tab. All tabs have TP; AG/CG are opt-in via column presence.
-export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg')[] {
-  const platforms: ('tp' | 'ag' | 'cg')[] = ['tp'];
+// Returns the platforms active for a given tab. All tabs default to TP; WO/AG/CG are opt-in via column presence.
+export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   const cols = TAB_COLUMN_CONFIGS[tab];
+  if (tab === 'Wizard of Odds') return ['wo'];
+  const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = ['tp'];
   if (cols) {
     const set = new Set(cols);
     if (set.has('AG Review Status')) platforms.push('ag');

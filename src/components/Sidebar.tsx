@@ -10,10 +10,11 @@ import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { useAuth } from '../contexts/AuthContext';
 
-const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
+const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
   ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
   cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
+  wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=16',
 };
 
 

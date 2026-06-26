@@ -408,10 +408,11 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
   );
 }
 
-const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
+const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
   ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
   cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
+  wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=16',
 };
 
 const PLATFORM_CARDS = [
@@ -1033,7 +1034,7 @@ export default function BrandGroup() {
     return v.includes('pause');
   }
   function isPending(v: string) {
-    return v.includes('pending');
+    return v.toLowerCase().includes('pending') || v.toLowerCase() === 'not published';
   }
 
   // Top KPI card counts — always reflect the active filter combination.
@@ -1107,11 +1108,11 @@ export default function BrandGroup() {
     setJumpInput('');
   }
 
-  async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg')[]) {
+  async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
     try {
-      const platformList: ('tp' | 'ag' | 'cg')[] = platforms;
+      const platformList = platforms.filter((p): p is 'tp' | 'ag' | 'cg' => p !== 'wo');
       const results: { updated: number; errors: number; sheet_errors?: number }[] = [];
       for (const p of platformList) {
         try {
@@ -1425,7 +1426,7 @@ export default function BrandGroup() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => handleCheckStatus(['tp'])}
+                  onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                   disabled={checkingStatus}
                   className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
