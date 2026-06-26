@@ -1,4 +1,4 @@
-import { supabase, SYNC_FUNCTION_URL, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN } from './supabase';
+import { supabase, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN } from './supabase';
 import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
@@ -532,25 +532,6 @@ export async function deleteEntries(ids: string[], tab: string): Promise<void> {
   const { error } = await supabase.from('entries').delete().in('id', ids);
   if (error) throw error;
   invalidateTabCache(tab);
-}
-
-// ---------------------------------------------------------------------------
-// Sync trigger
-// ---------------------------------------------------------------------------
-
-export async function triggerSync(): Promise<void> {
-  if (!SYNC_FUNCTION_URL) throw new Error('VITE_IMPORT_TABS_URL is not configured — check .env');
-  const res = await fetch(SYNC_FUNCTION_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Sync failed: ${res.status} ${body}`);
-  }
 }
 
 // ---------------------------------------------------------------------------

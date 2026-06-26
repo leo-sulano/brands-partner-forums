@@ -1,7 +1,7 @@
 import React, { useEffect, useReducer, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import { fetchSyncRuns, triggerSync, triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
+import { fetchSyncRuns, triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
 import { tabToSlug } from '../lib/tabs';
 import type { SyncRun, SyncRunStatus } from '../types/sync';
 import { subscribeSyncRuns } from '../lib/realtime';
@@ -104,7 +104,6 @@ const STATUS_PILL: Record<SyncRunStatus, string> = {
 export default function SyncStatus() {
   const [runs, setRuns]       = useState<SyncRun[]>([]);
   const [loading, setLoading] = useState(true);
-  const [running, setRunning] = useState(false);
   const [error, setError]     = useState<string | null>(null);
   const [toast, setToast]     = useState<{ message: string; kind: ToastKind } | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -183,19 +182,6 @@ export default function SyncStatus() {
     });
   }
 
-  async function handleRunNow() {
-    setRunning(true);
-    try {
-      await triggerSync();
-      setToast({ message: 'Sync triggered', kind: 'success' });
-      await load();
-    } catch (err) {
-      setToast({ message: (err as Error).message, kind: 'error' });
-    } finally {
-      setRunning(false);
-    }
-  }
-
   const lastSuccess = runs.find((r) => r.status === 'success');
   const days = groupByDate(runs);
 
@@ -204,20 +190,12 @@ export default function SyncStatus() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-slate-800">Sheet → Supabase sync</h2>
+          <h2 className="text-base font-semibold text-slate-800">Sync history</h2>
           <p className="mt-1 text-sm text-slate-500">
             Last successful run:{' '}
             {lastSuccess ? formatRelative(lastSuccess.finished_at ?? lastSuccess.started_at) : '—'}
           </p>
         </div>
-        <button
-          onClick={handleRunNow}
-          disabled={running}
-          className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
-        >
-          <RefreshCw className={`size-4 ${running ? 'animate-spin' : ''}`} />
-          {running ? 'Running…' : 'Run sync now'}
-        </button>
       </div>
 
       {error ? (
