@@ -326,7 +326,7 @@ function isRemovedStatus(s: string) {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
 function isDoneStatus(s: string) { return s === 'done'; }
-function isPendingStatus(s: string) { return s.includes('pending'); }
+function isPendingStatus(s: string) { return s.includes('pending') || s === 'not published'; }
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
@@ -353,27 +353,31 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
   const tpCol = resolveHeader('TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status');
   const agCol = resolveHeader('AG Review Status');
   const cgCol = resolveHeader('CG Review Status');
+  const woCol = resolveHeader('WoO Review Status');
   const genericCol = resolveHeader('Review Status', 'status', 'Status');
 
   let live = 0, removed = 0, done = 0, pending = 0, onPause = 0, notDone = 0;
   let tpLive = 0, tpRemoved = 0;
   let agLive = 0, agRemoved = 0;
   let cgLive = 0, cgRemoved = 0;
+  let woLive = 0, woRemoved = 0;
 
   for (const entry of entries) {
     const d = entry.data;
     const tp = tpCol ? (d[tpCol] ?? '').toLowerCase() : '';
     const ag = agCol ? (d[agCol] ?? '').toLowerCase() : '';
     const cg = cgCol ? (d[cgCol] ?? '').toLowerCase() : '';
-    const generic = (!tp && !ag && !cg && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
+    const wo = woCol ? (d[woCol] ?? '').toLowerCase() : '';
+    const generic = (!tp && !ag && !cg && !wo && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
 
     if (tp) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
     if (ag) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
     if (cg) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
+    if (wo) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
 
-    const agg = tp || ag || cg || generic;
+    const agg = tp || ag || cg || wo || generic;
     if (agg) {
-      const statuses = [tp, ag, cg, generic].filter(Boolean);
+      const statuses = [tp, ag, cg, wo, generic].filter(Boolean);
       if (statuses.some(isLiveStatus)) live++;
       else if (statuses.some(isRemovedStatus)) removed++;
       else if (statuses.some(isDoneStatus)) done++;
@@ -383,10 +387,11 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
     }
   }
 
-  const activePlatforms: ('tp' | 'ag' | 'cg')[] = [];
+  const activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[] = [];
   if (tpCol) activePlatforms.push('tp');
   if (agCol) activePlatforms.push('ag');
   if (cgCol) activePlatforms.push('cg');
+  if (woCol) activePlatforms.push('wo');
 
   return {
     total: live + removed,
@@ -399,6 +404,7 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
     tp: { live: tpLive, removed: tpRemoved },
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
+    wo: { live: woLive, removed: woRemoved },
     activePlatforms,
   };
 }

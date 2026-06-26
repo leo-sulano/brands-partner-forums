@@ -21,15 +21,17 @@ interface State {
 }
 
 const PLATFORM_COLORS = {
-  Trustpilot:  '#3b82f6',
-  AskGamblers: '#10b981',
-  CasinoGuru:  '#f59e0b',
+  Trustpilot:    '#3b82f6',
+  AskGamblers:   '#10b981',
+  CasinoGuru:    '#f59e0b',
+  WizardOfOdds:  '#6366f1',
 } as const;
 
 const PLATFORM_LOGOS: Record<string, string> = {
-  Trustpilot:  'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32',
-  AskGamblers: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32',
-  CasinoGuru:  'https://www.google.com/s2/favicons?domain=casino.guru&sz=32',
+  Trustpilot:   'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32',
+  AskGamblers:  'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32',
+  CasinoGuru:   'https://www.google.com/s2/favicons?domain=casino.guru&sz=32',
+  WizardOfOdds: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=32',
 };
 
 
@@ -38,13 +40,15 @@ const EMPTY_KPIS: TabKpis = {
   tp: { live: 0, removed: 0 },
   ag: { live: 0, removed: 0 },
   cg: { live: 0, removed: 0 },
+  wo: { live: 0, removed: 0 },
   activePlatforms: [],
 };
 
-const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg', { label: string; cls: string; icon: string }> = {
-  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200',   icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16' },
-  ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200', icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
+const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: string; icon: string }> = {
+  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200',     icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16' },
+  ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200',  icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
   cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
+  wo: { label: 'WO', cls: 'bg-indigo-50 text-indigo-600 border border-indigo-200', icon: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=16' },
 };
 
 type KpiModalKind = 'total' | 'live' | 'removed';
@@ -56,12 +60,13 @@ interface KpiModalState {
   color: 'blue' | 'emerald' | 'rose';
 }
 
-type PlatformKey = 'tp' | 'ag' | 'cg';
+type PlatformKey = 'tp' | 'ag' | 'cg' | 'wo';
 
 const PLATFORM_KEY: Record<string, PlatformKey> = {
-  Trustpilot: 'tp',
-  AskGamblers: 'ag',
-  CasinoGuru: 'cg',
+  Trustpilot:   'tp',
+  AskGamblers:  'ag',
+  CasinoGuru:   'cg',
+  WizardOfOdds: 'wo',
 };
 
 interface PlatformSliceModalState {
@@ -89,8 +94,8 @@ function KpiBreakdownModal({
 
   function getCount(kpis: TabKpis): number {
     if (modal.kind === 'total') return kpis.total;
-    if (modal.kind === 'live') return kpis.tp.live + kpis.ag.live + kpis.cg.live;
-    return kpis.tp.removed + kpis.ag.removed + kpis.cg.removed;
+    if (modal.kind === 'live') return kpis.tp.live + kpis.ag.live + kpis.cg.live + kpis.wo.live;
+    return kpis.tp.removed + kpis.ag.removed + kpis.cg.removed + kpis.wo.removed;
   }
 
   const rows = tabs
@@ -315,6 +320,11 @@ export default function Overview() {
       Live:    state.tabs.reduce((s, t) => s + t.kpis.cg.live,    0),
       Removed: state.tabs.reduce((s, t) => s + t.kpis.cg.removed, 0),
     },
+    {
+      name: 'WizardOfOdds',
+      Live:    state.tabs.reduce((s, t) => s + t.kpis.wo.live,    0),
+      Removed: state.tabs.reduce((s, t) => s + t.kpis.wo.removed, 0),
+    },
   ];
 
   return (
@@ -339,14 +349,14 @@ export default function Overview() {
         <button
           type="button"
           disabled={state.loading}
-          onClick={() => setKpiModal({ kind: 'live', title: 'Live', tagline: 'Live or published reviews across Trustpilot, AskGamblers & Casino Guru', color: 'emerald' })}
+          onClick={() => setKpiModal({ kind: 'live', title: 'Live', tagline: 'Live or published reviews across Trustpilot, AskGamblers, Casino Guru & Wizard of Odds', color: 'emerald' })}
           className="text-left disabled:cursor-default"
         >
           <KpiCard
             label="Live"
             value={state.loading ? '…' : totalLive.toLocaleString()}
             icon={<CheckCircle2 className="size-5" />}
-            hint="active across TP / AG / CG"
+            hint="active across TP / AG / CG / WO"
             color="emerald"
           />
         </button>
@@ -429,13 +439,13 @@ export default function Overview() {
           <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform</p>
         </div>
         {state.loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
             ))}
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {platformData.map((p) => {
               const total = p.Live + p.Removed;
               const color = PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS];
@@ -456,7 +466,9 @@ export default function Overview() {
                       className="size-5 rounded"
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
-                    <span className="text-sm font-semibold text-slate-700">{p.name}</span>
+                    <span className="text-sm font-semibold text-slate-700">
+                      {p.name === 'WizardOfOdds' ? 'Wizard of Odds' : p.name}
+                    </span>
                   </div>
 
                   {/* Donut */}
