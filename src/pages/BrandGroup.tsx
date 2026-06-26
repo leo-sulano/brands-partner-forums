@@ -554,6 +554,27 @@ function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | nu
     : <ChevronDown className="size-3 text-violet-600 shrink-0" />;
 }
 
+function sortStorageKey(tab: string) {
+  return `bpf_sort_${tab}`;
+}
+
+function readSortFromStorage(tab: string): { col: string | null; dir: 'asc' | 'desc' } {
+  try {
+    const raw = localStorage.getItem(sortStorageKey(tab));
+    if (!raw) return { col: null, dir: 'asc' };
+    const parsed = JSON.parse(raw);
+    return { col: parsed.col ?? null, dir: parsed.dir === 'desc' ? 'desc' : 'asc' };
+  } catch { return { col: null, dir: 'asc' }; }
+}
+
+function writeSortToStorage(tab: string, col: string | null, dir: 'asc' | 'desc') {
+  if (col) {
+    localStorage.setItem(sortStorageKey(tab), JSON.stringify({ col, dir }));
+  } else {
+    localStorage.removeItem(sortStorageKey(tab));
+  }
+}
+
 export default function BrandGroup() {
   const { tab } = useParams<{ tab: string }>();
   // URL carries kebab-case slug (e.g. "tp-brand-injection"); resolve to the
@@ -577,8 +598,8 @@ export default function BrandGroup() {
   );
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [sortCol, setSortCol] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [sortCol, setSortCol] = useState<string | null>(() => readSortFromStorage(decodedTab).col);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => readSortFromStorage(decodedTab).dir);
   const [pageSize, setPageSize] = useState<number>(25);
   const [page, setPage] = useState(1);
   const [jumpInput, setJumpInput] = useState('');
@@ -593,6 +614,7 @@ export default function BrandGroup() {
 
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
+  const lastLoadedTabRef = useRef<string | null>(null);
 
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
@@ -640,8 +662,6 @@ export default function BrandGroup() {
     setProxyFilter('');
     setDateFrom('');
     setDateTo('');
-    setSortCol(null);
-    setSortDir('asc');
     setPage(1);
     setJumpInput('');
     setSelectedIds(new Set());
@@ -743,13 +763,26 @@ export default function BrandGroup() {
             }
           }
         }
-        const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
-          populated.some((h) => h.toLowerCase() === col.toLowerCase()),
-        );
-        if (defaultDateCol) {
-          const matched = populated.find((h) => h.toLowerCase() === defaultDateCol.toLowerCase());
-          if (matched) { setSortCol(matched); setSortDir('desc'); }
+        const isTabChange = lastLoadedTabRef.current !== decodedTab;
+        lastLoadedTabRef.current = decodedTab;
+        if (isTabChange) {
+          const saved = readSortFromStorage(decodedTab);
+          const validSavedCol = saved.col && populated.includes(saved.col) ? saved.col : null;
+          if (validSavedCol) {
+            setSortCol(validSavedCol);
+            setSortDir(saved.dir);
+          } else {
+            const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
+              populated.some((h) => h.toLowerCase() === col.toLowerCase()),
+            );
+            const matched = defaultDateCol
+              ? populated.find((h) => h.toLowerCase() === defaultDateCol.toLowerCase())
+              : undefined;
+            setSortCol(matched ?? null);
+            setSortDir(matched ? 'desc' : 'asc');
+          }
         }
+        // Same-tab reload (realtime): preserve current sort — no setSortCol call
       } catch (err) {
         if (canceled) return;
         setError(err instanceof Error ? err.message : 'Failed to load');
@@ -1092,12 +1125,18 @@ export default function BrandGroup() {
 
   function handleSort(col: string) {
     if (isLinkCol(col)) return;
+    let newCol: string | null;
+    let newDir: 'asc' | 'desc';
     if (sortCol === col) {
-      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+      newCol = col;
+      newDir = sortDir === 'asc' ? 'desc' : 'asc';
     } else {
-      setSortCol(col);
-      setSortDir(isDateCol(col) ? 'desc' : 'asc');
+      newCol = col;
+      newDir = isDateCol(col) ? 'desc' : 'asc';
     }
+    setSortCol(newCol);
+    setSortDir(newDir);
+    writeSortToStorage(decodedTab, newCol, newDir);
     setPage(1);
   }
 
