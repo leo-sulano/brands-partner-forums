@@ -1115,7 +1115,7 @@ export default function BrandGroup() {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
     try {
-      const results: { updated: number; errors: number; sheet_errors?: number }[] = [];
+      const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
       for (const p of platforms) {
         try {
           let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
@@ -1129,10 +1129,12 @@ export default function BrandGroup() {
         }
       }
 
+      let totalChecked = 0;
       let totalUpdated = 0;
       let totalErrors = 0;
       let totalSheetErrors = 0;
       for (const r of results) {
+        totalChecked     += r.checked ?? 0;
         totalUpdated     += r.updated ?? 0;
         totalErrors      += r.errors  ?? 0;
         totalSheetErrors += r.sheet_errors ?? 0;
@@ -1159,8 +1161,11 @@ export default function BrandGroup() {
       } else if (totalUpdated > 0) {
         msg = `${totalUpdated} review${totalUpdated !== 1 ? 's' : ''} updated`;
         kind = 'success';
+      } else if (totalChecked > 0) {
+        msg = `Checked ${totalChecked} entr${totalChecked !== 1 ? 'ies' : 'y'} — no status changes`;
+        kind = 'success';
       } else {
-        msg = 'All reviews up to date';
+        msg = 'No entries found to check';
         kind = 'success';
       }
       setToast({ message: msg, kind });

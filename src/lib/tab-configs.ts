@@ -167,7 +167,7 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
     'Wizard of Odds':           'WO Date',
     'WoO Review Status':        'WO Status',
     'Wizard of OddsScore added':'WO Score',
-    'Link to the profile':      'Link',
+    'Link to the profile':      'Profile Link',
     'User Name':                'WO User',
   },
 };

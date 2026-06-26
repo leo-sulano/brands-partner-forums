@@ -18,6 +18,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import requests
@@ -47,8 +48,10 @@ WO_STATUS_COLS = ["WoO Review Status"]
 WO_LINK_COLS   = ["Link to the profile"]
 WO_USER_COLS   = ["WoO User", "WO User", "User Name", "Username"]
 WO_SCORE_COLS  = ["Wizard of OddsScore added", "WO Score added"]
+WO_DATE_COLS   = ["Wizard of Odds"]
 
 CHECKABLE_STATUSES = {"done", "pending", "published"}
+REFUSED_AFTER_DAYS = 1
 
 
 # ─── Column helpers ───────────────────────────────────────────────────────────
@@ -63,6 +66,17 @@ def _val(data: dict, candidates: list) -> Optional[str]:
         if v and str(v).strip():
             return str(v).strip()
     return None
+
+
+def _older_than(date_str: str, days: int) -> bool:
+    """Return True if date_str is more than `days` days in the past."""
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            dt = datetime.strptime(date_str.strip(), fmt).replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - dt) > timedelta(days=days)
+        except ValueError:
+            continue
+    return False  # unparseable — don't auto-refuse
 
 
 # ─── Supabase ────────────────────────────────────────────────────────────────
@@ -219,8 +233,20 @@ def check_wo_for_tab(
                     continue
 
                 if new_status is None:
-                    print(f"    -> not found / no status change needed")
-                    continue
+                    # Username not found on WO page.
+                    # If status is "Done" and >= 1 day old → mark Refused.
+                    if current.strip().lower() == "done":
+                        wo_date = _val(data, WO_DATE_COLS)
+                        if wo_date and _older_than(wo_date, REFUSED_AFTER_DAYS):
+                            new_status = "Refused"
+                            print(f"    -> Done for >{REFUSED_AFTER_DAYS}d, not found -> Refused")
+                        else:
+                            age = f"date={wo_date}" if wo_date else "no date"
+                            print(f"    -> Done but too recent ({age}) — skipping")
+                            continue
+                    else:
+                        print(f"    -> not found / no status change needed")
+                        continue
 
                 updates: dict = {}
                 if new_status != current:
