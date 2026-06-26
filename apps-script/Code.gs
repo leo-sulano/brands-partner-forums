@@ -18,7 +18,8 @@ var OPERATIONAL_TABS = [
   'SilverPlay',
   'SuprPlay Limited',
   'HazEmirates UAE',
-  'Hanan'
+  'Hanan',
+  'Wizard of Odds'
 ];
 
 var SHEET_ID = '1YufhZ3Wpq8vUdZhmTX96-3w4KrAQm8roXDJncXvf0wk';
