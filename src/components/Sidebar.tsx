@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
+  LayoutDashboard, RefreshCw, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
   Link2, Users, ChevronDown, BarChart3, Bot, X, Star,
   type LucideIcon,
@@ -150,8 +150,12 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       {/* Desktop sidebar */}
       <aside className="hidden md:flex md:w-60 flex-col bg-slate-900 text-slate-100">
         <div className="px-5 py-5 flex items-center gap-2 border-b border-slate-800">
-          <MessagesSquare className="size-5 text-brand-500" />
-          <span className="font-semibold tracking-tight">Brands Partner Forum</span>
+          <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+          <span className="font-semibold tracking-tight">
+            <span className="text-white">Brands </span>
+            <span className="text-violet-400">Partner</span>
+            <span className="text-white"> Forum</span>
+          </span>
         </div>
         {navContent}
       </aside>
@@ -168,8 +172,12 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           <aside className="relative z-50 flex flex-col w-72 bg-slate-900 text-slate-100 h-full shadow-xl">
             <div className="px-5 py-5 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <MessagesSquare className="size-5 text-brand-500" />
-                <span className="font-semibold tracking-tight">Brands Partner Forum</span>
+                <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+                <span className="font-semibold tracking-tight">
+                  <span className="text-white">Brands </span>
+                  <span className="text-violet-400">Partner</span>
+                  <span className="text-white"> Forum</span>
+                </span>
               </div>
               <button
                 type="button"
