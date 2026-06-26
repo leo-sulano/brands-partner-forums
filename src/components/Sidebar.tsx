@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, MessagesSquare, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, BarChart3, Bot, X,
+  Link2, Users, ChevronDown, BarChart3, Bot, X, Star,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -27,6 +27,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'SuprPlay Limited':   Gamepad2,
   'HazEmirates UAE':    Plane,
   'Hanan':              Heart,
+  'Wizard of Odds':     Star,
 };
 
 const topLinks = [

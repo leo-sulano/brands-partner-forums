@@ -8,6 +8,7 @@ export const OPERATIONAL_TABS = [
   'SuprPlay Limited',
   'HazEmirates UAE',
   'Hanan',
+  'Wizard of Odds',
 ] as const;
 
 export type OperationalTab = (typeof OPERATIONAL_TABS)[number];
