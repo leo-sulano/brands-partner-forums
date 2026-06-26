@@ -268,30 +268,21 @@ function onEdit(e) {
       idCell.setValue(Utilities.getUuid());
     }
   }
-
-  syncToDashboard();
+  // syncToDashboard() removed — dashboard is now the source of truth.
+  // Sheet edits no longer push data to Supabase automatically.
 }
 
-function syncToDashboard() {
-  var props = PropertiesService.getScriptProperties();
-  var url = props.getProperty('IMPORT_TABS_URL');
-  var key = props.getProperty('SUPABASE_ANON_KEY');
-  if (!url || !key) { Logger.log('Missing IMPORT_TABS_URL or SUPABASE_ANON_KEY in Script Properties'); return; }
-  var res = UrlFetchApp.fetch(url, {
-    method: 'post',
-    headers: { 'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json' },
-    payload: '{}',
-    muteHttpExceptions: true,
-  });
-  Logger.log('import-tabs: ' + res.getResponseCode() + ' ' + res.getContentText().slice(0, 200));
-}
-
-function installSyncTrigger() {
+// Run this ONCE from the Apps Script editor after deploying to remove
+// the existing 30-minute syncToDashboard cron trigger.
+function deleteImportTrigger() {
+  var removed = 0;
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'syncToDashboard') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === 'syncToDashboard') {
+      ScriptApp.deleteTrigger(t);
+      removed++;
+    }
   });
-  ScriptApp.newTrigger('syncToDashboard').timeBased().everyMinutes(30).create();
-  Logger.log('syncToDashboard trigger installed — runs every 30 minutes.');
+  Logger.log('Removed ' + removed + ' syncToDashboard trigger(s).');
 }
 
 function handleBulkUpsertRows(data) {
