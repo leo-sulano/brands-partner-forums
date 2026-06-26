@@ -395,6 +395,52 @@ Fixed the Wizard of Odds tab showing no data in the dashboard. Root cause: `Wiza
 
 ---
 
+## Task 54: Wizard of Odds Selenium Check Status
+**Date:** June 26, 2026
+
+Added Wizard of Odds review status detection via Selenium scraping on the EC2 scraper instance. New `check_wo_status.py` script follows the same pattern as the TP checker — loads WO entries with checkable statuses, visits the review page, searches for the reviewer, and writes back Published/Removed status and star rating. Added `/check-wo-status` route to `status_server.py`. The split-button Check Status dropdown in BrandGroup now includes a "Check WO" option for WO-only tabs.
+
+---
+
+## Task 55: Full Check Removed Badges & Auth-Gated Platform User Columns
+**Date:** June 26, 2026
+
+Added per-brand removed count badges to the Full Check Status section on the Sync Status page, surfacing newly removed entries by brand without requiring a drill-down. Hidden the `WO User`, `AG User`, and `CG User` columns from unauthenticated (logged-out) visitors — these columns are only visible to approved signed-in users, preventing leakage of internal account identifiers.
+
+---
+
+## Task 56: Auto-Refuse Stale WO Entries
+**Date:** June 26, 2026
+
+WO entries whose status is "Done" and whose last update is more than 1 day old are now automatically set to "Refused" by the check status run. Prevents stale "Done" entries from artificially inflating live counts. Also improved the check status toast messages to be more descriptive.
+
+---
+
+## Task 57: Column Sort Direction Fixes
+**Date:** June 26, 2026
+
+Fixed three related sort-direction bugs in BrandGroup: (1) date columns with an active sort now correctly show latest-first when the up-arrow indicator is shown; (2) rows with no date value always float to the bottom regardless of sort direction; (3) the initial/default sort for date columns defaults to latest-first when no explicit sort has been set by the user.
+
+---
+
+## Task 58: Unified /check-status Endpoint & Dashboard-as-Source-of-Truth
+**Date:** June 26, 2026
+
+### Architecture
+- AG, CG, and WO status checks unified under a single `/check-status` Edge Function endpoint — callers pass a `platform` param (`tp` | `ag` | `cg` | `wo`) instead of hitting separate routes
+- Sheet→DB auto-sync fully disabled: `syncToDashboard()` call removed from Apps Script `onEdit`, 30-min cron trigger deleted, and a one-time `deleteImportTrigger()` helper added for cleanup
+- Supabase `entries` is now the single source of truth; the Sheet is a read-only downstream copy
+- `triggerSync` export removed from `src/lib/queries.ts`; `IMPORT_TABS_URL` / `SYNC_FUNCTION_URL` constants removed from `src/lib/supabase.ts`
+
+### UI
+- SyncStatus page heading updated from "Sheet → Supabase sync" to "Sync Log" and "Run sync now" button removed — the page now shows outbound (DB→Sheet) and status-check run history only
+
+### Cleanup
+- Stale `VITE_IMPORT_TABS_URL` env var removed from type declarations and `.env.example`
+- `EmailParser.gs` removed from the Apps Script project (AG/CG email detection fully superseded by Selenium scraping from Task 50)
+
+---
+
 *Last updated: June 26, 2026*
 
 ---
