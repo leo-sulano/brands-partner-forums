@@ -96,7 +96,9 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
-        if not _val(data, AG_LINK_COLS) or not _val(data, AG_USER_COLS):
+        ag_link = _val(data, AG_LINK_COLS)
+        ag_user = _val(data, AG_USER_COLS)
+        if not ag_link or not ag_user:
             continue
         status_col = _col(data, AG_STATUS_COLS)
         if not status_col:
@@ -104,7 +106,9 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
         current = (data.get(status_col) or "").strip().lower()
         if current not in statuses:
             continue
+        print(f"  [load] id={row['id']} status={current!r} user={ag_user!r} link={ag_link[:40]!r}")
         out.append(row)
+    print(f"  [load] {len(out)} eligible AG entries (from {len(rows)} total in tab)")
     return out
 
 # ─── Scraping helpers ─────────────────────────────────────────────────────────
