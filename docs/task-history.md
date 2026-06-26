@@ -356,6 +356,19 @@ Added automated AG (AskGamblers) and CG (CasinoGuru) review status detection via
 
 ---
 
+## Task 51: UI Polish — KPI Card Compaction, WO Favicon Fix, SyncStatus Links, Schema row_index
+**Date:** June 26, 2026
+
+Several small fixes applied in one batch:
+
+- **KpiCard compaction:** Reduced card minimum height (100px → 76px) and value font size (30px → 25px) for a tighter overview layout.
+- **Wizard of Odds favicon resolution:** Raised the Google favicon service `sz` parameter from 16/32 to 64 across Sidebar, Topbar, BrandGroup, and Overview. Overview also renders the WO logo at `size-7` (vs `size-5` for other platforms) to compensate for the larger fetch size.
+- **Topbar WO type coverage:** Added `wo` to `PLATFORM_FAVICON` and `PLATFORM_BADGE_CLS` records in Topbar so WO brand-group pages render the correct favicon badge.
+- **SyncStatus clickable tabs + new-removed badge:** Tab names in the per-brand status summary are now `<Link>` elements navigating to the brand page. When a Check Status run increases the removed count for any tab, a red `+N new` pill highlights the newly removed reviews.
+- **Schema `row_index`:** Added `row_index integer` column to `entries` with a `(tab, row_index asc nulls last)` index, enabling future ordered sync writes.
+
+---
+
 *Last updated: June 26, 2026*
 
 ---

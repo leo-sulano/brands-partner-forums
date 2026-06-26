@@ -19,11 +19,13 @@ create table public.entries (
   last_edited_by  text not null default 'dashboard',
   last_edited_email text,
   last_sync_tag   text,
+  row_index       integer,
   unique (tab, sheet_row_id)
 );
 
 create index entries_tab_idx         on public.entries (tab);
 create index entries_tab_updated_idx on public.entries (tab, updated_at desc);
+create index entries_tab_row_idx     on public.entries (tab, row_index asc nulls last);
 create index entries_data_gin        on public.entries using gin (data);
 
 create table public.tab_schemas (

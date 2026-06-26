@@ -7,16 +7,18 @@ import { slugToTab } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { useState, useRef, useEffect } from 'react';
 
-const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg', string> = {
+const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
   ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
   cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
+  wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=64',
 };
 
-const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg', string> = {
+const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'bg-blue-100 text-blue-700 border border-blue-200',
   ag: 'bg-amber-100 text-amber-700 border border-amber-200',
   cg: 'bg-violet-100 text-violet-700 border border-violet-200',
+  wo: 'bg-green-100 text-green-700 border border-green-200',
 };
 
 const AVATAR_COLORS = [

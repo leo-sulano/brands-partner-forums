@@ -31,7 +31,7 @@ const PLATFORM_LOGOS: Record<string, string> = {
   Trustpilot:   'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32',
   AskGamblers:  'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32',
   CasinoGuru:   'https://www.google.com/s2/favicons?domain=casino.guru&sz=32',
-  WizardOfOdds: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=32',
+  WizardOfOdds: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=64',
 };
 
 
@@ -463,7 +463,7 @@ export default function Overview() {
                     <img
                       src={PLATFORM_LOGOS[p.name]}
                       alt={p.name}
-                      className="size-5 rounded"
+                      className={`${p.name === 'WizardOfOdds' ? 'size-7' : 'size-5'} rounded`}
                       onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
                     <span className="text-sm font-semibold text-slate-700">

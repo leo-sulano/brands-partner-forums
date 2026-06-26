@@ -1,6 +1,8 @@
 import React, { useEffect, useReducer, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { fetchSyncRuns, triggerSync, triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
+import { tabToSlug } from '../lib/tabs';
 import type { SyncRun, SyncRunStatus } from '../types/sync';
 import { subscribeSyncRuns } from '../lib/realtime';
 import Toast, { type ToastKind } from '../components/Toast';
@@ -491,11 +493,20 @@ export default function SyncStatus() {
                                 );
                                 return rows.map((row) => {
                                   const rb = row.removedBrands ?? [];
+                                  const prevRow = prevSnap?.summary.find((r) => r.tab === row.tab);
+                                  const newlyRem = row.removed - (prevRow?.removed ?? 0);
                                   return (
                                     <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
-                                      <span className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap">{row.tab}</span>
+                                      <Link
+                                        to={`/brands/${tabToSlug(row.tab)}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap hover:text-brand-600 hover:underline"
+                                      >{row.tab}</Link>
                                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
                                       <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
+                                      {newlyRem > 0 && (
+                                        <span className="rounded-full bg-rose-600 px-2 py-0.5 font-semibold text-white tabular-nums">+{newlyRem} new</span>
+                                      )}
                                       {rb.length > 0 && (
                                         <>
                                           <span className="text-slate-300">→</span>
