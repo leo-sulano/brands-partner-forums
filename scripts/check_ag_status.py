@@ -157,6 +157,12 @@ def fetch_ag_review(
         pass  # page load timeout — JS content usually still renders
 
     time.sleep(POST_LOAD_SLEEP)
+
+    current_url = driver.current_url.lower()
+    if "askgamblers.com" not in current_url:
+        print(f"    redirected off-site -> {driver.current_url}")
+        return ("Removed", None)
+
     ag_user_lower = ag_user.lower()
 
     for page_num in range(MAX_LOAD_MORE + 1):

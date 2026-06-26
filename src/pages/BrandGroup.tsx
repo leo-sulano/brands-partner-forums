@@ -1104,24 +1104,27 @@ export default function BrandGroup() {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
     try {
-      const promises: Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }>[] = [];
-      if (platforms.includes('tp')) promises.push(triggerStatusCheck(decodedTab));
-      if (platforms.includes('ag')) promises.push(triggerAgStatusCheck(decodedTab));
-      if (platforms.includes('cg')) promises.push(triggerCgStatusCheck(decodedTab));
-
-      const settled = await Promise.allSettled(promises);
+      const platformList: ('tp' | 'ag' | 'cg')[] = platforms;
+      const results: { updated: number; errors: number; sheet_errors?: number }[] = [];
+      for (const p of platformList) {
+        try {
+          let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
+          if (p === 'tp') r = await triggerStatusCheck(decodedTab);
+          else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab);
+          else r = await triggerCgStatusCheck(decodedTab);
+          results.push(r);
+        } catch {
+          results.push({ updated: 0, errors: 1 });
+        }
+      }
 
       let totalUpdated = 0;
       let totalErrors = 0;
       let totalSheetErrors = 0;
-      for (const r of settled) {
-        if (r.status === 'fulfilled') {
-          totalUpdated     += r.value.updated ?? 0;
-          totalErrors      += r.value.errors  ?? 0;
-          totalSheetErrors += r.value.sheet_errors ?? 0;
-        } else {
-          totalErrors += 1;
-        }
+      for (const r of results) {
+        totalUpdated     += r.updated ?? 0;
+        totalErrors      += r.errors  ?? 0;
+        totalSheetErrors += r.sheet_errors ?? 0;
       }
 
       const now = new Date().toLocaleString();
