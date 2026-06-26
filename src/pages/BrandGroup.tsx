@@ -549,7 +549,7 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
 
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | null; sortDir: 'asc' | 'desc' }) {
   if (sortCol !== col) return <ChevronsUpDown className="size-3 text-slate-400 shrink-0" />;
-  return sortDir === 'asc'
+  return sortDir === 'desc'
     ? <ChevronUp className="size-3 text-violet-600 shrink-0" />
     : <ChevronDown className="size-3 text-violet-600 shrink-0" />;
 }
@@ -1088,7 +1088,7 @@ export default function BrandGroup() {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortCol(col);
-      setSortDir('asc');
+      setSortDir(isDateCol(col) ? 'desc' : 'asc');
     }
     setPage(1);
   }
