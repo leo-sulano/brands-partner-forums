@@ -21,6 +21,7 @@ import os
 import re
 import sys
 import time
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -49,10 +50,11 @@ MAX_LOAD_MORE      = 10    # max "load more" clicks before giving up
 AG_STATUS_COLS = ["AG Review Status"]
 AG_LINK_COLS   = ["AG Review Link", "AG Link"]
 AG_USER_COLS   = ["AG User"]
+AG_DATE_COLS   = ["AG Added"]
 # VERIFY: check the actual column name in the Sheet; update if different
 AG_SCORE_COLS  = ["AG Score added"]
 
-CHECKABLE_STATUSES = {"done", "pending", "published"}
+CHECKABLE_STATUSES = {"done", "pending"}
 
 # ─── Column helpers ───────────────────────────────────────────────────────────
 
@@ -69,6 +71,17 @@ def _val(data: dict, candidates: list) -> Optional[str]:
             return str(v).strip()
     return None
 
+
+def _older_than_one_day(date_str: str) -> bool:
+    """Return True if date_str represents a date more than 24 h ago."""
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
+        try:
+            dt = datetime.strptime(date_str.strip(), fmt).replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - dt) > timedelta(days=1)
+        except ValueError:
+            continue
+    return True  # unparseable → treat as old
+
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
 def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -> list:
@@ -79,7 +92,7 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
     r.raise_for_status()
     rows: list = r.json()
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    statuses = CHECKABLE_STATUSES  # always {"done", "pending"}
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -184,9 +197,7 @@ def fetch_ag_review(
             break
         time.sleep(LOAD_MORE_SLEEP)
 
-    # Username not found after all pages
-    if current_status.strip().lower() == "published":
-        return ("Removed", None)
+    # Username not found after all pages — caller decides next status
     return (None, None)
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -227,8 +238,15 @@ def check_ag_for_tab(
                     continue
 
                 if new_status is None:
-                    print(f"    -> not found / no status change needed")
-                    continue
+                    current_lower = current.strip().lower()
+                    if current_lower == "pending":
+                        new_status = "Refused"
+                    elif current_lower == "done":
+                        ag_added = _val(data, AG_DATE_COLS) or ""
+                        new_status = "Refused" if (not ag_added or _older_than_one_day(ag_added)) else "Pending"
+                    else:
+                        print(f"    -> not found / no status change needed")
+                        continue
 
                 updates: dict = {}
                 if new_status != current:
