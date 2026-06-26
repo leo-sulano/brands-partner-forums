@@ -856,7 +856,9 @@ export default function BrandGroup() {
     setSavingCell(true);
     try {
       await updateEntryData(entry.id, entry.tab, entry.sheet_row_id, fields);
-      reloadRef.current();
+      setEntries((prev) =>
+        prev.map((e) => (e.id === entry.id ? { ...e, data: { ...e.data, ...fields } } : e)),
+      );
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     } finally {

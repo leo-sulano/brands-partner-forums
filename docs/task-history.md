@@ -441,6 +441,13 @@ Fixed three related sort-direction bugs in BrandGroup: (1) date columns with an 
 
 ---
 
+## Task 59: Inline Edit Auto-Save (No Table Refresh)
+**Date:** June 26, 2026
+
+After saving an inline cell edit, the table no longer refreshes. Replaced the `reloadRef.current()` full-refetch call in `saveInlineEdit` (`BrandGroup.tsx`) with a targeted `setEntries` optimistic update that patches only the edited row in local state. The save is immediate and flicker-free — no round-trip to re-fetch the entire table.
+
+---
+
 *Last updated: June 26, 2026*
 
 ---
