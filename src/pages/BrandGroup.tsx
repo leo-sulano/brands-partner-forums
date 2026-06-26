@@ -68,7 +68,7 @@ function StatusPill({ value }: { value: string }) {
       </span>
     );
   }
-  if (v === 'pending') {
+  if (v === 'pending' || v === 'not published') {
     return (
       <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
         <Circle className="size-3" /> {value}
@@ -143,6 +143,7 @@ const ENTRY_DATE_COLS = [
   'Ask Gambler review added',
   'Casino Guru review added',
   'Removed / Not Published / stil published date',
+  'Wizard of Odds',
   'Date', 'date', 'Posted At', 'posted_at',
 ];
 
@@ -294,9 +295,12 @@ const INLINE_EDIT_COLS = new Set([
   'AG User',
   'CG User',
   'Link to the profile',
+  'Wizard of Odds',
+  'WoO Review Status',
+  'Wizard of OddsScore added',
 ]);
-const INLINE_TEXT_COLS = new Set(['AG User', 'CG User', 'Link to the profile']);
-const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
+const INLINE_TEXT_COLS = new Set(['AG User', 'CG User', 'Link to the profile', 'Wizard of OddsScore added']);
+const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Still Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
 const CLEARED_FIELDS = new Set([
   'Trust Pilot',
@@ -309,6 +313,9 @@ const CLEARED_FIELDS = new Set([
   'AG Review Status',
   'Casino Guru review added',
   'CG Review Status',
+  'Wizard of Odds',
+  'WoO Review Status',
+  'Wizard of OddsScore added',
 ]);
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
@@ -1378,42 +1385,54 @@ export default function BrandGroup() {
                   Last checked: {lastChecked}
                 </span>
               )}
-              <div className="relative" ref={checkDropdownRef}>
-                <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
-                  <button
-                    type="button"
-                    onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
-                    disabled={checkingStatus}
-                    className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
-                    {checkingStatus ? 'Checking…' : 'Check Status'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCheckDropdownOpen((o) => !o)}
-                    disabled={checkingStatus}
-                    className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    aria-label="Select platform to check"
-                  >
-                    <ChevronDown className="size-3.5" />
-                  </button>
-                </div>
-                {checkDropdownOpen && (
-                  <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-md border border-slate-200 bg-white shadow-lg py-1">
-                    {getTabPlatforms(decodedTab).map((p) => (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => handleCheckStatus([p])}
-                        className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
-                      >
-                        Check {p.toUpperCase()}
-                      </button>
-                    ))}
+              {getTabPlatforms(decodedTab).length > 1 ? (
+                <div className="relative" ref={checkDropdownRef}>
+                  <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
+                      disabled={checkingStatus}
+                      className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                      {checkingStatus ? 'Checking…' : 'Check Status'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCheckDropdownOpen((o) => !o)}
+                      disabled={checkingStatus}
+                      className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Select platform to check"
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </button>
                   </div>
-                )}
-              </div>
+                  {checkDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-md border border-slate-200 bg-white shadow-lg py-1">
+                      {getTabPlatforms(decodedTab).map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          onClick={() => handleCheckStatus([p])}
+                          className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                        >
+                          Check {p.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleCheckStatus(['tp'])}
+                  disabled={checkingStatus}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                  {checkingStatus ? 'Checking…' : 'Check Status'}
+                </button>
+              )
             </div>
           )}
         </div>
