@@ -122,6 +122,16 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'CG Review Link',
     'CG User',
   ],
+  'Wizard of Odds': [
+    'Agent',
+    'Account',
+    'Proxy Used',
+    'Brand Name',
+    'Wizard of Odds',
+    'WoO Review Status',
+    'Wizard of OddsScore added',
+    'Link to the profile',
+  ],
 };
 
 // Display label overrides — maps actual sheet column name → shorter UI label.
@@ -151,6 +161,12 @@ export const COLUMN_LABELS: Record<string, string> = {
 const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
   'TP Affiliate': {
     'URL PAGE': 'URL Page',
+  },
+  'Wizard of Odds': {
+    'Wizard of Odds':           'WO Date',
+    'WoO Review Status':        'WO Status',
+    'Wizard of OddsScore added':'WO Score',
+    'Link to the profile':      'Link',
   },
 };
 
