@@ -1432,7 +1432,7 @@ export default function BrandGroup() {
                   <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
                   {checkingStatus ? 'Checking…' : 'Check Status'}
                 </button>
-              )
+              )}
             </div>
           )}
         </div>
