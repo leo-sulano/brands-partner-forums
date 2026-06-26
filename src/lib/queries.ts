@@ -587,16 +587,15 @@ export async function triggerAgStatusCheck(
   tab: string,
   includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
-  const url = CHECK_STATUS_BASE_URL ? `${CHECK_STATUS_BASE_URL}/check-ag-status` : '';
-  if (!url) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
-  const res = await fetch(url, {
+  if (!CHECK_STATUS_URL) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
+  const res = await fetch(CHECK_STATUS_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished }),
+    body: JSON.stringify({ tab, include_published: includePublished, platform: 'ag' }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -609,16 +608,15 @@ export async function triggerCgStatusCheck(
   tab: string,
   includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
-  const url = CHECK_STATUS_BASE_URL ? `${CHECK_STATUS_BASE_URL}/check-cg-status` : '';
-  if (!url) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
-  const res = await fetch(url, {
+  if (!CHECK_STATUS_URL) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
+  const res = await fetch(CHECK_STATUS_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished }),
+    body: JSON.stringify({ tab, include_published: includePublished, platform: 'cg' }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -631,16 +629,15 @@ export async function triggerWoStatusCheck(
   tab: string,
   includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
-  const url = CHECK_STATUS_BASE_URL ? `${CHECK_STATUS_BASE_URL}/check-wo-status` : '';
-  if (!url) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
-  const res = await fetch(url, {
+  if (!CHECK_STATUS_URL) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
+  const res = await fetch(CHECK_STATUS_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished }),
+    body: JSON.stringify({ tab, include_published: includePublished, platform: 'wo' }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

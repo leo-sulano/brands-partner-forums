@@ -32,6 +32,7 @@ const OPERATIONAL_TABS = new Set([
   'SuprPlay Limited',
   'HazEmirates UAE',
   'Hanan',
+  'Wizard of Odds',
 ]);
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);

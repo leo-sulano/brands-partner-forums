@@ -81,24 +81,47 @@ def check_status():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
-    tab_key = tab or '__all__'
+    platform: str = (body.get('platform') or 'tp').lower()
+
+    # Platform-namespaced lock so TP/AG/CG/WO can run concurrently on the same tab.
+    # TP keeps its legacy key format for backwards compat with any running checks.
+    tab_key = tab or '__all__' if platform == 'tp' else f'{platform}__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
     if not lock.acquire(blocking=False):
         return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
 
     _active_tabs.add(tab_key)
+    headless: bool = app.config.get('HEADLESS', False)
+    scope = f'tab: {tab}' if tab else 'all tabs'
     try:
+        # Dispatch non-TP platforms to their dedicated checkers.
+        if platform == 'ag':
+            print(f'\n[server] AG check started ({scope})')
+            result = check_ag_for_tab(tab, include_published=include_published, headless=headless)
+            print(f'[server] AG done. {result}')
+            return jsonify(result)
 
+        if platform == 'cg':
+            print(f'\n[server] CG check started ({scope})')
+            result = check_cg_for_tab(tab, include_published=include_published, headless=headless)
+            print(f'[server] CG done. {result}')
+            return jsonify(result)
+
+        if platform == 'wo':
+            print(f'\n[server] WO check started ({scope})')
+            result = check_wo_for_tab(tab, include_published=include_published, headless=headless)
+            print(f'[server] WO done. {result}')
+            return jsonify(result)
+
+        # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published)
         total = len(entries)
-        scope = f'tab: {tab}' if tab else 'all tabs'
-        print(f'\n[server] Check started — {total} entries ({scope})')
+        print(f'\n[server] TP check started — {total} entries ({scope})')
 
         if not total:
             return jsonify({'checked': 0, 'updated': 0, 'errors': 0, 'total': 0})
 
-        headless: bool = app.config.get('HEADLESS', False)
         driver = build_driver(headless=headless)
         checked = updated = errors = sheet_errors = 0
 
