@@ -493,6 +493,7 @@ export default function SyncStatus() {
                                 );
                                 return rows.map((row) => {
                                   const rb = row.removedBrands ?? [];
+                                  const counts = row.removedBrandCounts ?? {};
                                   const prevRow = prevSnap?.summary.find((r) => r.tab === row.tab);
                                   const newlyRem = row.removed - (prevRow?.removed ?? 0);
                                   return (
@@ -510,12 +511,14 @@ export default function SyncStatus() {
                                       {rb.length > 0 && (
                                         <>
                                           <span className="text-slate-300">→</span>
-                                          {rb.slice(0, 5).map((b) => (
-                                            <span key={b} className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">{b}</span>
+                                          {rb.map((b) => (
+                                            <span key={b} className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
+                                              {b}
+                                              {counts[b] != null && (
+                                                <span className="rounded-full bg-rose-200 px-1.5 py-px font-semibold tabular-nums">{counts[b]}</span>
+                                              )}
+                                            </span>
                                           ))}
-                                          {rb.length > 5 && (
-                                            <span className="text-slate-400">+{rb.length - 5} more</span>
-                                          )}
                                         </>
                                       )}
                                     </div>

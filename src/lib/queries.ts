@@ -744,6 +744,7 @@ export interface TabStatusRow {
   pending: number;
   brands: string[];
   removedBrands: string[];
+  removedBrandCounts: Record<string, number>;
 }
 
 export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStatusRow[]> {
@@ -765,7 +766,7 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
 
       let published = 0, removed = 0, pending = 0;
       const brandSet = new Set<string>();
-      const removedBrandSet = new Set<string>();
+      const removedBrandCounts = new Map<string, number>();
 
       for (const entry of entries) {
         const d = entry.data;
@@ -777,7 +778,7 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
           removed++;
           if (brandCol) {
             const brand = d[brandCol]?.trim();
-            if (brand) removedBrandSet.add(brand);
+            if (brand) removedBrandCounts.set(brand, (removedBrandCounts.get(brand) ?? 0) + 1);
           }
         } else if (statuses.some(isPendingStatus)) pending++;
         if (brandCol) {
@@ -786,7 +787,9 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
         }
       }
 
-      return { tab, published, removed, pending, brands: [...brandSet].sort(), removedBrands: [...removedBrandSet].sort() };
+      const removedBrands = [...removedBrandCounts.keys()].sort();
+      const removedBrandCountsObj = Object.fromEntries(removedBrandCounts);
+      return { tab, published, removed, pending, brands: [...brandSet].sort(), removedBrands, removedBrandCounts: removedBrandCountsObj };
     }),
   );
 }
