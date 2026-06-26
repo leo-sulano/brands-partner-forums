@@ -10,7 +10,7 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
@@ -1112,14 +1112,14 @@ export default function BrandGroup() {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
     try {
-      const platformList = platforms.filter((p): p is 'tp' | 'ag' | 'cg' => p !== 'wo');
       const results: { updated: number; errors: number; sheet_errors?: number }[] = [];
-      for (const p of platformList) {
+      for (const p of platforms) {
         try {
           let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
           if (p === 'tp') r = await triggerStatusCheck(decodedTab);
           else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab);
-          else r = await triggerCgStatusCheck(decodedTab);
+          else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab);
+          else r = await triggerWoStatusCheck(decodedTab);
           results.push(r);
         } catch {
           results.push({ updated: 0, errors: 1 });

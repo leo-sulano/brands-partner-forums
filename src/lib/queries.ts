@@ -627,6 +627,28 @@ export async function triggerCgStatusCheck(
   return res.json();
 }
 
+export async function triggerWoStatusCheck(
+  tab: string,
+  includePublished = false,
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+  const url = CHECK_STATUS_BASE_URL ? `${CHECK_STATUS_BASE_URL}/check-wo-status` : '';
+  if (!url) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify({ tab, include_published: includePublished }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function getActiveChecks(): Promise<string[]> {
   if (!CHECK_STATUS_BASE_URL) return [];
   try {

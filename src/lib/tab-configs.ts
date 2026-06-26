@@ -131,6 +131,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'WoO Review Status',
     'Wizard of OddsScore added',
     'Link to the profile',
+    'User Name',
   ],
 };
 
@@ -167,6 +168,7 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
     'WoO Review Status':        'WO Status',
     'Wizard of OddsScore added':'WO Score',
     'Link to the profile':      'Link',
+    'User Name':                'WO User',
   },
 };
 

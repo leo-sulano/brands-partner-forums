@@ -33,6 +33,7 @@ from check_review_status import (
 )
 from check_ag_status import check_ag_for_tab
 from check_cg_status import check_cg_for_tab
+from check_wo_status import check_wo_for_tab
 
 app = Flask(__name__)
 CORS(app, allow_headers=['Content-Type', 'Authorization', 'ngrok-skip-browser-warning'])
@@ -208,6 +209,36 @@ def check_cg_status_route():
         print(f'\n[server] CG check started ({scope})')
         result = check_cg_for_tab(tab, include_published=include_published, headless=headless)
         print(f'[server] CG done. {result}')
+        return jsonify(result)
+    finally:
+        _active_tabs.discard(tab_key)
+        lock.release()
+
+
+@app.route('/check-wo-status', methods=['POST', 'OPTIONS'])
+def check_wo_status_route():
+    if request.method == 'OPTIONS':
+        return '', 204
+
+    if not _is_authorized():
+        return jsonify({'error': 'Unauthorized — missing or invalid token'}), 401
+
+    body = request.get_json(silent=True) or {}
+    tab: str | None = body.get('tab')
+    include_published: bool = bool(body.get('include_published', False))
+    tab_key = f'wo__{tab or "__all__"}'
+
+    lock = _get_tab_lock(tab_key)
+    if not lock.acquire(blocking=False):
+        return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
+
+    _active_tabs.add(tab_key)
+    try:
+        headless: bool = app.config.get('HEADLESS', False)
+        scope = f'tab: {tab}' if tab else 'all tabs'
+        print(f'\n[server] WO check started ({scope})')
+        result = check_wo_for_tab(tab, include_published=include_published, headless=headless)
+        print(f'[server] WO done. {result}')
         return jsonify(result)
     finally:
         _active_tabs.discard(tab_key)
