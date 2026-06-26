@@ -190,9 +190,9 @@ export default function SyncStatus() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-slate-800">Sync history</h2>
+          <h2 className="text-base font-semibold text-slate-800">Sync Log</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Last successful run:{' '}
+            Last entry:{' '}
             {lastSuccess ? formatRelative(lastSuccess.finished_at ?? lastSuccess.started_at) : '—'}
           </p>
         </div>
