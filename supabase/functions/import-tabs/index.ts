@@ -55,6 +55,7 @@ interface Candidate {
   sheet_row_id: string;
   data: Record<string, string | null>;
   sheetSyncTag: string | null;
+  row_index: number;
 }
 
 Deno.serve(async (req) => {
@@ -97,6 +98,7 @@ Deno.serve(async (req) => {
         const syncTagColIndex = headers.findIndex((h) => h === 'last_sync_tag');
 
         const candidates: Candidate[] = [];
+        let candidateIndex = 0;
         for (const row of dataRows) {
           rowsSeen++;
           const sheetRowId = String(row[idColIndex] ?? '').trim();
@@ -110,7 +112,7 @@ Deno.serve(async (req) => {
             const val = row[i];
             data[h] = val == null || val === '' ? null : String(val);
           }
-          candidates.push({ tab: tabName, sheet_row_id: sheetRowId, data, sheetSyncTag });
+          candidates.push({ tab: tabName, sheet_row_id: sheetRowId, data, sheetSyncTag, row_index: candidateIndex++ });
         }
 
         if (candidates.length === 0) continue;
@@ -124,11 +126,11 @@ Deno.serve(async (req) => {
         while (true) {
           const { data: page, error: pageErr } = await admin
             .from('entries')
-            .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at, data')
+            .select('id, sheet_row_id, last_edited_by, last_sync_tag, updated_at, data, row_index')
             .eq('tab', tabName)
             .order('updated_at', { ascending: false })
             .range(dbFrom, dbFrom + DB_PAGE - 1);
-          if (pageErr) throw pageErr;
+          if (pageErr) throw new Error(errMsg(pageErr));
           allDbRows.push(...(page ?? []));
           if ((page ?? []).length < DB_PAGE) break;
           dbFrom += DB_PAGE;
@@ -141,6 +143,7 @@ Deno.serve(async (req) => {
           last_edited_by: string;
           last_sync_tag: string | null;
           data: Record<string, string | null>;
+          row_index: number | null;
         }>();
         for (const row of allDbRows ?? []) {
           const srid = row.sheet_row_id as string;
@@ -152,6 +155,7 @@ Deno.serve(async (req) => {
               last_edited_by: row.last_edited_by as string,
               last_sync_tag: row.last_sync_tag as string | null,
               data: (row.data as Record<string, string | null> | null) ?? {},
+              row_index: row.row_index as number | null,
             });
           }
         }
@@ -160,7 +164,7 @@ Deno.serve(async (req) => {
           for (let i = 0; i < duplicateDbIds.length; i += CHUNK) {
             const chunk = duplicateDbIds.slice(i, i + CHUNK);
             const { error: delErr } = await admin.from('entries').delete().in('id', chunk);
-            if (delErr) throw delErr;
+            if (delErr) throw new Error(errMsg(delErr));
           }
         }
 
@@ -181,7 +185,7 @@ Deno.serve(async (req) => {
             const { error: delErr } = await admin.from('entries').delete()
               .eq('tab', tabName)
               .in('sheet_row_id', chunk);
-            if (delErr) throw delErr;
+            if (delErr) throw new Error(errMsg(delErr));
           }
         }
 
@@ -208,7 +212,7 @@ Deno.serve(async (req) => {
             }
           }
 
-          if (existing && dataEquals(existing.data, mergedData)) {
+          if (existing && dataEquals(existing.data, mergedData) && existing.row_index === c.row_index) {
             rowsSkipped++;
             continue;
           }
@@ -218,6 +222,7 @@ Deno.serve(async (req) => {
             data: mergedData,
             last_edited_by: existing?.last_edited_by === 'check-review-status' ? 'check-review-status' : 'sheet',
             last_sync_tag: null,
+            row_index: c.row_index,
           });
         }
 
@@ -242,7 +247,7 @@ Deno.serve(async (req) => {
           rowsUpserted += toUpsert.length;
         }
       } catch (tabErr) {
-        tabsFailed.push(`[${tabName}] ${tabErr instanceof Error ? tabErr.message : String(tabErr)}`);
+        tabsFailed.push(`[${tabName}] ${errMsg(tabErr)}`);
       }
     }
 
@@ -257,8 +262,7 @@ Deno.serve(async (req) => {
 
     return json({ ok: tabsFailed.length === 0, rows_seen: rowsSeen, rows_upserted: rowsUpserted, rows_skipped: rowsSkipped, tabs_failed: tabsFailed });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    const fullMsg = `[All tabs affected] ${msg}`;
+    const fullMsg = `[All tabs affected] ${errMsg(err)}`;
     await admin.from('sync_runs').update({ finished_at: new Date().toISOString(), status: 'error', error_message: fullMsg }).eq('id', runId);
     return json({ ok: false, error: fullMsg }, 500);
   }
@@ -269,6 +273,12 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...CORS_HEADERS },
   });
+}
+
+function errMsg(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e) return String((e as { message: unknown }).message);
+  return JSON.stringify(e);
 }
 
 // Returns true if two data objects represent the same row values. Empty string,
