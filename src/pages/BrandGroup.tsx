@@ -10,9 +10,9 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -300,7 +300,6 @@ const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause
 
 const CLEARED_FIELDS = new Set([
   'Trust Pilot',
-  'Link to the profile',
   'TP Review Status',
   'Trust Pilot Review Status',
   'Trustpilot Review Status',
@@ -308,10 +307,8 @@ const CLEARED_FIELDS = new Set([
   'Review Status',
   'Ask Gambler review added',
   'AG Review Status',
-  'AG Review Link',
   'Casino Guru review added',
   'CG Review Status',
-  'CG Review Link',
 ]);
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
@@ -590,6 +587,8 @@ export default function BrandGroup() {
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
 
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
+  const checkDropdownRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [lastChecked, setLastChecked] = useState<string | null>(
@@ -606,6 +605,16 @@ export default function BrandGroup() {
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
   }, [decodedTab]);
+
+  useEffect(() => {
+    function handleOutside(e: MouseEvent) {
+      if (checkDropdownRef.current && !checkDropdownRef.current.contains(e.target as Node)) {
+        setCheckDropdownOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
 
   useEffect(() => {
     if (!decodedTab) return;
@@ -1091,30 +1100,50 @@ export default function BrandGroup() {
     setJumpInput('');
   }
 
-  async function handleCheckStatus() {
+  async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg')[]) {
     setCheckingStatus(true);
+    setCheckDropdownOpen(false);
     try {
-      const result = await triggerStatusCheck(decodedTab);
+      const promises: Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }>[] = [];
+      if (platforms.includes('tp')) promises.push(triggerStatusCheck(decodedTab));
+      if (platforms.includes('ag')) promises.push(triggerAgStatusCheck(decodedTab));
+      if (platforms.includes('cg')) promises.push(triggerCgStatusCheck(decodedTab));
+
+      const settled = await Promise.allSettled(promises);
+
+      let totalUpdated = 0;
+      let totalErrors = 0;
+      let totalSheetErrors = 0;
+      for (const r of settled) {
+        if (r.status === 'fulfilled') {
+          totalUpdated     += r.value.updated ?? 0;
+          totalErrors      += r.value.errors  ?? 0;
+          totalSheetErrors += r.value.sheet_errors ?? 0;
+        } else {
+          totalErrors += 1;
+        }
+      }
+
       const now = new Date().toLocaleString();
       localStorage.setItem(`lastStatusCheck_${decodedTab}`, now);
       setLastChecked(now);
+
       let msg: string;
       let kind: ToastKind;
-      const sheetFail = result.sheet_errors ?? 0;
-      if (result.errors > 0 && result.updated === 0) {
-        msg = `${result.errors} check${result.errors !== 1 ? 's' : ''} failed — proxy may not be configured`;
+      if (totalErrors > 0 && totalUpdated === 0) {
+        msg = `${totalErrors} check${totalErrors !== 1 ? 's' : ''} failed — server may not be running`;
         kind = 'error';
-      } else if (result.updated > 0 && result.errors > 0 && sheetFail > 0) {
-        msg = `${result.updated} updated, ${result.errors} checks failed, ${sheetFail} sheet sync failed`;
+      } else if (totalUpdated > 0 && totalErrors > 0 && totalSheetErrors > 0) {
+        msg = `${totalUpdated} updated, ${totalErrors} checks failed, ${totalSheetErrors} sheet sync failed`;
         kind = 'error';
-      } else if (result.updated > 0 && sheetFail > 0) {
-        msg = `${result.updated} updated in dashboard but ${sheetFail} failed to sync to Google Sheet`;
+      } else if (totalUpdated > 0 && totalSheetErrors > 0) {
+        msg = `${totalUpdated} updated in dashboard but ${totalSheetErrors} failed to sync to Google Sheet`;
         kind = 'error';
-      } else if (result.updated > 0 && result.errors > 0) {
-        msg = `${result.updated} updated, ${result.errors} failed`;
+      } else if (totalUpdated > 0 && totalErrors > 0) {
+        msg = `${totalUpdated} updated, ${totalErrors} failed`;
         kind = 'success';
-      } else if (result.updated > 0) {
-        msg = `${result.updated} review${result.updated !== 1 ? 's' : ''} updated`;
+      } else if (totalUpdated > 0) {
+        msg = `${totalUpdated} review${totalUpdated !== 1 ? 's' : ''} updated`;
         kind = 'success';
       } else {
         msg = 'All reviews up to date';
@@ -1346,15 +1375,49 @@ export default function BrandGroup() {
                   Last checked: {lastChecked}
                 </span>
               )}
-              <button
-                type="button"
-                onClick={handleCheckStatus}
-                disabled={checkingStatus}
-                className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
-                {checkingStatus ? 'Checking…' : 'Check Status'}
-              </button>
+              <div className="relative" ref={checkDropdownRef}>
+                <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
+                    disabled={checkingStatus}
+                    className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
+                    {checkingStatus ? 'Checking…' : 'Check Status'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCheckDropdownOpen((o) => !o)}
+                    disabled={checkingStatus}
+                    className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    aria-label="Select platform to check"
+                  >
+                    <ChevronDown className="size-3.5" />
+                  </button>
+                </div>
+                {checkDropdownOpen && (
+                  <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-md border border-slate-200 bg-white shadow-lg py-1">
+                    <button
+                      type="button"
+                      onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
+                      className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                    >
+                      Check All
+                    </button>
+                    {getTabPlatforms(decodedTab).map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => handleCheckStatus([p])}
+                        className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        Check {p.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -1710,7 +1773,7 @@ export default function BrandGroup() {
             </h2>
             <p className="text-sm text-slate-500 mb-6">
               This will create {selectedIds.size} new{' '}
-              {selectedIds.size === 1 ? 'entry' : 'entries'} copying account details.
+              {selectedIds.size === 1 ? 'entry' : 'entries'} copying account details and brand links.
               Review dates and statuses will be blank.
             </p>
             <div className="flex justify-end gap-3">

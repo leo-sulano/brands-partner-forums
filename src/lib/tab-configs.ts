@@ -141,6 +141,8 @@ export const COLUMN_LABELS: Record<string, string> = {
   'Casino Guru review added':                         'CG Added',
   'CG Review Status':                                 'CG Status',
   'CG Review Link':                                   'CG Link',
+  'AG Score added':                                   'AG Score',
+  'CG Score added':                                   'CG Score',
   'Brand / TP URL PAGE':                              'Brands',
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };

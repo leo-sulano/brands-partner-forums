@@ -222,6 +222,7 @@ export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
     .from('entries')
     .select('*')
     .eq('tab', tab)
+    .order('row_index', { ascending: true, nullsFirst: false })
     .order('updated_at', { ascending: false });
   if (error) throw error;
   return (data ?? []).map((row) => entryToBrandEntry(row as Entry));
@@ -572,6 +573,50 @@ export async function triggerStatusCheck(
   if (!res.ok) {
     const body = await res.text();
     throw new Error(`Status check failed: ${res.status} ${body}`);
+  }
+  return res.json();
+}
+
+export async function triggerAgStatusCheck(
+  tab: string,
+  includePublished = false,
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+  const url = CHECK_STATUS_BASE_URL ? `${CHECK_STATUS_BASE_URL}/check-ag-status` : '';
+  if (!url) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify({ tab, include_published: includePublished }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function triggerCgStatusCheck(
+  tab: string,
+  includePublished = false,
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+  const url = CHECK_STATUS_BASE_URL ? `${CHECK_STATUS_BASE_URL}/check-cg-status` : '';
+  if (!url) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
+      'ngrok-skip-browser-warning': 'true',
+    },
+    body: JSON.stringify({ tab, include_published: includePublished }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
   return res.json();
 }
