@@ -381,6 +381,20 @@ Moved the " dup" suffix from `Account Name` to the `Account` field so the unique
 
 ---
 
+## Task 52: Sidebar Logo & Title Color Styling
+**Date:** June 26, 2026
+
+Replaced the generic `MessagesSquare` Lucide icon in the sidebar header with the `Brand-Partners-Forums.webp` brand logo image (30×30px). Styled the "Brands Partner Forum" title with split color: "Brands" and "Forum" in white, "Partner" in violet-400. Applied to both the desktop sidebar and the mobile slide-in drawer.
+
+---
+
+## Task 53: Wizard of Odds Apps Script Sync Fix
+**Date:** June 26, 2026
+
+Fixed the Wizard of Odds tab showing no data in the dashboard. Root cause: `Wizard of Odds` was missing from `OPERATIONAL_TABS` in `apps-script/Code.gs`, so the Apps Script `dump` operation never included that sheet tab. The `import-tabs` Edge Function had nothing to sync for it. Added `'Wizard of Odds'` to the `OPERATIONAL_TABS` array — after redeploying the Apps Script and running a sync, all 24 WO rows will populate.
+
+---
+
 *Last updated: June 26, 2026*
 
 ---
