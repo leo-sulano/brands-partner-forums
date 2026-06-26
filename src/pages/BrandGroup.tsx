@@ -1061,22 +1061,28 @@ export default function BrandGroup() {
     return { total: live + removed, live, removed };
   })();
 
-  const sorted = sortCol
-    ? [...filtered].sort((a, b) => {
-        const av = a.data[sortCol] ?? '';
-        const bv = b.data[sortCol] ?? '';
-        if (isDateCol(sortCol)) {
-          const da = parseCellDate(av);
-          const db = parseCellDate(bv);
-          if (!da && !db) return 0;
-          if (!da) return 1;
-          if (!db) return -1;
-          return sortDir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
-        }
-        const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
-        return sortDir === 'asc' ? cmp : -cmp;
-      })
-    : filtered;
+  // First visible date column — used as implicit default sort when no column is active.
+  const implicitDateCol = headers.find((h) => isDateCol(h)) ?? null;
+
+  const sorted = (() => {
+    const col = sortCol ?? implicitDateCol;
+    if (!col) return filtered;
+    return [...filtered].sort((a, b) => {
+      const av = a.data[col] ?? '';
+      const bv = b.data[col] ?? '';
+      if (isDateCol(col)) {
+        const da = parseCellDate(av);
+        const db = parseCellDate(bv);
+        if (!da && !db) return 0;
+        if (!da) return 1;
+        if (!db) return -1;
+        const dir = sortCol ? sortDir : 'desc';
+        return dir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
+      }
+      const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  })();
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages);
