@@ -349,6 +349,13 @@ Moved the " dup" suffix from `Account Name` to the `Account` field so the unique
 
 ---
 
-*Last updated: June 25, 2026*
+## Task 50: AG/CG Selenium Scraper for Review Status
+**Date:** June 26, 2026
+
+Added automated AG (AskGamblers) and CG (CasinoGuru) review status detection via Selenium scraping, replacing the previous manual email-forwarding approach. Two new scripts (`check_ag_status.py`, `check_cg_status.py`) follow the same pattern as the existing TP scraper: they load entries with checkable statuses (Done, Pending, Published), visit each brand's AG/CG review page, search for the reviewer's username in the page source (with Load More pagination up to 10 times), and write back Published/Removed status and star rating. Off-site redirect guards prevent false results when the browser is bounced away from the platform domain. Added `/check-ag-status` and `/check-cg-status` routes to `status_server.py`. Added `triggerAgStatusCheck` and `triggerCgStatusCheck` functions to `queries.ts`. Added `AG Score` / `CG Score` label mappings for the "AG Score added" / "CG Score added" Sheet columns. Updated the Check Status button in `BrandGroup`: multi-platform tabs show a split button with a per-platform dropdown (Check TP / Check AG / Check CG), TP-only tabs show a plain Check Status button. Platforms are checked sequentially to prevent JSONB read-modify-write races.
+
+---
+
+*Last updated: June 26, 2026*
 
 ---
