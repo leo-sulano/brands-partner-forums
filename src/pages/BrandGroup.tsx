@@ -34,6 +34,10 @@ function isLinkCol(header: string) {
   return h.includes('link') || h.includes('url') || h.includes('profile');
 }
 
+function isNoSortCol(header: string) {
+  return isLinkCol(header) || header === 'Account Name';
+}
+
 function colWidthClass(header: string, isMultiPlatform = false): string {
   if (isMultiPlatform && header !== 'Account') return '';
   if (isLinkCol(header)) return 'w-24';
@@ -918,6 +922,7 @@ export default function BrandGroup() {
           else if (DATE_FIELDS_ON_DUPLICATE.has(k)) fields[k] = v ? todayStr : null;
           else fields[k] = v;
         }
+        if (fields['Account']) fields['Account'] = `${fields['Account']} dup`;
         await insertEntry(entry.tab, fields);
         done++;
       }
@@ -1131,7 +1136,7 @@ export default function BrandGroup() {
   const pageRows = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   function handleSort(col: string) {
-    if (isLinkCol(col)) return;
+    if (isNoSortCol(col)) return;
     let newCol: string | null;
     let newDir: 'asc' | 'desc';
     if (sortCol === col) {
@@ -1546,11 +1551,11 @@ export default function BrandGroup() {
                         <th
                           key={h}
                           onClick={() => handleSort(h)}
-                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1)} ${!isLinkCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
-                            {!isLinkCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
+                            {!isNoSortCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
                           </span>
                         </th>
                       ))}
