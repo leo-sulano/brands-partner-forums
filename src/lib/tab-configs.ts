@@ -161,7 +161,7 @@ export const COLUMN_LABELS: Record<string, string> = {
 // Per-tab label overrides — take precedence over COLUMN_LABELS when tab matches.
 const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
   'TP Affiliate': {
-    'URL PAGE': 'URL Page',
+    'URL PAGE': 'Brand',
   },
   'Wizard of Odds': {
     'Wizard of Odds':           'WO Date',
