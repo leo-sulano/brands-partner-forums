@@ -35,7 +35,8 @@ function isLinkCol(header: string) {
 }
 
 function isNoSortCol(header: string) {
-  return isLinkCol(header) || header === 'Account Name' || header === 'URL PAGE';
+  const noSortCols = new Set(['Account Name', 'URL PAGE', 'Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE']);
+  return isLinkCol(header) || noSortCols.has(header);
 }
 
 function colWidthClass(header: string, isMultiPlatform = false): string {
