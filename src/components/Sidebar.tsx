@@ -81,7 +81,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           </NavLink>
         ))}
 
-        <SectionHeader label="Brands" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
+        <SectionHeader label="Brand Tabs" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
 
         {brandsOpen && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
