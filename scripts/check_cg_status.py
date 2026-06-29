@@ -32,6 +32,7 @@ from check_review_status import (
     build_driver,
     update_entry,
     _headers,
+    _fetch_all,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -73,9 +74,7 @@ def load_cg_entries(tab: Optional[str] = None, include_published: bool = True) -
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/entries", headers={**_headers(), "Range": "0-9999"}, params=params)
-    r.raise_for_status()
-    rows: list = r.json()
+    rows: list = _fetch_all(params)
 
     statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
     out = []

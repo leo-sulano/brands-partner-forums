@@ -264,13 +264,31 @@ def find_score_col(data: dict) -> Optional[str]:
     return None
 
 
+def _fetch_all(params: dict) -> list:
+    """Paginate through Supabase REST (server caps at 1000 rows per request)."""
+    PAGE = 1000
+    all_rows: list = []
+    offset = 0
+    while True:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/entries",
+            headers=_headers(),
+            params={**params, "limit": PAGE, "offset": offset},
+        )
+        r.raise_for_status()
+        batch: list = r.json()
+        all_rows.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return all_rows
+
+
 def load_entries(tab: Optional[str] = None, include_published: bool = True) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/entries", headers={**_headers(), "Range": "0-9999"}, params=params)
-    r.raise_for_status()
-    rows: list[dict] = r.json()
+    rows: list[dict] = _fetch_all(params)
 
     statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
 
