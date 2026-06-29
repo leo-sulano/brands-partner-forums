@@ -908,7 +908,11 @@ export default function BrandGroup() {
       'Review Status',
       'Agent',
       'Ask Gambler review added',
+      'AG Review Status',
+      'AG Review Link',
       'Casino Guru review added',
+      'CG Review Status',
+      'CG Review Link',
       'AG User',
       'CG User',
     ]);
