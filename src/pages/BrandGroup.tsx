@@ -82,7 +82,7 @@ function StatusPill({ value }: { value: string }) {
   }
   if (v === 'not done' || v === 'no review') {
     return (
-      <span className="inline-flex items-center gap-1 rounded-full bg-orange-50 px-2 py-0.5 text-xs font-medium text-orange-700">
+      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-900">
         <Circle className="size-3" /> {value}
       </span>
     );
@@ -110,7 +110,7 @@ const LINK_STATUS_COL: Record<string, string> = {
 function CellValue({ header, value, rowData }: { header: string; value: string | null; rowData?: Record<string, string | null> }) {
   if (isDateCol(header) && (!value || value.trim() === '')) {
     return (
-      <span className="inline-flex items-center rounded-full bg-rose-50 px-2 py-0.5 text-xs font-medium text-rose-500">
+      <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-900">
         No Review
       </span>
     );
@@ -1841,6 +1841,9 @@ export default function BrandGroup() {
           onClose={() => setEditEntry(null)}
           onSave={async (fields) => {
             await updateEntryData(editEntry.id, editEntry.tab, editEntry.sheet_row_id, fields);
+            setEntries((prev) =>
+              prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields } } : e)),
+            );
             reloadRef.current();
           }}
         />
