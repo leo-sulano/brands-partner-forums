@@ -893,12 +893,15 @@ export default function BrandGroup() {
     const toInsert = entries.filter((e) => selectedIds.has(e.id));
     setDuplicating(true);
     let done = 0;
+    const d = new Date();
+    const todayStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     try {
       for (const entry of toInsert) {
         const fields: Record<string, string | null> = {};
         for (const k of Object.keys(entry.data)) {
           if (k === 'Account') fields[k] = entry.data[k] ? `${entry.data[k]} dup` : null;
           else if (brandCol && k === brandCol) fields[k] = entry.data[k] ?? null;
+          else if (k === 'Trust Pilot') fields[k] = todayStr;
           else fields[k] = null;
         }
         await insertEntry(entry.tab, fields);
