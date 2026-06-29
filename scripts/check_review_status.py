@@ -268,7 +268,7 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True) -> l
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/entries", headers=_headers(), params=params)
+    r = requests.get(f"{SUPABASE_URL}/rest/v1/entries", headers={**_headers(), "Range": "0-9999"}, params=params)
     r.raise_for_status()
     rows: list[dict] = r.json()
 
