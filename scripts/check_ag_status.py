@@ -113,6 +113,20 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
 
 # ─── Scraping helpers ─────────────────────────────────────────────────────────
 
+_BLOCK_KEYWORDS = {
+    "captcha", "i am not a robot", "access denied", "cloudflare",
+    "ddos protection", "please verify", "bot detection", "unusual traffic",
+    "human verification", "security check",
+}
+
+def _page_blocked(html: str) -> bool:
+    """Return True if the page looks like a CAPTCHA/bot-block rather than real content."""
+    if len(html) < 5000:
+        return True
+    lower = html.lower()
+    return any(kw in lower for kw in _BLOCK_KEYWORDS)
+
+
 def _extract_rating_from_context(context_html: str) -> Optional[int]:
     """Look for a 1-5 star rating in a chunk of HTML surrounding a username."""
     patterns = [
@@ -164,6 +178,7 @@ def fetch_ag_review(
       ('Published', 1-5 or None)  — username found in reviews
       ('Removed', None)           — not found, current status was 'published'
       (None, None)                — not found, status was not published (no write needed)
+      ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
     url = ag_link.strip()
     if not url.startswith("http"):
@@ -184,6 +199,12 @@ def fetch_ag_review(
 
     for page_num in range(MAX_LOAD_MORE + 1):
         html = driver.page_source
+
+        # First page only: check for CAPTCHA / bot-block before drawing conclusions
+        if page_num == 0 and _page_blocked(html):
+            print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
+            return ("__skip__", None)
+
         html_lower = html.lower()
 
         if ag_user_lower in html_lower:
@@ -248,6 +269,9 @@ def check_ag_for_tab(
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     errors += 1
+                    continue
+
+                if new_status == "__skip__":
                     continue
 
                 if new_status is None:
