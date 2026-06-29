@@ -115,17 +115,19 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
 # ─── Scraping helpers ─────────────────────────────────────────────────────────
 
 _BLOCK_KEYWORDS = {
-    "captcha", "i am not a robot", "access denied", "cloudflare",
-    "ddos protection", "please verify", "bot detection", "unusual traffic",
-    "human verification", "security check",
+    "captcha", "i am not a robot", "ddos protection",
+    "bot detection", "unusual traffic", "human verification",
 }
 
 def _page_blocked(html: str) -> bool:
     """Return True if the page looks like a CAPTCHA/bot-block rather than real content."""
-    if len(html) < 5000:
+    if len(html) < 2000:  # truly empty/minimal page only
         return True
     lower = html.lower()
-    return any(kw in lower for kw in _BLOCK_KEYWORDS)
+    blocked = any(kw in lower for kw in _BLOCK_KEYWORDS)
+    if blocked:
+        print(f"    [blocked] page length={len(html)}, matched block keyword")
+    return blocked
 
 
 def _extract_rating_from_context(context_html: str) -> Optional[int]:
@@ -211,9 +213,11 @@ def fetch_ag_review(
         html = driver.page_source
 
         # First page only: check for CAPTCHA / bot-block before drawing conclusions
-        if page_num == 0 and _page_blocked(html):
-            print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
-            return ("__skip__", None)
+        if page_num == 0:
+            print(f"    [page] length={len(html)}, url={driver.current_url[:60]}")
+            if _page_blocked(html):
+                print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
+                return ("__skip__", None)
 
         html_lower = html.lower()
 
