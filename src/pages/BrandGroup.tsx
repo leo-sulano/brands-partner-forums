@@ -896,14 +896,30 @@ export default function BrandGroup() {
     let done = 0;
     const d = new Date();
     const todayStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const CLEAR_ON_DUPLICATE = new Set([
+      'Redirection work used',
+      'Redirection Serch engine',
+      'Review Language',
+      'Link to the profile',
+      'TP Review Status',
+      'Trust Pilot Review Status',
+      'Trustpilot Review Status',
+      'Trust pilot Review Status',
+      'Review Status',
+      'Agent',
+      'Ask Gambler review added',
+      'Casino Guru review added',
+      'AG User',
+      'CG User',
+    ]);
     try {
       for (const entry of toInsert) {
         const fields: Record<string, string | null> = {};
         for (const k of Object.keys(entry.data)) {
           if (k === 'Account') fields[k] = entry.data[k] ? `${entry.data[k]} dup` : null;
-          else if (brandCol && k === brandCol) fields[k] = entry.data[k] ?? null;
           else if (k === 'Trust Pilot') fields[k] = todayStr;
-          else fields[k] = null;
+          else if (CLEAR_ON_DUPLICATE.has(k)) fields[k] = null;
+          else fields[k] = entry.data[k] ?? null;
         }
         await insertEntry(entry.tab, fields);
         done++;
@@ -1861,8 +1877,8 @@ export default function BrandGroup() {
             </h2>
             <p className="text-sm text-slate-500 mb-6">
               This will create {selectedIds.size} new{' '}
-              {selectedIds.size === 1 ? 'entry' : 'entries'} copying account details and brand links.
-              Review dates and statuses will be blank.
+              {selectedIds.size === 1 ? 'entry' : 'entries'} copying all account data.
+              TP/AG/CG links, statuses, dates, and agent will be blank.
             </p>
             <div className="flex justify-end gap-3">
               <button
