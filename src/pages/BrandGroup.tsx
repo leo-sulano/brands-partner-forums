@@ -1716,6 +1716,7 @@ export default function BrandGroup() {
                             </td>
                           );
                         }
+                        return <td key={h} className="px-[3px] py-2.5" />;
                       }
                       // URL PAGE: show page name as clickable link using __href hyperlink field
                       if (h === 'URL PAGE') {
@@ -1745,6 +1746,7 @@ export default function BrandGroup() {
                             </td>
                           );
                         }
+                        return <td key={h} className="px-[3px] py-2.5" />;
                       }
                       // Account column: click opens the full edit modal
                       if (h === 'Account' && isApproved) {
