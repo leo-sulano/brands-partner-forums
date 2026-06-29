@@ -192,6 +192,55 @@ export function getColLabel(header: string, tab?: string): string {
   return COLUMN_LABELS[header] ?? header;
 }
 
+// Fixed brand display sequence for specific tabs.
+// When defined, overrides column-based sorting and always shows brands in this order.
+const TAB_BRAND_SEQUENCE: Record<string, string[]> = {
+  'TP Brand Injection': [
+    '7Bit Casino crypto',
+    'Boho Casino',
+    'Amonbet Casino',
+    'Casino WestAce',
+    'NovaJackpot Casino',
+    'Lapalingo Casino',
+    'Casino Magius',
+    'Nomini Kasino',
+    'Prive Casino',
+    'Rabona Casino',
+    'RollingSlots Casino',
+    'Monsterwin Casino',
+    'Funrize Casino',
+    'Crowncoins Casino',
+    'Cazeus Casino',
+    'NoLimitCoins Casino',
+    'Alf Casino',
+    'Big Pirate Casino',
+    'VIP Luck Casino',
+    'Melbet Casino',
+    'Casea Casino',
+  ],
+  'TP Affiliate': [
+    'Aussie Online Pokies',
+    'Top10 Casinos Online Ca',
+    'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
+  ],
+};
+
+// The column that holds the brand name for sequence-sorted tabs.
+const TAB_SEQUENCE_COL: Record<string, string> = {
+  'TP Brand Injection': 'Brand / TP URL PAGE',
+  'TP Affiliate': 'URL PAGE',
+};
+
+// Returns the fixed brand sequence for a tab, or null if none is defined.
+export function getTabSequence(tab: string): string[] | null {
+  return TAB_BRAND_SEQUENCE[tab] ?? null;
+}
+
+// Returns the column used for brand name matching in sequence-sorted tabs.
+export function getTabSequenceCol(tab: string): string | null {
+  return TAB_SEQUENCE_COL[tab] ?? null;
+}
+
 // Returns true if the tab has TP + AG + CG platform columns.
 export function hasMultiPlatform(tab: string): boolean {
   const cols = TAB_COLUMN_CONFIGS[tab];

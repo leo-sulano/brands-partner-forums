@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol } from '../lib/tab-configs';
 import { slugToTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -1094,6 +1094,29 @@ export default function BrandGroup() {
   const implicitDateCol = headers.find((h) => isDateCol(h)) ?? null;
 
   const sorted = (() => {
+    const seq = getTabSequence(decodedTab);
+    const seqCol = getTabSequenceCol(decodedTab);
+    if (seq && seqCol) {
+      const seqLower = seq.map(s => s.toLowerCase());
+      return [...filtered].sort((a, b) => {
+        const aName = (a.data[seqCol] ?? '').trim().toLowerCase();
+        const bName = (b.data[seqCol] ?? '').trim().toLowerCase();
+        const ai = seqLower.indexOf(aName);
+        const bi = seqLower.indexOf(bName);
+        const aIdx = ai === -1 ? seq.length : ai;
+        const bIdx = bi === -1 ? seq.length : bi;
+        if (aIdx !== bIdx) return aIdx - bIdx;
+        // Within same brand: most recent date first
+        if (implicitDateCol) {
+          const da = parseCellDate(a.data[implicitDateCol] ?? '');
+          const db = parseCellDate(b.data[implicitDateCol] ?? '');
+          if (da && db) return db.getTime() - da.getTime();
+          if (!da) return 1;
+          if (!db) return -1;
+        }
+        return 0;
+      });
+    }
     const col = sortCol ?? implicitDateCol;
     if (!col) return filtered;
     return [...filtered].sort((a, b) => {
