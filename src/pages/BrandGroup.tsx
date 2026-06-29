@@ -35,7 +35,7 @@ function isLinkCol(header: string) {
 }
 
 function isNoSortCol(header: string) {
-  return isLinkCol(header) || header === 'Account Name';
+  return isLinkCol(header) || header === 'Account Name' || header === 'URL PAGE';
 }
 
 function colWidthClass(header: string, isMultiPlatform = false): string {
