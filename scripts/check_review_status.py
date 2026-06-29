@@ -20,7 +20,9 @@ import argparse
 import json
 import os
 import re
+import tempfile
 import time
+import zipfile
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -37,6 +39,44 @@ SUPABASE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
 BATCH_SIZE = 3
 DELAY_BETWEEN_BATCHES = 2.5
+
+# Proxy name (from "Proxy Used" column) → env var holding "host:port:user:pass"
+PROXY_ENV_MAP: dict[str, str] = {
+    "proxylite":   "PROXY_PROXYLITE",
+    "spyderproxy": "PROXY_SPYDERPROXY",
+    "enigma":      "PROXY_ENIGMA",
+}
+
+def proxy_for_entry(data: dict) -> str:
+    """Return the proxy connection string for this entry from env vars, or ''."""
+    name = (data.get("Proxy Used") or "").strip().lower()
+    env_key = PROXY_ENV_MAP.get(name, "")
+    return os.environ.get(env_key, "") if env_key else ""
+
+def _build_proxy_extension(host: str, port: str, user: str, pwd: str) -> str:
+    """Write a temporary Chrome proxy-auth extension and return its zip path."""
+    manifest = json.dumps({
+        "version": "1.0.0", "manifest_version": 2, "name": "ProxyAuth",
+        "permissions": [
+            "proxy", "tabs", "unlimitedStorage", "storage",
+            "<all_urls>", "webRequest", "webRequestBlocking",
+        ],
+        "background": {"scripts": ["bg.js"]},
+        "minimum_chrome_version": "22.0.0",
+    })
+    bg = (
+        f'var c={{mode:"fixed_servers",rules:{{singleProxy:{{scheme:"http",'
+        f'host:"{host}",port:parseInt("{port}")}},bypassList:["localhost"]}}}};'
+        f'chrome.proxy.settings.set({{value:c,scope:"regular"}},function(){{}});'
+        f'chrome.webRequest.onAuthRequired.addListener('
+        f'function(d){{return{{authCredentials:{{username:"{user}",password:"{pwd}"}}}};}},'
+        f'{{urls:["<all_urls>"]}},["blocking"]);'
+    )
+    path = tempfile.mktemp(suffix=".zip")
+    with zipfile.ZipFile(path, "w") as zf:
+        zf.writestr("manifest.json", manifest)
+        zf.writestr("bg.js", bg)
+    return path
 PAGE_LOAD_TIMEOUT = 25
 POST_LOAD_SLEEP = 1.5
 CHROME_RESTART_EVERY = 50  # restart Chrome every N entries to prevent memory exhaustion
@@ -330,20 +370,41 @@ def update_entry(entry_id: str, data: dict, updates: dict[str, str],
 
 # ─── Selenium ────────────────────────────────────────────────────────────────
 
-def build_driver(headless: bool = False) -> uc.Chrome:
+def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
+    """Build a Chrome driver. proxy format: 'host:port:user:pass' or 'host:port'."""
     options = uc.ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("--disable-extensions")
     options.add_argument("--disable-plugins-discovery")
     options.add_argument("--renderer-process-limit=1")
     options.add_argument("--window-size=1280,900")
     options.add_argument("--lang=en-US")
+
+    _ext_path = ""
+    if proxy:
+        parts = proxy.split(":")
+        if len(parts) == 4:
+            _ext_path = _build_proxy_extension(*parts)
+            options.add_extension(_ext_path)
+        elif len(parts) >= 2:
+            options.add_argument(f"--proxy-server={parts[0]}:{parts[1]}")
+            options.add_argument("--disable-extensions")
+    else:
+        options.add_argument("--disable-extensions")
+
     if headless:
         options.add_argument("--headless=new")
+
     driver = uc.Chrome(options=options, version_main=149)
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
+
+    if _ext_path:
+        try:
+            os.unlink(_ext_path)
+        except Exception:
+            pass
+
     return driver
 
 

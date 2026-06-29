@@ -37,6 +37,7 @@ from check_review_status import (
     update_entry,
     _headers,
     _fetch_all,
+    proxy_for_entry,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -249,20 +250,29 @@ def check_ag_for_tab(
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
 
     checked = updated = errors = sheet_errors = 0
-    driver = build_driver(headless=headless)
+    driver = None
+    current_proxy = None
     try:
         for i in range(0, total, BATCH_SIZE):
             batch = entries[i : i + BATCH_SIZE]
             for entry in batch:
                 checked += 1
+                entry_proxy = proxy_for_entry(entry.get("data") or {})
 
-                if checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0:
-                    print(f"  ... restarting Chrome at entry {checked}/{total}\n")
-                    try:
-                        driver.quit()
-                    except Exception:
-                        pass
-                    driver = build_driver(headless=headless)
+                restart = (
+                    driver is None
+                    or entry_proxy != current_proxy
+                    or (checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0)
+                )
+                if restart:
+                    if driver:
+                        print(f"  ... restarting Chrome at entry {checked}/{total} (proxy={entry_proxy or 'none'})\n")
+                        try:
+                            driver.quit()
+                        except Exception:
+                            pass
+                    driver = build_driver(headless=headless, proxy=entry_proxy)
+                    current_proxy = entry_proxy
 
                 data: dict = entry["data"]
                 status_col  = _col(data, AG_STATUS_COLS)
