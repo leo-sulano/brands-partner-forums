@@ -13,6 +13,31 @@ type FieldDef = {
   status?: boolean;
   link?: boolean;
   span?: boolean;
+  yesno?: boolean;
+};
+
+const YES_NO_FIELDS: FieldDef[] = [
+  { key: 'Sticky IP (Mobile) (Y/N)',                              label: 'Sticky IP (Mobile)',               yesno: true },
+  { key: 'Photo in Account?',                                      label: 'Photo in Account?',               yesno: true },
+  { key: 'Register from Google acount',                            label: 'Register from Google Account',    yesno: true },
+  { key: 'Leaving Review After redirected from  welcome Email',    label: 'Leaving Review via Welcome Email', yesno: true },
+  { key: 'Opening the account via "usefull"',                      label: 'Opening via "Useful"',            yesno: true },
+  { key: 'Opening the account via "Register" when leaving review', label: 'Opening via "Register"',          yesno: true },
+  { key: 'Scrolling and houvering?',                               label: 'Scrolling & Hovering',            yesno: true },
+  { key: 'Smart Paste?/ Paste as human typing?',                   label: 'Smart Paste / Human Typing',      yesno: true },
+  { key: 'Native Language?',                                       label: 'Native Language',                 yesno: true },
+];
+
+const YES_NO_DEFAULTS: Record<string, string> = {
+  'Sticky IP (Mobile) (Y/N)': 'Yes',
+  'Photo in Account?': 'No',
+  'Register from Google acount': 'No',
+  'Leaving Review After redirected from  welcome Email': 'Yes',
+  'Opening the account via "usefull"': 'No',
+  'Opening the account via "Register" when leaving review': 'Yes',
+  'Scrolling and houvering?': 'Yes',
+  'Smart Paste?/ Paste as human typing?': 'Yes',
+  'Native Language?': 'No',
 };
 
 const BASE_FIELDS: FieldDef[] = [
@@ -46,6 +71,7 @@ const MULTI_PLATFORM_FIELDS: FieldDef[] = [
 
 const ALL_KEYS = [
   ...BASE_FIELDS.map((f) => f.key),
+  ...YES_NO_FIELDS.map((f) => f.key),
   ...MULTI_PLATFORM_FIELDS.map((f) => f.key),
 ];
 
@@ -58,15 +84,18 @@ interface Props {
 
 export default function AddReviewAccountModal({ currentTab, onClose, onSaved, brandProfiles = {} }: Props) {
   const [selectedTab, setSelectedTab] = useState(currentTab);
-  const [fields, setFields] = useState<Record<string, string>>(
-    () => Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),
-  );
+  const [fields, setFields] = useState<Record<string, string>>(() => ({
+    ...Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),
+    ...YES_NO_DEFAULTS,
+  }));
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const isMulti = hasMultiPlatform(selectedTab);
-  const activeFields = isMulti ? [...BASE_FIELDS, ...MULTI_PLATFORM_FIELDS] : BASE_FIELDS;
+  const activeFields = isMulti
+    ? [...BASE_FIELDS, ...YES_NO_FIELDS, ...MULTI_PLATFORM_FIELDS]
+    : [...BASE_FIELDS, ...YES_NO_FIELDS];
 
   // Brands available for the current page tab (from preloaded entries)
   const availableBrands = selectedTab === currentTab ? Object.keys(brandProfiles).sort() : [];
@@ -188,6 +217,16 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
                     {availableBrands.map((b) => (
                       <option key={b} value={b}>{b}</option>
                     ))}
+                  </select>
+                ) : f.yesno ? (
+                  <select
+                    value={fields[f.key]}
+                    onChange={(e) => setFields((s) => ({ ...s, [f.key]: e.target.value }))}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white"
+                  >
+                    <option value="">—</option>
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
                   </select>
                 ) : f.status ? (
                   <>
