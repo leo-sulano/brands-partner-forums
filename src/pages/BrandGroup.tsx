@@ -1128,22 +1128,22 @@ export default function BrandGroup() {
     if (seq && seqCol) {
       const seqLower = seq.map(s => s.toLowerCase());
       return [...filtered].sort((a, b) => {
+        // Primary: most recent date first
+        if (implicitDateCol) {
+          const da = parseCellDate(a.data[implicitDateCol] ?? '');
+          const db = parseCellDate(b.data[implicitDateCol] ?? '');
+          if (da && db && da.getTime() !== db.getTime()) return db.getTime() - da.getTime();
+          if (!da && db) return 1;
+          if (da && !db) return -1;
+        }
+        // Secondary: brand sequence order within the same date
         const aName = (a.data[seqCol] ?? '').trim().toLowerCase();
         const bName = (b.data[seqCol] ?? '').trim().toLowerCase();
         const ai = seqLower.indexOf(aName);
         const bi = seqLower.indexOf(bName);
         const aIdx = ai === -1 ? seq.length : ai;
         const bIdx = bi === -1 ? seq.length : bi;
-        if (aIdx !== bIdx) return aIdx - bIdx;
-        // Within same brand: most recent date first
-        if (implicitDateCol) {
-          const da = parseCellDate(a.data[implicitDateCol] ?? '');
-          const db = parseCellDate(b.data[implicitDateCol] ?? '');
-          if (da && db) return db.getTime() - da.getTime();
-          if (!da) return 1;
-          if (!db) return -1;
-        }
-        return 0;
+        return aIdx - bIdx;
       });
     }
     const col = sortCol ?? implicitDateCol;
