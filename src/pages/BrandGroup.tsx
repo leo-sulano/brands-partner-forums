@@ -918,7 +918,6 @@ export default function BrandGroup() {
           else if (DATE_FIELDS_ON_DUPLICATE.has(k)) fields[k] = v ? todayStr : null;
           else fields[k] = v;
         }
-        if (fields['Account']) fields['Account'] = `${fields['Account']} dup`;
         await insertEntry(entry.tab, fields);
         done++;
       }
