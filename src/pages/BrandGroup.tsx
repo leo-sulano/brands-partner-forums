@@ -1410,7 +1410,7 @@ export default function BrandGroup() {
               value={brandFilter}
               onChange={(v) => { setBrandFilter(v); setPage(1); }}
               brands={uniqueBrands}
-              noun={decodedTab === 'TP Affiliate' ? 'URL page' : 'brand'}
+              noun="brand"
             />
           )}
           {uniqueAgents.length > 1 && (
