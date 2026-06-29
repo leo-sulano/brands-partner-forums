@@ -534,6 +534,13 @@ export async function deleteEntries(ids: string[], tab: string): Promise<void> {
   invalidateTabCache(tab);
 }
 
+export async function moveEntryToTab(id: string, oldTab: string, newTab: string): Promise<void> {
+  const { error } = await supabase.from('entries').update({ tab: newTab }).eq('id', id);
+  if (error) throw error;
+  invalidateTabCache(oldTab);
+  invalidateTabCache(newTab);
+}
+
 // ---------------------------------------------------------------------------
 // TP review status check trigger
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
@@ -2009,11 +2009,17 @@ export default function BrandGroup() {
             );
             return [...fullHeaders, ...extras];
           })()}
+          currentTab={decodedTab}
+          availableBrands={uniqueBrands}
+          brandCol={brandCol}
           onClose={() => setEditEntry(null)}
-          onSave={async (fields) => {
-            await updateEntryData(editEntry.id, editEntry.tab, editEntry.sheet_row_id, fields);
+          onSave={async (fields, newTab) => {
+            if (newTab && newTab !== editEntry.tab) {
+              await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
+            }
+            await updateEntryData(editEntry.id, newTab ?? editEntry.tab, editEntry.sheet_row_id, fields);
             setEntries((prev) =>
-              prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields } } : e)),
+              prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
             reloadRef.current();
           }}
