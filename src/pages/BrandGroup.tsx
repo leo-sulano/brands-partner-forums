@@ -285,26 +285,6 @@ const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL
 const BRAND_LINK_COLS = ['AG Review Link', 'CG Review Link'];
 const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay']);
 
-// Columns that support inline editing directly in the table cell.
-const INLINE_EDIT_COLS = new Set([
-  'Trust Pilot',
-  'Ask Gambler review added',
-  'Casino Guru review added',
-  'TP Review Status',
-  'Trust Pilot Review Status',
-  'Trustpilot Review Status',
-  'Trust pilot Review Status',
-  'Review Status',
-  'AG Review Status',
-  'CG Review Status',
-  'AG User',
-  'CG User',
-  'Link to the profile',
-  'Wizard of Odds',
-  'WoO Review Status',
-  'Wizard of OddsScore added',
-]);
-const INLINE_TEXT_COLS = new Set(['AG User', 'CG User', 'Link to the profile', 'Wizard of OddsScore added']);
 const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Still Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
 
@@ -1780,7 +1760,7 @@ export default function BrandGroup() {
                       }
 
                       // Inline-editable columns: click edits that cell in place
-                      if (INLINE_EDIT_COLS.has(h) && isApproved) {
+                      if (isApproved) {
                         const isEditing = editingCell?.entryId === entry.id && editingCell.header === h;
                         if (isEditing) {
                           const isStat = isStatusCol(h);
@@ -1802,6 +1782,35 @@ export default function BrandGroup() {
                                   <option value="">— select —</option>
                                   {INLINE_STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
                                 </select>
+                              ) : isLinkCol(h) ? (
+                                <div className="flex items-center gap-1">
+                                  <input
+                                    autoFocus
+                                    type="text"
+                                    disabled={savingCell}
+                                    value={editingCell.value}
+                                    onChange={(e) => setEditingCell((c) => c ? { ...c, value: e.target.value } : c)}
+                                    onBlur={() => saveInlineEdit(entry, h, editingCell.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') { e.currentTarget.blur(); }
+                                      if (e.key === 'Escape') setEditingCell(null);
+                                    }}
+                                    placeholder="https://…"
+                                    className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
+                                  />
+                                  {editingCell.value && (
+                                    <a
+                                      href={editingCell.value.startsWith('http') ? editingCell.value : `https://${editingCell.value}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="shrink-0 text-blue-500 hover:text-blue-700"
+                                      title="Open link"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <ExternalLink className="size-4" />
+                                    </a>
+                                  )}
+                                </div>
                               ) : (
                                 <input
                                   autoFocus
@@ -1814,7 +1823,7 @@ export default function BrandGroup() {
                                     if (e.key === 'Enter') { e.currentTarget.blur(); }
                                     if (e.key === 'Escape') setEditingCell(null);
                                   }}
-                                  placeholder={INLINE_TEXT_COLS.has(h) ? 'Enter username…' : 'DD/MM/YYYY'}
+                                  placeholder={isDateCol(h) ? 'DD/MM/YYYY' : ''}
                                   className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
                                 />
                               )}
