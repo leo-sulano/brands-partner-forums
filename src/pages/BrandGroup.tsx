@@ -12,8 +12,8 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol } from '../lib/tab-configs';
-import { slugToTab } from '../lib/tabs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform } from '../lib/tab-configs';
+import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -627,6 +627,12 @@ export default function BrandGroup() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [duplicateTargetTab, setDuplicateTargetTab] = useState('');
+  const [duplicateBrand, setDuplicateBrand] = useState('');
+  const [duplicateAgLink, setDuplicateAgLink] = useState('');
+  const [duplicateCgLink, setDuplicateCgLink] = useState('');
+  const [crossTabBrandProfiles, setCrossTabBrandProfiles] = useState<Record<string, Record<string, string>>>({});
+  const [loadingCrossTab, setLoadingCrossTab] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -899,6 +905,46 @@ export default function BrandGroup() {
     }
   }
 
+  async function loadCrossTabBrandProfiles(tab: string) {
+    if (tab === decodedTab) return;
+    setLoadingCrossTab(true);
+    try {
+      const rawEntries = await fetchRawEntriesByTab(tab);
+      const profiles: Record<string, Record<string, string>> = {};
+      for (const entry of rawEntries) {
+        const brand = BRAND_COLS.map((c) => entry.data[c]).find((v) => v && v.trim()) ?? '';
+        if (!brand) continue;
+        if (!profiles[brand]) profiles[brand] = {};
+        for (const col of ['AG Review Link', 'CG Review Link']) {
+          const val = entry.data[col];
+          if (val && val.trim() && val !== '—' && !profiles[brand][col]) {
+            profiles[brand][col] = val.trim();
+          }
+        }
+      }
+      setCrossTabBrandProfiles(profiles);
+    } finally {
+      setLoadingCrossTab(false);
+    }
+  }
+
+  function handleDuplicateTabChange(tab: string) {
+    setDuplicateTargetTab(tab);
+    setDuplicateBrand('');
+    setDuplicateAgLink('');
+    setDuplicateCgLink('');
+    if (tab !== decodedTab) loadCrossTabBrandProfiles(tab);
+  }
+
+  function handleDuplicateBrandChange(brand: string) {
+    setDuplicateBrand(brand);
+    const activeTab = duplicateTargetTab || decodedTab;
+    const profiles = activeTab === decodedTab ? brandProfiles : crossTabBrandProfiles;
+    const profile = profiles[brand] ?? {};
+    setDuplicateAgLink(profile['AG Review Link'] ?? '');
+    setDuplicateCgLink(profile['CG Review Link'] ?? '');
+  }
+
   async function handleDuplicate() {
     const toInsert = entries.filter((e) => selectedIds.has(e.id));
     setDuplicating(true);
@@ -926,6 +972,7 @@ export default function BrandGroup() {
       'CG User',
     ]);
     try {
+      const targetTab = duplicateTargetTab || decodedTab;
       for (const entry of toInsert) {
         const fields: Record<string, string | null> = {};
         for (const k of Object.keys(entry.data)) {
@@ -934,7 +981,12 @@ export default function BrandGroup() {
           else if (CLEAR_ON_DUPLICATE.has(k)) fields[k] = null;
           else fields[k] = entry.data[k] ?? null;
         }
-        await insertEntry(entry.tab, fields);
+        // Apply brand override if selected
+        if (duplicateBrand && brandCol) fields[brandCol] = duplicateBrand;
+        // Apply AG/CG link overrides if provided
+        if (duplicateAgLink) fields['AG Review Link'] = duplicateAgLink;
+        if (duplicateCgLink) fields['CG Review Link'] = duplicateCgLink;
+        await insertEntry(targetTab, fields);
         done++;
       }
       reloadRef.current();
@@ -1402,7 +1454,14 @@ export default function BrandGroup() {
               ✓ {selectedIds.size} selected
             </span>
             <button
-              onClick={() => setShowDuplicateModal(true)}
+              onClick={() => {
+                setDuplicateTargetTab(decodedTab);
+                setDuplicateBrand('');
+                setDuplicateAgLink('');
+                setDuplicateCgLink('');
+                setCrossTabBrandProfiles({});
+                setShowDuplicateModal(true);
+              }}
               className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
             >
               Duplicate
@@ -1982,43 +2041,134 @@ export default function BrandGroup() {
         />
       )}
 
-      {showDuplicateModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => { if (!duplicating) setShowDuplicateModal(false); }}
-        >
+      {showDuplicateModal && (() => {
+        const activeTab = duplicateTargetTab || decodedTab;
+        const isCurrentTab = activeTab === decodedTab;
+        const activeProfiles = isCurrentTab ? brandProfiles : crossTabBrandProfiles;
+        const availableBrands = Object.keys(activeProfiles).sort();
+        const isMulti = hasMultiPlatform(activeTab);
+        return (
           <div
-            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            onClick={() => { if (!duplicating) setShowDuplicateModal(false); }}
           >
-            <h2 className="text-base font-semibold text-slate-900 mb-2">
-              Duplicate {selectedIds.size} row{selectedIds.size === 1 ? '' : 's'}?
-            </h2>
-            <p className="text-sm text-slate-500 mb-6">
-              This will create {selectedIds.size} new{' '}
-              {selectedIds.size === 1 ? 'entry' : 'entries'} copying all account data.
-              TP/AG/CG links, statuses, dates, and agent will be blank.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowDuplicateModal(false)}
-                disabled={duplicating}
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDuplicate}
-                disabled={duplicating}
-                className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
-              >
-                {duplicating && <Loader2 className="size-4 animate-spin" />}
-                {duplicating ? 'Duplicating…' : 'Duplicate'}
-              </button>
+            <div
+              className="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl bg-white shadow-xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
+                <div>
+                  <h2 className="text-sm font-semibold text-slate-900">
+                    Duplicate {selectedIds.size} row{selectedIds.size === 1 ? '' : 's'}
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    Optionally assign a brand tab and brand name to auto-fill links
+                  </p>
+                </div>
+                <button
+                  onClick={() => { if (!duplicating) setShowDuplicateModal(false); }}
+                  disabled={duplicating}
+                  className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+                {/* Tab selector */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                    Brand Tab
+                  </label>
+                  <select
+                    value={activeTab}
+                    onChange={(e) => handleDuplicateTabChange(e.target.value)}
+                    disabled={duplicating}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                  >
+                    {OPERATIONAL_TABS.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Brand name */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-slate-500">
+                    Brand Name
+                    {loadingCrossTab && <span className="ml-2 text-slate-400">(loading…)</span>}
+                  </label>
+                  <select
+                    value={duplicateBrand}
+                    onChange={(e) => handleDuplicateBrandChange(e.target.value)}
+                    disabled={duplicating || loadingCrossTab}
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                  >
+                    <option value="">— Select brand —</option>
+                    {availableBrands.map((b) => (
+                      <option key={b} value={b}>{b}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* AG / CG link preview — shown only for multi-platform tabs */}
+                {isMulti && (
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-500">AG Review Link</label>
+                      <input
+                        type="text"
+                        value={duplicateAgLink}
+                        onChange={(e) => setDuplicateAgLink(e.target.value)}
+                        disabled={duplicating}
+                        placeholder="https://…"
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-slate-500">CG Review Link</label>
+                      <input
+                        type="text"
+                        value={duplicateCgLink}
+                        onChange={(e) => setDuplicateCgLink(e.target.value)}
+                        disabled={duplicating}
+                        placeholder="https://…"
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-xs text-slate-400">
+                  All other fields are copied from the selected row{selectedIds.size > 1 ? 's' : ''}.
+                  TP/AG/CG statuses, dates, and agent will be cleared.
+                </p>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                <button
+                  onClick={() => setShowDuplicateModal(false)}
+                  disabled={duplicating}
+                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDuplicate}
+                  disabled={duplicating || loadingCrossTab}
+                  className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                >
+                  {duplicating && <Loader2 className="size-4 animate-spin" />}
+                  {duplicating ? 'Duplicating…' : 'Duplicate'}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {showDeleteModal && (
         <div

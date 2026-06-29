@@ -448,6 +448,92 @@ After saving an inline cell edit, the table no longer refreshes. Replaced the `r
 
 ---
 
-*Last updated: June 26, 2026*
+## Task 60: AG Status Check Improvements — Proxy, Scroll, CAPTCHA & Status Progression
+**Date:** June 27–29, 2026
+
+### Automation
+- Added per-entry proxy support for AG status checks — each entry can specify its own proxy, passed through `triggerAgStatusCheck` and the `check-status` Edge Function to `check_ag_status.py`
+- Added scroll + extended wait (3s) in `check_ag_status.py` to catch lazy-loaded review tiles that don't render immediately
+- Added CAPTCHA / blocked-page guard: if the page response is shorter than a threshold or contains block signals, the script skips updating the entry's status to avoid false removals
+- Relaxed the `_page_blocked` length threshold and added page-length debug logging to tune the guard without re-deploying
+- Added date-based AG status auto-progression: entries whose AG status is "Done" and whose AG Added date is older than a configurable threshold are automatically advanced to "Pending" on the next check run, keeping the queue fresh
+
+---
+
+## Task 61: Sort State Persistence & Brand Sequence Ordering
+**Date:** June 27–29, 2026
+
+### UI / UX
+- Sort column and direction per brand tab now persisted in `localStorage` — refreshing or navigating away and back preserves the user's last sort choice
+- TP Brand Injection and TP Affiliate tabs now sort by date first (latest-first), then by brand sequence within the same date, matching the expected operational order
+- Removed user-initiated sorting from brand-name columns across all tabs — these columns follow a fixed sequence and sorting them alphabetically was misleading
+- Renamed the sidebar section label from "Brands" to "Brand Tabs" for clarity
+
+---
+
+## Task 62: All Columns Inline-Editable with Edit Guards
+**Date:** June 29, 2026
+
+### UI / UX
+- Extended inline cell editing to all data columns in the BrandGroup table — previously only TP/AG/CG link columns were inline-editable
+- Account Name, Brand, and operational status/platform columns guarded from accidental inline edits — clicking these cells still opens the full edit modal
+- Fixed a fallthrough bug where clicking an empty Brand / URL PAGE cell triggered inline-edit mode instead of being a no-op
+
+---
+
+## Task 63: Drag-to-Select & Long-Press Row Selection
+**Date:** June 29, 2026
+
+### UI / UX
+- Added drag-to-select: clicking and dragging vertically across table rows selects them all in one motion without needing to tick each checkbox individually
+- Long-press on any row activates checkbox mode and selects that row, mirroring mobile list-select conventions
+- Dragging back over already-selected rows deselects them (rubber-band behavior) — releasing the drag finalises the selection
+
+---
+
+## Task 64: Duplicate Row Refinements
+**Date:** June 29, 2026
+
+### UI / UX
+- Duplicate now stamps today's date into all platform Added date columns (TP Added, AG Added, CG Added) so duplicated rows sort to the top of date-descending views immediately
+- Clears AG and CG status and review link columns on duplicate (previously only TP fields were cleared), ensuring new accounts start with blank platform state
+- Copies all other fields from the source row (proxy, notes, etc.) so the VA only needs to fill in the platform-specific links
+- " dup" suffix placed on the `Account` identifier field (the unique key); `Account Name` display field is copied unchanged
+- Fixed URL Page column label displayed as "Brand" on TP Affiliate tab, and aligned the filter label to match
+
+---
+
+## Task 65: Bypass Supabase 1000-Row Server Cap
+**Date:** June 29, 2026
+
+### Bug Fixes
+- Supabase enforces a server-side 1000-row default cap on select queries; large brand tabs were silently returning only their first 1000 entries, truncating data without any error
+- Added paginated fetching (`range(0, 999)` → `range(1000, 1999)` → …) to all entry-load functions in `queries.ts` until a page returns fewer than 1000 rows, guaranteeing full dataset retrieval
+
+---
+
+## Task 66: EC2 & Sheet Push Reliability + Apps Script Col Map Fix
+**Date:** June 29, 2026
+
+### Infrastructure
+- Resolved Chrome renderer crashes on the EC2 scraper instance caused by insufficient shared memory — added `--disable-dev-shm-usage` Chrome flag to all Selenium launch configs
+- Removed redundant Google Sheet push calls from the status-check scripts (`check_ag_status.py`, `check_cg_status.py`, `check_wo_status.py`) — sheet sync is now the dedicated responsibility of `push-to-sheet`; doing it inside status scripts was causing race conditions and timeout failures
+- Fixed Apps Script receiving incorrect column indices: the `push-to-sheet` Edge Function now sends a `col_map` (column name → Sheet column letter) derived from the tab's live header row, so writes land in the right cells even when columns are reordered in the Sheet
+
+---
+
+## Task 67: UI Polish & Minor Fixes
+**Date:** June 29, 2026
+
+### UI / UX
+- Pre-filled Yes/No boolean dropdowns in the Add Review Account modal — fields default to "No" instead of blank, reducing missed fills
+- Fixed "No Review" status badge rendering with black text (was unreadable on dark badge background)
+- Fixed edit modal showing stale field values after an inline cell save — modal now reads from the locally-patched entry state rather than the last full fetch
+- Uniform column width for the Agent column across TP Brand Injection and TP Affiliate tabs
+- Entries with the same Added date now sorted by account number descending within that date group, giving a stable secondary sort order
+
+---
+
+*Last updated: June 29, 2026*
 
 ---
