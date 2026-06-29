@@ -1145,11 +1145,13 @@ export default function BrandGroup() {
       if (isDateCol(col)) {
         const da = parseCellDate(av);
         const db = parseCellDate(bv);
-        if (!da && !db) return 0;
+        const acctCmp = (b.data['Account'] ?? '').localeCompare(a.data['Account'] ?? '', undefined, { numeric: true, sensitivity: 'base' });
+        if (!da && !db) return acctCmp;
         if (!da) return 1;
         if (!db) return -1;
         const dir = sortCol ? sortDir : 'desc';
-        return dir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
+        const timeCmp = dir === 'asc' ? da.getTime() - db.getTime() : db.getTime() - da.getTime();
+        return timeCmp !== 0 ? timeCmp : acctCmp;
       }
       const cmp = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' });
       return sortDir === 'asc' ? cmp : -cmp;
