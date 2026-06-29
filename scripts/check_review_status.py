@@ -39,6 +39,7 @@ BATCH_SIZE = 3
 DELAY_BETWEEN_BATCHES = 2.5
 PAGE_LOAD_TIMEOUT = 25
 POST_LOAD_SLEEP = 1.5
+CHROME_RESTART_EVERY = 50  # restart Chrome every N entries to prevent memory exhaustion
 
 TP_STATUS_COLS = [
     "TP Review Status",
@@ -349,6 +350,10 @@ def build_driver(headless: bool = False) -> uc.Chrome:
     options = uc.ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--disable-extensions")
+    options.add_argument("--disable-plugins-discovery")
+    options.add_argument("--renderer-process-limit=1")
     options.add_argument("--window-size=1280,900")
     options.add_argument("--lang=en-US")
     if headless:
@@ -410,6 +415,17 @@ def main() -> None:
             batch = entries[i : i + BATCH_SIZE]
             for entry in batch:
                 checked += 1
+
+                # Restart Chrome every N entries to prevent renderer memory exhaustion.
+                # Check at start of entry so it fires regardless of continue paths below.
+                if checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0:
+                    print(f"  ... restarting Chrome at entry {checked}/{total}\n")
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver = build_driver(headless=args.headless)
+
                 data: dict = entry["data"]
                 status_col = find_status_col(data)
                 score_col = find_score_col(data)

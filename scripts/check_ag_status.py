@@ -39,6 +39,7 @@ from check_review_status import (
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
+    CHROME_RESTART_EVERY,
 )
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ AG_DATE_COLS   = ["AG Added"]
 # VERIFY: check the actual column name in the Sheet; update if different
 AG_SCORE_COLS  = ["AG Score added"]
 
-CHECKABLE_STATUSES = {"done", "pending"}
+CHECKABLE_STATUSES = {"done", "pending", "published"}
 
 # ─── Column helpers ───────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
     r.raise_for_status()
     rows: list = r.json()
 
-    statuses = CHECKABLE_STATUSES  # always {"done", "pending"}
+    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -225,6 +226,15 @@ def check_ag_for_tab(
             batch = entries[i : i + BATCH_SIZE]
             for entry in batch:
                 checked += 1
+
+                if checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0:
+                    print(f"  ... restarting Chrome at entry {checked}/{total}\n")
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver = build_driver(headless=headless)
+
                 data: dict = entry["data"]
                 status_col  = _col(data, AG_STATUS_COLS)
                 score_col   = _col(data, AG_SCORE_COLS)

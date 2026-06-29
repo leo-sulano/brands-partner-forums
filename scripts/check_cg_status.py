@@ -35,6 +35,7 @@ from check_review_status import (
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
+    CHROME_RESTART_EVERY,
 )
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -204,6 +205,15 @@ def check_cg_for_tab(
             batch = entries[i : i + BATCH_SIZE]
             for entry in batch:
                 checked += 1
+
+                if checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0:
+                    print(f"  ... restarting Chrome at entry {checked}/{total}\n")
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
+                    driver = build_driver(headless=headless)
+
                 data: dict = entry["data"]
                 status_col  = _col(data, CG_STATUS_COLS)
                 score_col   = _col(data, CG_SCORE_COLS)

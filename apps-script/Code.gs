@@ -204,14 +204,15 @@ function handleUpsertRow(body) {
     sheet.getRange(rowIdx, ID_COLUMN).setValue(rowId);
   }
 
-  // Fall back to header-row lookup only when no col_map was provided (e.g.
-  // callers that haven't been updated yet).
-  var lastCol = 1;
   var headerToCol = {};
   if (!useColMap) {
-    lastCol = Math.max(sheet.getLastColumn(), 1);
-    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
-    for (var i = 0; i < headers.length; i++) headerToCol[headers[i]] = i + 1;
+    var allHeaders = sheet.getRange(1, 1, 1, sheet.getMaxColumns()).getValues()[0];
+    for (var i = 0; i < allHeaders.length; i++) {
+      var h = String(allHeaders[i]).trim();
+      // Keep FIRST occurrence only — old broken code may have appended duplicate
+      // headers at wrong columns. First occurrence is the original correct column.
+      if (h && !headerToCol[h]) headerToCol[h] = i + 1;
+    }
   }
 
   var writeMap = {};
@@ -230,12 +231,7 @@ function handleUpsertRow(body) {
       if (!col) continue; // field not in dashboard data — skip rather than appending
     } else {
       col = headerToCol[key];
-      if (!col) {
-        lastCol++;
-        col = lastCol;
-        sheet.getRange(1, col).setValue(key);
-        headerToCol[key] = col;
-      }
+      if (!col) continue; // header not found in sheet — skip rather than appending to wrong column
     }
     var v = writeMap[key];
     sheet.getRange(rowIdx, col).setValue(v == null ? '' : v);
