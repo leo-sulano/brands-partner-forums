@@ -609,6 +609,7 @@ export default function BrandGroup() {
   // Drag-to-select state for checkboxes
   const isDraggingRef = useRef(false);
   const dragFirstIdRef = useRef<string | null>(null);
+  const dragSessionIdsRef = useRef<Set<string>>(new Set()); // rows selected in current drag
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const longPressActiveRef = useRef(false);
 
@@ -616,10 +617,23 @@ export default function BrandGroup() {
     const stop = () => {
       isDraggingRef.current = false;
       dragFirstIdRef.current = null;
+      dragSessionIdsRef.current = new Set();
     };
     document.addEventListener('mouseup', stop);
     return () => document.removeEventListener('mouseup', stop);
   }, []);
+
+  function applyDragToggle(id: string) {
+    if (dragSessionIdsRef.current.has(id)) {
+      // Dragging back — unselect
+      dragSessionIdsRef.current.delete(id);
+      setSelectedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
+    } else {
+      // Dragging forward — select
+      dragSessionIdsRef.current.add(id);
+      setSelectedIds((prev) => { const n = new Set(prev); n.add(id); return n; });
+    }
+  }
 
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
@@ -1637,24 +1651,26 @@ export default function BrandGroup() {
                           if (e.button !== 0) return;
                           isDraggingRef.current = true;
                           dragFirstIdRef.current = entry.id;
+                          dragSessionIdsRef.current = new Set();
                         }}
                         onMouseLeave={() => {
-                          // User dragged away from the first row — add it to selection
+                          // User dragged away from the first row — toggle it
                           if (isDraggingRef.current && dragFirstIdRef.current === entry.id) {
                             dragFirstIdRef.current = null;
-                            setSelectedIds((prev) => { const n = new Set(prev); n.add(entry.id); return n; });
+                            applyDragToggle(entry.id);
                           }
                         }}
                         onMouseEnter={() => {
                           if (isDraggingRef.current) {
-                            setSelectedIds((prev) => { const n = new Set(prev); n.add(entry.id); return n; });
+                            applyDragToggle(entry.id);
                           }
                         }}
                         onTouchStart={() => {
                           longPressTimerRef.current = setTimeout(() => {
                             longPressActiveRef.current = true;
+                            dragSessionIdsRef.current = new Set();
                             navigator.vibrate?.(50);
-                            setSelectedIds((prev) => { const n = new Set(prev); n.add(entry.id); return n; });
+                            applyDragToggle(entry.id);
                           }, 400);
                         }}
                         onTouchMove={(e) => {
@@ -1667,7 +1683,7 @@ export default function BrandGroup() {
                           const el = document.elementFromPoint(touch.clientX, touch.clientY);
                           const td = el?.closest('[data-drag-id]') as HTMLElement | null;
                           if (td?.dataset.dragId) {
-                            setSelectedIds((prev) => { const n = new Set(prev); n.add(td.dataset.dragId!); return n; });
+                            applyDragToggle(td.dataset.dragId!);
                           }
                         }}
                         onTouchEnd={() => {
