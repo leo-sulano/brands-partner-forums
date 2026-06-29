@@ -39,12 +39,12 @@ function isNoSortCol(header: string) {
   return isLinkCol(header) || noSortCols.has(header);
 }
 
-function colWidthClass(header: string, isMultiPlatform = false): string {
+function colWidthClass(header: string, isMultiPlatform = false, tab?: string): string {
   if (isMultiPlatform && header !== 'Account') return '';
   if (isLinkCol(header)) return 'w-24';
   if (isStatusCol(header)) return 'w-36';
   const h = header.toLowerCase();
-  if (h === 'agent') return 'w-5';
+  if (h === 'agent') return (tab === 'TP Brand Injection' || tab === 'TP Affiliate') ? 'w-20' : 'w-5';
   if (h.includes('account') || h.includes('brand') || h.includes('name')) return 'w-40';
   return 'w-32';
 }
@@ -1587,7 +1587,7 @@ export default function BrandGroup() {
                         <th
                           key={h}
                           onClick={() => handleSort(h)}
-                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
