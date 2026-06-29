@@ -299,9 +299,7 @@ def check_ag_for_tab(
 
                 if new_status is None:
                     current_lower = current.strip().lower()
-                    if current_lower == "pending":
-                        new_status = "Refused"
-                    elif current_lower == "done":
+                    if current_lower in ("pending", "done"):
                         ag_added = _val(data, AG_DATE_COLS) or ""
                         new_status = "Refused" if (not ag_added or _older_than_one_day(ag_added)) else "Pending"
                     else:
