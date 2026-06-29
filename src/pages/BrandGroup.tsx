@@ -1749,13 +1749,31 @@ export default function BrandGroup() {
                         return <td key={h} className="px-[3px] py-2.5" />;
                       }
                       // Account column: click opens the full edit modal
-                      if (h === 'Account' && isApproved) {
+                      if ((h === 'Account' || h === 'Account Name') && isApproved) {
                         return (
                           <td
                             key={h}
                             className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none"
                             onClick={() => setEditEntry(entry)}
                           >
+                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                          </td>
+                        );
+                      }
+
+                      // Brand identity columns: never editable inline — they key brand grouping
+                      if (h === 'Brands' || h === 'Brand Name' || h === 'Brand') {
+                        return (
+                          <td key={h} className="px-[3px] py-2.5">
+                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                          </td>
+                        );
+                      }
+
+                      // Operational/system columns: read-only, no inline editing
+                      if (h === 'Proxy Used' || h === 'Agent' || h === 'User Name') {
+                        return (
+                          <td key={h} className="px-[3px] py-2.5">
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
                           </td>
                         );
@@ -1808,6 +1826,7 @@ export default function BrandGroup() {
                                       className="shrink-0 text-blue-500 hover:text-blue-700"
                                       title="Open link"
                                       onClick={(e) => e.stopPropagation()}
+                                      onMouseDown={(e) => e.preventDefault()}
                                     >
                                       <ExternalLink className="size-4" />
                                     </a>
