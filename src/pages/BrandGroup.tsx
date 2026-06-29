@@ -606,6 +606,21 @@ export default function BrandGroup() {
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
   const lastLoadedTabRef = useRef<string | null>(null);
 
+  // Drag-to-select state for checkboxes
+  const isDraggingRef = useRef(false);
+  const dragFirstIdRef = useRef<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressActiveRef = useRef(false);
+
+  useEffect(() => {
+    const stop = () => {
+      isDraggingRef.current = false;
+      dragFirstIdRef.current = null;
+    };
+    document.addEventListener('mouseup', stop);
+    return () => document.removeEventListener('mouseup', stop);
+  }, []);
+
   const [checkingStatus, setCheckingStatus] = useState(false);
   const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
   const checkDropdownRef = useRef<HTMLDivElement>(null);
@@ -1614,7 +1629,56 @@ export default function BrandGroup() {
                     className="transition-colors"
                   >
                     {isApproved && (
-                      <td className="w-8 px-2 py-2.5" onClick={(e) => e.stopPropagation()}>
+                      <td
+                        className="w-8 px-2 py-2.5 select-none"
+                        onClick={(e) => e.stopPropagation()}
+                        data-drag-id={entry.id}
+                        onMouseDown={(e) => {
+                          if (e.button !== 0) return;
+                          isDraggingRef.current = true;
+                          dragFirstIdRef.current = entry.id;
+                        }}
+                        onMouseLeave={() => {
+                          // User dragged away from the first row — add it to selection
+                          if (isDraggingRef.current && dragFirstIdRef.current === entry.id) {
+                            dragFirstIdRef.current = null;
+                            setSelectedIds((prev) => { const n = new Set(prev); n.add(entry.id); return n; });
+                          }
+                        }}
+                        onMouseEnter={() => {
+                          if (isDraggingRef.current) {
+                            setSelectedIds((prev) => { const n = new Set(prev); n.add(entry.id); return n; });
+                          }
+                        }}
+                        onTouchStart={() => {
+                          longPressTimerRef.current = setTimeout(() => {
+                            longPressActiveRef.current = true;
+                            navigator.vibrate?.(50);
+                            setSelectedIds((prev) => { const n = new Set(prev); n.add(entry.id); return n; });
+                          }, 400);
+                        }}
+                        onTouchMove={(e) => {
+                          if (!longPressActiveRef.current) {
+                            if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                            return;
+                          }
+                          e.preventDefault();
+                          const touch = e.touches[0];
+                          const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                          const td = el?.closest('[data-drag-id]') as HTMLElement | null;
+                          if (td?.dataset.dragId) {
+                            setSelectedIds((prev) => { const n = new Set(prev); n.add(td.dataset.dragId!); return n; });
+                          }
+                        }}
+                        onTouchEnd={() => {
+                          if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                          longPressActiveRef.current = false;
+                        }}
+                        onTouchCancel={() => {
+                          if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+                          longPressActiveRef.current = false;
+                        }}
+                      >
                         <input
                           type="checkbox"
                           aria-label="Select row"
