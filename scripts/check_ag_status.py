@@ -285,7 +285,8 @@ def check_ag_for_tab(
 def main() -> None:
     ap = argparse.ArgumentParser(description="Selenium stealth AskGamblers status checker")
     ap.add_argument("--tab", help="Restrict to a specific tab name")
-    ap.add_argument("--headless", action="store_true", help="Run Chrome headless")
+    ap.add_argument("--no-headless", dest="headless", action="store_false", help="Show Chrome browser window")
+    ap.set_defaults(headless=True)
     args = ap.parse_args()
 
     scope = f"tab: {args.tab}" if args.tab else "all tabs"
