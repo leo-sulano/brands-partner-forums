@@ -306,25 +306,6 @@ const INLINE_EDIT_COLS = new Set([
 const INLINE_TEXT_COLS = new Set(['AG User', 'CG User', 'Link to the profile', 'Wizard of OddsScore added']);
 const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Still Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
-const CLEARED_FIELDS = new Set([
-  'TP Review Status',
-  'Trust Pilot Review Status',
-  'Trustpilot Review Status',
-  'Trust pilot Review Status',
-  'Review Status',
-  'AG Review Status',
-  'CG Review Status',
-  'Wizard of Odds',
-  'WoO Review Status',
-  'Wizard of OddsScore added',
-]);
-
-// Date fields set to today's date (DD/MM/YYYY) when duplicating instead of copying the original
-const DATE_FIELDS_ON_DUPLICATE = new Set([
-  'Trust Pilot',
-  'Ask Gambler review added',
-  'Casino Guru review added',
-]);
 
 function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
   value: string; onChange: (v: string) => void; brands: string[]; noun?: string;
@@ -912,17 +893,14 @@ export default function BrandGroup() {
     const toInsert = entries.filter((e) => selectedIds.has(e.id));
     setDuplicating(true);
     let done = 0;
-    const d = new Date();
-    const todayStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     try {
       for (const entry of toInsert) {
         const fields: Record<string, string | null> = {};
-        for (const [k, v] of Object.entries(entry.data)) {
-          if (CLEARED_FIELDS.has(k)) fields[k] = null;
-          else if (DATE_FIELDS_ON_DUPLICATE.has(k)) fields[k] = v ? todayStr : null;
-          else fields[k] = v;
+        for (const k of Object.keys(entry.data)) {
+          if (k === 'Account') fields[k] = entry.data[k] ? `${entry.data[k]} dup` : null;
+          else if (brandCol && k === brandCol) fields[k] = entry.data[k] ?? null;
+          else fields[k] = null;
         }
-        if (fields['Account']) fields['Account'] = `${fields['Account']} dup`;
         await insertEntry(entry.tab, fields);
         done++;
       }
