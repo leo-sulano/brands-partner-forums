@@ -110,13 +110,24 @@ Deno.serve(async (req: Request) => {
       if (insErr) throw insErr;
     }
 
+    // Build column map from the entry's authoritative data key order so the
+    // Apps Script never has to guess column positions from sheet headers.
+    // id is always column 1 (A); data keys occupy columns 2…N+1; last_sync_tag
+    // goes at column N+2.
+    const canonicalKeys = existing ? Object.keys(existing.data as Record<string, unknown>) : [];
+    const colMap: Record<string, number> = {};
+    canonicalKeys.forEach((k, i) => { colMap[k] = i + 2; });
+    const syncTagCol = canonicalKeys.length > 0 ? canonicalKeys.length + 2 : 0;
+
     const payload = JSON.stringify({
       secret: APPS_SCRIPT_SECRET,
       op: 'upsert_row',
       tab: body.tab,
       sheet_row_id: body.sheet_row_id,
       fields: cleanFields,
+      col_map: colMap,
       sync_tag: syncTag,
+      sync_tag_col: syncTagCol,
     });
     const scriptBody = await callAppsScript(payload);
     if (!scriptBody.ok) throw new Error(`Apps Script error: ${scriptBody.error}`);

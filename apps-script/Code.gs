@@ -180,6 +180,13 @@ function handleUpsertRow(body) {
   var rowId = body.sheet_row_id;
   var fields = body.fields || {};
   var syncTag = body.sync_tag;
+  // col_map: {fieldName: 1-based column index} — sent by the Edge Function so
+  // column positions are derived from the dashboard (Supabase) data key order,
+  // not from the sheet's header row. This prevents mismatches when sheet
+  // headers are renamed or reordered.
+  var colMap = body.col_map || {};
+  var syncTagCol = body.sync_tag_col || 0;
+  var useColMap = Object.keys(colMap).length > 0;
 
   if (!tabName || !rowId) {
     return jsonResponse({ ok: false, error: 'tab and sheet_row_id required' });
@@ -197,13 +204,16 @@ function handleUpsertRow(body) {
     sheet.getRange(rowIdx, ID_COLUMN).setValue(rowId);
   }
 
-  var lastCol = Math.max(sheet.getLastColumn(), 1);
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+  // Fall back to header-row lookup only when no col_map was provided (e.g.
+  // callers that haven't been updated yet).
+  var lastCol = 1;
   var headerToCol = {};
-  for (var i = 0; i < headers.length; i++) headerToCol[headers[i]] = i + 1;
+  if (!useColMap) {
+    lastCol = Math.max(sheet.getLastColumn(), 1);
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String);
+    for (var i = 0; i < headers.length; i++) headerToCol[headers[i]] = i + 1;
+  }
 
-  // Build write map: regular fields + sync_tag — all handled by the same column-finding loop.
-  // This avoids the separate syncTagColumnIndex() scan (one API call per column).
   var writeMap = {};
   for (var k in fields) {
     if (Object.prototype.hasOwnProperty.call(fields, k) && k !== 'id') {
@@ -214,13 +224,18 @@ function handleUpsertRow(body) {
 
   for (var key in writeMap) {
     if (!Object.prototype.hasOwnProperty.call(writeMap, key)) continue;
-    var col = headerToCol[key];
-    if (!col) {
-      // Unknown header — append after current last column.
-      lastCol++;
-      col = lastCol;
-      sheet.getRange(1, col).setValue(key);
-      headerToCol[key] = col;
+    var col;
+    if (useColMap) {
+      col = (key === 'last_sync_tag') ? syncTagCol : colMap[key];
+      if (!col) continue; // field not in dashboard data — skip rather than appending
+    } else {
+      col = headerToCol[key];
+      if (!col) {
+        lastCol++;
+        col = lastCol;
+        sheet.getRange(1, col).setValue(key);
+        headerToCol[key] = col;
+      }
     }
     var v = writeMap[key];
     sheet.getRange(rowIdx, col).setValue(v == null ? '' : v);
