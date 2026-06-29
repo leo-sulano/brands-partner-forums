@@ -45,7 +45,7 @@ from check_review_status import (
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
-POST_LOAD_SLEEP    = 2.5   # seconds after page load for JS to render reviews
+POST_LOAD_SLEEP    = 5.0   # seconds after page load for JS to render reviews
 LOAD_MORE_SLEEP    = 1.5   # seconds after clicking "load more"
 MAX_LOAD_MORE      = 10    # max "load more" clicks before giving up
 
@@ -194,6 +194,15 @@ def fetch_ag_review(
     if "askgamblers.com" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
         return ("Removed", None)
+
+    # Scroll down to trigger lazy-loaded reviews section
+    try:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight / 2);")
+        time.sleep(1.5)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1.5)
+    except Exception:
+        pass
 
     ag_user_lower = ag_user.lower()
 
