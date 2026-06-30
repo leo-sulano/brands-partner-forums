@@ -88,7 +88,7 @@ def _older_than_one_day(date_str: str) -> bool:
 
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
-def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -> list:
+def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, country: Optional[str] = None) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
@@ -111,6 +111,10 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
         print(f"  [load] id={row['id']} status={current!r} user={ag_user!r} link={ag_link[:40]!r}")
         out.append(row)
     print(f"  [load] {len(out)} eligible AG entries (from {len(rows)} total in tab)")
+    if country:
+        target_cc = country_code_for_entry({"Country": country})
+        out = [r for r in out if country_code_for_entry(r.get("data") or {}) == target_cc]
+        print(f"  [load] filtered to country={country!r} (cc={target_cc!r}): {len(out)} entries")
     # Group brands by their resolved geo proxy so each country = one Chrome launch.
     out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
     return out
@@ -248,10 +252,11 @@ def check_ag_for_tab(
     tab: Optional[str] = None,
     include_published: bool = True,
     headless: bool = True,
+    country: Optional[str] = None,
 ) -> dict:
     """Run AG status check for all eligible entries in `tab`.
     Returns {checked, updated, errors, sheet_errors, total}."""
-    entries = load_ag_entries(tab, include_published)
+    entries = load_ag_entries(tab, include_published, country)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
@@ -342,7 +347,8 @@ def check_ag_for_tab(
             if remaining > 0:
                 time.sleep(DELAY_BETWEEN_BATCHES)
     finally:
-        driver.quit()
+        if driver:
+            driver.quit()
 
     return {"checked": checked, "updated": updated, "errors": errors, "sheet_errors": sheet_errors, "total": total}
 
@@ -350,13 +356,16 @@ def check_ag_for_tab(
 def main() -> None:
     ap = argparse.ArgumentParser(description="Selenium stealth AskGamblers status checker")
     ap.add_argument("--tab", help="Restrict to a specific tab name")
+    ap.add_argument("--country", help="Restrict to one country (full name or ISO-2, e.g. Germany or de)")
     ap.add_argument("--no-headless", dest="headless", action="store_false", help="Show Chrome browser window")
     ap.set_defaults(headless=True)
     args = ap.parse_args()
 
     scope = f"tab: {args.tab}" if args.tab else "all tabs"
+    if args.country:
+        scope += f", country: {args.country}"
     print(f"Loading AG entries ({scope})...")
-    result = check_ag_for_tab(args.tab, include_published=True, headless=args.headless)
+    result = check_ag_for_tab(args.tab, include_published=True, headless=args.headless, country=args.country)
     print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
 
 

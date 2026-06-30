@@ -72,7 +72,7 @@ def _val(data: dict, candidates: list) -> Optional[str]:
 
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
-def load_cg_entries(tab: Optional[str] = None, include_published: bool = True) -> list:
+def load_cg_entries(tab: Optional[str] = None, include_published: bool = True, country: Optional[str] = None) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
@@ -91,6 +91,10 @@ def load_cg_entries(tab: Optional[str] = None, include_published: bool = True) -
         if current not in statuses:
             continue
         out.append(row)
+    if country:
+        target_cc = country_code_for_entry({"Country": country})
+        out = [r for r in out if country_code_for_entry(r.get("data") or {}) == target_cc]
+        print(f"  [load] filtered to country={country!r} (cc={target_cc!r}): {len(out)} entries")
     out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
     return out
 
@@ -194,8 +198,9 @@ def check_cg_for_tab(
     tab: Optional[str] = None,
     include_published: bool = True,
     headless: bool = True,
+    country: Optional[str] = None,
 ) -> dict:
-    entries = load_cg_entries(tab, include_published)
+    entries = load_cg_entries(tab, include_published, country)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
@@ -287,13 +292,16 @@ def check_cg_for_tab(
 def main() -> None:
     ap = argparse.ArgumentParser(description="Selenium stealth CasinoGuru status checker")
     ap.add_argument("--tab", help="Restrict to a specific tab name")
+    ap.add_argument("--country", help="Restrict to one country (full name or ISO-2, e.g. Germany or de)")
     ap.add_argument("--no-headless", dest="headless", action="store_false", help="Show Chrome browser window")
     ap.set_defaults(headless=True)
     args = ap.parse_args()
 
     scope = f"tab: {args.tab}" if args.tab else "all tabs"
+    if args.country:
+        scope += f", country: {args.country}"
     print(f"Loading CG entries ({scope})...")
-    result = check_cg_for_tab(args.tab, include_published=True, headless=args.headless)
+    result = check_cg_for_tab(args.tab, include_published=True, headless=args.headless, country=args.country)
     print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
 
 
