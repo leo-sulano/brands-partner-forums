@@ -35,20 +35,20 @@ const TP_FIELDS: FieldDef[] = [
   { key: 'Score added',         label: 'Score Added' },
   { key: 'Trust Pilot',         label: 'Trust Pilot Date' },
   { key: 'TP Review Status',    label: 'TP Review Status',    status: true },
-  { key: 'Link to the profile', label: 'Link to Profile',     link: true, span: true },
-  { key: 'Removed / Not Published / stil published date', label: 'Removed / Not Published / Still Published Date', span: true },
+  { key: 'Link to the profile', label: 'Link to Profile',     link: true },
+  { key: 'Removed / Not Published / stil published date', label: 'Removed / Not Published / Still Published Date' },
 ];
 
 const AG_FIELDS: FieldDef[] = [
   { key: 'Ask Gambler review added', label: 'AG Added' },
   { key: 'AG Review Status',         label: 'AG Status',      status: true },
-  { key: 'AG Review Link',           label: 'AG Review Link', link: true, span: true },
+  { key: 'AG Review Link',           label: 'AG Review Link', link: true },
 ];
 
 const CG_FIELDS: FieldDef[] = [
   { key: 'Casino Guru review added', label: 'CG Added' },
   { key: 'CG Review Status',         label: 'CG Status',      status: true },
-  { key: 'CG Review Link',           label: 'CG Review Link', link: true, span: true },
+  { key: 'CG Review Link',           label: 'CG Review Link', link: true },
 ];
 
 const YES_NO_FIELDS: FieldDef[] = [
