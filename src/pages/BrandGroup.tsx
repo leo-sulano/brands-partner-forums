@@ -1763,7 +1763,7 @@ export default function BrandGroup() {
                       </td>
                     )}
                     {visibleHeaders.map((h) => {
-                      // Brand / TP URL PAGE: render brand name as a link to the profile URL
+                      // Brand / TP URL PAGE: render brand name as a link when profile URL exists, plain text otherwise
                       if (h === 'Brand / TP URL PAGE') {
                         const profileUrl = entry.data['Link to the profile'];
                         const brandName = entry.data[h];
@@ -1784,7 +1784,14 @@ export default function BrandGroup() {
                             </td>
                           );
                         }
-                        return <td key={h} className="px-[3px] py-2.5" />;
+                        if (brandName) {
+                          return (
+                            <td key={h} className="px-[3px] py-2.5">
+                              <span className="text-slate-600 text-sm">{brandName}</span>
+                            </td>
+                          );
+                        }
+                        return <td key={h} className="px-[3px] py-2.5"><span className="text-slate-400">—</span></td>;
                       }
                       // URL PAGE: show page name as clickable link using __href hyperlink field
                       if (h === 'URL PAGE') {
@@ -2012,11 +2019,12 @@ export default function BrandGroup() {
         <EditEntryModal
           entry={editEntry}
           headers={(() => {
-            const base = new Set(fullHeaders);
+            const filteredFull = fullHeaders.filter((h) => h.toLowerCase() !== 'id');
+            const base = new Set(filteredFull);
             const extras = Object.keys(editEntry.data).filter(
-              (k) => k && k.trim() !== '' && k !== 'id' && k !== 'last_sync_tag' && !base.has(k),
+              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && !base.has(k),
             );
-            return [...fullHeaders, ...extras];
+            return [...filteredFull, ...extras];
           })()}
           currentTab={decodedTab}
           availableBrands={uniqueBrands}
