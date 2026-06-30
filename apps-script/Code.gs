@@ -31,7 +31,7 @@ var SHARED_SECRET = PropertiesService.getScriptProperties().getProperty('SHARED_
 var ID_COLUMN = 1; // column A, always
 
 // Columns whose hyperlink URLs are extracted and stored as `<col>__href` virtual columns.
-var HYPERLINK_COLS = ['URL PAGE'];
+var HYPERLINK_COLS = ['URL PAGE', 'Brand / TP URL PAGE'];
 
 // Per-tab, last_sync_tag goes in (last data column + 1). Computed dynamically.
 

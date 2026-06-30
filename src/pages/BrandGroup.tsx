@@ -1763,12 +1763,13 @@ export default function BrandGroup() {
                       </td>
                     )}
                     {visibleHeaders.map((h) => {
-                      // Brand / TP URL PAGE: render brand name as a link when profile URL exists, plain text otherwise
+                      // Brand / TP URL PAGE: brand name linked to the brand's TP review page (__href),
+                      // falls back to plain text if the hyperlink URL hasn't been synced yet.
                       if (h === 'Brand / TP URL PAGE') {
-                        const profileUrl = entry.data['Link to the profile'];
                         const brandName = entry.data[h];
-                        if (brandName && profileUrl) {
-                          const href = profileUrl.startsWith('http') ? profileUrl : `https://${profileUrl}`;
+                        const brandUrl = entry.data['Brand / TP URL PAGE__href'];
+                        if (brandName && brandUrl) {
+                          const href = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
                           return (
                             <td key={h} className="px-[3px] py-2.5">
                               <a
