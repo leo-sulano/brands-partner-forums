@@ -173,7 +173,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                   <input
                     type="text"
                     value={fields[h]}
-                    onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (h === 'Account') {
+                        const parts = val.split(' | ');
+                        const country = parts.length >= 3 ? parts[parts.length - 1].trim() : '';
+                        setFields((f) => ({ ...f, [h]: val, ...(country ? { Country: country } : {}) }));
+                      } else {
+                        setFields((f) => ({ ...f, [h]: val }));
+                      }
+                    }}
                     placeholder={isLinkCol(h) ? 'https://…' : '—'}
                     className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
                   />
