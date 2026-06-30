@@ -209,7 +209,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     <>
       {/* Desktop sidebar */}
       <aside
-        className={`hidden md:flex flex-col bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
+        className={`hidden md:flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
       >
         <div className={`py-5 flex items-center border-b border-slate-800 ${collapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
           <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
