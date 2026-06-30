@@ -209,7 +209,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           <div className="py-5 flex justify-center border-b border-slate-800">
             <button
               type="button"
-              onClick={onToggleCollapsed}
+              onClick={() => onToggleCollapsed?.()}
               aria-label="Expand sidebar"
               className="rounded-md hover:bg-slate-800 transition-colors"
             >
@@ -228,7 +228,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             </div>
             <button
               type="button"
-              onClick={onToggleCollapsed}
+              onClick={() => onToggleCollapsed?.()}
               className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
               aria-label="Collapse sidebar"
             >
