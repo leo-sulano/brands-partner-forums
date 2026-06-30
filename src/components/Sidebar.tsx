@@ -100,7 +100,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           : <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
         }
 
-        {(brandsOpen || isCollapsed) && OPERATIONAL_TABS.map((tab) => {
+        {brandsOpen && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
           const platforms = getTabPlatforms(tab);
           return (
@@ -146,7 +146,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               : <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
             }
 
-            {(adminOpen || isCollapsed) && (
+            {adminOpen && (
               <>
                 <NavLink
                   to="/score-summary"
