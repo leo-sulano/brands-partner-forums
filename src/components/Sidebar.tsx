@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, BarChart3, Bot, X, Star,
+  Link2, Users, ChevronDown, ChevronLeft, ChevronRight, BarChart3, Bot, X, Star,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -36,9 +36,10 @@ const topLinks = [
   { to: '/ask-ai', label: 'Ask AI', icon: Bot, end: true },
 ];
 
-const linkClass = (isActive: boolean) =>
+const linkClass = (isActive: boolean, isCollapsed = false) =>
   [
-    'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
+    'flex items-center rounded-md py-2 text-sm transition-colors',
+    isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
       ? 'bg-violet-500/20 text-violet-100'
       : 'text-slate-300 hover:bg-slate-800/60 hover:text-white',
@@ -59,13 +60,16 @@ function SectionHeader({ label, open, onToggle }: { label: string; open: boolean
 interface SidebarProps {
   open?: boolean;
   onClose?: () => void;
+  collapsed?: boolean;
+  onToggleCollapsed?: () => void;
 }
 
-export default function Sidebar({ open = false, onClose }: SidebarProps) {
+export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { isAdmin, session } = useAuth();
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
-  const navContent = (
+
+  const navContent = (isCollapsed: boolean) => (
     <>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
         {topLinks.map(({ to, label, icon: Icon, end }) => (
@@ -74,16 +78,19 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
             to={to}
             end={end}
             onClick={() => onClose?.()}
-            className={({ isActive }) => linkClass(isActive)}
+            title={isCollapsed ? label : undefined}
+            className={({ isActive }) => linkClass(isActive, isCollapsed)}
           >
-            <Icon className="size-4" />
-            {label}
+            <Icon className="size-4 shrink-0" />
+            {!isCollapsed && label}
           </NavLink>
         ))}
 
-        <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
+        {!isCollapsed && (
+          <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
+        )}
 
-        {brandsOpen && OPERATIONAL_TABS.map((tab) => {
+        {(brandsOpen || isCollapsed) && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
           const platforms = getTabPlatforms(tab);
           return (
@@ -91,47 +98,72 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
               key={tab}
               to={`/brands/${tabToSlug(tab)}`}
               onClick={() => onClose?.()}
-              className={({ isActive }) => linkClass(isActive)}
+              title={isCollapsed ? tab : undefined}
+              className={({ isActive }) => linkClass(isActive, isCollapsed)}
             >
               <Icon className="size-4 shrink-0" />
-              <span className="truncate flex-1">{tab}</span>
-              <span className="flex items-center gap-0.5 shrink-0">
-                {platforms.map((p) => (
-                  <img
-                    key={p}
-                    src={PLATFORM_FAVICON[p]}
-                    alt={p}
-                    className="size-3.5 rounded-sm"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                ))}
-              </span>
+              {!isCollapsed && <span className="truncate flex-1">{tab}</span>}
+              {!isCollapsed && (
+                <span className="flex items-center gap-0.5 shrink-0">
+                  {platforms.map((p) => (
+                    <img
+                      key={p}
+                      src={PLATFORM_FAVICON[p]}
+                      alt={p}
+                      className="size-3.5 rounded-sm"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  ))}
+                </span>
+              )}
             </NavLink>
           );
         })}
 
         {!!session && (
           <>
-            <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
+            {!isCollapsed && (
+              <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
+            )}
 
-            {adminOpen && (
+            {(adminOpen || isCollapsed) && (
               <>
-                <NavLink to="/score-summary" onClick={() => onClose?.()} className={({ isActive }) => linkClass(isActive)}>
+                <NavLink
+                  to="/score-summary"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Score Summary' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
                   <BarChart3 className="size-4" />
-                  Score Summary
+                  {!isCollapsed && 'Score Summary'}
                 </NavLink>
-                <NavLink to="/sync" onClick={() => onClose?.()} className={({ isActive }) => linkClass(isActive)}>
+                <NavLink
+                  to="/sync"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Sync Status' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
                   <RefreshCw className="size-4" />
-                  Sync Status
+                  {!isCollapsed && 'Sync Status'}
                 </NavLink>
-                <NavLink to="/log" onClick={() => onClose?.()} className={({ isActive }) => linkClass(isActive)}>
+                <NavLink
+                  to="/log"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Log' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
                   <ScrollText className="size-4" />
-                  Log
+                  {!isCollapsed && 'Log'}
                 </NavLink>
                 {isAdmin && (
-                  <NavLink to="/admin/users" onClick={() => onClose?.()} className={({ isActive }) => linkClass(isActive)}>
+                  <NavLink
+                    to="/admin/users"
+                    onClick={() => onClose?.()}
+                    title={isCollapsed ? 'Users' : undefined}
+                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                  >
                     <Users className="size-4" />
-                    Users
+                    {!isCollapsed && 'Users'}
                   </NavLink>
                 )}
               </>
@@ -139,25 +171,41 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
           </>
         )}
       </nav>
-      <div className="px-4 py-3 text-xs text-slate-500 border-t border-slate-800">
-        Internal · v0.1
-      </div>
+      {!isCollapsed && (
+        <div className="px-4 py-3 text-xs text-slate-500 border-t border-slate-800">
+          Internal · v0.1
+        </div>
+      )}
     </>
   );
 
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-60 flex-col bg-slate-900 text-slate-100">
-        <div className="px-5 py-5 flex items-center gap-2 border-b border-slate-800">
-          <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
-          <span className="font-semibold tracking-tight">
-            <span className="text-white">Brands </span>
-            <span className="text-violet-400">Partner</span>
-            <span className="text-white"> Forum</span>
-          </span>
+      <aside
+        className={`hidden md:flex flex-col bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
+      >
+        <div className={`py-5 flex items-center border-b border-slate-800 ${collapsed ? 'justify-center px-3' : 'justify-between px-3'}`}>
+          <div className="flex items-center gap-2 overflow-hidden">
+            <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+            {!collapsed && (
+              <span className="font-semibold tracking-tight whitespace-nowrap">
+                <span className="text-white">Brands </span>
+                <span className="text-violet-400">Partner</span>
+                <span className="text-white"> Forum</span>
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+          </button>
         </div>
-        {navContent}
+        {navContent(collapsed)}
       </aside>
 
       {/* Mobile drawer */}
@@ -188,7 +236,7 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
                 <X className="size-5" />
               </button>
             </div>
-            {navContent}
+            {navContent(false)}
           </aside>
         </div>
       )}
