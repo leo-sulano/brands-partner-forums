@@ -547,22 +547,27 @@ export default function Overview() {
 
                     {/* Legend */}
                     <div className="flex flex-1 flex-col gap-2.5 text-xs">
-                      <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        disabled={total === 0}
+                        onClick={() => setPlatformSliceModal({ platform: p.name, platformKey: PLATFORM_KEY[p.name], kind: 'live' })}
+                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-slate-50 disabled:cursor-default"
+                      >
                         <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" />
                         <span className="text-slate-500">Published</span>
                         <span className="ml-auto font-semibold text-slate-800">{livePct}%</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
+                      </button>
+                      <button
+                        type="button"
+                        disabled={total === 0}
+                        onClick={() => setPlatformSliceModal({ platform: p.name, platformKey: PLATFORM_KEY[p.name], kind: 'removed' })}
+                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-slate-50 disabled:cursor-default"
+                      >
                         <span className="size-2.5 shrink-0 rounded-full bg-rose-400" />
                         <span className="text-slate-500">Removed</span>
                         <span className="ml-auto font-semibold text-slate-800">{removedPct}%</span>
-                      </div>
+                      </button>
                     </div>
-                  </div>
-
-                  {/* Total */}
-                  <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
-                    Total <span className="font-semibold text-slate-800">{total.toLocaleString()}</span>
                   </div>
                 </div>
               );
