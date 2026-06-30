@@ -54,3 +54,15 @@ def test_country_code_for_entry(monkeypatch):
     _base_env(monkeypatch)
     assert geo_proxy.country_code_for_entry({"Country": "Germany"}) == "de"
     assert geo_proxy.country_code_for_entry({"Country": ""}) is None
+
+
+def test_parse_country_ipinfo():
+    assert geo_proxy._parse_country('{"ip":"1.2.3.4","country":"DE"}') == "de"
+
+
+def test_parse_country_ipapi():
+    assert geo_proxy._parse_country('{"countryCode":"GB","query":"1.2.3.4"}') == "gb"
+
+
+def test_parse_country_garbage_returns_none():
+    assert geo_proxy._parse_country("not json and no country") is None

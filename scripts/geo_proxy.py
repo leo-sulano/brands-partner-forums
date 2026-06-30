@@ -14,7 +14,9 @@ Env vars (set in EC2 ~/.env):
     ENIGMA_PW_DE, ENIGMA_PW_GB, ...  one per country in use
 """
 
+import json
 import os
+import re
 from typing import Optional
 
 # Full country name → ISO-3166-1 alpha-2 (lowercase). Extend as the Sheet's
@@ -87,3 +89,44 @@ def geo_proxy_for_entry(data: dict) -> str:
             print(f"  [geo] no ENIGMA_PW_{cc.upper()} configured — skipping proxy for {cc!r}")
         return ""
     return f"{host}:{port}:{login}:{pw}"
+
+
+GEO_ENDPOINTS = [
+    "https://ipinfo.io/json",
+    "https://ifconfig.co/json",
+    "http://ip-api.com/json",
+]
+
+
+def _parse_country(text: str) -> Optional[str]:
+    """Pull a 2-letter ISO country code out of a geo-endpoint JSON response."""
+    try:
+        obj = json.loads(text)
+        for f in ("country", "country_iso", "countryCode"):
+            v = obj.get(f)
+            if isinstance(v, str) and len(v) == 2 and v.isalpha():
+                return v.lower()
+    except (ValueError, TypeError, AttributeError):
+        pass
+    m = (re.search(r'"countryCode"\s*:\s*"([A-Za-z]{2})"', text)
+         or re.search(r'"country(?:_iso)?"\s*:\s*"([A-Za-z]{2})"', text))
+    return m.group(1).lower() if m else None
+
+
+def detect_exit_country(driver) -> Optional[str]:
+    """Navigate `driver` to an IP-geolocation endpoint and return its ISO-2
+    exit country, or None. Selenium imported lazily so this module stays
+    importable (and unit-testable) without selenium installed."""
+    import time
+    from selenium.webdriver.common.by import By
+    for url in GEO_ENDPOINTS:
+        try:
+            driver.get(url)
+            time.sleep(2.0)
+            body = driver.find_element(By.TAG_NAME, "body").text
+            cc = _parse_country(body)
+            if cc:
+                return cc
+        except Exception:
+            continue
+    return None
