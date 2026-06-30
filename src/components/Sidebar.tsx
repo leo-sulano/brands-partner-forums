@@ -40,7 +40,7 @@ const linkClass = (isActive: boolean) =>
   [
     'flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors',
     isActive
-      ? 'bg-slate-800 text-white'
+      ? 'bg-violet-500/20 text-violet-100'
       : 'text-slate-300 hover:bg-slate-800/60 hover:text-white',
   ].join(' ');
 
