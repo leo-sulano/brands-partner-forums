@@ -1,7 +1,7 @@
 # Region-Aware Proxy Selection for AG/CG Status Checks — Design
 
 **Date:** 2026-06-30
-**Status:** Approved (design); pending implementation plan
+**Status:** Approved (design); de-risked; pending implementation plan
 
 ## Problem
 
@@ -13,41 +13,71 @@ Singapore-sourced request sees the wrong regional view of a brand's reviews —
 e.g. a brand that should be checked as **Germany** is checked as Singapore, and
 the expected reviews never appear.
 
-This is a **geo problem, not a bot-detection problem.** The scraper already uses
-`undetected-chromedriver` and already has per-entry proxy rotation
-(`proxy_for_entry` + the proxy-auth Chrome extension). What's missing is the
-ability to route each brand's check through a residential proxy located in that
-brand's target country.
+### Confirmed root cause (2026-06-30 investigation)
+
+The EC2 box's `~/.env` contained **only** `SUPABASE_URL`,
+`SUPABASE_SERVICE_ROLE_KEY`, and `CHECK_STATUS_TOKEN` — **no proxy credentials
+at all.** The scraper's `proxy_for_entry()` looks up env vars
+(`PROXY_PROXYLITE` / `PROXY_SPYDERPROXY` / `PROXY_ENIGMA`), found none, and
+returned `""`, so Chrome launched **with no proxy** on every run. Every AG/CG
+check therefore went out from the Singapore IP. This is the actual cause of the
+geo problem — not bot detection, and not a code defect.
+
+The country proxies *do* exist: they live in the user's **GoLogin** account as
+one saved proxy per country (`resi.enigmaproxy.net`), but they were never copied
+into EC2's `~/.env`, and the GoLogin profiles were being run manually (clicking
+"Run") separately from the automated EC2 scraper.
 
 ## Goal
 
 Make each AG/CG check appear to originate from the brand's target country by
-selecting a country-targeted residential proxy per brand, driven by a new
+selecting the matching enigmaproxy residential proxy per brand, driven by a new
 `Country` column. Keep the existing EC2 host, the existing Selenium stack, and
 the existing always-available "Check Status" button.
 
 ## Non-Goals
 
-- **No GoLogin.** GoLogin's headline feature is fingerprint spoofing, which
-  addresses a problem we do not currently have. See "Rejected / fallback
-  alternatives" below.
+- **No GoLogin browser integration.** enigmaproxy answers over **HTTP** (proven
+  via `curl` — see "De-risking results"), so the existing Chrome + HTTP-proxy
+  machinery works directly. Running GoLogin's Orbita browser on EC2 is the
+  documented fallback only (see "Rejected / fallback alternatives").
 - **No Trustpilot (TP) changes.** Scope is AG + CG only; TP stays as-is to limit
   blast radius. Can be extended later if TP proves geo-sensitive.
 - **No frontend changes.** Region is data-driven per brand, so the existing
   Check Status button works unchanged.
 
+## De-risking results (proven before writing this plan)
+
+Run from the EC2 box with the Germany proxy credentials:
+
+```
+curl -x "http://0048277fc210:<pw>@resi.enigmaproxy.net:12321" https://ipinfo.io/json
+curl -x "socks5h://0048277fc210:<pw>@resi.enigmaproxy.net:12321" https://ipinfo.io/json
+```
+
+Both returned a genuine German residential IP (`83.135.178.78`, Baden-
+Württemberg, AS8881 1&1 Versatel, `"country":"DE"`). Key takeaways:
+
+1. enigmaproxy serves **both HTTP and SOCKS5** on `resi.enigmaproxy.net:12321`.
+   HTTP support means the existing scraper works without a SOCKS5 bridge.
+2. The Germany credential exits in Germany — the country is **baked into each
+   saved proxy**, not chosen via a username parameter.
+3. The **login is shared** (`0048277fc210`); the **password is unique and opaque
+   per country** with no derivable country token. So we store one password per
+   country (no parameterization possible).
+
 ## Approach (chosen)
 
-**Region-aware residential proxies on the existing stack.** Keep EC2, keep
-`undetected-chromedriver`. Add a per-brand `Country` column and resolve it to a
-country-targeted residential proxy that the existing `build_driver()` proxy
-machinery already knows how to consume.
+**Region-aware HTTP residential proxies on the existing stack.** Keep EC2, keep
+`undetected-chromedriver`. Add a per-brand `Country` column and resolve it to the
+matching enigmaproxy HTTP credential, which the existing `build_driver(proxy=…)`
+machinery already consumes via its proxy-auth extension.
 
 ### 1. Data model
 
 - New per-brand column **`Country`** in the Google Sheet, synced into
   `entries.data` like every other column.
-- Holds the target country as a human-readable name, e.g. `Germany`,
+- Holds the target country as a human-readable full name, e.g. `Germany`,
   `United Kingdom`.
 - **Blank is allowed** and must not cause a failure.
 
@@ -57,63 +87,68 @@ New helper in `scripts/check_review_status.py`:
 
 ```python
 def geo_proxy_for_entry(data: dict) -> str:
-    """Return a country-targeted residential proxy 'host:port:user:pass'
-    for this entry's Country, or '' to fall back to existing behavior."""
+    """Return an enigmaproxy HTTP proxy 'host:port:user:pass' for this entry's
+    Country, or '' to fall back to existing behavior (no proxy)."""
 ```
 
 - Read the `Country` value, normalize to ISO-3166-1 alpha-2 via a small
   `COUNTRY_CODE` map (`Germany → de`, `United Kingdom → gb`, …).
-- Build a `host:port:user:pass` string that injects the country code into the
-  residential provider's username (e.g. `user-cc-de`). The **exact injection
-  format is an open item** to confirm from the provider dashboard/docs.
-- Return the same `host:port:user:pass` shape that `build_driver(proxy=...)`
-  already consumes via `_build_proxy_extension`.
+- Look up that country's password from `ENIGMA_PW_<CC>` (e.g. `ENIGMA_PW_DE`).
+- Build `f"{ENIGMA_HOST}:{ENIGMA_PORT}:{ENIGMA_LOGIN}:{password}"` —
+  the 4-part `host:port:user:pass` shape `build_driver` treats as an HTTP proxy.
 
-**Fallback:** blank `Country` or a country missing from `COUNTRY_CODE` → fall
-back to the existing name-based `proxy_for_entry(data)` (or no proxy). Log a
-warning for an unknown-but-present country; never hard-fail.
+**Fallback:** blank `Country`, a country missing from `COUNTRY_CODE`, or a
+missing `ENIGMA_PW_<CC>` → return `""` (no proxy; current behavior). Log a clear
+warning for a present-but-unconfigured country; never hard-fail.
 
-### 3. Driver lifecycle — group by country
+### 3. Driver lifecycle — already handles per-proxy restart
 
-Today `build_driver()` is created once per run (with `CHROME_RESTART_EVERY`
-recycling). Because the proxy now varies by country, the AG/CG loops change to:
+`check_ag_for_tab` already rebuilds Chrome whenever the per-entry proxy changes
+(`entry_proxy != current_proxy`) and on `CHROME_RESTART_EVERY`. We:
 
-1. Load eligible entries (existing filter logic).
-2. **Group entries by resolved country.**
-3. For each country group: build one Chrome pinned to that country's proxy,
-   process the whole group, then `driver.quit()` before the next country.
+1. Swap the `entry_proxy = proxy_for_entry(...)` line for
+   `entry_proxy = geo_proxy_for_entry(data) or proxy_for_entry(data)`.
+2. **Sort eligible entries by resolved proxy** in `load_*_entries` so each
+   country's brands are processed consecutively → one Chrome launch per country
+   instead of thrashing.
 
-This is far fewer Chrome launches than rebuilding per entry and keeps each
-browser session cleanly pinned to a single exit country. The existing
-`CHROME_RESTART_EVERY` memory-recycle still applies *within* a large country
-group.
+`check_cg_for_tab` currently lacks the proxy-aware restart logic (it only rebuilds
+on `CHROME_RESTART_EVERY`); this plan adds the same `entry_proxy`/`current_proxy`
+restart pattern that AG already has.
 
 ### 4. Wiring
 
-- `scripts/check_ag_status.py` and `scripts/check_cg_status.py` adopt the
-  grouped-by-country loop and pass the geo proxy into
-  `build_driver(headless=..., proxy=geo_proxy_for_entry(data))`.
-- Entries whose country group resolves to `''` (no geo proxy) are processed in a
-  default group using existing behavior.
+- `scripts/check_ag_status.py` and `scripts/check_cg_status.py` use
+  `geo_proxy_for_entry` for proxy selection and sort entries by proxy.
+- **Scope is AG + CG only** — TP (`check_review_status.py`'s own loop) is
+  untouched.
 
-### 5. Config
+### 5. Config (EC2 `~/.env`)
 
-- One new env var, **`PROXY_GEO`**, holding the residential geo-proxy base
-  connection string (the username being the country-injectable base).
-- Documented alongside the existing `PROXY_PROXYLITE` / `PROXY_SPYDERPROXY` /
-  `PROXY_ENIGMA` vars in `scripts/.env.example` and in
-  `docs/ec2-scraper-runbook.md`.
+New variables, added to EC2's `~/.env` (and documented in `scripts/.env.example`
+and `docs/ec2-scraper-runbook.md`):
+
+```
+ENIGMA_HOST=resi.enigmaproxy.net
+ENIGMA_PORT=12321
+ENIGMA_LOGIN=0048277fc210
+ENIGMA_PW_DE=<germany password>
+ENIGMA_PW_GB=<uk password>
+# …one ENIGMA_PW_<CC> line per country that appears in the Country column
+```
+
+Only countries that actually appear in the `Country` column need a password line.
 
 ### 6. Verification built in
 
 - **Geo self-check:** before scraping each country group, the driver hits a
   lightweight "what country is my IP" endpoint through the proxy and logs the
-  detected country, asserting it matches the target. This turns "did the proxy
-  actually land in Germany?" into a printed line rather than a silent
-  assumption.
-- **Manual smoke test:** run one German brand through AG and CG with
-  `--headless` off and confirm the German regional view renders and the username
-  search resolves.
+  detected country, asserting it matches the target. Turns "did the proxy land in
+  Germany?" into a printed line.
+- **Manual smoke test:** run one German brand through AG and CG and confirm the
+  German regional view renders and the username search resolves.
+- `scripts/proxy_geo_test.py` (already committed) remains the standalone tool for
+  validating a provider/credential's exit country.
 
 ## Data Flow
 
@@ -122,7 +157,7 @@ Dashboard "Check Status"
   → Supabase Edge Function (proxy-check-status)
     → EC2 status_server.py (Flask: /check-ag-status, /check-cg-status)
       → check_ag_status.py / check_cg_status.py
-        → group eligible entries by Country
+        → load entries, sort by resolved Country proxy
           → for each country: build_driver(proxy = geo_proxy_for_entry(data))
             → geo self-check (assert exit country)
             → scrape AG/CG, search reviews for username
@@ -133,41 +168,40 @@ Dashboard "Check Status"
 
 | Condition | Behavior |
 |---|---|
-| Blank `Country` | Fall back to `proxy_for_entry` / no proxy. No error. |
-| `Country` present but not in `COUNTRY_CODE` | Log warning, use default group, no proxy. No error. |
+| Blank `Country` | Return `""` → no proxy. No error. |
+| `Country` present but not in `COUNTRY_CODE` | Log warning, no proxy. No error. |
+| `ENIGMA_PW_<CC>` not set for a present country | Log warning, no proxy. No error. |
 | Proxy connect failure | Existing per-entry error handling; counted as an error, loop continues. |
-| Geo self-check mismatch | Log a clear warning so the run is auditable; continue (do not abort the whole group). |
+| Geo self-check mismatch | Log a clear warning so the run is auditable; continue (do not abort the group). |
 
 ## Testing
 
-1. Unit-level: `geo_proxy_for_entry` returns the right string for a known
-   country, `''` for blank/unknown, and the country code is correctly injected.
+1. Unit-level: `geo_proxy_for_entry` returns the right `host:port:user:pass` for
+   a configured country, and `""` for blank/unknown/unconfigured.
 2. Geo self-check confirms exit country for at least one configured country.
-3. Smoke test one German brand end-to-end (AG + CG), `--headless` off.
+3. Smoke test one German brand end-to-end (AG + CG).
 4. Regression: a brand with blank `Country` still checks exactly as it does
    today.
 
 ## Rejected / fallback alternatives
 
-- **B — GoLogin profiles per region on EC2 (documented fallback).** Replace the
-  driver with GoLogin (one profile per country, each with a country proxy),
-  connecting Selenium to GoLogin's debugger address. Adds managed fingerprint
-  spoofing + warm persistent profiles + removes the `version_main` pinning
-  chore. **Rejected for now** because it solves fingerprint blocking, which we
-  don't have; it adds a recurring vendor cost on top of proxy traffic, more
-  moving parts, and headless-Orbita-on-Linux fragility. **Revisit only if**, once
-  correctly in-region, AG/CG begin fingerprint/behavioral-blocking the scraper.
+- **B — GoLogin browser on EC2 (documented fallback).** Drive GoLogin's Orbita
+  (which handles the SOCKS5 proxy + fingerprint natively) via the GoLogin API,
+  mapping each `Country` to its GoLogin profile id. **Rejected for now** because
+  enigmaproxy answers over HTTP, so the existing stack suffices; GoLogin adds
+  Orbita-on-headless-Linux setup (likely xvfb), an API token, profile-id mapping,
+  and memory pressure on the t2.small. **Revisit only if** AG/CG later begin
+  fingerprint/behavioral-blocking the plain-Chrome scraper.
+- **SOCKS5→HTTP bridge (e.g. `gost`).** Only needed if HTTP were unavailable; it
+  is available, so this is unnecessary.
 - **C — GoLogin Cloud (drop EC2).** Conflicts with the "keep EC2
-  always-available" requirement and would still need a host for the Flask
-  endpoint. Rejected.
+  always-available" requirement. Rejected.
 
-## Open Items (confirm during implementation)
+## Manual setup the user must do (outside the code)
 
-1. **Proxy country-injection format** — exact username pattern the residential
-   provider uses for country targeting (e.g. `user-cc-de` vs. per-country
-   endpoint). Confirm from the provider dashboard before wiring `geo_proxy_for_entry`.
-2. **Country naming convention in the Sheet** — confirm the values the developer
-   will put in the `Country` column (full names vs. codes) so `COUNTRY_CODE`
-   covers them.
-3. **Which residential provider** backs `PROXY_GEO` (the one confirmed to
-   support country targeting).
+1. Developer adds a **`Country`** column to the Google Sheet, populated with full
+   country names for the brands that need geo checks.
+2. Add the `ENIGMA_*` variables (host/port/login + one `ENIGMA_PW_<CC>` per
+   needed country) to EC2's `~/.env`, pulling each country's password from the
+   corresponding GoLogin saved proxy.
+3. Restart `status_server.py` so it picks up the new env vars.
