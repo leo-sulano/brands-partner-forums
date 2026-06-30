@@ -15,22 +15,36 @@ def _base_env(monkeypatch):
     monkeypatch.setenv("ENIGMA_PW_DE", "pw-de")
 
 
-def test_configured_country_returns_proxy(monkeypatch):
+def test_configured_country_returns_local_bridge(monkeypatch):
     _base_env(monkeypatch)
     assert geo_proxy.geo_proxy_for_entry({"Country": "Germany"}) == \
-        "resi.enigmaproxy.net:12321:0048277fc210:pw-de"
+        f"127.0.0.1:{geo_proxy.bridge_port_for_cc('de')}"
 
 
 def test_country_name_is_case_insensitive(monkeypatch):
     _base_env(monkeypatch)
     assert geo_proxy.geo_proxy_for_entry({"Country": "GERMANY"}) == \
-        "resi.enigmaproxy.net:12321:0048277fc210:pw-de"
+        f"127.0.0.1:{geo_proxy.bridge_port_for_cc('de')}"
 
 
 def test_iso_code_accepted(monkeypatch):
     _base_env(monkeypatch)
     assert geo_proxy.geo_proxy_for_entry({"Country": "de"}) == \
-        "resi.enigmaproxy.net:12321:0048277fc210:pw-de"
+        f"127.0.0.1:{geo_proxy.bridge_port_for_cc('de')}"
+
+
+def test_bridge_port_is_deterministic_and_unique(monkeypatch):
+    _base_env(monkeypatch)
+    assert geo_proxy.bridge_port_for_cc("de") == geo_proxy.bridge_port_for_cc("de")
+    assert geo_proxy.bridge_port_for_cc("de") != geo_proxy.bridge_port_for_cc("gb")
+    assert geo_proxy.bridge_port_for_cc("de") >= geo_proxy.BRIDGE_PORT_BASE
+
+
+def test_configured_ccs_reflects_env(monkeypatch):
+    _base_env(monkeypatch)  # only ENIGMA_PW_DE set
+    assert geo_proxy.configured_ccs() == ["de"]
+    monkeypatch.setenv("ENIGMA_PW_GB", "pw-gb")
+    assert set(geo_proxy.configured_ccs()) == {"de", "gb"}
 
 
 def test_blank_country_returns_empty(monkeypatch):

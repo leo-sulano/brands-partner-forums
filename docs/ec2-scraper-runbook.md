@@ -123,6 +123,22 @@ each country has its own password.
 
     curl -x "http://0048277fc210:<pw>@resi.enigmaproxy.net:12321" https://ipinfo.io/json
 
+**How Chrome uses the proxy (local bridges):** Chrome 149 removed Manifest-V2
+extension support, so the old in-browser proxy-auth extension no longer works —
+Chrome would ignore an authenticated proxy and exit from the EC2 IP. Instead, the
+scrapers run a local `pproxy` bridge per country (`geo_bridge.ensure_bridges()`,
+called automatically at the start of each AG/CG run): each bridge listens on
+`127.0.0.1:<port>` and forwards to the authenticated enigma proxy, and Chrome
+connects to the local bridge with `--proxy-server` (no auth, no extension).
+
+One-time dependency install on EC2:
+
+    python3 -m pip install pproxy
+
+Bridges auto-start on demand and persist; logs are at `~/pproxy_<cc>.log`. The
+`[geo] exit country 'de' (target 'de')` line in a run confirms a country is
+exiting correctly.
+
 ---
 
 ## Updating Python Dependencies

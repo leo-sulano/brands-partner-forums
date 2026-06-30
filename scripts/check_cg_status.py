@@ -40,6 +40,7 @@ from check_review_status import (
     proxy_for_entry,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
+from geo_bridge import ensure_bridges
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -200,6 +201,7 @@ def check_cg_for_tab(
     headless: bool = True,
     country: Optional[str] = None,
 ) -> dict:
+    ensure_bridges()
     entries = load_cg_entries(tab, include_published, country)
     total = len(entries)
     if not total:

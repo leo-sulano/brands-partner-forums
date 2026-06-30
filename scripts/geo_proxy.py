@@ -74,21 +74,42 @@ def country_code_for_entry(data: dict) -> Optional[str]:
     return COUNTRY_CODE.get(c)
 
 
+# ─── Local bridge ports ───────────────────────────────────────────────────────
+# Chrome 149 dropped Manifest-V2 extensions, so the proxy-auth extension trick no
+# longer works. Instead, a local auth-free pproxy bridge per country forwards to
+# the authenticated enigma proxy, and Chrome connects to the bridge via
+# --proxy-server (no extension needed). geo_bridge.py launches the bridges.
+
+BRIDGE_PORT_BASE = 8900
+
+
+def _all_ccs() -> list:
+    """All ISO-2 codes this module knows, sorted — defines stable bridge ports."""
+    return sorted(set(COUNTRY_CODE.values()))
+
+
+def bridge_port_for_cc(cc: str) -> int:
+    """Deterministic local port for a country's enigma->local bridge."""
+    return BRIDGE_PORT_BASE + _all_ccs().index(cc)
+
+
+def configured_ccs() -> list:
+    """Country codes that have an ENIGMA_PW_<CC> set in the environment."""
+    return [cc for cc in _all_ccs() if os.environ.get(f"ENIGMA_PW_{cc.upper()}")]
+
+
 def geo_proxy_for_entry(data: dict) -> str:
-    """Return 'host:port:login:password' for this entry's Country, or '' to fall
-    back to no geo proxy (blank/unknown country, or password not configured)."""
+    """Return the LOCAL bridge address '127.0.0.1:port' for this entry's Country.
+    Chrome connects to a local, auth-free pproxy bridge that forwards to the
+    authenticated enigma residential proxy for that country (see geo_bridge.py).
+    Returns '' to fall back to no proxy (blank/unknown/unconfigured country)."""
     cc = country_code_for_entry(data)
-    if not cc:
+    if not cc or cc not in _all_ccs():
         return ""
-    host = os.environ.get("ENIGMA_HOST", "")
-    port = os.environ.get("ENIGMA_PORT", "")
-    login = os.environ.get("ENIGMA_LOGIN", "")
-    pw = os.environ.get(f"ENIGMA_PW_{cc.upper()}", "")
-    if not (host and port and login and pw):
-        if pw == "":
-            print(f"  [geo] no ENIGMA_PW_{cc.upper()} configured — skipping proxy for {cc!r}")
+    if not os.environ.get(f"ENIGMA_PW_{cc.upper()}"):
+        print(f"  [geo] no ENIGMA_PW_{cc.upper()} configured — skipping proxy for {cc!r}")
         return ""
-    return f"{host}:{port}:{login}:{pw}"
+    return f"127.0.0.1:{bridge_port_for_cc(cc)}"
 
 
 GEO_ENDPOINTS = [
