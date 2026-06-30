@@ -100,6 +100,31 @@ cat ~/.env
 
 ---
 
+## Geo Proxies (enigmaproxy) for AG/CG
+
+AG/CG checks must exit from each brand's country (the `Country` column). They use
+enigmaproxy residential proxies over HTTP. Add these to `~/.env`:
+
+    ENIGMA_HOST=resi.enigmaproxy.net
+    ENIGMA_PORT=12321
+    ENIGMA_LOGIN=0048277fc210
+    ENIGMA_PW_DE=<germany password>
+    ENIGMA_PW_GB=<uk password>
+    # ...one ENIGMA_PW_<CC> per country in use
+
+**Where the passwords come from:** GoLogin app -> open the country's "TP Test"
+profile -> Proxy tab -> reveal the Password. Login is shared (`0048277fc210`);
+each country has its own password.
+
+**Add a new country:** add its full name -> ISO-2 to `COUNTRY_CODE` in
+`scripts/geo_proxy.py`, then add an `ENIGMA_PW_<CC>` line here.
+
+**Verify a country works** (HTTP, from the EC2 box):
+
+    curl -x "http://0048277fc210:<pw>@resi.enigmaproxy.net:12321" https://ipinfo.io/json
+
+---
+
 ## Updating Python Dependencies
 
 ### If a new package is added to `requirements.txt`:
