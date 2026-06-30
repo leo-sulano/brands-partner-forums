@@ -42,7 +42,7 @@ function AppLayout() {
   }
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900">
+    <div className="h-screen flex overflow-hidden bg-slate-50 text-slate-900">
       <Sidebar
         open={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -51,7 +51,7 @@ function AppLayout() {
       />
       <div className="flex-1 flex flex-col min-w-0">
         <Topbar onMenuClick={() => setSidebarOpen(true)} />
-        <main className="flex-1 p-6 md:p-8 overflow-x-hidden">
+        <main className="flex-1 p-6 md:p-8 overflow-y-auto overflow-x-hidden">
           <Suspense fallback={<PageFallback />}>
             <Outlet />
           </Suspense>
