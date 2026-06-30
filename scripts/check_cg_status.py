@@ -37,7 +37,9 @@ from check_review_status import (
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
     CHROME_RESTART_EVERY,
+    proxy_for_entry,
 )
+from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -89,6 +91,7 @@ def load_cg_entries(tab: Optional[str] = None, include_published: bool = True) -
         if current not in statuses:
             continue
         out.append(row)
+    out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
     return out
 
 
@@ -198,20 +201,37 @@ def check_cg_for_tab(
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
 
     checked = updated = errors = sheet_errors = 0
-    driver = build_driver(headless=headless)
+    driver = None
+    current_proxy = None
     try:
         for i in range(0, total, BATCH_SIZE):
             batch = entries[i : i + BATCH_SIZE]
             for entry in batch:
                 checked += 1
+                _edata = entry.get("data") or {}
+                entry_proxy = geo_proxy_for_entry(_edata) or proxy_for_entry(_edata)
 
-                if checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0:
-                    print(f"  ... restarting Chrome at entry {checked}/{total}\n")
-                    try:
-                        driver.quit()
-                    except Exception:
-                        pass
-                    driver = build_driver(headless=headless)
+                restart = (
+                    driver is None
+                    or entry_proxy != current_proxy
+                    or (checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0)
+                )
+                if restart:
+                    if driver:
+                        print(f"  ... restarting Chrome at entry {checked}/{total} (proxy={entry_proxy or 'none'})\n")
+                        try:
+                            driver.quit()
+                        except Exception:
+                            pass
+                    driver = build_driver(headless=headless, proxy=entry_proxy)
+                    current_proxy = entry_proxy
+                    expected_cc = country_code_for_entry(_edata)
+                    if expected_cc and entry_proxy:
+                        got = detect_exit_country(driver)
+                        if got and got != expected_cc:
+                            print(f"  [geo] WARNING expected {expected_cc!r} but proxy exited {got!r}")
+                        else:
+                            print(f"  [geo] exit country {got or 'unknown'!r} (target {expected_cc!r})")
 
                 data: dict = entry["data"]
                 status_col  = _col(data, CG_STATUS_COLS)
@@ -258,7 +278,8 @@ def check_cg_for_tab(
             if remaining > 0:
                 time.sleep(DELAY_BETWEEN_BATCHES)
     finally:
-        driver.quit()
+        if driver:
+            driver.quit()
 
     return {"checked": checked, "updated": updated, "errors": errors, "sheet_errors": sheet_errors, "total": total}
 
