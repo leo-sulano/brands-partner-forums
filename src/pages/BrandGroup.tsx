@@ -145,7 +145,7 @@ function CellValue({ header, value, rowData }: { header: string; value: string |
       d.getFullYear() === now.getFullYear() &&
       d.getMonth() === now.getMonth() &&
       d.getDate() === now.getDate();
-    return <span className={isToday ? 'font-semibold text-slate-900' : 'text-slate-400'}>{display}</span>;
+    return <span className={isToday ? 'font-semibold text-slate-900' : 'text-slate-600'}>{display}</span>;
   }
   return <span className="text-slate-600">{display}</span>;
 }
