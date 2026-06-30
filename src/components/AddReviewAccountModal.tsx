@@ -1,11 +1,29 @@
 import { useState } from 'react';
 import { X, Plus, Loader2, Eye, EyeOff } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
+import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
 import { hasMultiPlatform } from '../lib/tab-configs';
 
-const STATUS_SUGGESTIONS = ['Not done', 'Done', 'Published', 'Live', 'Refused', 'Removed', 'Pending', 'On Pause', 'Not Published'];
+const STATUS_OPTS = [
+  { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
+  { value: 'Published',     label: 'Published',     dot: 'bg-green-500' },
+  { value: 'Done',          label: 'Done',          dot: 'bg-blue-500' },
+  { value: 'Pending',       label: 'Pending',       dot: 'bg-amber-400' },
+  { value: 'On Pause',      label: 'On Pause',      dot: 'bg-slate-500' },
+  { value: 'Not done',      label: 'Not done',      dot: 'bg-orange-500' },
+  { value: 'Not Published', label: 'Not Published', dot: 'bg-orange-400' },
+  { value: 'Refused',       label: 'Refused',       dot: 'bg-rose-500' },
+  { value: 'Removed',       label: 'Removed',       dot: 'bg-rose-500' },
+];
+
+const YES_NO_OPTS = [
+  { value: 'Yes', label: 'Yes' },
+  { value: 'No',  label: 'No' },
+];
+
+const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: t }));
 
 type FieldDef = {
   key: string;
@@ -185,28 +203,19 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             brands={availableBrands}
           />
         ) : f.yesno ? (
-          <select
+          <SelectDropdown
             value={fields[f.key]}
-            onChange={(e) => setFields((s) => ({ ...s, [f.key]: e.target.value }))}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white"
-          >
-            <option value="">—</option>
-            <option value="Yes">Yes</option>
-            <option value="No">No</option>
-          </select>
+            onChange={(v) => setFields((s) => ({ ...s, [f.key]: v }))}
+            options={YES_NO_OPTS}
+            placeholder="—"
+          />
         ) : f.status ? (
-          <>
-            <input
-              list={`datalist-add-${f.key}`}
-              value={fields[f.key]}
-              onChange={(e) => setFields((s) => ({ ...s, [f.key]: e.target.value }))}
-              placeholder="e.g. Live, Removed…"
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
-            />
-            <datalist id={`datalist-add-${f.key}`}>
-              {STATUS_SUGGESTIONS.map((o) => <option key={o} value={o} />)}
-            </datalist>
-          </>
+          <SelectDropdown
+            value={fields[f.key]}
+            onChange={(v) => setFields((s) => ({ ...s, [f.key]: v }))}
+            options={STATUS_OPTS}
+            placeholder="— select status —"
+          />
         ) : f.sensitive ? (
           <div className="relative">
             <input
@@ -263,13 +272,12 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           {/* Tab selector */}
           <div>
             <label className="mb-1.5 block text-xs font-medium text-slate-500">Tab / Category</label>
-            <select
+            <SelectDropdown
               value={selectedTab}
-              onChange={(e) => handleTabChange(e.target.value)}
-              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
-            >
-              {OPERATIONAL_TABS.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+              onChange={handleTabChange}
+              options={TAB_OPTS}
+              placeholder="— select tab —"
+            />
           </div>
 
           {/* Account Details */}

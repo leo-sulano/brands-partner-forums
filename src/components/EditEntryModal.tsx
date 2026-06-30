@@ -1,12 +1,30 @@
 import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
+import SelectDropdown from './SelectDropdown';
 import { getColLabel } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 
-const STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
+const STATUS_OPTS = [
+  { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
+  { value: 'Published',     label: 'Published',     dot: 'bg-green-500' },
+  { value: 'Done',          label: 'Done',          dot: 'bg-blue-500' },
+  { value: 'Pending',       label: 'Pending',       dot: 'bg-amber-400' },
+  { value: 'On Pause',      label: 'On Pause',      dot: 'bg-slate-500' },
+  { value: 'Not done',      label: 'Not done',      dot: 'bg-orange-500' },
+  { value: 'Not Published', label: 'Not Published', dot: 'bg-orange-400' },
+  { value: 'Refused',       label: 'Refused',       dot: 'bg-rose-500' },
+  { value: 'Removed',       label: 'Removed',       dot: 'bg-rose-500' },
+];
+
+const YES_NO_OPTS = [
+  { value: 'Yes', label: 'Yes' },
+  { value: 'No',  label: 'No' },
+];
+
+const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: t }));
 
 const YES_NO_COLS = new Set([
   'Register from Google acount',
@@ -129,26 +147,21 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           {getColLabel(h)}
         </label>
         {isStatusCol(h) ? (
-          <select
+          <SelectDropdown
             value={fields[h]}
-            onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
+            onChange={(v) => setFields((f) => ({ ...f, [h]: v }))}
+            options={STATUS_OPTS}
+            placeholder="— select status —"
             disabled={saving}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white disabled:opacity-50"
-          >
-            <option value="">— select status —</option>
-            {STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
-          </select>
+          />
         ) : isYesNoCol(h) ? (
-          <select
+          <SelectDropdown
             value={fields[h]}
-            onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
+            onChange={(v) => setFields((f) => ({ ...f, [h]: v }))}
+            options={YES_NO_OPTS}
+            placeholder="—"
             disabled={saving}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white disabled:opacity-50"
-          >
-            <option value="">—</option>
-            <option value="Yes">Yes</option>
-            <option value="No">No</option>
-          </select>
+          />
         ) : isBrandNameCol(h) && availableBrands && availableBrands.length > 0 ? (
           <BrandSelectDropdown
             value={fields[h]}
@@ -206,16 +219,13 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-6 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Tab</label>
-                <select
+                <SelectDropdown
                   value={selectedTab}
-                  onChange={(e) => setSelectedTab(e.target.value)}
+                  onChange={setSelectedTab}
+                  options={TAB_OPTS}
+                  placeholder="— select tab —"
                   disabled={saving}
-                  className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white disabled:opacity-50"
-                >
-                  {OPERATIONAL_TABS.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                />
               </div>
               {brandCol && availableBrands && availableBrands.length > 0 && (
                 <div>
