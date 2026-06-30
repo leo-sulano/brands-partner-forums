@@ -139,6 +139,25 @@ Bridges auto-start on demand and persist; logs are at `~/pproxy_<cc>.log`. The
 `[geo] exit country 'de' (target 'de')` line in a run confirms a country is
 exiting correctly.
 
+### Cloudflare — AG/CG run NON-headless under Xvfb
+
+AskGamblers and CasinoGuru sit behind Cloudflare's "Just a moment…" challenge,
+which **blocks headless Chrome** (you get a ~27K challenge page, no reviews) but
+auto-clears for a real headful browser. So the AG/CG scrapers run Chrome
+non-headless inside a virtual display (Xvfb). `ensure_display()` starts the
+display automatically at the start of each run; if no display is available it
+falls back to headless.
+
+One-time install on EC2:
+
+    sudo dnf install -y xorg-x11-server-Xvfb
+    python3 -m pip install pyvirtualdisplay
+
+Signs it's working: a run prints `[display] started virtual display :N`, the AG
+page is ~700K (not 27K), and the page title is the casino name (not "Just a
+moment…"). Heavy AG pages may log a harmless `get` timeout — the content still
+loads and the scraper reads it.
+
 ---
 
 ## Updating Python Dependencies

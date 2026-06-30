@@ -33,6 +33,32 @@ def _port_open(port: int) -> bool:
         return s.connect_ex(("127.0.0.1", port)) == 0
 
 
+_display = None
+
+
+def ensure_display() -> bool:
+    """Start a virtual X display (Xvfb) so Chrome can run NON-headless. AskGamblers
+    (and CasinoGuru) sit behind Cloudflare's 'Just a moment' challenge, which blocks
+    headless Chrome outright but auto-clears for a real headful browser. Returns True
+    if a display is available (so the caller should run Chrome non-headless).
+    Idempotent; no-op if a display already exists or Xvfb/pyvirtualdisplay is absent
+    (e.g. local Windows dev), in which case the caller stays headless."""
+    global _display
+    if _display is not None:
+        return True
+    if os.environ.get("DISPLAY"):
+        return True  # a real/existing display is present
+    try:
+        from pyvirtualdisplay import Display
+        _display = Display(visible=0, size=(1366, 900))
+        _display.start()
+        print(f"  [display] started virtual display {_display.new_display_var}")
+        return True
+    except Exception as e:
+        print(f"  [display] no virtual display ({e}) — staying headless")
+        return False
+
+
 def ensure_bridges() -> dict:
     """Start a local pproxy bridge for each configured country that isn't already
     listening. Returns {cc: port} for all configured countries. Safe to call

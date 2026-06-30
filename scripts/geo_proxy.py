@@ -140,6 +140,7 @@ def detect_exit_country(driver) -> Optional[str]:
     importable (and unit-testable) without selenium installed."""
     import time
     from selenium.webdriver.common.by import By
+    result = None
     for url in GEO_ENDPOINTS:
         try:
             driver.get(url)
@@ -147,7 +148,14 @@ def detect_exit_country(driver) -> Optional[str]:
             body = driver.find_element(By.TAG_NAME, "body").text
             cc = _parse_country(body)
             if cc:
-                return cc
+                result = cc
+                break
         except Exception:
             continue
-    return None
+    # Leave the driver on a blank page so the next real navigation isn't mistaken
+    # for an off-site redirect if it times out (the geo endpoint must not linger).
+    try:
+        driver.get("about:blank")
+    except Exception:
+        pass
+    return result

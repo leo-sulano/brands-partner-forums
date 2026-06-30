@@ -40,7 +40,7 @@ from check_review_status import (
     proxy_for_entry,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
-from geo_bridge import ensure_bridges
+from geo_bridge import ensure_bridges, ensure_display
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -202,6 +202,8 @@ def check_cg_for_tab(
     country: Optional[str] = None,
 ) -> dict:
     ensure_bridges()
+    if ensure_display():
+        headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
     entries = load_cg_entries(tab, include_published, country)
     total = len(entries)
     if not total:

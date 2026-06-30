@@ -44,7 +44,7 @@ from check_review_status import (
     CHROME_RESTART_EVERY,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
-from geo_bridge import ensure_bridges
+from geo_bridge import ensure_bridges, ensure_display
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -258,6 +258,8 @@ def check_ag_for_tab(
     """Run AG status check for all eligible entries in `tab`.
     Returns {checked, updated, errors, sheet_errors, total}."""
     ensure_bridges()
+    if ensure_display():
+        headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
     entries = load_ag_entries(tab, include_published, country)
     total = len(entries)
     if not total:
