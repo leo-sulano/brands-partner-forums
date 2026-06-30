@@ -50,22 +50,21 @@ Deno.serve(async () => {
   const errors: string[] = [];
 
   for (const [tab, tabRows] of byTab) {
-    const ids = tabRows.map((r) => r.sheet_row_id);
     const hrefMap = new Map(tabRows.map((r) => [r.sheet_row_id, r.href]));
 
-    // Fetch only the entries we need for this tab
+    // Fetch all entries for this tab and filter in memory — avoids HTTP/2 stream
+    // errors caused by putting hundreds of UUIDs into a single .in() query URL.
     const { data: entries, error: fetchErr } = await supabase
       .from('entries')
       .select('id, sheet_row_id, data')
-      .eq('tab', tab)
-      .in('sheet_row_id', ids);
+      .eq('tab', tab);
 
     if (fetchErr) {
       errors.push(`fetch ${tab}: ${fetchErr.message}`);
       continue;
     }
 
-    // Patch each entry — only Brand / TP URL PAGE__href is changed
+    // Patch only entries that have a brand href from the sheet
     await Promise.all((entries ?? []).map(async (entry) => {
       const href = hrefMap.get(entry.sheet_row_id);
       if (!href) { skipped++; return; }

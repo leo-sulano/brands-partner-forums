@@ -11,6 +11,7 @@ $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $HistoryFile = Join-Path $ProjectRoot "docs\task-history.md"
 $SyncedFile  = Join-Path $ProjectRoot ".claude\pms-synced-tasks.txt"
 $EnvFile     = Join-Path $ProjectRoot ".env"
+$EnvLocalFile = Join-Path $ProjectRoot ".env.local"
 
 # --- PMS constants ---
 $PMS_PROJECT  = 'cmpe8l7f1000004l7ytcbmxhb'
@@ -68,11 +69,13 @@ function Invoke-PmsCreate($title, $desc, $labelText, $taskDate) {
     } | Out-Null
 }
 
-# --- Read PMS token ---
+# --- Read PMS token (check .env then .env.local) ---
 $token = ''
-if (Test-Path $EnvFile) {
-    $line = Get-Content $EnvFile | Where-Object { $_ -match '^PMS_API_TOKEN=' } | Select-Object -First 1
-    if ($line) { $token = $line.Split('=', 2)[1].Trim() }
+foreach ($f in @($EnvFile, $EnvLocalFile)) {
+    if (-not $token -and (Test-Path $f)) {
+        $line = Get-Content $f | Where-Object { $_ -match '^PMS_API_TOKEN=' } | Select-Object -First 1
+        if ($line) { $token = $line.Split('=', 2)[1].Trim() }
+    }
 }
 if (-not $token) { exit 0 }
 

@@ -534,6 +534,66 @@ After saving an inline cell edit, the table no longer refreshes. Replaced the `r
 
 ---
 
-*Last updated: June 29, 2026*
+## Task 68: Backfill Brand HREFs Edge Function
+**Date:** June 30, 2026
+
+Added a one-time `backfill-brand-hrefs` Supabase Edge Function that backfills the brand TP review page URL field across all existing entries where it was absent, linking each brand row to its correct Trustpilot review page.
+
+---
+
+## Task 69: Edit Modal — Brand Tab Reassignment
+**Date:** June 30, 2026
+
+Added a "Brand Reassignment" section at the top of the Edit Entry modal. A Brand Tab dropdown lists all operational tabs; selecting a different tab updates the Brand Name dropdown to that tab's brands. Saving with a different tab calls `moveEntryToTab`, which re-inserts the entry under the new tab key in Supabase. Single-brand tabs fall back to a free-text Brand Name input so no field is ever lost.
+
+---
+
+## Task 70: Collapsible Desktop Sidebar
+**Date:** June 30, 2026
+
+Desktop sidebar now collapses to an icon-only rail. `sidebarCollapsed` state is persisted in localStorage. In collapsed mode each brand group section is independently collapsible, showing only brand-tab icons. The collapse toggle moved to the bottom of the sidebar. Layout locked to `h-screen` so the toggle stays visible without scrolling. Brand logo and section icons sized correctly in both expanded and collapsed states.
+
+---
+
+## Task 71: Overview Brands Performance Redesign
+**Date:** June 30, 2026
+
+Renamed "Brand Tabs" to "Brands Performance" in sidebar nav and the Overview page heading. Added per-tab Lucide icons in violet-100/500 to each brand card in the grid. Platform summary cards redesigned: favicon in a colored ring, a smaller donut chart on the left, and a Published/Removed percentage legend on the right. Legend rows are clickable and open the same platform breakdown modal as clicking the donut slices.
+
+---
+
+## Task 72: Date Highlighting & Nav Style Polish
+**Date:** June 30, 2026
+
+Today's date cells in the BrandGroup table are now rendered bold+dark; older dates are faded, making recent entries immediately scannable. Today's date in the DatePicker calendar is highlighted with a stronger violet ring. Active sidebar nav item updated to violet. Removed the vertical border lines that were appearing before platform-specific columns in the BrandGroup table.
+
+---
+
+## Task 73: Add/Edit Modal Overhaul
+**Date:** June 30, 2026
+
+Complete redesign of both the Add Review Account and Edit Entry modals:
+- **6-column grid layout** with clearly labeled platform sections (TP / AG / CG), each collapsed to a single row
+- **Filter-style searchable dropdowns** replace all native `<select>` elements across status, brand, and boolean fields
+- **Country auto-fill** — Add modal derives the Country field from the Account name on input
+- **Sheet row paste** — pasting a tab-separated row copied from the Google Sheet auto-populates all fields in the Add modal, eliminating manual re-entry
+
+---
+
+## Task 74: Geo-Aware Proxy Routing for AG/CG/WO Scrapers
+**Date:** June 30, 2026
+
+Resolved a geo-restriction issue where EC2 Singapore returned a 27K-char blocked version of AskGamblers with no reviews section.
+
+- Added `VITE_CHECK_AG_STATUS_URL` env var so AG/CG/WO checks route through the user's local residential-IP server while TP checks stay on EC2
+- Built `geo_proxy.py` resolver that maps each entry's Country field to a country-specific Enigmaproxy `pproxy` bridge address
+- AG and CG scrapers now detect their exit country (`detect_exit_country`) and restart with the correct geo proxy if misrouted
+- Added `--country` CLI filter for targeted single-country runs
+- Switched to local `pproxy` bridges (MV2 extension stopped working on Chrome 149)
+- Documented all Enigmaproxy env vars and added a geo-proxy runbook section
+
+---
+
+*Last updated: June 30, 2026*
 
 ---
