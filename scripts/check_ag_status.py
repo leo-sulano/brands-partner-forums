@@ -43,6 +43,7 @@ from check_review_status import (
     DELAY_BETWEEN_BATCHES,
     CHROME_RESTART_EVERY,
 )
+from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +111,8 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True) -
         print(f"  [load] id={row['id']} status={current!r} user={ag_user!r} link={ag_link[:40]!r}")
         out.append(row)
     print(f"  [load] {len(out)} eligible AG entries (from {len(rows)} total in tab)")
+    # Group brands by their resolved geo proxy so each country = one Chrome launch.
+    out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
     return out
 
 # ─── Scraping helpers ─────────────────────────────────────────────────────────
@@ -261,7 +264,8 @@ def check_ag_for_tab(
             batch = entries[i : i + BATCH_SIZE]
             for entry in batch:
                 checked += 1
-                entry_proxy = proxy_for_entry(entry.get("data") or {})
+                _edata = entry.get("data") or {}
+                entry_proxy = geo_proxy_for_entry(_edata) or proxy_for_entry(_edata)
 
                 restart = (
                     driver is None
@@ -277,6 +281,13 @@ def check_ag_for_tab(
                             pass
                     driver = build_driver(headless=headless, proxy=entry_proxy)
                     current_proxy = entry_proxy
+                    expected_cc = country_code_for_entry(_edata)
+                    if expected_cc and entry_proxy:
+                        got = detect_exit_country(driver)
+                        if got and got != expected_cc:
+                            print(f"  [geo] WARNING expected {expected_cc!r} but proxy exited {got!r}")
+                        else:
+                            print(f"  [geo] exit country {got or 'unknown'!r} (target {expected_cc!r})")
 
                 data: dict = entry["data"]
                 status_col  = _col(data, AG_STATUS_COLS)
