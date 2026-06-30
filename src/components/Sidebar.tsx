@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, ChevronLeft, ChevronRight, BarChart3, Bot, X, Star,
+  Link2, Users, ChevronDown, ChevronLeft, BarChart3, Bot, X, Star,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -185,26 +185,37 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       <aside
         className={`hidden md:flex flex-col bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
       >
-        <div className={`py-5 flex items-center border-b border-slate-800 ${collapsed ? 'justify-center px-3' : 'justify-between px-3'}`}>
-          <div className="flex items-center gap-2 overflow-hidden">
-            <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
-            {!collapsed && (
+        {collapsed ? (
+          <div className="py-5 flex justify-center border-b border-slate-800">
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              aria-label="Expand sidebar"
+              className="rounded-md hover:bg-slate-800 transition-colors"
+            >
+              <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px]" />
+            </button>
+          </div>
+        ) : (
+          <div className="py-5 px-3 flex items-center justify-between border-b border-slate-800">
+            <div className="flex items-center gap-2 overflow-hidden">
+              <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
               <span className="font-semibold tracking-tight whitespace-nowrap">
                 <span className="text-white">Brands </span>
                 <span className="text-violet-400">Partner</span>
                 <span className="text-white"> Forum</span>
               </span>
-            )}
+            </div>
+            <button
+              type="button"
+              onClick={onToggleCollapsed}
+              className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+              aria-label="Collapse sidebar"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onToggleCollapsed}
-            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {collapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
-          </button>
-        </div>
+        )}
         {navContent(collapsed)}
       </aside>
 
