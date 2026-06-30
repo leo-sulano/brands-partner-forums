@@ -36,7 +36,7 @@ const TP_FIELDS: FieldDef[] = [
   { key: 'Trust Pilot',         label: 'Trust Pilot Date' },
   { key: 'TP Review Status',    label: 'TP Review Status',    status: true },
   { key: 'Link to the profile', label: 'Link to Profile',     link: true },
-  { key: 'Removed / Not Published / stil published date', label: 'Removed / Not Published / Still Published Date' },
+  { key: 'Removed / Not Published / stil published date', label: 'Removed/ Not Pub./Published' },
 ];
 
 const AG_FIELDS: FieldDef[] = [
