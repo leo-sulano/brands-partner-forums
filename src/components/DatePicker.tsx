@@ -111,7 +111,7 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
                   className={`flex h-8 w-full items-center justify-center rounded-lg text-xs transition-colors ${
                     sel ? 'bg-violet-600 font-semibold text-white'
                     : dis ? 'cursor-not-allowed text-slate-300'
-                    : tod ? 'border border-violet-300 font-medium text-violet-600 hover:bg-violet-50'
+                    : tod ? 'bg-violet-200 border border-violet-500 font-semibold text-violet-900 hover:bg-violet-300'
                     : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
