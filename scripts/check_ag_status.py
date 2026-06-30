@@ -122,20 +122,27 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, c
 
 # ─── Scraping helpers ─────────────────────────────────────────────────────────
 
-_BLOCK_KEYWORDS = {
-    "captcha", "i am not a robot", "ddos protection",
-    "bot detection", "unusual traffic", "human verification",
-}
+# A real bot-challenge page is identified by its TITLE (Cloudflare's interstitial),
+# not by body keywords — a fully-loaded review page legitimately contains words like
+# "captcha" (e.g. in a Cloudflare Turnstile script tag), so keyword-matching the
+# body caused false positives that skipped good pages.
+_BLOCK_TITLE_KEYWORDS = (
+    "just a moment", "attention required", "access denied",
+    "verifying you are human", "verify you are human",
+)
 
-def _page_blocked(html: str) -> bool:
-    """Return True if the page looks like a CAPTCHA/bot-block rather than real content."""
-    if len(html) < 2000:  # truly empty/minimal page only
+def _page_blocked(html: str, title: str = "") -> bool:
+    """Return True only for an actual bot/Cloudflare challenge page, detected by
+    the challenge title or a tiny page — never by keywords in a real, fully-loaded
+    review page."""
+    t = (title or "").lower()
+    if any(k in t for k in _BLOCK_TITLE_KEYWORDS):
+        print(f"    [blocked] challenge title: {title!r}")
         return True
-    lower = html.lower()
-    blocked = any(kw in lower for kw in _BLOCK_KEYWORDS)
-    if blocked:
-        print(f"    [blocked] page length={len(html)}, matched block keyword")
-    return blocked
+    if len(html) < 5000:  # real AG pages are 100K+; a tiny page is a wall/error
+        print(f"    [blocked] page too small ({len(html)} chars)")
+        return True
+    return False
 
 
 def _extract_rating_from_context(context_html: str) -> Optional[int]:
@@ -223,7 +230,7 @@ def fetch_ag_review(
         # First page only: check for CAPTCHA / bot-block before drawing conclusions
         if page_num == 0:
             print(f"    [page] length={len(html)}, url={driver.current_url[:60]}")
-            if _page_blocked(html):
+            if _page_blocked(html, driver.title):
                 print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
                 return ("__skip__", None)
 
