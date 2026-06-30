@@ -1,4 +1,4 @@
-import { supabase, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN } from './supabase';
+import { supabase, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
@@ -575,8 +575,8 @@ export async function triggerAgStatusCheck(
   tab: string,
   includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
-  if (!CHECK_STATUS_URL) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
-  const res = await fetch(CHECK_STATUS_URL, {
+  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
+  const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -596,8 +596,8 @@ export async function triggerCgStatusCheck(
   tab: string,
   includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
-  if (!CHECK_STATUS_URL) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
-  const res = await fetch(CHECK_STATUS_URL, {
+  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
+  const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -617,8 +617,8 @@ export async function triggerWoStatusCheck(
   tab: string,
   includePublished = false,
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
-  if (!CHECK_STATUS_URL) throw new Error('VITE_CHECK_STATUS_URL is not configured — check .env');
-  const res = await fetch(CHECK_STATUS_URL, {
+  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
+  const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -635,20 +635,28 @@ export async function triggerWoStatusCheck(
 }
 
 export async function getActiveChecks(): Promise<string[]> {
-  if (!CHECK_STATUS_BASE_URL) return [];
-  try {
-    const res = await fetch(`${CHECK_STATUS_BASE_URL}/active-checks`, {
-      headers: {
-        Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
-        'ngrok-skip-browser-warning': 'true',
-      },
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    return data.active ?? [];
-  } catch {
-    return [];
-  }
+  const poll = async (baseUrl: string) => {
+    if (!baseUrl) return [];
+    try {
+      const res = await fetch(`${baseUrl}/active-checks`, {
+        headers: {
+          Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
+          'ngrok-skip-browser-warning': 'true',
+        },
+      });
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.active ?? []) as string[];
+    } catch {
+      return [];
+    }
+  };
+
+  const [tp, ag] = await Promise.all([
+    poll(CHECK_STATUS_BASE_URL),
+    CHECK_AG_STATUS_BASE_URL !== CHECK_STATUS_BASE_URL ? poll(CHECK_AG_STATUS_BASE_URL) : Promise.resolve([] as string[]),
+  ]);
+  return [...new Set([...tp, ...ag])];
 }
 
 // ---------------------------------------------------------------------------
