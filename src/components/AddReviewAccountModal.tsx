@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Plus, Loader2, Eye, EyeOff } from 'lucide-react';
+import BrandSelectDropdown from './BrandSelectDropdown';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
 import { hasMultiPlatform } from '../lib/tab-configs';
@@ -178,14 +179,11 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
       <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-6' : ''}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">{f.label}</label>
         {f.key === 'Brand Name' && availableBrands.length > 0 ? (
-          <select
+          <BrandSelectDropdown
             value={fields[f.key]}
-            onChange={(e) => handleBrandChange(e.target.value)}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
-          >
-            <option value="">— Select brand —</option>
-            {availableBrands.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
+            onChange={handleBrandChange}
+            brands={availableBrands}
+          />
         ) : f.yesno ? (
           <select
             value={fields[f.key]}

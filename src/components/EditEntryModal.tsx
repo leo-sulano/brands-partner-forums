@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
+import BrandSelectDropdown from './BrandSelectDropdown';
 import { getColLabel } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -149,15 +150,12 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <option value="No">No</option>
           </select>
         ) : isBrandNameCol(h) && availableBrands && availableBrands.length > 0 ? (
-          <select
+          <BrandSelectDropdown
             value={fields[h]}
-            onChange={(e) => setFields((f) => ({ ...f, [h]: e.target.value }))}
+            onChange={(v) => setFields((f) => ({ ...f, [h]: v }))}
+            brands={availableBrands}
             disabled={saving}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white disabled:opacity-50"
-          >
-            <option value="">— Select brand —</option>
-            {availableBrands.map((b) => <option key={b} value={b}>{b}</option>)}
-          </select>
+          />
         ) : (
           <input
             type="text"
@@ -222,17 +220,12 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               {brandCol && availableBrands && availableBrands.length > 0 && (
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Name</label>
-                  <select
+                  <BrandSelectDropdown
                     value={fields[brandCol] ?? ''}
-                    onChange={(e) => setFields((f) => ({ ...f, [brandCol]: e.target.value }))}
+                    onChange={(v) => setFields((f) => ({ ...f, [brandCol]: v }))}
+                    brands={availableBrands}
                     disabled={saving}
-                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 bg-white disabled:opacity-50"
-                  >
-                    <option value="">— Select brand —</option>
-                    {availableBrands.map((b) => (
-                      <option key={b} value={b}>{b}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
               )}
             </div>
