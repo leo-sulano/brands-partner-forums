@@ -111,7 +111,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
         <button
           type="button"
           onClick={onMenuClick}
-          className="md:hidden p-1.5 rounded-md text-slate-500 hover:bg-slate-100 transition-colors"
+          className="md:hidden p-1.5 rounded-md text-slate-500 hover:bg-violet-50 transition-colors"
           aria-label="Open menu"
         >
           <Menu className="size-5" />
@@ -151,7 +151,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
               <button
                 type="button"
                 onClick={() => { setDateFrom(''); setDateTo(''); }}
-                className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-slate-300 hover:bg-slate-50"
+                className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-violet-200 hover:bg-violet-50"
               >
                 Clear
               </button>
@@ -201,7 +201,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           {/* Desktop: full button */}
           <button
             onClick={signOut}
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-violet-50 transition-colors"
           >
             <LogOut className="size-3.5" />
             Sign Out
@@ -212,7 +212,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             <button
               type="button"
               onClick={() => setAuthPopupOpen(o => !o)}
-              className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
+              className="p-1.5 rounded-md border border-slate-200 text-slate-600 hover:bg-violet-50 transition-colors"
               aria-label="Account"
             >
               <LogOut className="size-4" />

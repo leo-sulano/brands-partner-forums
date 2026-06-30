@@ -31,7 +31,7 @@ var SHARED_SECRET = PropertiesService.getScriptProperties().getProperty('SHARED_
 var ID_COLUMN = 1; // column A, always
 
 // Columns whose hyperlink URLs are extracted and stored as `<col>__href` virtual columns.
-var HYPERLINK_COLS = ['URL PAGE'];
+var HYPERLINK_COLS = ['URL PAGE', 'Brand / TP URL PAGE'];
 
 // Per-tab, last_sync_tag goes in (last data column + 1). Computed dynamically.
 
@@ -168,6 +168,7 @@ function doPost(e) {
     if (body.op === 'dump') return jsonResponse({ ok: true, tabs: collectStructures(true) });
     if (body.op === 'upsert_row') return handleUpsertRow(body);
     if (body.op === 'bulk_upsert_rows') return jsonResponse(handleBulkUpsertRows(body));
+    if (body.op === 'brand_hrefs') return jsonResponse({ ok: true, rows: collectBrandHrefs() });
     return jsonResponse({ ok: false, error: 'unknown op: ' + body.op });
   } catch (err) {
     // Hardened: handles null/string throws that would otherwise make err.message itself throw
@@ -333,3 +334,37 @@ function createEmailSyncTrigger() {
   Logger.log('Email sync trigger created: parseAgCgEmails runs every 1 hour.');
 }
 
+// Returns [{tab, sheet_row_id, href}] for every row that has a hyperlink in
+// the 'Brand / TP URL PAGE' column. Used by the backfill-brand-hrefs Edge
+// Function — reads only that one column, leaves all other data untouched.
+function collectBrandHrefs() {
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var results = [];
+  for (var i = 0; i < OPERATIONAL_TABS.length; i++) {
+    var tabName = OPERATIONAL_TABS[i];
+    var sheet = ss.getSheetByName(tabName);
+    if (!sheet) continue;
+    var lastCol = sheet.getLastColumn();
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) continue;
+    var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+    var idColIdx = headers.indexOf('id');
+    var brandColIdx = headers.indexOf('Brand / TP URL PAGE');
+    if (idColIdx < 0 || brandColIdx < 0) continue;
+    var ids = sheet.getRange(2, idColIdx + 1, lastRow - 1, 1).getValues();
+    var richVals = sheet.getRange(2, brandColIdx + 1, lastRow - 1, 1).getRichTextValues();
+    var formulas = sheet.getRange(2, brandColIdx + 1, lastRow - 1, 1).getFormulas();
+    for (var r = 0; r < ids.length; r++) {
+      var rowId = ids[r][0];
+      if (!rowId) continue;
+      var url = richVals[r][0] ? richVals[r][0].getLinkUrl() : '';
+      if (!url) {
+        var formula = formulas[r][0] || '';
+        var match = formula.match(/=HYPERLINK\(\s*"([^"]+)"/i);
+        if (match) url = match[1];
+      }
+      if (url) results.push({ tab: tabName, sheet_row_id: String(rowId), href: url });
+    }
+  }
+  return results;
+}

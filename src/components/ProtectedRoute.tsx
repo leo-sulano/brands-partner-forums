@@ -31,7 +31,7 @@ export default function ProtectedRoute() {
           </p>
           <button
             onClick={signOut}
-            className="mt-6 rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors"
+            className="mt-6 rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-violet-50 transition-colors"
           >
             Sign Out
           </button>

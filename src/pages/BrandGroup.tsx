@@ -138,6 +138,15 @@ function CellValue({ header, value, rowData }: { header: string; value: string |
       </a>
     );
   }
+  if (isDateCol(header) && value) {
+    const d = parseCellDate(value);
+    const now = new Date();
+    const isToday = d !== null &&
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+    return <span className={isToday ? 'font-semibold text-slate-900' : 'text-slate-600'}>{display}</span>;
+  }
   return <span className="text-slate-600">{display}</span>;
 }
 
@@ -238,7 +247,7 @@ function FilterDropdown<T extends string>({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-slate-50 hover:border-slate-300 transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-violet-50 hover:border-violet-200 transition-colors"
       >
         {selected?.dot && <span className={`size-1.5 shrink-0 rounded-full ${selected.dot}`} />}
         {selected?.label}
@@ -251,7 +260,7 @@ function FilterDropdown<T extends string>({
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${opt.value === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${opt.value === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
             >
               {opt.dot && <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />}
               <span className="flex-1">{opt.label}</span>
@@ -320,7 +329,7 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
             ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:bg-violet-50'
         }`}
       >
         {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
@@ -352,7 +361,7 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
             >
               <span className="flex-1">{`All ${noun}s`}</span>
               {!value && <Check className="size-3 text-violet-500" />}
@@ -365,7 +374,7 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
                 key={brand}
                 type="button"
                 onClick={() => { onChange(brand); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${brand === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${brand === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
               >
                 <span className="flex-1 truncate">{brand}</span>
                 {brand === value && <Check className="size-3 text-violet-500" />}
@@ -453,7 +462,7 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
             ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:bg-violet-50'
         }`}
       >
         <CalendarDays className="size-3.5 shrink-0" />
@@ -471,11 +480,11 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
         <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
           {/* Header */}
           <div className="mb-3 flex items-center justify-between">
-            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 transition-colors">
+            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
               <ChevronLeft className="size-4" />
             </button>
             <span className="text-sm font-semibold text-slate-700">{MONTH_NAMES[viewMonth]} {viewYear}</span>
-            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-slate-100 transition-colors">
+            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
               <ChevronRight className="size-4" />
             </button>
           </div>
@@ -503,7 +512,7 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
                     sel ? 'bg-violet-600 font-semibold text-white'
                     : dis ? 'cursor-not-allowed text-slate-300'
                     : tod ? 'border border-violet-300 font-medium text-violet-600 hover:bg-violet-50'
-                    : 'text-slate-700 hover:bg-slate-100'
+                    : 'text-slate-700 hover:bg-violet-50'
                   }`}
                 >
                   {day}
@@ -1412,7 +1421,7 @@ export default function BrandGroup() {
                   setSearchParams(next === 'all' ? {} : { platform: next });
                   setPage(1);
                 }}
-                className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'}`}
+                className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-violet-200 hover:bg-violet-50'}`}
               >
                 <div className="flex items-center gap-2 mb-3">
                   <img
@@ -1480,7 +1489,7 @@ export default function BrandGroup() {
             </button>
           </div>
         ) : (
-        <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 px-3 py-2">
           <Search className="size-4 text-slate-400 shrink-0" />
           <input
             type="text"
@@ -1555,7 +1564,7 @@ export default function BrandGroup() {
                       type="button"
                       onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                       disabled={checkingStatus}
-                      className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
                       {checkingStatus ? 'Checking…' : 'Check Status'}
@@ -1564,7 +1573,7 @@ export default function BrandGroup() {
                       type="button"
                       onClick={() => setCheckDropdownOpen((o) => !o)}
                       disabled={checkingStatus}
-                      className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Select platform to check"
                     >
                       <ChevronDown className="size-3.5" />
@@ -1577,7 +1586,7 @@ export default function BrandGroup() {
                           key={p}
                           type="button"
                           onClick={() => handleCheckStatus([p])}
-                          className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                          className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-violet-50"
                         >
                           Check {p.toUpperCase()}
                         </button>
@@ -1590,7 +1599,7 @@ export default function BrandGroup() {
                   type="button"
                   onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                   disabled={checkingStatus}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
                   {checkingStatus ? 'Checking…' : 'Check Status'}
@@ -1614,7 +1623,7 @@ export default function BrandGroup() {
                     ))
                   : <>
                       {isApproved && (
-                        <th className="w-8 px-2 py-2.5">
+                        <th className="w-8 px-2 py-2.5 sticky left-0 z-20 bg-slate-50">
                           <input
                             type="checkbox"
                             aria-label="Select all on this page"
@@ -1646,7 +1655,7 @@ export default function BrandGroup() {
                         <th
                           key={h}
                           onClick={() => handleSort(h)}
-                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''} ${(h === 'Account' || h === 'Account Name') ? `sticky z-20 bg-slate-50 ${isApproved ? 'left-8' : 'left-0'}` : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
@@ -1679,11 +1688,11 @@ export default function BrandGroup() {
                 pageRows.map((entry) => (
                   <tr
                     key={entry.id}
-                    className="transition-colors"
+                    className="group transition-colors"
                   >
                     {isApproved && (
                       <td
-                        className="w-8 px-2 py-2.5 select-none"
+                        className="w-8 px-2 py-2.5 select-none sticky left-0 z-10 bg-white group-hover:bg-violet-50"
                         onClick={(e) => e.stopPropagation()}
                         data-drag-id={entry.id}
                         onMouseDown={(e) => {
@@ -1754,12 +1763,13 @@ export default function BrandGroup() {
                       </td>
                     )}
                     {visibleHeaders.map((h) => {
-                      // Brand / TP URL PAGE: render brand name as a link to the profile URL
+                      // Brand / TP URL PAGE: brand name linked to the brand's TP review page (__href),
+                      // falls back to plain text if the hyperlink URL hasn't been synced yet.
                       if (h === 'Brand / TP URL PAGE') {
-                        const profileUrl = entry.data['Link to the profile'];
                         const brandName = entry.data[h];
-                        if (brandName && profileUrl) {
-                          const href = profileUrl.startsWith('http') ? profileUrl : `https://${profileUrl}`;
+                        const brandUrl = entry.data['Brand / TP URL PAGE__href'];
+                        if (brandName && brandUrl) {
+                          const href = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
                           return (
                             <td key={h} className="px-[3px] py-2.5">
                               <a
@@ -1775,7 +1785,14 @@ export default function BrandGroup() {
                             </td>
                           );
                         }
-                        return <td key={h} className="px-[3px] py-2.5" />;
+                        if (brandName) {
+                          return (
+                            <td key={h} className="px-[3px] py-2.5">
+                              <span className="text-slate-600 text-sm">{brandName}</span>
+                            </td>
+                          );
+                        }
+                        return <td key={h} className="px-[3px] py-2.5"><span className="text-slate-400">—</span></td>;
                       }
                       // URL PAGE: show page name as clickable link using __href hyperlink field
                       if (h === 'URL PAGE') {
@@ -1812,7 +1829,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none"
+                            className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 bg-white"
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
@@ -1913,7 +1930,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[3px] py-2.5 cursor-text hover:bg-slate-50 group"
+                            className="px-[3px] py-2.5 cursor-text hover:bg-violet-50 group"
                             onClick={() => {
                               const raw = entry.data[h] ?? '';
                               const display = raw ? formatCellValue(raw) : '';
@@ -1926,7 +1943,7 @@ export default function BrandGroup() {
                       }
 
                       return (
-                        <td key={h} className="px-[3px] py-2.5">
+                        <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? 'sticky left-0 z-10 bg-white group-hover:bg-violet-50' : ''}`}>
                           <CellValue
                             header={h}
                             value={entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)}
@@ -1966,7 +1983,7 @@ export default function BrandGroup() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage === 1}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-slate-100 transition-colors"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
               >
                 <ChevronLeft className="size-4" /> Prev
               </button>
@@ -1990,7 +2007,7 @@ export default function BrandGroup() {
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage === totalPages}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-slate-100 transition-colors"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
               >
                 Next <ChevronRight className="size-4" />
               </button>
@@ -2003,11 +2020,12 @@ export default function BrandGroup() {
         <EditEntryModal
           entry={editEntry}
           headers={(() => {
-            const base = new Set(fullHeaders);
+            const filteredFull = fullHeaders.filter((h) => h.toLowerCase() !== 'id');
+            const base = new Set(filteredFull);
             const extras = Object.keys(editEntry.data).filter(
-              (k) => k && k.trim() !== '' && k !== 'id' && k !== 'last_sync_tag' && !base.has(k),
+              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && !base.has(k),
             );
-            return [...fullHeaders, ...extras];
+            return [...filteredFull, ...extras];
           })()}
           currentTab={decodedTab}
           availableBrands={uniqueBrands}
@@ -2075,7 +2093,7 @@ export default function BrandGroup() {
                 <button
                   onClick={() => { if (!duplicating) setShowDuplicateModal(false); }}
                   disabled={duplicating}
-                  className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                  className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
                 >
                   <X className="size-4" />
                 </button>
@@ -2158,7 +2176,7 @@ export default function BrandGroup() {
                 <button
                   onClick={() => setShowDuplicateModal(false)}
                   disabled={duplicating}
-                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-violet-50 disabled:opacity-50 transition-colors"
                 >
                   Cancel
                 </button>
@@ -2208,7 +2226,7 @@ export default function BrandGroup() {
               <button
                 onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
                 disabled={deleting}
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-violet-50 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>

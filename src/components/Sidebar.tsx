@@ -42,7 +42,7 @@ const linkClass = (isActive: boolean, isCollapsed = false) =>
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
       ? 'bg-violet-500/20 text-violet-100'
-      : 'text-slate-300 hover:bg-slate-800/60 hover:text-white',
+      : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
@@ -100,7 +100,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           : <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
         }
 
-        {(brandsOpen || isCollapsed) && OPERATIONAL_TABS.map((tab) => {
+        {brandsOpen && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
           const platforms = getTabPlatforms(tab);
           return (
@@ -146,7 +146,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               : <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
             }
 
-            {(adminOpen || isCollapsed) && (
+            {adminOpen && (
               <>
                 <NavLink
                   to="/score-summary"
@@ -191,11 +191,17 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </>
         )}
       </nav>
-      {!isCollapsed && (
-        <div className="px-4 py-3 text-xs text-slate-500 border-t border-slate-800">
-          Internal · v0.1
-        </div>
-      )}
+      <div className={`flex items-center border-t border-slate-800 ${isCollapsed ? 'justify-center px-3 py-3' : 'justify-between px-4 py-3'}`}>
+        {!isCollapsed && <span className="text-xs text-slate-500">Internal · v0.1</span>}
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="p-1.5 rounded-md text-slate-400 hover:bg-violet-500/20 hover:text-violet-100 transition-colors"
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <ChevronLeft className={`size-4 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
     </>
   );
 
@@ -203,39 +209,18 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     <>
       {/* Desktop sidebar */}
       <aside
-        className={`hidden md:flex flex-col bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
+        className={`hidden md:flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
       >
-        {collapsed ? (
-          <div className="py-5 flex justify-center border-b border-slate-800">
-            <button
-              type="button"
-              onClick={onToggleCollapsed}
-              aria-label="Expand sidebar"
-              className="rounded-md hover:bg-slate-800 transition-colors"
-            >
-              <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px]" />
-            </button>
-          </div>
-        ) : (
-          <div className="py-5 px-3 flex items-center justify-between border-b border-slate-800">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
-              <span className="font-semibold tracking-tight whitespace-nowrap">
-                <span className="text-white">Brands </span>
-                <span className="text-violet-400">Partner</span>
-                <span className="text-white"> Forum</span>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={onToggleCollapsed}
-              className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className={`py-5 flex items-center border-b border-slate-800 ${collapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
+          <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+          {!collapsed && (
+            <span className="font-semibold tracking-tight whitespace-nowrap">
+              <span className="text-white">Brands </span>
+              <span className="text-violet-400">Partner</span>
+              <span className="text-white"> Forum</span>
+            </span>
+          )}
+        </div>
         {navContent(collapsed)}
       </aside>
 
@@ -261,7 +246,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-md text-slate-400 hover:bg-violet-500/20 hover:text-violet-100 transition-colors"
                 aria-label="Close menu"
               >
                 <X className="size-5" />

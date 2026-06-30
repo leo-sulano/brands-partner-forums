@@ -20,6 +20,13 @@ export const CHECK_STATUS_BASE_URL = CHECK_STATUS_URL.replace(/\/check-status$/,
 // local dev against an open server still works.
 export const CHECK_STATUS_TOKEN = import.meta.env.VITE_CHECK_STATUS_TOKEN ?? '';
 
+// Separate local-PC server for AG/CG/WO checks — EC2's Singapore IP is geo-blocked
+// by AskGamblers, so these must run from a residential IP.
+// Set VITE_CHECK_AG_STATUS_URL to your local ngrok URL + /check-status.
+// Falls back to CHECK_STATUS_URL so a single server still works in dev.
+export const CHECK_AG_STATUS_URL = import.meta.env.VITE_CHECK_AG_STATUS_URL || CHECK_STATUS_URL;
+export const CHECK_AG_STATUS_BASE_URL = CHECK_AG_STATUS_URL.replace(/\/check-status$/, '');
+
 // AI assistant Edge Function URL (gpt-4o-mini proxy). Set in Vercel env once the
 // `ai-assistant` function is deployed. Empty string disables the assistant.
 export const AI_ASSISTANT_URL = import.meta.env.VITE_AI_ASSISTANT_URL ?? '';

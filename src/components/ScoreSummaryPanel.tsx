@@ -90,7 +90,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+          className="rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
           aria-label={collapsed ? 'Expand score summary' : 'Collapse score summary'}
         >
           <ChevronDown
@@ -162,7 +162,7 @@ function PlatformFilter({
           } ${
             opt.value === value
               ? 'bg-slate-800 text-white'
-              : 'text-slate-600 hover:bg-slate-50'
+              : 'text-slate-600 hover:bg-violet-50'
           }`}
         >
           <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />
@@ -203,7 +203,7 @@ function TabFilterDropdown({
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
             ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:bg-violet-50'
         }`}
       >
         {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
@@ -228,7 +228,7 @@ function TabFilterDropdown({
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${
                 !value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'
               }`}
             >
@@ -243,7 +243,7 @@ function TabFilterDropdown({
                 key={opt}
                 type="button"
                 onClick={() => { onChange(opt); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-slate-50 ${
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${
                   opt === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'
                 }`}
               >
@@ -299,7 +299,7 @@ function GroupedSummary({ rows }: { rows: BrandSummary[] }) {
               <button
                 type="button"
                 onClick={() => toggle(tab)}
-                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                className="rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
                 aria-label={isCollapsed ? `Expand ${tab}` : `Collapse ${tab}`}
               >
                 <ChevronDown
@@ -469,7 +469,7 @@ function SummaryTable({ rows }: { rows: BrandSummary[] }) {
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.map((r) => (
-            <tr key={`${r.tab}|${r.brand}`} className="hover:bg-slate-50/60">
+            <tr key={`${r.tab}|${r.brand}`} className="hover:bg-violet-50/60">
               {showGroup && (
                 <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={r.tab}>{r.tab}</td>
               )}

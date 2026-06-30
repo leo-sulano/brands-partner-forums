@@ -27,7 +27,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -73,7 +73,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
         {/* Total row */}
         <button
           onClick={() => { onFilterTotal(); onClose(); }}
-          className="mx-4 mb-4 mt-1 w-[calc(100%-2rem)] flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-slate-100 transition-colors"
+          className="mx-4 mb-4 mt-1 w-[calc(100%-2rem)] flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 hover:bg-violet-50 transition-colors"
         >
           <div className="flex items-center gap-3">
             <span className="size-2.5 rounded-full bg-blue-500 shrink-0" />
