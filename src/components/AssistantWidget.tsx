@@ -181,7 +181,7 @@ export default function AssistantWidget() {
                 'relative flex size-9 shrink-0 items-center justify-center rounded-md disabled:opacity-40',
                 recording
                   ? 'bg-red-50 text-red-600'
-                  : 'text-slate-400 hover:bg-slate-100 hover:text-slate-700',
+                  : 'text-slate-400 hover:bg-violet-50 hover:text-slate-700',
               ].join(' ')}
             >
               {recording && (

@@ -42,7 +42,7 @@ const linkClass = (isActive: boolean, isCollapsed = false) =>
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
       ? 'bg-violet-500/20 text-violet-100'
-      : 'text-slate-300 hover:bg-slate-800/60 hover:text-white',
+      : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
@@ -196,7 +196,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          className="p-1.5 rounded-md text-slate-400 hover:bg-violet-500/20 hover:text-violet-100 transition-colors"
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <ChevronLeft className={`size-4 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
@@ -246,7 +246,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                className="p-1.5 rounded-md text-slate-400 hover:bg-violet-500/20 hover:text-violet-100 transition-colors"
                 aria-label="Close menu"
               >
                 <X className="size-5" />

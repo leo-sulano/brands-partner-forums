@@ -234,7 +234,7 @@ export default function SyncStatus() {
                     <tr
                       key={d.dateKey}
                       onClick={() => toggleDate(d.dateKey)}
-                      className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
+                      className={`cursor-pointer select-none hover:bg-violet-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
                     >
                       <td className="px-4 py-3 font-medium text-slate-800">
                         <span className="inline-flex items-center gap-2">
@@ -429,7 +429,7 @@ export default function SyncStatus() {
                     <React.Fragment key={snap.runAt}>
                       <tr
                         onClick={() => toggleRun(snap.runAt)}
-                        className={`cursor-pointer select-none hover:bg-slate-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
+                        className={`cursor-pointer select-none hover:bg-violet-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
                       >
                         <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
                           <span className="inline-flex items-center gap-2">
