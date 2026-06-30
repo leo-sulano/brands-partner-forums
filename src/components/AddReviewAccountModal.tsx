@@ -163,7 +163,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-xl">
+      <div className="relative flex max-h-[90vh] w-full max-w-7xl flex-col rounded-xl bg-white shadow-xl">
 
         {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
@@ -199,9 +199,9 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           </div>
 
           {/* Field grid */}
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
             {activeFields.map((f) => (
-              <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-5' : ''}>
+              <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-6' : ''}>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">
                   {f.label}
                 </label>

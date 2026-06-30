@@ -77,7 +77,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative flex max-h-[90vh] w-full max-w-5xl flex-col rounded-xl bg-white shadow-xl">
+      <div className="relative flex max-h-[90vh] w-full max-w-7xl flex-col rounded-xl bg-white shadow-xl">
 
         {/* Header */}
         <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
@@ -97,7 +97,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
         <div className="flex-1 overflow-y-auto px-5 py-4">
           {/* Brand Tab + Brand Name — shown when tab context is provided */}
           {currentTab && (
-            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
+            <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-6 rounded-lg border border-slate-100 bg-slate-50 px-4 py-3">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Tab</label>
                 <select
@@ -130,12 +130,12 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
             {headers.map((h) => {
               // Brand name col shown in the top section when there are brands to pick — skip it here
               if (brandCol && h === brandCol && currentTab && availableBrands && availableBrands.length > 0) return null;
               return (
-              <div key={h} className={isLinkCol(h) ? 'col-span-2 sm:col-span-5' : ''}>
+              <div key={h} className={isLinkCol(h) ? 'col-span-2 sm:col-span-6' : ''}>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">
                   {getColLabel(h)}
                 </label>
