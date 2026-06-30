@@ -191,11 +191,17 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </>
         )}
       </nav>
-      {!isCollapsed && (
-        <div className="px-4 py-3 text-xs text-slate-500 border-t border-slate-800">
-          Internal · v0.1
-        </div>
-      )}
+      <div className={`flex items-center border-t border-slate-800 ${isCollapsed ? 'justify-center px-3 py-3' : 'justify-between px-4 py-3'}`}>
+        {!isCollapsed && <span className="text-xs text-slate-500">Internal · v0.1</span>}
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <ChevronLeft className={`size-4 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
     </>
   );
 
@@ -205,37 +211,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       <aside
         className={`hidden md:flex flex-col bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
       >
-        {collapsed ? (
-          <div className="py-5 flex justify-center border-b border-slate-800">
-            <button
-              type="button"
-              onClick={() => onToggleCollapsed?.()}
-              aria-label="Expand sidebar"
-              className="rounded-md hover:bg-slate-800 transition-colors"
-            >
-              <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px]" />
-            </button>
-          </div>
-        ) : (
-          <div className="py-5 px-3 flex items-center justify-between border-b border-slate-800">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
-              <span className="font-semibold tracking-tight whitespace-nowrap">
-                <span className="text-white">Brands </span>
-                <span className="text-violet-400">Partner</span>
-                <span className="text-white"> Forum</span>
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => onToggleCollapsed?.()}
-              className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-              aria-label="Collapse sidebar"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-          </div>
-        )}
+        <div className={`py-5 flex items-center border-b border-slate-800 ${collapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
+          <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+          {!collapsed && (
+            <span className="font-semibold tracking-tight whitespace-nowrap">
+              <span className="text-white">Brands </span>
+              <span className="text-violet-400">Partner</span>
+              <span className="text-white"> Forum</span>
+            </span>
+          )}
+        </div>
         {navContent(collapsed)}
       </aside>
 
