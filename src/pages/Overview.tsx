@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Users, CheckCircle2, XCircle, X } from 'lucide-react';
+import {
+  Users, CheckCircle2, XCircle, X,
+  Syringe, Link2, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, Star,
+  type LucideIcon,
+} from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis } from '../lib/queries';
@@ -27,6 +31,13 @@ const PLATFORM_COLORS = {
   WizardOfOdds:  '#6366f1',
 } as const;
 
+const PLATFORM_ICON_BG: Record<string, string> = {
+  Trustpilot:   'bg-emerald-50 ring-1 ring-emerald-200',
+  AskGamblers:  'bg-red-50 ring-1 ring-red-200',
+  CasinoGuru:   'bg-amber-50 ring-1 ring-amber-200',
+  WizardOfOdds: 'bg-slate-100 ring-1 ring-slate-200',
+};
+
 const PLATFORM_LOGOS: Record<string, string> = {
   Trustpilot:   'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32',
   AskGamblers:  'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32',
@@ -49,6 +60,19 @@ const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: st
   ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200',  icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
   cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
   wo: { label: 'WO', cls: 'bg-indigo-50 text-indigo-600 border border-indigo-200', icon: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=16' },
+};
+
+const TAB_ICONS: Record<string, LucideIcon> = {
+  'TP Brand Injection': Syringe,
+  'TP Affiliate':       Link2,
+  'Rooster Partners':   Handshake,
+  'Revolution Casino':  RotateCcw,
+  'Trybet':             Dices,
+  'SilverPlay':         Medal,
+  'SuprPlay Limited':   Gamepad2,
+  'HazEmirates UAE':    Plane,
+  'Hanan':              Heart,
+  'Wizard of Odds':     Star,
 };
 
 type KpiModalKind = 'total' | 'live' | 'removed';
@@ -378,7 +402,7 @@ export default function Overview() {
 
       {/* Tab summary grid */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Brand Tabs</h2>
+        <h2 className="mb-3 text-sm font-semibold text-slate-700">Brands Performance</h2>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {state.loading
             ? Array.from({ length: 9 }).map((_, i) => (
@@ -393,6 +417,7 @@ export default function Overview() {
                 ].filter((s) => s.count >= 1);
                 const barTotal = statusItems.reduce((s, i) => s + i.count, 0);
                 const pct = (n: number) => barTotal > 0 ? (n / barTotal) * 100 : 0;
+                const TabIcon = TAB_ICONS[tab] ?? Syringe;
                 return (
                   <Link
                     key={tab}
@@ -401,7 +426,12 @@ export default function Overview() {
                     className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-violet-100">
+                          <TabIcon className="size-3.5 text-violet-500" />
+                        </div>
+                        <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
+                      </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {kpis.activePlatforms.map((p) => (
                           <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[p].cls}`}>
@@ -455,75 +485,84 @@ export default function Overview() {
                     { label: 'Removed',   value: p.Removed, fill: '#f43f5e' },
                   ]
                 : [{ label: 'No data', value: 1, fill: '#e2e8f0' }];
-              const livePct = total > 0 ? ((p.Live / total) * 100).toFixed(1) : '0';
+              const livePct    = total > 0 ? ((p.Live    / total) * 100).toFixed(1) : '0.0';
+              const removedPct = total > 0 ? ((p.Removed / total) * 100).toFixed(1) : '0.0';
               return (
-                <div key={p.name} className="flex flex-col items-center rounded-xl border border-slate-200 bg-white py-5 px-4 shadow-sm">
+                <div key={p.name} className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
                   {/* Platform header */}
-                  <div className="flex items-center gap-2 mb-1">
-                    <img
-                      src={PLATFORM_LOGOS[p.name]}
-                      alt={p.name}
-                      className={`${p.name === 'WizardOfOdds' ? 'size-7' : 'size-5'} rounded`}
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                    <span className="text-sm font-semibold text-slate-700">
+                  <div className="mb-4 flex items-center gap-2.5">
+                    <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${PLATFORM_ICON_BG[p.name] ?? 'bg-slate-100 ring-1 ring-slate-200'}`}>
+                      <img
+                        src={PLATFORM_LOGOS[p.name]}
+                        alt={p.name}
+                        className="size-5 rounded-sm object-contain"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">
                       {p.name === 'WizardOfOdds' ? 'Wizard of Odds' : p.name}
                     </span>
                   </div>
 
-                  {/* Donut */}
-                  <div className="relative">
-                    <ResponsiveContainer width={180} height={180}>
-                      <PieChart>
-                        <Pie
-                          data={slices}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={58}
-                          outerRadius={82}
-                          dataKey="value"
-                          startAngle={90}
-                          endAngle={-270}
-                          stroke="#fff"
-                          strokeWidth={2}
-                          labelLine={false}
-                          style={{ cursor: total > 0 ? 'pointer' : 'default' }}
-                          onClick={(data) => {
-                            if (total === 0 || data.label === 'No data') return;
-                            const platformKey = PLATFORM_KEY[p.name];
-                            const kind: 'live' | 'removed' = data.label === 'Published' ? 'live' : 'removed';
-                            setPlatformSliceModal({ platform: p.name, platformKey, kind });
-                          }}
-                        >
-                          {slices.map((s) => (
-                            <Cell key={s.label} fill={s.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          formatter={(value: number, name: string) => [value.toLocaleString(), name]}
-                          contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                    {/* Center label */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <span className="text-xl font-bold tabular-nums" style={{ color }}>{livePct}%</span>
-                      <span className="text-[10px] text-slate-400 font-medium">published</span>
+                  {/* Body: donut + legend */}
+                  <div className="flex items-center gap-3">
+                    <div className="relative shrink-0">
+                      <ResponsiveContainer width={120} height={120}>
+                        <PieChart>
+                          <Pie
+                            data={slices}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={38}
+                            outerRadius={56}
+                            dataKey="value"
+                            startAngle={90}
+                            endAngle={-270}
+                            stroke="#fff"
+                            strokeWidth={2}
+                            labelLine={false}
+                            style={{ cursor: total > 0 ? 'pointer' : 'default' }}
+                            onClick={(data) => {
+                              if (total === 0 || data.label === 'No data') return;
+                              const platformKey = PLATFORM_KEY[p.name];
+                              const kind: 'live' | 'removed' = data.label === 'Published' ? 'live' : 'removed';
+                              setPlatformSliceModal({ platform: p.name, platformKey, kind });
+                            }}
+                          >
+                            {slices.map((s) => (
+                              <Cell key={s.label} fill={s.fill} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            formatter={(value: number, name: string) => [value.toLocaleString(), name]}
+                            contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                        <span className="text-base font-bold tabular-nums leading-tight" style={{ color }}>{livePct}%</span>
+                        <span className="text-[10px] font-medium text-slate-400">published</span>
+                      </div>
+                    </div>
+
+                    {/* Legend */}
+                    <div className="flex flex-1 flex-col gap-2.5 text-xs">
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" />
+                        <span className="text-slate-500">Published</span>
+                        <span className="ml-auto font-semibold text-slate-800">{livePct}%</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="size-2.5 shrink-0 rounded-full bg-rose-400" />
+                        <span className="text-slate-500">Removed</span>
+                        <span className="ml-auto font-semibold text-slate-800">{removedPct}%</span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Counts */}
-                  <div className="mt-2 flex items-center gap-4 text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full bg-emerald-500 shrink-0" />
-                      <span className="font-semibold text-emerald-600">{p.Live.toLocaleString()}</span>
-                      <span className="text-slate-400">published</span>
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <span className="size-2 rounded-full bg-rose-400 shrink-0" />
-                      <span className="font-semibold text-rose-500">{p.Removed.toLocaleString()}</span>
-                      <span className="text-slate-400">removed</span>
-                    </span>
+                  {/* Total */}
+                  <div className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
+                    Total <span className="font-semibold text-slate-800">{total.toLocaleString()}</span>
                   </div>
                 </div>
               );
