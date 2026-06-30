@@ -41,6 +41,7 @@ const ACCOUNT_FIELDS: FieldDef[] = [
   { key: 'Proxy Used',           label: 'Proxy Used' },
   { key: 'Email',                label: 'Email' },
   { key: 'Password',             label: 'Password',             sensitive: true },
+  { key: 'Casino Password',      label: 'Casino Password',      sensitive: true },
   { key: 'Account Name',         label: 'Account Name' },
   { key: 'Account Surname',      label: 'Account Surname' },
   { key: 'Backup Codes',         label: 'Backup Codes',         sensitive: true },
@@ -81,6 +82,44 @@ const YES_NO_FIELDS: FieldDef[] = [
   { key: 'Smart Paste?/ Paste as human typing?',                   label: 'Smart Paste / Human Typing',       yesno: true },
   { key: 'Native Language?',                                       label: 'Native Language',                  yesno: true },
 ];
+
+// Full sheet column order, relative to the Email column (offset 0).
+// null = column exists in sheet but has no matching modal field (skip).
+const PASTE_OFFSET_MAP: Record<number, string | null> = {
+  [-3]: 'Account',
+  [-2]: 'Country',
+  [-1]: 'Proxy Used',
+  [0]:  'Email',
+  [1]:  'Password',
+  [2]:  'Casino Password',
+  [3]:  'Account Name',
+  [4]:  'Account Surname',
+  [5]:  'Process',
+  [6]:  'Details',
+  [7]:  'Brand Name',
+  [8]:  'Removed / Not Published / stil published date',
+  [9]:  'Score added',
+  [10]: 'Trust Pilot',
+  [11]: 'Link to the profile',
+  [12]: 'TP Review Status',
+  [13]: null, // Redirection from Search Engine
+  [14]: null, // Redirection Word used
+  [15]: null, // Review Language
+  [16]: 'Register from Google acount',
+  [17]: 'Leaving Review After redirected from  welcome Email',
+  [18]: 'Sticky IP (Mobile) (Y/N)',
+  [19]: 'Photo in Account?',
+  [20]: null, // Mobile or desktop
+  [21]: 'Opening the account via "usefull"',
+  [22]: 'Opening the account via "Register" when leaving review',
+  [23]: 'Scrolling and houvering?',
+  [24]: 'Smart Paste?/ Paste as human typing?',
+  [25]: null, // Mentioning time frames
+  [26]: null, // Mentioning Amounts
+  [27]: null, // Mentioning Agent name
+  [28]: null, // Short review / Long
+  [29]: 'Native Language?',
+};
 
 const YES_NO_DEFAULTS: Record<string, string> = {
   'Sticky IP (Mobile) (Y/N)': 'Yes',
@@ -127,6 +166,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pasteFlash, setPasteFlash] = useState(false);
 
   const isMulti = hasMultiPlatform(selectedTab);
   const availableBrands = selectedTab === currentTab ? Object.keys(brandProfiles).sort() : [];
@@ -192,6 +232,29 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     if (e.key === 'Escape') onClose();
   }
 
+  function handlePaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData('text');
+    if (!text.includes('\t')) return; // let normal single-field paste through
+
+    const firstRow = text.split(/\r?\n/)[0];
+    const cols = firstRow.split('\t');
+    if (cols.length < 3) return;
+
+    e.preventDefault();
+    // Anchor on the email cell (@), then apply full sheet column offset map.
+    const emailIdx = cols.findIndex((c) => c.trim().includes('@'));
+    const base = emailIdx === -1 ? 0 : emailIdx;
+    const updates: Record<string, string> = {};
+    cols.forEach((val, j) => {
+      const offset = j - base;
+      const key = PASTE_OFFSET_MAP[offset];
+      if (key && val.trim()) updates[key] = val.trim();
+    });
+    setFields((s) => ({ ...s, ...updates }));
+    setPasteFlash(true);
+    setTimeout(() => setPasteFlash(false), 2000);
+  }
+
   function renderField(f: FieldDef) {
     return (
       <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-6' : ''}>
@@ -248,7 +311,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey} onPaste={handlePaste}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative flex max-h-[90vh] w-full max-w-7xl flex-col rounded-xl bg-white shadow-xl">
 
@@ -256,7 +319,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
         <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Add Review Account</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Create a new review account entry</p>
+            <p className="mt-0.5 text-xs text-slate-400">Create a new review account entry · Ctrl+V a sheet row to fill account fields</p>
           </div>
           <button
             onClick={onClose}
@@ -265,6 +328,13 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             <X className="size-4" />
           </button>
         </div>
+
+        {/* Paste flash */}
+        {pasteFlash && (
+          <div className="mx-5 mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+            Account fields filled from sheet row
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
