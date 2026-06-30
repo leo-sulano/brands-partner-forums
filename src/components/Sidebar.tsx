@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, ChevronLeft, BarChart3, Bot, X, Star,
+  Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -87,7 +87,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         ))}
 
         {isCollapsed
-          ? <div className="h-px bg-slate-800 my-1 mx-2" />
+          ? (
+            <button
+              type="button"
+              onClick={() => setBrandsOpen((o) => !o)}
+              title={brandsOpen ? 'Collapse Brands' : 'Expand Brands'}
+              className="w-full flex items-center justify-center py-1 text-slate-600 hover:text-slate-400 transition-colors"
+            >
+              {brandsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+            </button>
+          )
           : <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
         }
 
@@ -124,7 +133,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         {!!session && (
           <>
             {isCollapsed
-              ? <div className="h-px bg-slate-800 my-1 mx-2" />
+              ? (
+                <button
+                  type="button"
+                  onClick={() => setAdminOpen((o) => !o)}
+                  title={adminOpen ? 'Collapse Admin' : 'Expand Admin'}
+                  className="w-full flex items-center justify-center py-1 text-slate-600 hover:text-slate-400 transition-colors"
+                >
+                  {adminOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                </button>
+              )
               : <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
             }
 
