@@ -282,6 +282,7 @@ export const BRAND_TP_URLS: Record<string, string> = {
   'lucky vibe':            'https://www.trustpilot.com/review/luckyvibe.com',
   'luckyvibe':             'https://www.trustpilot.com/review/luckyvibe.com',
   'nova dreams':           'https://www.trustpilot.com/review/novadreams.com',
+  'novadreams':            'https://www.trustpilot.com/review/novadreams.com',
   'rollero':               'https://www.trustpilot.com/review/www.rollero.com',
   'revolution':            'https://www.trustpilot.com/review/revolutioncasino.com',
   'revolution casino':     'https://www.trustpilot.com/review/revolutioncasino.com',
@@ -290,9 +291,11 @@ export const BRAND_TP_URLS: Record<string, string> = {
 
   // SuprPlay Limited brands
   'duelz':                 'https://www.trustpilot.com/review/www.duelz.com',
+  'duelz.com':             'https://www.trustpilot.com/review/www.duelz.com',
   'voodoo dreams':         'https://www.trustpilot.com/review/voodoodreams.com',
   'voodoodreams':          'https://www.trustpilot.com/review/voodoodreams.com',
   'nyspins':               'https://www.trustpilot.com/review/www.nyspins.com',
+  'ny spins':              'https://www.trustpilot.com/review/www.nyspins.com',
 
   // Trybet brands
   'trybet':                'https://nz.trustpilot.com/review/trybet.com',
@@ -303,6 +306,7 @@ export const BRAND_TP_URLS: Record<string, string> = {
 
   // SilverPlay brands
   'silverplay':            'https://www.trustpilot.com/review/silverplay.com',
+  'silver play':           'https://www.trustpilot.com/review/silverplay.com',
 
   // Hanan brands (with and without .com suffix variants)
   'zodiacbet.com':         'https://www.trustpilot.com/review/zodiacbet.com',
