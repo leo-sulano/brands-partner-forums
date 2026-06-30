@@ -1655,7 +1655,7 @@ export default function BrandGroup() {
                         <th
                           key={h}
                           onClick={() => handleSort(h)}
-                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''} ${(h === 'Account' || h === 'Account Name') ? `sticky z-20 bg-slate-50 border-r border-slate-200 ${isApproved ? 'left-8' : 'left-0'}` : ''}`}
+                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''} ${(h === 'Account' || h === 'Account Name') ? `sticky z-20 bg-slate-50 ${isApproved ? 'left-8' : 'left-0'}` : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
@@ -1821,7 +1821,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 bg-white border-r border-slate-200"
+                            className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 bg-white"
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
@@ -1935,7 +1935,7 @@ export default function BrandGroup() {
                       }
 
                       return (
-                        <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? 'sticky left-0 z-10 bg-white border-r border-slate-200 group-hover:bg-violet-50' : ''}`}>
+                        <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? 'sticky left-0 z-10 bg-white group-hover:bg-violet-50' : ''}`}>
                           <CellValue
                             header={h}
                             value={entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)}
