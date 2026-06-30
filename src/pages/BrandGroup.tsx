@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -1767,7 +1767,7 @@ export default function BrandGroup() {
                       // falls back to plain text if the hyperlink URL hasn't been synced yet.
                       if (h === 'Brand / TP URL PAGE') {
                         const brandName = entry.data[h];
-                        const brandUrl = entry.data['Brand / TP URL PAGE__href'];
+                        const brandUrl = entry.data['Brand / TP URL PAGE__href'] ?? (brandName ? getBrandTpUrl(brandName, decodedTab) : undefined);
                         if (brandName && brandUrl) {
                           const href = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
                           return (
@@ -1837,11 +1837,30 @@ export default function BrandGroup() {
                         );
                       }
 
-                      // Brand identity columns: never editable inline — they key brand grouping
+                      // Brand identity columns: never editable inline — they key brand grouping.
+                      // Render as a clickable TP link when a known URL exists for the brand.
                       if (h === 'Brands' || h === 'Brand Name' || h === 'Brand') {
+                        const brandName = entry.data[h] ?? null;
+                        const tpUrl = brandName ? getBrandTpUrl(brandName, decodedTab) : undefined;
+                        if (brandName && tpUrl) {
+                          return (
+                            <td key={h} className="px-[3px] py-2.5">
+                              <a
+                                href={tpUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                              >
+                                <ExternalLink className="size-3 shrink-0" />
+                                {brandName}
+                              </a>
+                            </td>
+                          );
+                        }
                         return (
                           <td key={h} className="px-[3px] py-2.5">
-                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                            <CellValue header={h} value={brandName} rowData={entry.data} />
                           </td>
                         );
                       }

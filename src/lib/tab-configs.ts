@@ -155,6 +155,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   'AG Score added':                                   'AG Score',
   'CG Score added':                                   'CG Score',
   'Brand / TP URL PAGE':                              'Brands',
+  'Brand Name':                                        'Brands',
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };
 
@@ -239,6 +240,112 @@ export function getTabSequence(tab: string): string[] | null {
 // Returns the column used for brand name matching in sequence-sorted tabs.
 export function getTabSequenceCol(tab: string): string | null {
   return TAB_SEQUENCE_COL[tab] ?? null;
+}
+
+// Brand name → Trustpilot review page URL. Keys are lowercase for case-insensitive lookup.
+// Includes common spelling variants (with/without space) that appear in the DB.
+export const BRAND_TP_URLS: Record<string, string> = {
+  '7bit casino crypto':    'https://www.trustpilot.com/review/7bitcasino.digital',
+  'amonbetcasino':         'https://www.trustpilot.com/review/amonbet.digital',
+  'amonbet casino':        'https://www.trustpilot.com/review/amonbet.digital',
+  'bohocasino':            'https://www.trustpilot.com/review/bohocasino.digital',
+  'boho casino':           'https://www.trustpilot.com/review/bohocasino.digital',
+  'cazimbo casino':        'https://www.trustpilot.com/review/cazimbo.bet',
+  'lapalingo casino':      'https://www.trustpilot.com/review/lapalingo.live',
+  'casino magius':         'https://www.trustpilot.com/review/magiuscasino24.com',
+  'novajackpot casino':    'https://www.trustpilot.com/review/novajackpot.live',
+  'casino westace':        'https://www.trustpilot.com/review/westacecasino.info',
+  'cazeus casino':         'https://www.trustpilot.com/review/cazeus.club',
+  'crowncoins casino':     'https://www.trustpilot.com/review/crowncoins.one',
+  'funrize casino':        'https://www.trustpilot.com/review/funrize.pro',
+  'monsterwin casino':     'https://www.trustpilot.com/review/monsterwin.digital',
+  'nomini kasino':         'https://www.trustpilot.com/review/nomini.pro',
+  'prive casino':          'https://www.trustpilot.com/review/privecasino.bet',
+  'rabona casino':         'https://www.trustpilot.com/review/rabona-casino.live',
+  'rollingslots casino':   'https://www.trustpilot.com/review/rollingslots.live',
+  'nolimitcoins casino':   'https://www.trustpilot.com/review/nolimitcoins.pro',
+  'alf casino':            'https://www.trustpilot.com/review/alfcasino.pro',
+  'big pirate casino':     'https://www.trustpilot.com/review/bigpirate.live',
+  'vip luck casino':       'https://www.trustpilot.com/review/vipluck.digital',
+  'melbet casino':         'https://www.trustpilot.com/review/melbetcasino.pro',
+  'casea casino':          'https://www.trustpilot.com/review/casea.digital',
+
+  // Rooster Partners brands
+  'lucky7even':            'https://www.trustpilot.com/review/www.lucky7even.com',
+  'rooster.bet':           'https://www.trustpilot.com/review/rooster.bet',
+  'fortune play':          'https://www.trustpilot.com/review/www.fortuneplay.com',
+  'fortuneplay':           'https://www.trustpilot.com/review/www.fortuneplay.com',
+  'spinjo':                'https://www.trustpilot.com/review/spinjo.com',
+  'spinsup':               'https://www.trustpilot.com/review/spinsup.com',
+  'rocket spin':           'https://www.trustpilot.com/review/rocketspin.com',
+  'play mojo':             'https://www.trustpilot.com/review/playmojo.com',
+  'lucky vibe':            'https://www.trustpilot.com/review/luckyvibe.com',
+  'luckyvibe':             'https://www.trustpilot.com/review/luckyvibe.com',
+  'nova dreams':           'https://www.trustpilot.com/review/novadreams.com',
+  'rollero':               'https://www.trustpilot.com/review/www.rollero.com',
+  'revolution':            'https://www.trustpilot.com/review/revolutioncasino.com',
+  'revolution casino':     'https://www.trustpilot.com/review/revolutioncasino.com',
+  'revolution 1':          'https://www.trustpilot.com/review/revolutioncasino1.com',
+  'midarion':              'https://www.trustpilot.com/review/midasluck.com',
+
+  // SuprPlay Limited brands
+  'duelz':                 'https://www.trustpilot.com/review/www.duelz.com',
+  'voodoo dreams':         'https://www.trustpilot.com/review/voodoodreams.com',
+  'voodoodreams':          'https://www.trustpilot.com/review/voodoodreams.com',
+  'nyspins':               'https://www.trustpilot.com/review/www.nyspins.com',
+
+  // Trybet brands
+  'trybet':                'https://nz.trustpilot.com/review/trybet.com',
+  'trybet.com':            'https://nz.trustpilot.com/review/trybet.com',
+
+  // HazEmirates UAE brands
+  'hazemirates':           'https://www.trustpilot.com/review/hazemirates.com',
+
+  // SilverPlay brands
+  'silverplay':            'https://www.trustpilot.com/review/silverplay.com',
+
+  // Hanan brands (with and without .com suffix variants)
+  'zodiacbet.com':         'https://www.trustpilot.com/review/zodiacbet.com',
+  'zodiacbet':             'https://www.trustpilot.com/review/zodiacbet.com',
+  'pribet.com':            'https://www.trustpilot.com/review/pribet.com',
+  'pribet':                'https://www.trustpilot.com/review/pribet.com',
+  'emirbet.com':           'https://www.trustpilot.com/review/emirbet.com',
+  'emirbet':               'https://www.trustpilot.com/review/emirbet.com',
+  'cryptoroyal.com':       'https://www.trustpilot.com/review/cryptoroyal.com',
+  'cryptoroyal':           'https://www.trustpilot.com/review/cryptoroyal.com',
+  'dachbet.com':           'https://www.trustpilot.com/review/dachbet.com',
+  'dachbet':               'https://www.trustpilot.com/review/dachbet.com',
+  'winmega.com':           'https://www.trustpilot.com/review/winmega.com',
+  'winmega':               'https://www.trustpilot.com/review/winmega.com',
+  'olympusbet.com':        'https://www.trustpilot.com/review/olympusbet.com',
+  'olympusbet':            'https://www.trustpilot.com/review/olympusbet.com',
+  'realspin.com':          'https://www.trustpilot.com/review/realspin.com',
+  'realspin':              'https://www.trustpilot.com/review/realspin.com',
+  'lucknation.com':        'https://au.trustpilot.com/review/lucknation.com',
+  'lucknation':            'https://au.trustpilot.com/review/lucknation.com',
+};
+
+// Per-tab brand URL overrides — take precedence over BRAND_TP_URLS when tab matches.
+const TAB_BRAND_URLS: Record<string, Record<string, string>> = {
+  'Wizard of Odds': {
+    'roosterbet':      'https://wizardofodds.com/online-casinos/reviews/roosterbet-casino/',
+    'lucky7even':      'https://wizardofodds.com/online-casinos/reviews/lucky7even-casino/',
+    'fortuneplay':     'https://wizardofodds.com/online-casinos/reviews/fortuneplay-casino/',
+    'fortune play':    'https://wizardofodds.com/online-casinos/reviews/fortuneplay-casino/',
+    'rocketspin':      'https://wizardofodds.com/online-casinos/reviews/rocketspin-casino/',
+    'rocket spin':     'https://wizardofodds.com/online-casinos/reviews/rocketspin-casino/',
+    'luckyvibe':       'https://wizardofodds.com/online-casinos/reviews/luckyvibe/',
+    'lucky vibe':      'https://wizardofodds.com/online-casinos/reviews/luckyvibe/',
+    'playmojo':        'https://wizardofodds.com/online-casinos/reviews/playmojo-casino/',
+    'play mojo':       'https://wizardofodds.com/online-casinos/reviews/playmojo-casino/',
+    'rollero':         'https://wizardofodds.com/online-casinos/reviews/rollero-casino/',
+  },
+};
+
+export function getBrandTpUrl(brandName: string, tab?: string): string | undefined {
+  const key = brandName.toLowerCase().trim();
+  if (tab && TAB_BRAND_URLS[tab]?.[key]) return TAB_BRAND_URLS[tab][key];
+  return BRAND_TP_URLS[key];
 }
 
 // Returns true if the tab has TP + AG + CG platform columns.
