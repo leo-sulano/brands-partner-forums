@@ -86,9 +86,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </NavLink>
         ))}
 
-        {!isCollapsed && (
-          <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
-        )}
+        {isCollapsed
+          ? <div className="h-px bg-slate-800 my-1 mx-2" />
+          : <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
+        }
 
         {(brandsOpen || isCollapsed) && OPERATIONAL_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab] ?? Syringe;
@@ -122,9 +123,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
         {!!session && (
           <>
-            {!isCollapsed && (
-              <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
-            )}
+            {isCollapsed
+              ? <div className="h-px bg-slate-800 my-1 mx-2" />
+              : <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
+            }
 
             {(adminOpen || isCollapsed) && (
               <>
