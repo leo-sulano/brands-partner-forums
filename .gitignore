@@ -5,6 +5,9 @@ dist-ssr/
 *.local
 *.tsbuildinfo
 
+# Git worktrees (scratch, per superpowers:using-git-worktrees)
+.worktrees/
+
 # Env
 .env
 .env.local
