@@ -594,6 +594,20 @@ Resolved a geo-restriction issue where EC2 Singapore returned a 27K-char blocked
 
 ---
 
-*Last updated: June 30, 2026*
+## Task 75: Scoped Full Check — Tab/Brand Picker
+**Date:** July 1, 2026
+
+Added a tab/brand scope picker to the Check Status page so "Run Full Check" can target specific tabs/brands instead of always checking everything.
+
+- New `FullCheckScopePicker` component: tri-state checkbox tree (tabs → brands), search filter, select-all/clear-all, live selection counter
+- Fixed a brand-column-detection gap so "TP Brand Injection" and "TP Affiliate" now populate real brand lists (previously always empty)
+- `handleFullCheck` now skips fully-unselected tabs and sends a `brands` filter for partially-selected ones; run history is labeled "Full run" vs. "Custom — X/Y tabs, A/B brands"
+- Local Python status-check server (`scripts/check_review_status.py`, `scripts/status_server.py`) gained matching brand-level filtering, with a fix for a trim mismatch between the frontend's trimmed brand names and the backend's raw comparison that could have silently skipped whitespace-dirty rows in scoped runs
+- Spec: `docs/superpowers/specs/2026-07-01-scoped-full-check-design.md`; Plan: `docs/superpowers/plans/2026-07-01-scoped-full-check.md`
+- **Outstanding:** no live browser click-through was performed (app now requires login, no test credentials available) — verified via build, 18/18 Python tests, and 3 independent code reviews instead. A manual pass in the browser is still recommended before relying on it daily.
+
+---
+
+*Last updated: July 1, 2026*
 
 ---
