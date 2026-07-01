@@ -1699,14 +1699,16 @@ export default function BrandGroup() {
                   </td>
                 </tr>
               ) : (
-                pageRows.map((entry) => (
+                pageRows.map((entry) => {
+                  const isRowSelected = selectedIds.has(entry.id);
+                  return (
                   <tr
                     key={entry.id}
-                    className="group transition-colors"
+                    className={`group transition-colors ${isRowSelected ? 'relative z-20 outline outline-2 outline-violet-500 -outline-offset-2' : ''}`}
                   >
                     {isApproved && (
                       <td
-                        className="w-8 px-2 py-2.5 select-none sticky left-0 z-10 bg-white group-hover:bg-violet-50"
+                        className={`w-8 px-2 py-2.5 select-none sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
                         onClick={(e) => e.stopPropagation()}
                         data-drag-id={entry.id}
                         onMouseDown={(e) => {
@@ -1843,7 +1845,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 bg-white"
+                            className={`px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
@@ -1976,7 +1978,7 @@ export default function BrandGroup() {
                       }
 
                       return (
-                        <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? 'sticky left-0 z-10 bg-white group-hover:bg-violet-50' : ''}`}>
+                        <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? `sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}` : ''}`}>
                           <CellValue
                             header={h}
                             value={entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)}
@@ -1986,7 +1988,8 @@ export default function BrandGroup() {
                       );
                     })}
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
