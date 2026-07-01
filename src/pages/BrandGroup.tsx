@@ -2058,6 +2058,7 @@ export default function BrandGroup() {
           currentTab={decodedTab}
           availableBrands={uniqueBrands}
           brandCol={brandCol}
+          brandProfiles={brandProfiles}
           onClose={() => setEditEntry(null)}
           onSave={async (fields, newTab) => {
             if (newTab && newTab !== editEntry.tab) {

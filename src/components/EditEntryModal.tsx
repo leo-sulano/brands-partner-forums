@@ -94,9 +94,12 @@ interface Props {
   currentTab?: string;
   availableBrands?: string[];
   brandCol?: string | null;
+  brandProfiles?: Record<string, Record<string, string>>;
 }
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol }: Props) {
+const BRAND_PROFILE_LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link'];
+
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles }: Props) {
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const h of headers) {
@@ -271,7 +274,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Name</label>
                   <BrandSelectDropdown
                     value={fields[brandCol] ?? ''}
-                    onChange={(v) => setFields((f) => ({ ...f, [brandCol]: v }))}
+                    onChange={(v) => {
+                      const profile = brandProfiles?.[v];
+                      setFields((f) => {
+                        const next = { ...f, [brandCol]: v };
+                        for (const col of BRAND_PROFILE_LINK_COLS) {
+                          if (col in next) next[col] = profile?.[col] ?? '';
+                        }
+                        return next;
+                      });
+                    }}
                     brands={availableBrands}
                     disabled={saving}
                   />
