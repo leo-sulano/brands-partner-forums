@@ -1,10 +1,11 @@
-import React, { useEffect, useReducer, useState } from 'react';
+import React, { useEffect, useReducer, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
 import { triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
 import { tabToSlug } from '../lib/tabs';
 import Toast, { type ToastKind } from '../components/Toast';
-import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
+import { TAB_COLUMN_CONFIGS, getTabSequence } from '../lib/tab-configs';
+import FullCheckScopePicker from '../components/FullCheckScopePicker';
 
 // Module-level singleton — survives React unmount/remount during navigation
 let _fullCheckRunning = false;
@@ -21,6 +22,29 @@ function setFullCheckProgress(v: string) {
 }
 
 const ALL_TABS = Object.keys(TAB_COLUMN_CONFIGS);
+
+// Orders each tab's brands by its curated TAB_BRAND_SEQUENCE (when one exists), appending
+// any live brand not yet in that list so nothing is ever hidden from the picker. Tabs with
+// no detected brand column at all fall back to a single pseudo-brand (the tab name itself).
+function buildBrandsByTab(summary: TabStatusRow[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const row of summary) {
+    if (row.brands.length === 0) {
+      out[row.tab] = [row.tab];
+      continue;
+    }
+    const seq = getTabSequence(row.tab);
+    if (!seq) {
+      out[row.tab] = row.brands;
+      continue;
+    }
+    const liveSet = new Set(row.brands);
+    const ordered = seq.filter((b) => liveSet.has(b));
+    const extra = row.brands.filter((b) => !seq.includes(b)).sort();
+    out[row.tab] = [...ordered, ...extra];
+  }
+  return out;
+}
 
 const HISTORY_KEY = 'fullCheckHistory';
 const MAX_HISTORY = 30;
@@ -44,6 +68,10 @@ export default function SyncStatus() {
   const [checkHistory, setCheckHistory]     = useState<FullCheckSnapshot[]>(() => loadHistory());
   const [expandedRun, setExpandedRun]       = useState<Set<string>>(new Set());
 
+  const [summary, setSummary] = useState<TabStatusRow[]>([]);
+  const [selection, setSelection] = useState<Record<string, Set<string>>>({});
+  const seededSelectionRef = useRef(false);
+
   // Mirror module-level singleton into render via forceUpdate
   const [, tick] = useReducer(x => x + 1, 0);
   useEffect(() => {
@@ -57,7 +85,18 @@ export default function SyncStatus() {
     return fetchAllTabsStatusSummary(ALL_TABS);
   }
 
-  useEffect(() => { loadSummary(); }, []);
+  useEffect(() => { loadSummary().then(setSummary); }, []);
+
+  const brandsByTab = buildBrandsByTab(summary);
+
+  // Default every tab/brand to checked the first time real data arrives. Runs once per
+  // page load — later summary refreshes (e.g. after running a check) don't touch a
+  // selection the user has already customized.
+  useEffect(() => {
+    if (seededSelectionRef.current || summary.length === 0) return;
+    setSelection(Object.fromEntries(ALL_TABS.map((t) => [t, new Set(brandsByTab[t] ?? [])])));
+    seededSelectionRef.current = true;
+  }, [summary]);
 
   async function handleFullCheck() {
     setFullCheckRunning(true);
@@ -94,6 +133,8 @@ export default function SyncStatus() {
     });
   }
 
+  const nothingSelected = ALL_TABS.every((t) => (selection[t]?.size ?? 0) === 0);
+
   return (
     <div className="space-y-6">
       {/* ── Full Check Status ── */}
@@ -109,7 +150,8 @@ export default function SyncStatus() {
             )}
             <button
               onClick={handleFullCheck}
-              disabled={checkingAll}
+              disabled={checkingAll || nothingSelected}
+              title={nothingSelected ? 'Select at least one tab or brand' : undefined}
               className="inline-flex items-center gap-2 rounded-md bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-60"
             >
               <RefreshCw className={`size-4 ${checkingAll ? 'animate-spin' : ''}`} />
@@ -117,6 +159,15 @@ export default function SyncStatus() {
             </button>
           </div>
         </div>
+
+        {summary.length > 0 && (
+          <FullCheckScopePicker
+            tabs={ALL_TABS}
+            brandsByTab={brandsByTab}
+            selection={selection}
+            onChange={setSelection}
+          />
+        )}
 
         {/* Delta message */}
         {checkHistory.length > 0 && (() => {
