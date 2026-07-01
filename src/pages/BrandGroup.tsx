@@ -871,16 +871,30 @@ export default function BrandGroup() {
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
     if (!brandCol) return {};
     const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link'];
-    const profiles: Record<string, Record<string, string>> = {};
+    // Count occurrences per brand+col so a handful of mistyped/copy-pasted outlier
+    // rows can't outrank the value the vast majority of that brand's rows agree on.
+    const counts: Record<string, Record<string, Record<string, number>>> = {};
     for (const entry of entries) {
       const brand = entry.data[brandCol]?.trim();
       if (!brand) continue;
-      if (!profiles[brand]) profiles[brand] = {};
+      if (!counts[brand]) counts[brand] = {};
       for (const col of LINK_COLS) {
-        const val = entry.data[col];
-        if (val && val.trim() && val !== '—' && !profiles[brand][col]) {
-          profiles[brand][col] = val.trim();
+        const val = entry.data[col]?.trim();
+        if (!val || val === '—') continue;
+        if (!counts[brand][col]) counts[brand][col] = {};
+        counts[brand][col][val] = (counts[brand][col][val] ?? 0) + 1;
+      }
+    }
+    const profiles: Record<string, Record<string, string>> = {};
+    for (const [brand, cols] of Object.entries(counts)) {
+      profiles[brand] = {};
+      for (const [col, valueCounts] of Object.entries(cols)) {
+        let best = '';
+        let bestCount = 0;
+        for (const [val, n] of Object.entries(valueCounts)) {
+          if (n > bestCount) { best = val; bestCount = n; }
         }
+        profiles[brand][col] = best;
       }
     }
     return profiles;

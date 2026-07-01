@@ -97,7 +97,7 @@ interface Props {
   brandProfiles?: Record<string, Record<string, string>>;
 }
 
-const BRAND_PROFILE_LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link'];
+const BRAND_PROFILE_LINK_COLS = ['AG Review Link', 'CG Review Link'];
 
 export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles }: Props) {
   const [fields, setFields] = useState<Record<string, string>>(() => {
