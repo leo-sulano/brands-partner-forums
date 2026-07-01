@@ -986,7 +986,7 @@ export default function BrandGroup() {
         const fields: Record<string, string | null> = {};
         for (const k of Object.keys(entry.data)) {
           if (k === 'Account') fields[k] = entry.data[k] ? `${entry.data[k]} dup` : null;
-          else if (k === 'Trust Pilot') fields[k] = todayStr;
+          else if (k === 'Trust Pilot' || k === 'Wizard of Odds') fields[k] = todayStr;
           else if (CLEAR_ON_DUPLICATE.has(k)) fields[k] = null;
           else fields[k] = entry.data[k] ?? null;
         }
@@ -2044,7 +2044,16 @@ export default function BrandGroup() {
             const extras = Object.keys(editEntry.data).filter(
               (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && !base.has(k),
             );
-            return [...filteredFull, ...extras];
+            const hdrs = [...filteredFull, ...extras];
+            if (decodedTab === 'Wizard of Odds') {
+              const unIdx = hdrs.indexOf('User Name');
+              const asIdx = hdrs.indexOf('Account Surname');
+              if (unIdx !== -1 && asIdx !== -1) {
+                hdrs.splice(unIdx, 1);
+                hdrs.splice(hdrs.indexOf('Account Surname') + 1, 0, 'User Name');
+              }
+            }
+            return hdrs;
           })()}
           currentTab={decodedTab}
           availableBrands={uniqueBrands}
