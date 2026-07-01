@@ -97,7 +97,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               {brandsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
             </button>
           )
-          : <SectionHeader label="Brands Performance" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
+          : <SectionHeader label="Brand Tabs" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
         }
 
         {brandsOpen && OPERATIONAL_TABS.map((tab) => {
@@ -160,11 +160,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 <NavLink
                   to="/sync"
                   onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Sync Status' : undefined}
+                  title={isCollapsed ? 'Check Status' : undefined}
                   className={({ isActive }) => linkClass(isActive, isCollapsed)}
                 >
                   <RefreshCw className="size-4" />
-                  {!isCollapsed && 'Sync Status'}
+                  {!isCollapsed && 'Check Status'}
                 </NavLink>
                 <NavLink
                   to="/log"
