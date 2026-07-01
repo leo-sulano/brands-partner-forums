@@ -93,6 +93,9 @@ TP_STATUS_COLS = [
 # "Score added" / "Score Added" are Yes/No boolean columns — excluded intentionally.
 SCORE_COLS = ["Score"]
 
+# Same priority order as BRAND_COLS in src/pages/BrandGroup.tsx — keep in sync.
+BRAND_COLS = ["Brands", "Brand Name", "Brand", "Brand / TP URL PAGE", "URL PAGE", "Account Name"]
+
 # Only entries with these statuses are eligible for a status check.
 # "Done"      = review was just posted by the agent; TP hasn't processed it yet.
 # "Pending"   = TP received the review but moderation hasn't resolved it yet.
@@ -304,6 +307,13 @@ def find_score_col(data: dict) -> Optional[str]:
     return None
 
 
+def find_brand_col(data: dict) -> Optional[str]:
+    for col in BRAND_COLS:
+        if col in data:
+            return col
+    return None
+
+
 def _fetch_all(params: dict) -> list:
     """Paginate through Supabase REST (server caps at 1000 rows per request)."""
     PAGE = 1000
@@ -324,13 +334,15 @@ def _fetch_all(params: dict) -> list:
     return all_rows
 
 
-def load_entries(tab: Optional[str] = None, include_published: bool = True) -> list[dict]:
+def load_entries(tab: Optional[str] = None, include_published: bool = True,
+                  brands: Optional[list[str]] = None) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
     rows: list[dict] = _fetch_all(params)
 
     statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    brand_set = set(brands) if brands else None
 
     out = []
     for row in rows:
@@ -344,6 +356,10 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True) -> l
         current = (data.get(status_col) or "").strip().lower()
         if current not in statuses:
             continue
+        if brand_set is not None:
+            brand_col = find_brand_col(data)
+            if not brand_col or data.get(brand_col) not in brand_set:
+                continue
         out.append(row)
     return out
 

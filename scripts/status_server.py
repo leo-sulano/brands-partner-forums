@@ -82,6 +82,7 @@ def check_status():
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
     platform: str = (body.get('platform') or 'tp').lower()
+    brands: list[str] | None = body.get('brands') or None
 
     # Platform-namespaced lock so TP/AG/CG/WO can run concurrently on the same tab.
     # TP keeps its legacy key format for backwards compat with any running checks.
@@ -115,7 +116,7 @@ def check_status():
             return jsonify(result)
 
         # Default: TP Selenium check.
-        entries = load_entries(tab, include_published=include_published)
+        entries = load_entries(tab, include_published=include_published, brands=brands)
         total = len(entries)
         print(f'\n[server] TP check started — {total} entries ({scope})')
 
