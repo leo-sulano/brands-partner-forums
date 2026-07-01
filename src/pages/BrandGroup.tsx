@@ -2039,10 +2039,10 @@ export default function BrandGroup() {
         <EditEntryModal
           entry={editEntry}
           headers={(() => {
-            const filteredFull = fullHeaders.filter((h) => h.toLowerCase() !== 'id');
+            const filteredFull = fullHeaders.filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
             const base = new Set(filteredFull);
             const extras = Object.keys(editEntry.data).filter(
-              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && !base.has(k),
+              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !base.has(k),
             );
             const hdrs = [...filteredFull, ...extras];
             if (decodedTab === 'Wizard of Odds') {
