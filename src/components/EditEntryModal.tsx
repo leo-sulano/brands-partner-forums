@@ -161,21 +161,20 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   };
   for (const h of visibleHeaders) sections[sectionOf(h)].push(h);
 
-  // WO tab: move 'User Name' to immediately after 'Account Surname' in account section
-  if (currentTab === 'Wizard of Odds') {
-    const unIdx = sections.account.indexOf('User Name');
-    const asIdx = sections.account.indexOf('Account Surname');
-    if (unIdx !== -1 && asIdx !== -1) {
-      sections.account.splice(unIdx, 1);
-      sections.account.splice(sections.account.indexOf('Account Surname') + 1, 0, 'User Name');
-    }
+  function reorderAccountFields(fields: string[]): string[] {
+    if (currentTab !== 'Wizard of Odds') return fields;
+    const without = fields.filter((h) => h !== 'User Name');
+    const asIdx = without.indexOf('Account Surname');
+    if (asIdx === -1 || !fields.includes('User Name')) return fields;
+    without.splice(asIdx + 1, 0, 'User Name');
+    return without;
   }
 
   function renderField(h: string) {
     return (
       <div key={h} className={isLinkCol(h) ? 'col-span-2 sm:col-span-6' : ''}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">
-          {getColLabel(h)}
+          {getColLabel(h, currentTab)}
         </label>
         {isStatusCol(h) ? (
           <SelectDropdown
@@ -284,7 +283,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Account Details" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.account.map(renderField)}
+                {reorderAccountFields(sections.account).map(renderField)}
               </div>
             </>
           )}
