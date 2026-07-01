@@ -311,7 +311,8 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
     .maybeSingle();
   if (error) throw error;
   const headers = (data?.headers ?? []) as string[];
-  return headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
+  const filtered = headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
+  return Array.from(new Set(filtered));
 }
 
 function isLiveStatus(s: string) {

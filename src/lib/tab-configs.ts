@@ -156,6 +156,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   'CG Score added':                                   'CG Score',
   'Brand / TP URL PAGE':                              'Brands',
   'Brand Name':                                        'Brands',
+  'URL PAGE__href':                                    'Brand Links',
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };
 

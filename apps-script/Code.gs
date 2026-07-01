@@ -132,11 +132,15 @@ function collectStructures(includeRows) {
       for (var h = 0; h < HYPERLINK_COLS.length; h++) {
         var colName = HYPERLINK_COLS[h];
         var colIdx = headers.indexOf(colName);
-        if (colIdx >= 0 && lastRow >= 2) {
+        var hrefColName = colName + '__href';
+        // Skip if the sheet already has a real column with this name — avoids
+        // emitting a literal duplicate header when extraction and a manual
+        // column collide (e.g. TP Affiliate's sheet has its own 'URL PAGE__href').
+        if (colIdx >= 0 && lastRow >= 2 && headers.indexOf(hrefColName) === -1) {
           var range = sheet.getRange(2, colIdx + 1, lastRow - 1, 1);
           var richVals = range.getRichTextValues();
           var formulas = range.getFormulas();
-          extraHeaders.push(colName + '__href');
+          extraHeaders.push(hrefColName);
           for (var r = 0; r < richVals.length; r++) {
             var url = richVals[r][0] ? richVals[r][0].getLinkUrl() : '';
             if (!url) {
