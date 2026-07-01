@@ -166,7 +166,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     const toMove = ['User Name', 'WO User'].filter((h) => fields.includes(h));
     if (!toMove.length) return fields;
     const without = fields.filter((h) => !toMove.includes(h));
-    const asIdx = without.indexOf('Account Surname');
+    const asIdx = without.findIndex((h) => h.trim() === 'Account Surname');
     if (asIdx === -1) return fields;
     without.splice(asIdx + 1, 0, ...toMove);
     return without;

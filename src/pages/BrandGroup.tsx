@@ -2047,10 +2047,10 @@ export default function BrandGroup() {
             const hdrs = [...filteredFull, ...extras];
             if (decodedTab === 'Wizard of Odds') {
               const unIdx = hdrs.indexOf('User Name');
-              const asIdx = hdrs.indexOf('Account Surname');
+              const asIdx = hdrs.findIndex((h) => h.trim() === 'Account Surname');
               if (unIdx !== -1 && asIdx !== -1) {
                 hdrs.splice(unIdx, 1);
-                hdrs.splice(hdrs.indexOf('Account Surname') + 1, 0, 'User Name');
+                hdrs.splice(hdrs.findIndex((h) => h.trim() === 'Account Surname') + 1, 0, 'User Name');
               }
             }
             return hdrs;
