@@ -358,7 +358,8 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True,
             continue
         if brand_set is not None:
             brand_col = find_brand_col(data)
-            if not brand_col or data.get(brand_col) not in brand_set:
+            brand_val = (data.get(brand_col) or "").strip() if brand_col else ""
+            if not brand_col or brand_val not in brand_set:
                 continue
         out.append(row)
     return out

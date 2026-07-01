@@ -47,6 +47,17 @@ def test_load_entries_without_brands_returns_all(monkeypatch):
     assert len(result) == 2
 
 
+def test_load_entries_filters_by_brands_ignores_whitespace(monkeypatch):
+    rows = [
+        _row('Brand / TP URL PAGE', 'Boho Casino '),
+    ]
+    monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
+
+    result = crs.load_entries('TP Brand Injection', include_published=True, brands=['Boho Casino'])
+
+    assert len(result) == 1
+
+
 def test_load_entries_skips_rows_with_no_brand_col_when_filtering(monkeypatch):
     rows = [
         {
