@@ -278,6 +278,7 @@ export const BRAND_TP_URLS: Record<string, string> = {
   'fortuneplay':           'https://www.trustpilot.com/review/www.fortuneplay.com',
   'spinjo':                'https://www.trustpilot.com/review/spinjo.com',
   'spinsup':               'https://www.trustpilot.com/review/spinsup.com',
+  'rocketspin':            'https://www.trustpilot.com/review/rocketspin.com',
   'rocket spin':           'https://www.trustpilot.com/review/rocketspin.com',
   'play mojo':             'https://www.trustpilot.com/review/playmojo.com',
   'lucky vibe':            'https://www.trustpilot.com/review/luckyvibe.com',
