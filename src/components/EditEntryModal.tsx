@@ -161,6 +161,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   };
   for (const h of visibleHeaders) sections[sectionOf(h)].push(h);
 
+  // WO tab: move 'User Name' to immediately after 'Account Surname' in account section
+  if (currentTab === 'Wizard of Odds') {
+    const unIdx = sections.account.indexOf('User Name');
+    const asIdx = sections.account.indexOf('Account Surname');
+    if (unIdx !== -1 && asIdx !== -1) {
+      sections.account.splice(unIdx, 1);
+      sections.account.splice(sections.account.indexOf('Account Surname') + 1, 0, 'User Name');
+    }
+  }
+
   function renderField(h: string) {
     return (
       <div key={h} className={isLinkCol(h) ? 'col-span-2 sm:col-span-6' : ''}>
@@ -279,10 +289,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             </>
           )}
 
-          {/* Trust Pilot */}
+          {/* Trust Pilot / Wizard of Odds */}
           {sections.tp.length > 0 && (
             <>
-              <SectionHeading label="Trust Pilot" />
+              <SectionHeading label={currentTab === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {sections.tp.map(renderField)}
               </div>
