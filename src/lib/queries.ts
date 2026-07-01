@@ -505,6 +505,7 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
 export async function triggerStatusCheck(
   tab: string,
   includePublished = false,
+  brands?: string[],
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_STATUS_URL) {
     throw new Error(
@@ -519,7 +520,7 @@ export async function triggerStatusCheck(
       // Skip ngrok's free-tier browser-warning interstitial so we always get JSON.
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished }),
+    body: JSON.stringify({ tab, include_published: includePublished, brands }),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -685,7 +686,7 @@ export async function fetchAdminLogs(limit = 50): Promise<AdminLogEvent[]> {
 // Full check status summary — per-tab published / removed counts + brand names
 // ---------------------------------------------------------------------------
 
-const SUMMARY_BRAND_COLS = ['Brands', 'Brand Name'];
+const SUMMARY_BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
 
 export interface TabStatusRow {
   tab: string;
