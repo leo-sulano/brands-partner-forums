@@ -163,10 +163,12 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
 
   function reorderAccountFields(fields: string[]): string[] {
     if (currentTab !== 'Wizard of Odds') return fields;
-    const without = fields.filter((h) => h !== 'User Name');
+    const toMove = ['User Name', 'WO User'].filter((h) => fields.includes(h));
+    if (!toMove.length) return fields;
+    const without = fields.filter((h) => !toMove.includes(h));
     const asIdx = without.indexOf('Account Surname');
-    if (asIdx === -1 || !fields.includes('User Name')) return fields;
-    without.splice(asIdx + 1, 0, 'User Name');
+    if (asIdx === -1) return fields;
+    without.splice(asIdx + 1, 0, ...toMove);
     return without;
   }
 
