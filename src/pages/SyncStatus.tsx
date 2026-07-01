@@ -52,6 +52,7 @@ const MAX_HISTORY = 30;
 interface FullCheckSnapshot {
   runAt: string;
   summary: TabStatusRow[];
+  scope?: { tabsRun: number; tabsTotal: number; brandsRun: number; brandsTotal: number };
 }
 
 function loadHistory(): FullCheckSnapshot[] {
@@ -99,13 +100,23 @@ export default function SyncStatus() {
   }, [summary]);
 
   async function handleFullCheck() {
+    const tabsToRun = ALL_TABS.filter((t) => (selection[t]?.size ?? 0) > 0);
+    if (tabsToRun.length === 0) return;
+
     setFullCheckRunning(true);
     let succeeded = 0, failed = 0;
-    for (let i = 0; i < ALL_TABS.length; i++) {
-      const tab = ALL_TABS[i];
-      setFullCheckProgress(`Checking "${tab}" (${i + 1}/${ALL_TABS.length})…`);
+    for (let i = 0; i < tabsToRun.length; i++) {
+      const tab = tabsToRun[i];
+      const total = brandsByTab[tab]?.length ?? 0;
+      const picked = selection[tab]?.size ?? 0;
+      const full = picked >= total;
+      setFullCheckProgress(
+        full
+          ? `Checking "${tab}" (${i + 1}/${tabsToRun.length})…`
+          : `Checking "${tab}" — ${picked} brand${picked !== 1 ? 's' : ''} (${i + 1}/${tabsToRun.length})…`
+      );
       try {
-        await triggerStatusCheck(tab, true);
+        await triggerStatusCheck(tab, true, full ? undefined : [...selection[tab]!]);
         succeeded++;
       } catch {
         failed++;
@@ -115,11 +126,18 @@ export default function SyncStatus() {
     setToast({
       message: failed > 0
         ? `${succeeded} tab${succeeded !== 1 ? 's' : ''} checked, ${failed} failed`
-        : `All ${succeeded} tabs checked successfully`,
+        : `All ${succeeded} tab${succeeded !== 1 ? 's' : ''} checked successfully`,
       kind: failed > 0 ? 'error' : 'success',
     });
     const latest = await loadSummary();
-    const snapshot: FullCheckSnapshot = { runAt: new Date().toISOString(), summary: latest };
+    setSummary(latest);
+    const brandsRun = tabsToRun.reduce((s, t) => s + (selection[t]?.size ?? 0), 0);
+    const brandsTotal = ALL_TABS.reduce((s, t) => s + (brandsByTab[t]?.length ?? 0), 0);
+    const snapshot: FullCheckSnapshot = {
+      runAt: new Date().toISOString(),
+      summary: latest,
+      scope: { tabsRun: tabsToRun.length, tabsTotal: ALL_TABS.length, brandsRun, brandsTotal },
+    };
     const updated = [snapshot, ...checkHistory].slice(0, MAX_HISTORY);
     localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
     setCheckHistory(updated);
@@ -243,18 +261,25 @@ export default function SyncStatus() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-xs">
-                          {!hasPrev ? (
-                            <span className="inline-flex items-center gap-2">
-                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
-                              <span className="text-slate-400">(baseline)</span>
-                            </span>
-                          ) : newlyRemoved > 0 ? (
-                            <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">
-                              +{newlyRemoved} newly removed from Published
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">No new removals</span>
-                          )}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {snap.scope && (snap.scope.tabsRun !== snap.scope.tabsTotal || snap.scope.brandsRun !== snap.scope.brandsTotal) && (
+                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
+                                Custom — {snap.scope.tabsRun}/{snap.scope.tabsTotal} tabs, {snap.scope.brandsRun}/{snap.scope.brandsTotal} brands
+                              </span>
+                            )}
+                            {!hasPrev ? (
+                              <span className="inline-flex items-center gap-2">
+                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
+                                <span className="text-slate-400">(baseline)</span>
+                              </span>
+                            ) : newlyRemoved > 0 ? (
+                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">
+                                +{newlyRemoved} newly removed from Published
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">No new removals</span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {isOpen && (
