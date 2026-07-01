@@ -6,6 +6,7 @@ import { getColLabel } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS } from '../lib/tabs';
+import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 
 const STATUS_OPTS = [
   { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
@@ -107,6 +108,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const [selectedTab, setSelectedTab] = useState(currentTab ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pasteFlash, setPasteFlash] = useState(false);
 
   async function handleSave() {
     setSaving(true);
@@ -125,6 +127,25 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
 
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === 'Escape') onClose();
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const text = e.clipboardData.getData('text');
+    if (!text.includes('\t')) return;
+    const firstRow = text.split(/\r?\n/)[0];
+    const cols = firstRow.split('\t');
+    if (cols.length < 3) return;
+    e.preventDefault();
+    const emailIdx = cols.findIndex((c) => c.trim().includes('@'));
+    const base = emailIdx === -1 ? 0 : emailIdx;
+    const updates: Record<string, string> = {};
+    cols.forEach((val, j) => {
+      const key = PASTE_OFFSET_MAP[j - base];
+      if (key && val.trim()) updates[key] = val.trim();
+    });
+    setFields((f) => ({ ...f, ...updates }));
+    setPasteFlash(true);
+    setTimeout(() => setPasteFlash(false), 2000);
   }
 
   const title =
@@ -193,7 +214,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey} onPaste={handlePaste}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative flex max-h-[90vh] w-full max-w-7xl flex-col rounded-xl bg-white shadow-xl">
 
@@ -201,7 +222,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
         <div className="flex items-start justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <h2 className="text-sm font-semibold text-slate-900 truncate max-w-xs">{title}</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Edit and save changes to this entry</p>
+            <p className="mt-0.5 text-xs text-slate-400">Edit and save changes to this entry · Ctrl+V a sheet row to fill account fields</p>
           </div>
           <button
             onClick={onClose}
@@ -210,6 +231,13 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <X className="size-4" />
           </button>
         </div>
+
+        {/* Paste flash */}
+        {pasteFlash && (
+          <div className="mx-5 mt-3 rounded-md border border-green-200 bg-green-50 px-3 py-2 text-xs text-green-700">
+            Fields filled from sheet row
+          </div>
+        )}
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-5 py-4">
