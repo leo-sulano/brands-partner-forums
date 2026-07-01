@@ -1,4 +1,4 @@
-import { supabase, PUSH_TO_SHEET_URL, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
+import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { SyncRun } from '../types/sync';
@@ -6,13 +6,9 @@ import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
 
-// Columns that exist only in the dashboard (not in the Google Sheet).
-// These are saved to Supabase data JSONB but never pushed to the sheet.
-const DASHBOARD_ONLY_COLS = new Set(['AG User', 'CG User']);
-
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
-// Column names in `data` must match the exact headers from the Google Sheet.
+// Column names in `data` must match the exact column headers.
 // Falls back through common variants so minor header-name differences don't
 // break the display.
 // ---------------------------------------------------------------------------
@@ -424,7 +420,6 @@ async function currentUserEmail(): Promise<string | null> {
 export async function updateEntryData(
   id: string,
   tab: string,
-  sheetRowId: string,
   fields: Record<string, string | null>,
 ): Promise<void> {
   const { data: existing, error: selErr } = await supabase
@@ -444,15 +439,6 @@ export async function updateEntryData(
   if (upErr) throw upErr;
 
   invalidateTabCache(tab);
-
-  const sheetFields = Object.fromEntries(
-    Object.entries(fields).filter(([k]) => !DASHBOARD_ONLY_COLS.has(k)),
-  );
-  if (Object.keys(sheetFields).length > 0) {
-    pushEntryToSheet(tab, sheetRowId, sheetFields).catch(
-      (err) => console.warn('[push-to-sheet] entry update failed (non-blocking):', err),
-    );
-  }
 }
 
 export async function updateMentionStatus(id: string, status: MentionStatus): Promise<void> {
@@ -476,32 +462,6 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
     .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: await currentUserEmail(), last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
-
-  // Fire-and-forget: push the status change to the Sheet without blocking the UI.
-  // If push-to-sheet is not configured, the error is only logged.
-  pushEntryToSheet(existing.tab as string, existing.sheet_row_id as string, { status }).catch(
-    (err) => console.warn('[push-to-sheet] status update failed (non-blocking):', err),
-  );
-}
-
-export async function pushEntryToSheet(
-  tab: string,
-  sheetRowId: string,
-  fields: Record<string, string | null>,
-): Promise<void> {
-  if (!PUSH_TO_SHEET_URL) throw new Error('VITE_PUSH_TO_SHEET_URL is not configured');
-  const res = await fetch(PUSH_TO_SHEET_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ tab, sheet_row_id: sheetRowId, fields }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Push to sheet failed: ${res.status} ${body}`);
-  }
 }
 
 export async function insertEntry(
@@ -522,10 +482,6 @@ export async function insertEntry(
     });
   if (error) throw error;
   invalidateTabCache(tab);
-
-  pushEntryToSheet(tab, sheetRowId, fields).catch(
-    (err) => console.warn('[push-to-sheet] new entry push failed (non-blocking):', err),
-  );
 }
 
 export async function deleteEntries(ids: string[], tab: string): Promise<void> {

@@ -765,7 +765,7 @@ export default function BrandGroup() {
             await Promise.allSettled(
               toUpdate.map(async ({ entry, fields }) => {
                 try {
-                  await updateEntryData(entry.id, entry.tab, entry.sheet_row_id, fields);
+                  await updateEntryData(entry.id, entry.tab, fields);
                   filled++;
                 } catch (err) {
                   console.warn('[auto-fill-links] update failed:', err);
@@ -902,7 +902,7 @@ export default function BrandGroup() {
     }
     setSavingCell(true);
     try {
-      await updateEntryData(entry.id, entry.tab, entry.sheet_row_id, fields);
+      await updateEntryData(entry.id, entry.tab, fields);
       setEntries((prev) =>
         prev.map((e) => (e.id === entry.id ? { ...e, data: { ...e.data, ...fields } } : e)),
       );
@@ -2063,7 +2063,7 @@ export default function BrandGroup() {
             if (newTab && newTab !== editEntry.tab) {
               await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
             }
-            await updateEntryData(editEntry.id, newTab ?? editEntry.tab, editEntry.sheet_row_id, fields);
+            await updateEntryData(editEntry.id, newTab ?? editEntry.tab, fields);
             setEntries((prev) =>
               prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
