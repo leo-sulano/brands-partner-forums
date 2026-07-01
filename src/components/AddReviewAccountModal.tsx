@@ -49,6 +49,14 @@ const ACCOUNT_FIELDS: FieldDef[] = [
   { key: 'Process',              label: 'Process' },
   { key: 'Details',              label: 'Details',              span: true },
   { key: 'Brand Name',           label: 'Brand Name' },
+  { key: 'Reveiw Language',                              label: 'Review Language' },
+  { key: 'Mobile or deskstop ?',                         label: 'Mobile or Desktop' },
+  { key: 'Redirection from Search Engine (which one?)',  label: 'Redirection (Search Engine)' },
+  { key: 'Redirection Word used (Casino, Trustpilot)',   label: 'Redirection Word Used' },
+  { key: 'Mentioning time frames',                       label: 'Mentioning Time Frames' },
+  { key: 'Mentioning Amounts?',                          label: 'Mentioning Amounts?' },
+  { key: 'Mentioning Agent name?',                       label: 'Mentioning Agent Name?' },
+  { key: 'Short review  / Long',                         label: 'Short / Long' },
 ];
 
 const TP_FIELDS: FieldDef[] = [

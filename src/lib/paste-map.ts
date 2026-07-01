@@ -1,6 +1,5 @@
 // Full sheet column order, relative to the Email column (offset 0).
-// null = column exists in sheet but has no matching modal field (skip).
-export const PASTE_OFFSET_MAP: Record<number, string | null> = {
+export const PASTE_OFFSET_MAP: Record<number, string> = {
   [-3]: 'Account',
   [-2]: 'Country',
   [-1]: 'Proxy Used',
@@ -16,21 +15,21 @@ export const PASTE_OFFSET_MAP: Record<number, string | null> = {
   [9]:  'Trust Pilot',
   [10]: 'Link to the profile',
   [11]: 'TP Review Status',
-  [12]: null, // Redirection from Search Engine
-  [13]: null, // Redirection Word used
-  [14]: null, // Review Language
+  [12]: 'Redirection from Search Engine (which one?)',
+  [13]: 'Redirection Word used (Casino, Trustpilot)',
+  [14]: 'Reveiw Language',
   [15]: 'Register from Google acount',
   [16]: 'Leaving Review After redirected from  welcome Email',
   [17]: 'Sticky IP (Mobile) (Y/N)',
   [18]: 'Photo in Account?',
-  [19]: null, // Mobile or desktop
+  [19]: 'Mobile or deskstop ?',
   [20]: 'Opening the account via "usefull"',
   [21]: 'Opening the account via "Register" when leaving review',
   [22]: 'Scrolling and houvering?',
   [23]: 'Smart Paste?/ Paste as human typing?',
-  [24]: null, // Mentioning time frames
-  [25]: null, // Mentioning Amounts
-  [26]: null, // Mentioning Agent name
-  [27]: null, // Short review / Long
+  [24]: 'Mentioning time frames',
+  [25]: 'Mentioning Amounts?',
+  [26]: 'Mentioning Agent name?',
+  [27]: 'Short review  / Long',
   [28]: 'Native Language?',
 };
