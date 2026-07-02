@@ -22,6 +22,14 @@ import type { Entry } from '../types/entry';
 const HIDDEN_COLS = new Set(['id', 'last_sync_tag', 'score added', 'review status']);
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
+// Dashboard-only fields with no Sheet column — never come from tab_schemas, so they're
+// force-inserted into the edit modal right after their paired "User" field. Preserved
+// across Sheet resyncs by DASHBOARD_ONLY_COLS in supabase/functions/import-tabs.
+const DASHBOARD_ONLY_MODAL_FIELDS: Array<[string, string]> = [
+  ['AG User', 'AG Password'],
+  ['CG User', 'CG Password'],
+];
+
 
 function isStatusCol(header: string) {
   return header.toLowerCase().includes('status');
@@ -292,7 +300,7 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
 
 const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
 const BRAND_LINK_COLS = ['AG Review Link', 'CG Review Link'];
-const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay']);
+const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay', 'GRG - Gulf Recovery Group ']);
 
 const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Still Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
@@ -2070,6 +2078,12 @@ export default function BrandGroup() {
               (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !base.has(k),
             );
             const hdrs = [...filteredFull, ...extras];
+            for (const [afterCol, field] of DASHBOARD_ONLY_MODAL_FIELDS) {
+              const dupIdx = hdrs.indexOf(field);
+              if (dupIdx !== -1) hdrs.splice(dupIdx, 1);
+              const afterIdx = hdrs.indexOf(afterCol);
+              if (afterIdx !== -1) hdrs.splice(afterIdx + 1, 0, field);
+            }
             if (decodedTab === 'Wizard of Odds') {
               const unIdx = hdrs.indexOf('User Name');
               const asIdx = hdrs.findIndex((h) => h.trim() === 'Account Surname');

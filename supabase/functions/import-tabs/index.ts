@@ -32,6 +32,12 @@ const STATUS_SCORE_COLS = new Set([
   'Score added', 'Score Added', 'score added', 'Score',
 ]);
 
+// Dashboard-only columns with no Sheet counterpart. They never appear in a Sheet
+// row's data, so unlike STATUS_SCORE_COLS they must always be carried forward
+// from the existing DB row (regardless of last_edited_by) or every sync would
+// silently erase them.
+const DASHBOARD_ONLY_COLS = new Set(['AG Password', 'CG Password']);
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -203,9 +209,16 @@ Deno.serve(async (req) => {
           const existing = dedupedMap.get(c.sheet_row_id);
 
           let mergedData = c.data;
-          if (existing && existing.last_edited_by === 'check-review-status') {
+          if (existing) {
             mergedData = { ...c.data };
-            for (const col of STATUS_SCORE_COLS) {
+            if (existing.last_edited_by === 'check-review-status') {
+              for (const col of STATUS_SCORE_COLS) {
+                if (col in existing.data) {
+                  mergedData[col] = existing.data[col];
+                }
+              }
+            }
+            for (const col of DASHBOARD_ONLY_COLS) {
               if (col in existing.data) {
                 mergedData[col] = existing.data[col];
               }

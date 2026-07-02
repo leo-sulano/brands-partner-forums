@@ -47,12 +47,12 @@ const TP_SECTION = new Set([
 
 const AG_SECTION = new Set([
   'Ask Gambler review added', 'AG Review Status', 'AG Review Link',
-  'AG User', 'AG Link', 'AG Added',
+  'AG User', 'AG Password', 'AG Link', 'AG Added',
 ]);
 
 const CG_SECTION = new Set([
   'Casino Guru review added', 'CG Review Status', 'CG Review Link',
-  'CG User', 'CG Link', 'CG Added',
+  'CG User', 'CG Password', 'CG Link', 'CG Added',
 ]);
 
 const BRAND_NAME_COLS = new Set(['Brands', 'Brand Name', 'Brand']);
