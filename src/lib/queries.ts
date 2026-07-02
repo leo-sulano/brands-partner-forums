@@ -5,7 +5,7 @@ import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
-import type { Platform } from './removedEntriesDiff';
+import type { Platform, RemovedEntryRow } from './removedEntriesDiff';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -810,4 +810,59 @@ export async function fetchRemovedEntryDetails(tabs: string[]): Promise<RemovedE
     }),
   );
   return perTab.flat();
+}
+
+export interface RunScope {
+  tabsRun: number;
+  tabsTotal: number;
+  brandsRun: number;
+  brandsTotal: number;
+}
+
+export interface FullCheckRun {
+  id: string;
+  run_at: string;
+  scope: RunScope;
+  summary: TabStatusRow[];
+}
+
+export async function recordFullCheckRun(tabs: string[], scope: RunScope): Promise<TabStatusRow[]> {
+  const [summary, removedDetails] = await Promise.all([
+    fetchAllTabsStatusSummary(tabs),
+    fetchRemovedEntryDetails(tabs),
+  ]);
+
+  const { data: run, error: runErr } = await supabase
+    .from('full_check_runs')
+    .insert({ scope, summary })
+    .select('id')
+    .single();
+  if (runErr) throw runErr;
+
+  if (removedDetails.length > 0) {
+    const { error: detailErr } = await supabase
+      .from('full_check_removed_entries')
+      .insert(removedDetails.map((d) => ({ ...d, run_id: run.id })));
+    if (detailErr) throw detailErr;
+  }
+  return summary;
+}
+
+export async function fetchFullCheckRuns(limit = 30): Promise<FullCheckRun[]> {
+  const { data, error } = await supabase
+    .from('full_check_runs')
+    .select('id, run_at, scope, summary')
+    .order('run_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as FullCheckRun[];
+}
+
+export async function fetchRemovedEntriesForRun(runId: string): Promise<RemovedEntryRow[]> {
+  const { data, error } = await supabase
+    .from('full_check_removed_entries')
+    .select('id, run_id, entry_id, tab, brand, account_name, platform, link, created_at')
+    .eq('run_id', runId);
+  if (error) throw error;
+  return (data ?? []) as RemovedEntryRow[];
 }
