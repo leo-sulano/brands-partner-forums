@@ -4,7 +4,7 @@ import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
-import { hasMultiPlatform } from '../lib/tab-configs';
+import { hasMultiPlatform, getTabColumns } from '../lib/tab-configs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 
 const STATUS_OPTS = [
@@ -143,7 +143,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const [pasteFlash, setPasteFlash] = useState(false);
 
   const isMulti = hasMultiPlatform(selectedTab);
-  const isGRG = selectedTab === 'GRG - Gulf Recovery Group';
+  const showAgentField = getTabColumns(selectedTab)?.includes('Agent') ?? false;
   const availableBrands = selectedTab === currentTab ? Object.keys(brandProfiles).sort() : [];
 
   function toggleReveal(key: string) {
@@ -189,7 +189,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     setError(null);
     try {
       const saveFields = [
-        ...(isGRG ? [AGENT_FIELD] : []),
+        ...(showAgentField ? [AGENT_FIELD] : []),
         ...ACCOUNT_FIELDS, ...TP_FIELDS,
         ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
         ...YES_NO_FIELDS,
@@ -332,7 +332,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             <SectionHeading label="Account Details" />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
               {ACCOUNT_FIELDS
-                .flatMap((f) => (isGRG && f.key === 'Account Name' ? [f, AGENT_FIELD] : [f]))
+                .flatMap((f) => (showAgentField && f.key === 'Account Name' ? [f, AGENT_FIELD] : [f]))
                 .map(renderField)}
             </div>
           </div>
