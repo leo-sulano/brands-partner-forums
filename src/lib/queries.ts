@@ -5,6 +5,7 @@ import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
+import type { AuditEntityType } from '../types/audit-log';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -418,6 +419,38 @@ async function currentUserEmail(): Promise<string | null> {
   return data.session?.user.email ?? null;
 }
 
+interface Actor {
+  id: string | null;
+  email: string | null;
+}
+
+// Session id + email in one call, for stamping delete_log/edit_log rows.
+async function currentActor(): Promise<Actor> {
+  const { data } = await supabase.auth.getSession();
+  return { id: data.session?.user.id ?? null, email: data.session?.user.email ?? null };
+}
+
+// Snapshots a row into delete_log or edit_log immediately before it's
+// deleted/updated, so it can be restored later.
+async function logChange(
+  table: 'delete_log' | 'edit_log',
+  entityType: AuditEntityType,
+  entityId: string,
+  beforeData: object,
+  actor: Actor,
+  tab?: string,
+): Promise<void> {
+  const { error } = await supabase.from(table).insert({
+    entity_type: entityType,
+    entity_id: entityId,
+    tab: tab ?? null,
+    before_data: beforeData,
+    actor_id: actor.id,
+    actor_email: actor.email ?? '',
+  });
+  if (error) throw error;
+}
+
 export async function updateEntryData(
   id: string,
   tab: string,
@@ -425,17 +458,20 @@ export async function updateEntryData(
 ): Promise<void> {
   const { data: existing, error: selErr } = await supabase
     .from('entries')
-    .select('data')
+    .select('*')
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
   if (!existing) throw new Error('Entry not found — it may have been deleted.');
 
+  const actor = await currentActor();
+  await logChange('edit_log', 'entry', id, existing, actor, existing.tab as string);
+
   const mergedData = { ...(existing.data as Record<string, string | null>), ...fields };
   const syncTag = crypto.randomUUID();
   const { error: upErr } = await supabase
     .from('entries')
-    .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: await currentUserEmail(), last_sync_tag: syncTag })
+    .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: actor.email, last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
 
@@ -446,11 +482,14 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
   // Read existing entry to get current data blob, tab, and sheet_row_id.
   const { data: existing, error: selErr } = await supabase
     .from('entries')
-    .select('tab, sheet_row_id, data')
+    .select('*')
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
   if (!existing) throw new Error('Entry not found — it may have been deleted.');
+
+  const actor = await currentActor();
+  await logChange('edit_log', 'entry', id, existing, actor, existing.tab as string);
 
   const mergedData = {
     ...(existing.data as Record<string, string | null>),
@@ -460,7 +499,7 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
   const syncTag = crypto.randomUUID();
   const { error: upErr } = await supabase
     .from('entries')
-    .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: await currentUserEmail(), last_sync_tag: syncTag })
+    .update({ data: mergedData, last_edited_by: 'dashboard', last_edited_email: actor.email, last_sync_tag: syncTag })
     .eq('id', id);
   if (upErr) throw upErr;
 }
@@ -486,12 +525,44 @@ export async function insertEntry(
 }
 
 export async function deleteEntries(ids: string[], tab: string): Promise<void> {
+  const { data: existing, error: selErr } = await supabase
+    .from('entries')
+    .select('*')
+    .in('id', ids);
+  if (selErr) throw selErr;
+
+  const actor = await currentActor();
+  if (existing && existing.length > 0) {
+    const { error: logErr } = await supabase.from('delete_log').insert(
+      existing.map((row) => ({
+        entity_type: 'entry' as const,
+        entity_id: row.id,
+        tab: row.tab,
+        before_data: row,
+        actor_id: actor.id,
+        actor_email: actor.email ?? '',
+      })),
+    );
+    if (logErr) throw logErr;
+  }
+
   const { error } = await supabase.from('entries').delete().in('id', ids);
   if (error) throw error;
   invalidateTabCache(tab);
 }
 
 export async function moveEntryToTab(id: string, oldTab: string, newTab: string): Promise<void> {
+  const { data: existing, error: selErr } = await supabase
+    .from('entries')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!existing) throw new Error('Entry not found — it may have been deleted.');
+
+  const actor = await currentActor();
+  await logChange('edit_log', 'entry', id, existing, actor, oldTab);
+
   const { error } = await supabase.from('entries').update({ tab: newTab }).eq('id', id);
   if (error) throw error;
   invalidateTabCache(oldTab);
@@ -634,6 +705,17 @@ export async function updateProfile(
   id: string,
   patch: Partial<Pick<Profile, 'approved' | 'role'>>,
 ): Promise<void> {
+  const { data: existing, error: selErr } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!existing) throw new Error('Account not found — it may have been deleted.');
+
+  const actor = await currentActor();
+  await logChange('edit_log', 'account', id, existing, actor);
+
   const { error } = await supabase
     .from('profiles')
     .update(patch)
@@ -642,6 +724,17 @@ export async function updateProfile(
 }
 
 export async function deleteProfile(id: string): Promise<void> {
+  const { data: existing, error: selErr } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!existing) throw new Error('Account not found — it may already be deleted.');
+
+  const actor = await currentActor();
+  await logChange('delete_log', 'account', id, existing, actor);
+
   const { error, count } = await supabase
     .from('profiles')
     .delete({ count: 'exact' })
