@@ -9,6 +9,7 @@ export const OPERATIONAL_TABS = [
   'HazEmirates UAE',
   'Hanan',
   'Wizard of Odds',
+  'GRG - Gulf Recovery Group',
 ] as const;
 
 export type OperationalTab = (typeof OPERATIONAL_TABS)[number];

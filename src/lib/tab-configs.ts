@@ -133,6 +133,16 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Link to the profile',
     'User Name',
   ],
+  // Dashboard-only tab, no Google Sheet backing — entries come from Add Review Account.
+  'GRG - Gulf Recovery Group': [
+    'Account',
+    'Proxy Used',
+    'Account Name',
+    'Brand Name',
+    'Trust Pilot',
+    'Link to the profile',
+    'TP Review Status',
+  ],
 };
 
 // Display label overrides — maps actual sheet column name → shorter UI label.
@@ -184,6 +194,7 @@ export const TAB_DEFAULT_BRAND: Record<string, string> = {
   'Trybet': 'Trybet',
   'HazEmirates UAE': 'HazEmirates UAE',
   'SilverPlay': 'Silverplay',
+  'GRG - Gulf Recovery Group': 'GRG - Gulf Recovery Group',
 };
 
 // Returns the display label for a column header, with optional tab-specific override.

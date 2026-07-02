@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, RefreshCw, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star,
+  Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -29,6 +29,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
   'HazEmirates UAE':    Plane,
   'Hanan':              Heart,
   'Wizard of Odds':     Star,
+  'GRG - Gulf Recovery Group': LifeBuoy,
 };
 
 const topLinks = [

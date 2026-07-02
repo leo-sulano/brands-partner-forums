@@ -300,7 +300,7 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
 
 const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
 const BRAND_LINK_COLS = ['AG Review Link', 'CG Review Link'];
-const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay', 'GRG - Gulf Recovery Group ']);
+const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay', 'GRG - Gulf Recovery Group']);
 
 const INLINE_STATUS_OPTIONS = ['Live', 'Done', 'Published', 'Still Published', 'Pending', 'On Pause', 'Not done', 'Refused', 'Removed', 'Not Published'];
 
