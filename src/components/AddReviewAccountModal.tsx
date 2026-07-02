@@ -36,6 +36,8 @@ type FieldDef = {
   yesno?: boolean;
 };
 
+const AGENT_FIELD: FieldDef = { key: 'Agent', label: 'Agent' };
+
 const ACCOUNT_FIELDS: FieldDef[] = [
   { key: 'Account',              label: 'Account' },
   { key: 'Country',              label: 'Country' },
@@ -105,6 +107,7 @@ const YES_NO_DEFAULTS: Record<string, string> = {
 };
 
 const ALL_KEYS = [
+  AGENT_FIELD.key,
   ...ACCOUNT_FIELDS.map((f) => f.key),
   ...TP_FIELDS.map((f) => f.key),
   ...AG_FIELDS.map((f) => f.key),
@@ -140,6 +143,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const [pasteFlash, setPasteFlash] = useState(false);
 
   const isMulti = hasMultiPlatform(selectedTab);
+  const isGRG = selectedTab === 'GRG - Gulf Recovery Group';
   const availableBrands = selectedTab === currentTab ? Object.keys(brandProfiles).sort() : [];
 
   function toggleReveal(key: string) {
@@ -154,6 +158,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     setSelectedTab(tab);
     setFields((s) => ({
       ...s,
+      'Agent': '',
       'Brand Name': '',
       'Link to the profile': '',
       'Ask Gambler review added': '',
@@ -184,6 +189,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     setError(null);
     try {
       const saveFields = [
+        ...(isGRG ? [AGENT_FIELD] : []),
         ...ACCOUNT_FIELDS, ...TP_FIELDS,
         ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
         ...YES_NO_FIELDS,
@@ -325,7 +331,9 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           <div>
             <SectionHeading label="Account Details" />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-              {ACCOUNT_FIELDS.map(renderField)}
+              {ACCOUNT_FIELDS
+                .flatMap((f) => (isGRG && f.key === 'Account Name' ? [f, AGENT_FIELD] : [f]))
+                .map(renderField)}
             </div>
           </div>
 

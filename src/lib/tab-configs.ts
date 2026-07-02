@@ -138,6 +138,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Account',
     'Proxy Used',
     'Account Name',
+    'Agent',
     'Brand Name',
     'Trust Pilot',
     'Link to the profile',
