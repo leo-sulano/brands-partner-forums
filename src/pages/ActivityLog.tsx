@@ -1,6 +1,16 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Pencil, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
-import { fetchRecentEdits, fetchAdminLogs, type EditEvent, type AdminLogEvent, type AdminAction } from '../lib/queries';
+import {
+  AlertCircle, ChevronLeft, ChevronRight, Loader2, Pencil, RotateCcw,
+  ShieldCheck, ShieldOff, Trash2, UserCheck, UserX,
+} from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  fetchRecentEdits, fetchAdminLogs, fetchEditLog, fetchDeleteLog,
+  restoreEditedEntity, restoreDeletedEntity,
+  type EditEvent, type AdminLogEvent, type AdminAction,
+} from '../lib/queries';
+import type { AuditLogEntry } from '../types/audit-log';
+import Toast, { type ToastKind } from '../components/Toast';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -25,7 +35,7 @@ const ACTION_META: Record<AdminAction, { label: string; icon: React.ReactNode; c
   remove_admin: { label: 'Admin role removed',   icon: <ShieldOff className="size-4 shrink-0" />,  color: 'text-slate-400' },
 };
 
-export default function ActivityLog() {
+function ActivityFeed() {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,73 +68,287 @@ export default function ActivityLog() {
       .finally(() => setLoading(false));
   }, []);
 
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <AlertCircle className="size-4 shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  if (feed.length === 0) {
+    return <p className="text-sm text-slate-400">No activity yet.</p>;
+  }
+
+  return (
+    <ul className="space-y-2">
+      {feed.map((item) => {
+        if (item.kind === 'edit') {
+          const edit = item.data;
+          return (
+            <li
+              key={`edit-${edit.id}`}
+              className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+            >
+              <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-slate-800">
+                  Entry edited{edit.editor ? <span className="font-normal text-slate-500"> by {edit.editor}</span> : null}
+                </span>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {edit.tab} · {edit.account ?? '—'}
+                </p>
+              </div>
+              <span className="shrink-0 text-xs text-slate-400">{relativeTime(edit.updated_at)}</span>
+            </li>
+          );
+        }
+
+        const log = item.data;
+        const meta = ACTION_META[log.action];
+        return (
+          <li
+            key={`admin-${log.id}`}
+            className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+          >
+            <span className={`mt-0.5 ${meta.color}`}>{meta.icon}</span>
+            <div className="min-w-0 flex-1">
+              <span className="text-sm font-medium text-slate-800">{meta.label}</span>
+              <p className="mt-0.5 text-xs text-slate-500">
+                {log.target_email} · by {log.actor_email}
+              </p>
+            </div>
+            <span className="shrink-0 text-xs text-slate-400">{relativeTime(log.created_at)}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+const AUDIT_PAGE_SIZE = 25;
+
+function entityLabel(entry: AuditLogEntry): string {
+  if (entry.entity_type === 'account') {
+    const before = entry.before_data as { email?: string };
+    return before.email ?? 'Unknown account';
+  }
+  const before = entry.before_data as { data?: Record<string, string | null> };
+  const data = before.data ?? {};
+  const name = data['Account Name'] ?? data['Account'] ?? data['Brand Name'] ?? data['Brand'];
+  return [entry.tab, name].filter(Boolean).join(' · ') || 'Unknown row';
+}
+
+function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
+  const { isAdmin, profile } = useAuth();
+  const [entries, setEntries] = useState<AuditLogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setPage(1);
+    const fetcher = kind === 'edits' ? fetchEditLog : fetchDeleteLog;
+    fetcher(200)
+      .then(setEntries)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load log'))
+      .finally(() => setLoading(false));
+  }, [kind]);
+
+  async function handleRestore(id: string) {
+    setRestoringId(id);
+    setConfirmId(null);
+    try {
+      if (kind === 'edits') await restoreEditedEntity(id);
+      else await restoreDeletedEntity(id);
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, restored_at: new Date().toISOString(), restored_by_email: profile?.email ?? null }
+            : e,
+        ),
+      );
+      setToast({ message: 'Restored.', kind: 'success' });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Restore failed', kind: 'error' });
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 6 }).map((_, i) => (
+          <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />
+        ))}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <AlertCircle className="size-4 shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return <p className="text-sm text-slate-400">No {kind} recorded yet.</p>;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(entries.length / AUDIT_PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const pageEntries = entries.slice((safePage - 1) * AUDIT_PAGE_SIZE, safePage * AUDIT_PAGE_SIZE);
+
+  return (
+    <div>
+      <ul className="space-y-2">
+        {pageEntries.map((entry) => {
+          const isRestoring = restoringId === entry.id;
+          const isExpanded = expandedId === entry.id;
+          return (
+            <li key={entry.id} className="rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
+              <div className="flex items-start gap-3">
+                {kind === 'deletes'
+                  ? <Trash2 className="mt-0.5 size-4 shrink-0 text-rose-500" />
+                  : <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />}
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-slate-800">
+                    {entry.entity_type === 'account' ? 'Account' : 'Row'} {kind === 'deletes' ? 'deleted' : 'edited'}
+                    <span className="font-normal text-slate-500"> by {entry.actor_email}</span>
+                  </span>
+                  <p className="mt-0.5 text-xs text-slate-500">{entityLabel(entry)}</p>
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : entry.id)}
+                    className="mt-1 text-xs text-violet-600 hover:underline"
+                  >
+                    {isExpanded ? 'Hide details' : 'View details'}
+                  </button>
+                  {isExpanded && (
+                    <pre className="mt-2 max-h-48 overflow-auto rounded bg-slate-50 p-2 text-xs text-slate-600">
+                      {JSON.stringify(entry.before_data, null, 2)}
+                    </pre>
+                  )}
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-xs text-slate-400">{relativeTime(entry.created_at)}</span>
+                  {isAdmin && (
+                    entry.restored_at ? (
+                      <span className="text-xs text-emerald-600">
+                        Restored{entry.restored_by_email ? ` by ${entry.restored_by_email}` : ''}
+                      </span>
+                    ) : isRestoring ? (
+                      <Loader2 className="size-4 animate-spin text-slate-400" />
+                    ) : confirmId === entry.id ? (
+                      <span className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleRestore(entry.id)}
+                          className="rounded bg-violet-600 px-2 py-1 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmId(null)}
+                          className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-violet-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmId(entry.id)}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-50 transition-colors"
+                      >
+                        <RotateCcw className="size-3.5" />
+                        Restore
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+
+      {entries.length > AUDIT_PAGE_SIZE && (
+        <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+          <span className="tabular-nums">
+            {(safePage - 1) * AUDIT_PAGE_SIZE + 1}–{Math.min(safePage * AUDIT_PAGE_SIZE, entries.length)} of {entries.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
+            >
+              <ChevronLeft className="size-4" /> Prev
+            </button>
+            <span className="px-1 tabular-nums">{safePage} / {totalPages}</span>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
+            >
+              Next <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {toast && <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+const LOG_TABS = ['activity', 'edits', 'deletes'] as const;
+type LogTab = (typeof LOG_TABS)[number];
+
+export default function ActivityLog() {
+  const [tab, setTab] = useState<LogTab>('activity');
+
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-6 text-xl font-semibold text-slate-900">Log</h1>
+      <h1 className="mb-4 text-xl font-semibold text-slate-900">Log</h1>
 
-      {loading && (
-        <div className="space-y-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-14 animate-pulse rounded-lg bg-slate-100" />
-          ))}
-        </div>
-      )}
+      <div className="mb-6 flex gap-1 border-b border-slate-200">
+        {LOG_TABS.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={[
+              '-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize transition-colors',
+              tab === t ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700',
+            ].join(' ')}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
 
-      {error && (
-        <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          <AlertCircle className="size-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
-      {!loading && !error && feed.length === 0 && (
-        <p className="text-sm text-slate-400">No activity yet.</p>
-      )}
-
-      {!loading && !error && feed.length > 0 && (
-        <ul className="space-y-2">
-          {feed.map((item) => {
-            if (item.kind === 'edit') {
-              const edit = item.data;
-              return (
-                <li
-                  key={`edit-${edit.id}`}
-                  className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
-                >
-                  <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-medium text-slate-800">
-                      Entry edited{edit.editor ? <span className="font-normal text-slate-500"> by {edit.editor}</span> : null}
-                    </span>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {edit.tab} · {edit.account ?? '—'}
-                    </p>
-                  </div>
-                  <span className="shrink-0 text-xs text-slate-400">{relativeTime(edit.updated_at)}</span>
-                </li>
-              );
-            }
-
-            const log = item.data;
-            const meta = ACTION_META[log.action];
-            return (
-              <li
-                key={`admin-${log.id}`}
-                className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
-              >
-                <span className={`mt-0.5 ${meta.color}`}>{meta.icon}</span>
-                <div className="min-w-0 flex-1">
-                  <span className="text-sm font-medium text-slate-800">{meta.label}</span>
-                  <p className="mt-0.5 text-xs text-slate-500">
-                    {log.target_email} · by {log.actor_email}
-                  </p>
-                </div>
-                <span className="shrink-0 text-xs text-slate-400">{relativeTime(log.created_at)}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {tab === 'activity' && <ActivityFeed />}
+      {tab === 'edits' && <AuditTab kind="edits" />}
+      {tab === 'deletes' && <AuditTab kind="deletes" />}
     </div>
   );
 }
