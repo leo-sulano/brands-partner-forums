@@ -140,8 +140,8 @@ restoreEditedEntity(logId: string): Promise<void>
 
 **`restoreEditedEntity`:**
 1. Fetch the `edit_log` row; error if `restored_at` is already set.
-2. Overwrite the live row's fields with `before_data` (`entries.data`, or `profiles.approved`/`role`).
-3. Write a **new** `edit_log` row capturing the row's state immediately before this restore — so a restore can itself be undone later.
+2. Write a **new** `edit_log` row capturing the row's current state immediately before this restore — so a restore can itself be undone later.
+3. Overwrite only the fields an edit can actually change: `entries.data` and `entries.tab` (so restoring a `moveEntryToTab` edit moves the row back, not just field-data edits), or `profiles.approved`/`role`. Sync-internal bookkeeping (`last_sync_tag`, `sheet_row_id`, `row_index`) is never copied back from the snapshot — an old `last_sync_tag` could confuse the Sheet sync's echo-loop protection. `updated_at`/`last_edited_by`/`last_edited_email` are refreshed to reflect the restore happening now, not backdated to the snapshot's values.
 4. Update the original `edit_log` row: `restored_at = now()`, `restored_by_email = <current admin>`.
 
 Both functions guard against a race (two admins restoring the same entry at once) by conditioning the update on `restored_at is null` at write time, not just checking it beforehand.
