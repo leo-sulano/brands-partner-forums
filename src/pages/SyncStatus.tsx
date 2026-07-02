@@ -1,11 +1,10 @@
-import React, { useEffect, useReducer, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { ChevronDown, ChevronRight, RefreshCw } from 'lucide-react';
-import { triggerStatusCheck, fetchAllTabsStatusSummary, type TabStatusRow } from '../lib/queries';
-import { tabToSlug } from '../lib/tabs';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { RefreshCw } from 'lucide-react';
+import { triggerStatusCheck, fetchAllTabsStatusSummary, recordFullCheckRun, fetchFullCheckRuns, type TabStatusRow, type FullCheckRun, type RunScope } from '../lib/queries';
 import Toast, { type ToastKind } from '../components/Toast';
 import { TAB_COLUMN_CONFIGS, getTabSequence } from '../lib/tab-configs';
 import FullCheckScopePicker from '../components/FullCheckScopePicker';
+import RunHistoryTable from '../components/RunHistoryTable';
 
 // Module-level singleton — survives React unmount/remount during navigation
 let _fullCheckRunning = false;
@@ -46,28 +45,10 @@ function buildBrandsByTab(summary: TabStatusRow[]): Record<string, string[]> {
   return out;
 }
 
-const HISTORY_KEY = 'fullCheckHistory';
-const MAX_HISTORY = 30;
-
-interface FullCheckSnapshot {
-  runAt: string;
-  summary: TabStatusRow[];
-  scope?: { tabsRun: number; tabsTotal: number; brandsRun: number; brandsTotal: number };
-}
-
-function loadHistory(): FullCheckSnapshot[] {
-  try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]');
-  } catch {
-    return [];
-  }
-}
-
 export default function SyncStatus() {
-  const [toast, setToast]     = useState<{ message: string; kind: ToastKind } | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
 
-  const [checkHistory, setCheckHistory]     = useState<FullCheckSnapshot[]>(() => loadHistory());
-  const [expandedRun, setExpandedRun]       = useState<Set<string>>(new Set());
+  const [checkHistory, setCheckHistory] = useState<FullCheckRun[]>([]);
 
   const [summary, setSummary] = useState<TabStatusRow[]>([]);
   const [selection, setSelection] = useState<Record<string, Set<string>>>({});
@@ -79,14 +60,15 @@ export default function SyncStatus() {
     _fullCheckListeners.add(tick);
     return () => { _fullCheckListeners.delete(tick); };
   }, []);
-  const checkingAll    = _fullCheckRunning;
-  const checkProgress  = _fullCheckProgress;
+  const checkingAll   = _fullCheckRunning;
+  const checkProgress = _fullCheckProgress;
 
   async function loadSummary(): Promise<TabStatusRow[]> {
     return fetchAllTabsStatusSummary(ALL_TABS);
   }
 
   useEffect(() => { loadSummary().then(setSummary); }, []);
+  useEffect(() => { fetchFullCheckRuns().then(setCheckHistory).catch(() => setCheckHistory([])); }, []);
 
   const brandsByTab = buildBrandsByTab(summary);
 
@@ -129,26 +111,15 @@ export default function SyncStatus() {
         : `All ${succeeded} tab${succeeded !== 1 ? 's' : ''} checked successfully`,
       kind: failed > 0 ? 'error' : 'success',
     });
-    const latest = await loadSummary();
-    setSummary(latest);
+
     const brandsRun = tabsToRun.reduce((s, t) => s + (selection[t]?.size ?? 0), 0);
     const brandsTotal = ALL_TABS.reduce((s, t) => s + (brandsByTab[t]?.length ?? 0), 0);
-    const snapshot: FullCheckSnapshot = {
-      runAt: new Date().toISOString(),
-      summary: latest,
-      scope: { tabsRun: tabsToRun.length, tabsTotal: ALL_TABS.length, brandsRun, brandsTotal },
-    };
-    const updated = [snapshot, ...checkHistory].slice(0, MAX_HISTORY);
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(updated));
-    setCheckHistory(updated);
-  }
+    const scope: RunScope = { tabsRun: tabsToRun.length, tabsTotal: ALL_TABS.length, brandsRun, brandsTotal };
 
-  function toggleRun(runAt: string) {
-    setExpandedRun((prev) => {
-      const next = new Set(prev);
-      next.has(runAt) ? next.delete(runAt) : next.add(runAt);
-      return next;
-    });
+    const latest = await recordFullCheckRun(ALL_TABS, scope);
+    setSummary(latest);
+    const runs = await fetchFullCheckRuns();
+    setCheckHistory(runs);
   }
 
   const nothingSelected = ALL_TABS.every((t) => (selection[t]?.size ?? 0) === 0);
@@ -221,127 +192,7 @@ export default function SyncStatus() {
           );
         })()}
 
-        {/* Run History */}
-        {checkHistory.length > 0 && (
-          <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                <tr className="border-b border-slate-200">
-                  <th className="rounded-tl-lg px-4 py-3">Run</th>
-                  <th className="rounded-tr-lg px-4 py-3">Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {checkHistory.map((snap, si) => {
-                  const isOpen = expandedRun.has(snap.runAt);
-                  const isLast = si === checkHistory.length - 1;
-                  const label = new Date(snap.runAt).toLocaleString('en-US', {
-                    month: 'short', day: 'numeric', year: 'numeric',
-                    hour: '2-digit', minute: '2-digit',
-                  });
-
-                  const totRem = snap.summary.reduce((s, r) => s + r.removed, 0);
-                  const prev = checkHistory[si + 1];
-                  const hasPrev = !!prev;
-                  const prevRem = prev ? prev.summary.reduce((s, r) => s + r.removed, 0) : 0;
-                  const newlyRemoved = totRem - prevRem;
-
-                  return (
-                    <React.Fragment key={snap.runAt}>
-                      <tr
-                        onClick={() => toggleRun(snap.runAt)}
-                        className={`cursor-pointer select-none hover:bg-violet-50 ${!isOpen && !isLast ? 'border-b border-slate-100' : ''} ${isOpen ? 'bg-slate-50' : ''}`}
-                      >
-                        <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-2">
-                            {isOpen
-                              ? <ChevronDown className="size-4 text-slate-400" />
-                              : <ChevronRight className="size-4 text-slate-400" />}
-                            {label}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {snap.scope && (snap.scope.tabsRun !== snap.scope.tabsTotal || snap.scope.brandsRun !== snap.scope.brandsTotal) && (
-                              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-500">
-                                Custom — {snap.scope.tabsRun}/{snap.scope.tabsTotal} tabs, {snap.scope.brandsRun}/{snap.scope.brandsTotal} brands
-                              </span>
-                            )}
-                            {!hasPrev ? (
-                              <span className="inline-flex items-center gap-2">
-                                <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">{totRem} removed</span>
-                                <span className="text-slate-400">(baseline)</span>
-                              </span>
-                            ) : newlyRemoved > 0 ? (
-                              <span className="inline-flex items-center rounded-full bg-rose-100 px-2.5 py-0.5 font-medium text-rose-700 tabular-nums">
-                                +{newlyRemoved} newly removed from Published
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">No new removals</span>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                      {isOpen && (
-                        <tr className={!isLast ? 'border-b border-slate-100' : ''}>
-                          <td colSpan={2} className="bg-slate-50 px-6 pb-3 pt-1">
-                            <div className="space-y-1">
-                              {(() => {
-                                const prevSnap = checkHistory[si + 1];
-                                const rows = snap.summary.filter((row) => {
-                                  if (row.removed <= 0) return false;
-                                  if (!prevSnap) return true;
-                                  const prevRow = prevSnap.summary.find((r) => r.tab === row.tab);
-                                  return row.removed > (prevRow?.removed ?? 0);
-                                });
-                                if (rows.length === 0) return (
-                                  <p className="py-2 text-xs text-slate-400">No newly removed entries in this run.</p>
-                                );
-                                return rows.map((row) => {
-                                  const rb = row.removedBrands ?? [];
-                                  const counts = row.removedBrandCounts ?? {};
-                                  const prevRow = prevSnap?.summary.find((r) => r.tab === row.tab);
-                                  const newlyRem = row.removed - (prevRow?.removed ?? 0);
-                                  return (
-                                    <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
-                                      <Link
-                                        to={`/brands/${tabToSlug(row.tab)}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap hover:text-brand-600 hover:underline"
-                                      >{row.tab}</Link>
-                                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
-                                      <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
-                                      {newlyRem > 0 && (
-                                        <span className="rounded-full bg-rose-600 px-2 py-0.5 font-semibold text-white tabular-nums">+{newlyRem} new</span>
-                                      )}
-                                      {rb.length > 0 && (
-                                        <>
-                                          <span className="text-slate-300">→</span>
-                                          {rb.map((b) => (
-                                            <span key={b} className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
-                                              {b}
-                                              {counts[b] != null && (
-                                                <span className="rounded-full bg-rose-200 px-1.5 py-px font-semibold tabular-nums">{counts[b]}</span>
-                                              )}
-                                            </span>
-                                          ))}
-                                        </>
-                                      )}
-                                    </div>
-                                  );
-                                });
-                              })()}
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <RunHistoryTable runs={checkHistory} />
       </div>
 
       {toast ? <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} /> : null}
