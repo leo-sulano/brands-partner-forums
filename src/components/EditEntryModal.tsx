@@ -143,8 +143,13 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     const base = emailIdx === -1 ? 0 : emailIdx;
     const updates: Record<string, string> = {};
     cols.forEach((val, j) => {
-      const key = PASTE_OFFSET_MAP[j - base];
-      if (key && val.trim()) updates[key] = val.trim();
+      const mapKey = PASTE_OFFSET_MAP[j - base];
+      if (!mapKey || !val.trim()) return;
+      // Sheet headers can carry stray whitespace (e.g. "Account Surname" with a
+      // trailing space); resolve to the actual header key so the value lands on
+      // a field that's actually rendered and saved, not a phantom untrimmed key.
+      const key = headers.find((h) => h.trim() === mapKey) ?? mapKey;
+      updates[key] = val.trim();
     });
     setFields((f) => ({ ...f, ...updates }));
     setPasteFlash(true);
