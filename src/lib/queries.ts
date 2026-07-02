@@ -5,6 +5,7 @@ import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
+import type { Platform } from './removedEntriesDiff';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -743,4 +744,70 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
       return { tab, published, removed, pending, brands: [...brandSet].sort(), removedBrands, removedBrandCounts: removedBrandCountsObj };
     }),
   );
+}
+
+export interface RemovedEntryDetail {
+  entry_id: string;
+  tab: string;
+  brand: string | null;
+  account_name: string | null;
+  platform: Platform;
+  link: string | null;
+}
+
+export async function fetchRemovedEntryDetails(tabs: string[]): Promise<RemovedEntryDetail[]> {
+  const perTab = await Promise.all(
+    tabs.map(async (tab): Promise<RemovedEntryDetail[]> => {
+      const [entries, rawHeaders] = await Promise.all([
+        fetchRawEntriesByTab(tab),
+        fetchTabHeaders(tab),
+      ]);
+      const headerSet = new Set(rawHeaders);
+      const TP_VARIANTS = [
+        'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status',
+        'Trust pilot Review Status', 'Review Status',
+      ];
+      const tpStatusCol = rawHeaders.find((h) => TP_VARIANTS.includes(h));
+      const agStatusCol = rawHeaders.find((h) => h === 'AG Review Status');
+      const cgStatusCol = rawHeaders.find((h) => h === 'CG Review Status');
+      const brandCol = SUMMARY_BRAND_COLS.find((c) => headerSet.has(c)) ?? null;
+      const accountNameCol = headerSet.has('Account Name') ? 'Account Name' : null;
+      const tpLinkCol = headerSet.has('Link to the profile') ? 'Link to the profile' : null;
+
+      const platformCols: Array<{ platform: Platform; statusCol?: string; linkCol: string | null }> = [
+        { platform: 'TP', statusCol: tpStatusCol, linkCol: tpLinkCol },
+        { platform: 'AG', statusCol: agStatusCol, linkCol: headerSet.has('AG Review Link') ? 'AG Review Link' : null },
+        { platform: 'CG', statusCol: cgStatusCol, linkCol: headerSet.has('CG Review Link') ? 'CG Review Link' : null },
+      ];
+
+      const out: RemovedEntryDetail[] = [];
+      for (const entry of entries) {
+        const d = entry.data;
+        const statuses = [tpStatusCol, agStatusCol, cgStatusCol]
+          .filter((c): c is string => !!c)
+          .map((c) => (d[c] ?? '').toLowerCase());
+        const isLive = statuses.some(isLiveStatus);
+        if (isLive || !statuses.some(isRemovedStatus)) continue;
+
+        const brand = brandCol ? (d[brandCol]?.trim() ?? null) : null;
+        const accountName = accountNameCol ? (d[accountNameCol]?.trim() ?? null) : null;
+
+        for (const p of platformCols) {
+          if (!p.statusCol) continue;
+          const status = (d[p.statusCol] ?? '').toLowerCase();
+          if (!isRemovedStatus(status)) continue;
+          out.push({
+            entry_id: entry.id,
+            tab,
+            brand,
+            account_name: accountName,
+            platform: p.platform,
+            link: p.linkCol ? (d[p.linkCol] ?? null) : null,
+          });
+        }
+      }
+      return out;
+    }),
+  );
+  return perTab.flat();
 }
