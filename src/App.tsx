@@ -69,10 +69,10 @@ export default function App() {
         <Route path="/signup" element={<Suspense fallback={null}><Signup /></Suspense>} />
         <Route path="/reset-password" element={<Suspense fallback={null}><ResetPassword /></Suspense>} />
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Overview />} />
-          <Route path="/mentions/:id" element={<MentionDetail />} />
-          <Route path="/brands/:tab" element={<BrandGroup />} />
           <Route element={<ProtectedRoute />}>
+            <Route path="/" element={<Overview />} />
+            <Route path="/mentions/:id" element={<MentionDetail />} />
+            <Route path="/brands/:tab" element={<BrandGroup />} />
             <Route path="/ask-ai" element={<AskAI />} />
             <Route path="/sync" element={<SyncStatus />} />
             <Route path="/log" element={<ActivityLog />} />

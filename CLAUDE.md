@@ -25,9 +25,9 @@ Brands Partner Forum/
 
 ## Architecture Rules
 - **Data flow:** Google Sheet → `sync-sheet` Edge Function → `mentions` table → React reads via supabase-js
-- **Auth:** none in app — Vercel password protection guards the deploy. Treat anon key as effectively public.
+- **Auth:** email+password login via Supabase Auth, gated by admin-approval (`profiles.approved`). `AuthContext` holds session/profile; `ProtectedRoute` wraps every app route except `/login`, `/signup`, `/reset-password`. Vercel password protection also guards the deploy on top of this.
 - **Data access:** all Supabase queries live in `src/lib/queries.ts`. Pages and components import from there, never call `supabase.from(...)` directly.
-- **Routing:** React Router v7 declarative routes. Three routes: `/`, `/mentions/:id`, `/sync`.
+- **Routing:** React Router v7 declarative routes — `/`, `/mentions/:id`, `/brands/:tab`, `/sync`, `/log`, `/score-summary`, `/ask-ai`, `/admin/users`, plus public `/login`, `/signup`, `/reset-password`.
 - **Styling:** Tailwind v4 utility classes. No global CSS beyond `index.css` (resets, base tokens).
 - **Charts:** Recharts only. Keep chart components in `src/components/` and pass plain data props.
 

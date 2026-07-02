@@ -608,6 +608,63 @@ Added a tab/brand scope picker to the Check Status page so "Run Full Check" can 
 
 ---
 
-*Last updated: July 1, 2026*
+## Task 76: Edit/Add Modal — Paste Support & Field Cleanup
+**Date:** July 1, 2026
+
+- Added Ctrl+V paste support to the Edit modal, mirroring the Add modal's sheet-row paste behavior
+- Added missing fields to the Add modal and wired up their paste-map offsets
+- Removed the Casino Password field from the Add Review Account modal, then hid it from the Edit modal too, with a follow-up fix to correct the paste offset map after its removal shifted downstream columns
+
+---
+
+## Task 77: WO Tab Edit Modal — User Name/Surname Reorder
+**Date:** July 1, 2026
+
+- WO tab duplicate now auto-fills WO Date
+- Iterated the WO edit modal layout so "User Name" reliably renders positioned after "Account Surname" — required several passes to fix whitespace/trailing-space mismatches in the matching logic before the reorder held consistently
+
+---
+
+## Task 78: Brand-Change Auto-fill & Link Data Quality
+**Date:** July 1, 2026
+
+- Auto-fill AG/CG profile link columns when the brand changes in the edit modal
+- Switched brand-change link auto-fill from "first non-empty value found" to majority-vote across that brand's rows, so a handful of mistyped/copy-pasted outlier links can no longer get locked in as the canonical one; also excluded the TP link from brand-change auto-fill since it points to a daily review page, not a per-brand profile
+- Deduped a duplicate "URL PAGE__href" header in TP Affiliate that was rendering two identical link fields in the edit modal, relabeled it "Brand Links", and hardened the sheet's hyperlink-extraction script so it won't re-emit the duplicate
+- Added missing brand name spelling variants (Duelz.com, NY Spins, Silver Play, Novadreams) to the TP URL map so they match their exact DB spellings
+
+---
+
+## Task 79: Remove Google Sheet Write-Back
+**Date:** July 1, 2026
+
+Refactored the dashboard to write directly to Supabase only, dropping the write-back path to the Google Sheet.
+
+- Removed `pushEntryToSheet()` and `PUSH_TO_SHEET_URL` entirely
+- Dropped the `sheetRowId` param from `updateEntryData()` and updated all 3 call sites
+- Removed `DASHBOARD_ONLY_COLS`, which only existed to filter fields before the sheet push
+- Edge Function files left in place but are no longer called
+- **Note:** this changes the sync model described in the `project_sync_architecture` memory (previously bidirectional Sheet↔Dashboard) to one-way Dashboard→Supabase only. Sheet→Supabase sync via `sync-sheet` is unaffected.
+
+---
+
+## Task 80: UI Polish — Row Selection Highlight
+**Date:** July 1, 2026
+
+Added a violet outline highlight to selected rows in the brand tables, making the current selection visually distinct from the rest of the table.
+
+---
+
+## Task 81: Close Auth Gap on Main Dashboard Routes
+**Date:** July 2, 2026
+
+Found that `ProtectedRoute` only wrapped the secondary pages (`/sync`, `/log`, `/ask-ai`, `/score-summary`, `/admin/users`) — the main dashboard routes (`/`, `/mentions/:id`, `/brands/:tab`) sat outside the guard and were reachable without logging in.
+
+- Moved all dashboard routes inside `ProtectedRoute` in `App.tsx`, so the entire app now requires an approved session except `/login`, `/signup`, `/reset-password`
+- Updated `CLAUDE.md`'s stale "Auth: none in app" architecture note to describe the actual Supabase Auth + admin-approval flow
+
+---
+
+*Last updated: July 2, 2026*
 
 ---
