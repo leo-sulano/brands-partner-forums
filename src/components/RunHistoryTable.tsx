@@ -86,6 +86,15 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
             const diffState = diffByRun[run.id];
             const diffReady = diffState?.status === 'ready';
             const diffGroups: Record<string, RemovedEntryRow[]> = diffReady ? diffState.groups : {};
+            // NOTE: these two branches count in different units, by design.
+            // Pre-diff estimate (`totRem - prevRem`) is a naive delta of
+            // `TabStatusRow.removed` counts, i.e. distinct removed *entries*
+            // (an entry removed on both TP and AG in the same run counts once).
+            // Post-diff total sums `full_check_removed_entries` rows, i.e.
+            // individual *platform-flips* (one row per removed platform per
+            // entry — that same dual-platform entry counts twice). So when the
+            // real diff loads, the badge can jump by +1 for any entry newly
+            // removed on two platforms in one run. Expected, not a bug.
             const newlyRemovedTotal = diffReady
               ? Object.values(diffGroups).reduce((s, rows) => s + rows.length, 0)
               : totRem - prevRem; // shown before expand — corrected once the real diff loads
@@ -186,7 +195,7 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
                                             <span className="ml-2 flex flex-col gap-0.5 border-l border-rose-200 pl-2">
                                               {newRows.map((r) => (
                                                 <a
-                                                  key={`${r.entry_id ?? r.account_name}-${r.platform}`}
+                                                  key={r.id}
                                                   href={r.link ?? undefined}
                                                   target="_blank"
                                                   rel="noreferrer"
