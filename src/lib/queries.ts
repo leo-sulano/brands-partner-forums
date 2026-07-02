@@ -805,11 +805,27 @@ export async function restoreDeletedEntity(logId: string): Promise<void> {
   if (!log) throw new Error('Log entry not found.');
   if (log.restored_at) throw new Error('This item has already been restored.');
 
+  const actor = await currentActor();
   const table = log.entity_type === 'account' ? 'profiles' : 'entries';
-  const { error: insErr } = await supabase.from(table).insert(log.before_data);
+
+  // Accounts have no sync-related bookkeeping fields, so the snapshot can be
+  // reinserted verbatim. Entries do — restoring should refresh those to
+  // reflect the restore happening now, not backdate them to the deleted
+  // row's old state (same rationale as restoreEditedEntity).
+  const insertPayload =
+    log.entity_type === 'account'
+      ? log.before_data
+      : {
+          ...(log.before_data as Record<string, unknown>),
+          updated_at: new Date().toISOString(),
+          last_edited_by: 'dashboard',
+          last_edited_email: actor.email,
+          last_sync_tag: crypto.randomUUID(),
+        };
+
+  const { error: insErr } = await supabase.from(table).insert(insertPayload);
   if (insErr) throw insErr;
 
-  const actor = await currentActor();
   const { error: updErr, count } = await supabase
     .from('delete_log')
     .update({ restored_at: new Date().toISOString(), restored_by_email: actor.email }, { count: 'exact' })
