@@ -23,6 +23,19 @@ function tabDiffRows(diffGroups: Record<string, RemovedEntryRow[]>, tab: string)
     .flatMap(([, rows]) => rows);
 }
 
+// One entry per brand with >=1 newly-removed row this run, sorted alphabetically.
+// Excludes the tab's brand-less aggregate key (`${tab}::`), which has no brand to show a row for.
+function tabBrandGroups(
+  diffGroups: Record<string, RemovedEntryRow[]>,
+  tab: string,
+): Array<{ brand: string; rows: RemovedEntryRow[] }> {
+  const prefix = `${tab}::`;
+  return Object.entries(diffGroups)
+    .filter(([key, rows]) => key.startsWith(prefix) && key !== prefix && rows.length > 0)
+    .map(([key, rows]) => ({ brand: key.slice(prefix.length), rows }))
+    .sort((a, b) => a.brand.localeCompare(b.brand));
+}
+
 export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
   const [expandedRun, setExpandedRun] = useState<Set<string>>(new Set());
   const [expandedBrand, setExpandedBrand] = useState<Set<string>>(new Set());
@@ -149,68 +162,73 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
                       ) : rowsToShow.length === 0 ? (
                         <p className="py-2 text-xs text-slate-400">No newly removed entries in this run.</p>
                       ) : (
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           {rowsToShow.map((row) => {
-                            const rb = row.removedBrands ?? [];
-                            const counts = row.removedBrandCounts ?? {};
                             const tabNewRows = tabDiffRows(diffGroups, row.tab);
+                            const brandGroups = tabBrandGroups(diffGroups, row.tab);
+                            const publishedCounts = row.publishedBrandCounts ?? {};
                             return (
-                              <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
-                                <Link
-                                  to={`/brands/${tabToSlug(row.tab)}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap hover:text-brand-600 hover:underline"
-                                >{row.tab}</Link>
-                                <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
-                                <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
-                                {tabNewRows.length > 0 && (
-                                  <span className="rounded-full bg-rose-600 px-2 py-0.5 font-semibold text-white tabular-nums">+{tabNewRows.length} new</span>
-                                )}
-                                {rb.length > 0 && (
-                                  <>
-                                    <span className="text-slate-300">→</span>
-                                    {rb.map((b) => {
-                                      const groupKey = `${row.tab}::${b}`;
-                                      const newRows = diffGroups[groupKey] ?? [];
-                                      const brandKey = `${run.id}::${groupKey}`;
-                                      const brandOpen = expandedBrand.has(brandKey);
-                                      return (
-                                        <span key={b} className="inline-flex flex-col gap-1">
-                                          <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">
-                                            {b}
-                                            {counts[b] != null && (
-                                              <span className="rounded-full bg-rose-200 px-1.5 py-px font-semibold tabular-nums">{counts[b]}</span>
+                              <div key={row.tab} className="py-1 text-xs">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                  <Link
+                                    to={`/brands/${tabToSlug(row.tab)}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="min-w-[130px] font-medium text-slate-700 whitespace-nowrap hover:text-brand-600 hover:underline"
+                                  >{row.tab}</Link>
+                                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 font-medium text-emerald-700 tabular-nums">{row.published} pub</span>
+                                  <span className="rounded-full bg-rose-100 px-2 py-0.5 font-medium text-rose-700 tabular-nums">{row.removed} rem</span>
+                                  {tabNewRows.length > 0 && (
+                                    <span className="rounded-full bg-rose-600 px-2 py-0.5 font-semibold text-white tabular-nums">+{tabNewRows.length} new</span>
+                                  )}
+                                </div>
+                                {brandGroups.length > 0 && (
+                                  <table className="mt-1.5 ml-2 w-full max-w-md border-collapse">
+                                    <thead>
+                                      <tr className="text-[10px] uppercase tracking-wide text-slate-400">
+                                        <th className="px-2 py-1 text-left font-medium">Brand</th>
+                                        <th className="px-2 py-1 text-right font-medium">Published</th>
+                                        <th className="px-2 py-1 text-right font-medium">Removed</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {brandGroups.map(({ brand, rows: newRows }) => {
+                                        const brandKey = `${run.id}::${row.tab}::${brand}`;
+                                        const brandOpen = expandedBrand.has(brandKey);
+                                        return (
+                                          <React.Fragment key={brand}>
+                                            <tr
+                                              onClick={(e) => { e.stopPropagation(); toggleBrand(brandKey); }}
+                                              className="cursor-pointer hover:bg-rose-50"
+                                            >
+                                              <td className="px-2 py-1 text-slate-700">{brand}</td>
+                                              <td className="px-2 py-1 text-right text-emerald-700 tabular-nums">{publishedCounts[brand] ?? 0}</td>
+                                              <td className="px-2 py-1 text-right font-semibold text-rose-700 tabular-nums">{newRows.length}</td>
+                                            </tr>
+                                            {brandOpen && (
+                                              <tr>
+                                                <td colSpan={3} className="border-l-2 border-rose-200 bg-rose-50/50 px-3 py-1.5">
+                                                  <div className="flex flex-col gap-0.5">
+                                                    {newRows.map((r) => (
+                                                      <a
+                                                        key={r.id}
+                                                        href={r.link ?? undefined}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="text-rose-600 hover:underline"
+                                                      >
+                                                        {r.account_name ?? 'Unknown account'} — {r.platform} removed
+                                                      </a>
+                                                    ))}
+                                                  </div>
+                                                </td>
+                                              </tr>
                                             )}
-                                            {newRows.length > 0 && (
-                                              <button
-                                                type="button"
-                                                onClick={(e) => { e.stopPropagation(); toggleBrand(brandKey); }}
-                                                className="ml-1 rounded-full bg-rose-600 px-1.5 py-px font-semibold text-white tabular-nums hover:bg-rose-700"
-                                              >
-                                                +{newRows.length} new
-                                              </button>
-                                            )}
-                                          </span>
-                                          {brandOpen && newRows.length > 0 && (
-                                            <span className="ml-2 flex flex-col gap-0.5 border-l border-rose-200 pl-2">
-                                              {newRows.map((r) => (
-                                                <a
-                                                  key={r.id}
-                                                  href={r.link ?? undefined}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  onClick={(e) => e.stopPropagation()}
-                                                  className="text-rose-600 hover:underline"
-                                                >
-                                                  {r.account_name ?? 'Unknown account'} — {r.platform} removed
-                                                </a>
-                                              ))}
-                                            </span>
-                                          )}
-                                        </span>
-                                      );
-                                    })}
-                                  </>
+                                          </React.Fragment>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
                                 )}
                               </div>
                             );
