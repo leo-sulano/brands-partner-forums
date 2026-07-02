@@ -2079,6 +2079,13 @@ export default function BrandGroup() {
               (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !base.has(k),
             );
             const hdrs = [...filteredFull, ...extras];
+            // Ensure a tab-configured column always shows, even on entries saved
+            // before that column existed (e.g. GRG rows created before Agent was added).
+            if (getTabColumns(decodedTab)?.includes('Agent') && !hdrs.includes('Agent')) {
+              const anIdx = hdrs.indexOf('Account Name');
+              if (anIdx !== -1) hdrs.splice(anIdx + 1, 0, 'Agent');
+              else hdrs.push('Agent');
+            }
             for (const [afterCol, field] of DASHBOARD_ONLY_MODAL_FIELDS) {
               const dupIdx = hdrs.indexOf(field);
               if (dupIdx !== -1) hdrs.splice(dupIdx, 1);
