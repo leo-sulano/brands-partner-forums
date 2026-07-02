@@ -14,6 +14,15 @@ type RunDiffState =
   | { status: 'error' }
   | { status: 'ready'; groups: Record<string, RemovedEntryRow[]> };
 
+// diffGroups is keyed by `${tab}::${brand ?? ''}` — aggregate every brand
+// group for a tab, not just the brand-less (`${tab}::`) key.
+function tabDiffRows(diffGroups: Record<string, RemovedEntryRow[]>, tab: string): RemovedEntryRow[] {
+  const prefix = `${tab}::`;
+  return Object.entries(diffGroups)
+    .filter(([key]) => key.startsWith(prefix))
+    .flatMap(([, rows]) => rows);
+}
+
 export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
   const [expandedRun, setExpandedRun] = useState<Set<string>>(new Set());
   const [expandedBrand, setExpandedBrand] = useState<Set<string>>(new Set());
@@ -25,7 +34,9 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
       next.has(run.id) ? next.delete(run.id) : next.add(run.id);
       return next;
     });
-    if (!prevRun || diffByRun[run.id]) return;
+    if (!prevRun) return;
+    const existing = diffByRun[run.id];
+    if (existing && existing.status !== 'error') return;
     setDiffByRun((prev) => ({ ...prev, [run.id]: { status: 'loading' } }));
     try {
       const [currentRows, previousRows] = await Promise.all([
@@ -80,7 +91,7 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
               : totRem - prevRem; // shown before expand — corrected once the real diff loads
 
             const rowsToShow = diffReady
-              ? run.summary.filter((row) => (diffGroups[`${row.tab}::`] ?? []).length > 0)
+              ? run.summary.filter((row) => tabDiffRows(diffGroups, row.tab).length > 0)
               : [];
 
             return (
@@ -133,7 +144,7 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
                           {rowsToShow.map((row) => {
                             const rb = row.removedBrands ?? [];
                             const counts = row.removedBrandCounts ?? {};
-                            const tabNewRows = diffGroups[`${row.tab}::`] ?? [];
+                            const tabNewRows = tabDiffRows(diffGroups, row.tab);
                             return (
                               <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
                                 <Link
