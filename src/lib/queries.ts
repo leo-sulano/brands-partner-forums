@@ -912,6 +912,7 @@ export interface TabStatusRow {
   brands: string[];
   removedBrands: string[];
   removedBrandCounts: Record<string, number>;
+  publishedBrandCounts?: Record<string, number>;
 }
 
 export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStatusRow[]> {
@@ -934,14 +935,20 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
       let published = 0, removed = 0, pending = 0;
       const brandSet = new Set<string>();
       const removedBrandCounts = new Map<string, number>();
+      const publishedBrandCounts = new Map<string, number>();
 
       for (const entry of entries) {
         const d = entry.data;
         const statuses = [tpCol, agCol, cgCol]
           .filter((c): c is string => !!c)
           .map((c) => (d[c] ?? '').toLowerCase());
-        if (statuses.some(isLiveStatus)) published++;
-        else if (statuses.some(isRemovedStatus)) {
+        if (statuses.some(isLiveStatus)) {
+          published++;
+          if (brandCol) {
+            const brand = d[brandCol]?.trim();
+            if (brand) publishedBrandCounts.set(brand, (publishedBrandCounts.get(brand) ?? 0) + 1);
+          }
+        } else if (statuses.some(isRemovedStatus)) {
           removed++;
           if (brandCol) {
             const brand = d[brandCol]?.trim();
@@ -956,7 +963,14 @@ export async function fetchAllTabsStatusSummary(tabs: string[]): Promise<TabStat
 
       const removedBrands = [...removedBrandCounts.keys()].sort();
       const removedBrandCountsObj = Object.fromEntries(removedBrandCounts);
-      return { tab, published, removed, pending, brands: [...brandSet].sort(), removedBrands, removedBrandCounts: removedBrandCountsObj };
+      const publishedBrandCountsObj = Object.fromEntries(publishedBrandCounts);
+      return {
+        tab, published, removed, pending,
+        brands: [...brandSet].sort(),
+        removedBrands,
+        removedBrandCounts: removedBrandCountsObj,
+        publishedBrandCounts: publishedBrandCountsObj,
+      };
     }),
   );
 }
