@@ -96,6 +96,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   else if (pathname === '/sync') title = 'Check Status';
   else if (pathname === '/score-summary') title = 'Score Summary';
   else if (pathname === '/admin/users') title = 'Admin — Users';
+  else if (pathname === '/log') title = 'Log';
   else if (pathname.startsWith('/mentions/')) title = 'Mention Detail';
   else if (pathname.startsWith('/brands/')) {
     const slug = pathname.slice('/brands/'.length);
