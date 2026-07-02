@@ -663,22 +663,30 @@ export default function BrandGroup() {
   useEffect(() => {
     if (!decodedTab) return;
     let canceled = false;
-    setLoading(true);
-    setEntries([]);
-    setHeaders([]);
-    setFullHeaders([]);
-    setError(null);
-    setSearch('');
-    setBrandFilter('');
-    setStatusFilter('all');
-    setPlatformFilter((['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all'));
-    setAgentFilter('');
-    setProxyFilter('');
-    setDateFrom('');
-    setDateTo('');
-    setPage(1);
-    setJumpInput('');
-    setSelectedIds(new Set());
+    // Distinguish an actual tab navigation from a same-tab data reload
+    // (reloadSeq bump after an edit/delete/duplicate). Only a real tab change
+    // should blank the view and reset filters/sort/page/selection — a same-tab
+    // reload must refetch quietly in place so the user's current view sticks.
+    const isTabChange = lastLoadedTabRef.current !== decodedTab;
+
+    if (isTabChange) {
+      setLoading(true);
+      setEntries([]);
+      setHeaders([]);
+      setFullHeaders([]);
+      setError(null);
+      setSearch('');
+      setBrandFilter('');
+      setStatusFilter('all');
+      setPlatformFilter((['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all'));
+      setAgentFilter('');
+      setProxyFilter('');
+      setDateFrom('');
+      setDateTo('');
+      setPage(1);
+      setJumpInput('');
+      setSelectedIds(new Set());
+    }
 
     (async () => {
       try {
@@ -777,7 +785,6 @@ export default function BrandGroup() {
             }
           }
         }
-        const isTabChange = lastLoadedTabRef.current !== decodedTab;
         lastLoadedTabRef.current = decodedTab;
         if (isTabChange) {
           const saved = readSortFromStorage(decodedTab);
@@ -796,7 +803,8 @@ export default function BrandGroup() {
             setSortDir(matched ? 'desc' : 'asc');
           }
         }
-        // Same-tab reload (realtime): preserve current sort — no setSortCol call
+        // Same-tab reload (edit save / delete / duplicate / realtime): preserve
+        // current sort, filters, page, and selection — only entries/headers refresh.
       } catch (err) {
         if (canceled) return;
         setError(err instanceof Error ? err.message : 'Failed to load');
