@@ -234,9 +234,17 @@ def fetch_ag_review(
                 print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
                 return ("__skip__", None)
 
-        html_lower = html.lower()
+        # Only the rendered visible text proves an authored review exists — a raw
+        # HTML match can come from a hidden widget reusing review markup (confirmed
+        # on CasinoGuru's "found this helpful" tooltip; hardened here too as a
+        # precaution, though no live AG false positive has been observed).
+        try:
+            visible_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+        except Exception:
+            visible_text = ""
 
-        if ag_user_lower in html_lower:
+        if ag_user_lower in visible_text:
+            html_lower = html.lower()
             idx = html_lower.find(ag_user_lower)
             # Extract rating from surrounding HTML context
             context = html[max(0, idx - 500) : idx + 1500]

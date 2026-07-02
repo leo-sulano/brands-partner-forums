@@ -688,6 +688,7 @@ Fixed a bug reported live where CasinoGuru status checks marked reviews "Publish
 - Fix: presence is now checked against the page's rendered visible text (which the hidden tooltip never populates) instead of raw HTML. Star-rating extraction still uses HTML context, but now skips any occurrence sitting inside a `tooltip-user-row` block when locating that context.
 - Verified live against both known-bad entries (now correctly return "Removed") and one confirmed genuine published review on the same page (still correctly returns "Published").
 - Checked AskGamblers (`check_ag_status.py`) for the same failure mode against 3 live entries — its review markup only appears in genuinely visible text, no hidden-tooltip reuse found — left unchanged since there's no evidence of the same bug there.
+- **Follow-up (same day):** applied the same visible-text presence check to `fetch_ag_review()` in `check_ag_status.py` as a precaution — it shared the identical raw-`page_source` substring-match pattern with no confirmed live false positive, but the fix is low-risk. Verified against 2 genuine published AG reviews (still correctly return "Published"); full test suite (19 tests) passes.
 
 ---
 
