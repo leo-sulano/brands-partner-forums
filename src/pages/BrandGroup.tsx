@@ -883,6 +883,7 @@ export default function BrandGroup() {
   const uniqueBrands = brandCol
     ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
     : [];
+  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[decodedTab]) uniqueBrands.push(TAB_DEFAULT_BRAND[decodedTab]);
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
     if (!brandCol) return {};

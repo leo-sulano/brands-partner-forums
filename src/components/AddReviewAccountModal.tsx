@@ -4,7 +4,7 @@ import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
-import { hasMultiPlatform, getTabColumns } from '../lib/tab-configs';
+import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 
 const STATUS_OPTS = [
@@ -144,7 +144,9 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
 
   const isMulti = hasMultiPlatform(selectedTab);
   const showAgentField = getTabColumns(selectedTab)?.includes('Agent') ?? false;
-  const availableBrands = selectedTab === currentTab ? Object.keys(brandProfiles).sort() : [];
+  const availableBrands = selectedTab === currentTab
+    ? (Object.keys(brandProfiles).length > 0 ? Object.keys(brandProfiles).sort() : [TAB_DEFAULT_BRAND[selectedTab]].filter(Boolean) as string[])
+    : [];
 
   function toggleReveal(key: string) {
     setRevealed((s) => {
