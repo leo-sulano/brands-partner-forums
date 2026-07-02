@@ -678,6 +678,19 @@ Fixed a bug where checking review status (TP, and by extension AG/CG since they 
 
 ---
 
+## Task 83: Fix CG Status False-Positive "Published" Detection
+
+**Date:** July 2, 2026
+
+Fixed a bug reported live where CasinoGuru status checks marked reviews "Published" for accounts whose reviews were never actually posted or visible (confirmed on 2 real entries: Serenity9/OlympusBet, Lincoln4/LuckNation).
+
+- Root cause: `fetch_cg_review()` in `scripts/check_cg_status.py` matched the username via a raw substring search over the full `page_source`. CasinoGuru embeds a hidden "users who found this helpful" like-tooltip (`class="tooltip-user-row"`) on every review that reuses the exact same author-name markup as a genuine review byline — so a user who merely clicked "helpful" on someone else's review (not authored one) matched and got marked Published. Confirmed live: the username never appeared in the page's rendered visible text (`body.text`) in either false-positive case.
+- Fix: presence is now checked against the page's rendered visible text (which the hidden tooltip never populates) instead of raw HTML. Star-rating extraction still uses HTML context, but now skips any occurrence sitting inside a `tooltip-user-row` block when locating that context.
+- Verified live against both known-bad entries (now correctly return "Removed") and one confirmed genuine published review on the same page (still correctly returns "Published").
+- Checked AskGamblers (`check_ag_status.py`) for the same failure mode against 3 live entries — its review markup only appears in genuinely visible text, no hidden-tooltip reuse found — left unchanged since there's no evidence of the same bug there.
+
+---
+
 *Last updated: July 2, 2026*
 
 ---

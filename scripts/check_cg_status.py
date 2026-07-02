@@ -142,6 +142,30 @@ def _try_load_more(driver: uc.Chrome) -> bool:
     return False
 
 
+# CasinoGuru embeds a hidden "users who found this helpful" tooltip (class
+# tooltip-user-row) on every review, reusing the exact same author-name markup as a
+# real review's byline. A plain substring search over page_source matches a username
+# there even though it's never rendered as visible text and that user never posted a
+# review on the page — confirmed live: two "Published" false positives (Serenity9 on
+# olympusbet-casino-review, Lincoln4 on lucknation-casino-review) traced to this tooltip.
+_LIKER_TOOLTIP_MARKER = "tooltip-user-row"
+_LIKER_LOOKBACK = 1000  # chars to scan backward from a match for the tooltip wrapper
+
+
+def _find_authored_context(html: str, html_lower: str, user_lower: str) -> Optional[str]:
+    """Return HTML context around the first occurrence of user_lower that isn't
+    inside a liker tooltip, for star-rating extraction. None if every occurrence is."""
+    start = 0
+    while True:
+        idx = html_lower.find(user_lower, start)
+        if idx == -1:
+            return None
+        lookback = html_lower[max(0, idx - _LIKER_LOOKBACK):idx]
+        if _LIKER_TOOLTIP_MARKER not in lookback:
+            return html[max(0, idx - 500) : idx + 1500]
+        start = idx + 1
+
+
 def fetch_cg_review(
     driver: uc.Chrome, cg_link: str, cg_user: str, current_status: str = ""
 ) -> tuple:
@@ -171,13 +195,17 @@ def fetch_cg_review(
     cg_user_lower = cg_user.lower()
 
     for page_num in range(MAX_LOAD_MORE + 1):
-        html = driver.page_source
-        html_lower = html.lower()
+        # Only the rendered visible text proves an authored review exists — the
+        # hidden liker tooltip never appears here, unlike in raw page_source.
+        try:
+            visible_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+        except Exception:
+            visible_text = ""
 
-        if cg_user_lower in html_lower:
-            idx = html_lower.find(cg_user_lower)
-            context = html[max(0, idx - 500) : idx + 1500]
-            rating = _extract_rating_from_context(context)
+        if cg_user_lower in visible_text:
+            html = driver.page_source
+            context = _find_authored_context(html, html.lower(), cg_user_lower)
+            rating = _extract_rating_from_context(context) if context else None
             return ("Published", rating)
 
         if page_num >= MAX_LOAD_MORE:
