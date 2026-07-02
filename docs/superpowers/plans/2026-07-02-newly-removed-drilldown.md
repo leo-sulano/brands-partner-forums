@@ -581,8 +581,19 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
               ? Object.values(diffGroups).reduce((s, rows) => s + rows.length, 0)
               : totRem - prevRem; // shown before expand — corrected once the real diff loads
 
+            // diffGroups is keyed by `${tab}::${brand}` (or `${tab}::` for brand-less
+            // tabs) — a tab's total newly-removed rows are spread across every one of
+            // its brand keys, so this must aggregate all `${tab}::*` groups, not just
+            // the brand-less one.
+            function tabDiffRows(tab: string): RemovedEntryRow[] {
+              const prefix = `${tab}::`;
+              return Object.entries(diffGroups)
+                .filter(([key]) => key.startsWith(prefix))
+                .flatMap(([, rows]) => rows);
+            }
+
             const rowsToShow = diffReady
-              ? run.summary.filter((row) => (diffGroups[`${row.tab}::`] ?? []).length > 0)
+              ? run.summary.filter((row) => tabDiffRows(row.tab).length > 0)
               : [];
 
             return (
@@ -635,7 +646,7 @@ export default function RunHistoryTable({ runs }: RunHistoryTableProps) {
                           {rowsToShow.map((row) => {
                             const rb = row.removedBrands ?? [];
                             const counts = row.removedBrandCounts ?? {};
-                            const tabNewRows = diffGroups[`${row.tab}::`] ?? [];
+                            const tabNewRows = tabDiffRows(row.tab);
                             return (
                               <div key={row.tab} className="flex flex-wrap items-center gap-x-2 gap-y-1 py-1 text-xs">
                                 <Link
