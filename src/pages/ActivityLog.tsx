@@ -328,7 +328,7 @@ export default function ActivityLog() {
   const [tab, setTab] = useState<LogTab>('activity');
 
   return (
-    <div className="mx-auto max-w-2xl">
+    <div>
       <h1 className="mb-4 text-xl font-semibold text-slate-900">Log</h1>
 
       <div className="mb-6 flex gap-1 border-b border-slate-200">
