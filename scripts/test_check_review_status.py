@@ -1,6 +1,11 @@
 import check_review_status as crs
 
 
+class _FakeResponse:
+    def raise_for_status(self):
+        pass
+
+
 def test_find_brand_col_prefers_first_match():
     assert crs.find_brand_col({'Brand Name': 'X', 'Brands': 'Y'}) == 'Brands'
 
@@ -75,3 +80,21 @@ def test_load_entries_skips_rows_with_no_brand_col_when_filtering(monkeypatch):
     result = crs.load_entries('TP Brand Injection', include_published=True, brands=['Boho Casino'])
 
     assert result == []
+
+
+def test_update_entry_marks_status_as_check_review_status_authoritative(monkeypatch):
+    # import-tabs (Sheet -> Dashboard sync) only preserves a row's status/score
+    # columns against a stale Sheet value when last_edited_by == 'check-review-status'.
+    # If update_entry doesn't stamp that marker, the next Sheet sync silently
+    # reverts the freshly-detected status back to whatever's still in the Sheet.
+    captured = {}
+
+    def fake_patch(url, headers=None, params=None, json=None):
+        captured['json'] = json
+        return _FakeResponse()
+
+    monkeypatch.setattr(crs.requests, 'patch', fake_patch)
+
+    crs.update_entry('row-1', {'Review Status': 'Done'}, {'Review Status': 'Published'})
+
+    assert captured['json']['last_edited_by'] == 'check-review-status'

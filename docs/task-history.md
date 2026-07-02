@@ -665,6 +665,19 @@ Found that `ProtectedRoute` only wrapped the secondary pages (`/sync`, `/log`, `
 
 ---
 
+## Task 82: Fix TP Status Reverting to "Done" After Check
+
+**Date:** July 2, 2026
+
+Fixed a bug where checking review status (TP, and by extension AG/CG since they share the same code path) would correctly detect "Published" and show it on the dashboard, but the status would silently flip back to "Done" shortly after.
+
+- Root cause: `update_entry()` in `scripts/check_review_status.py` patched Supabase without setting `last_edited_by`. The `import-tabs` Sheet→Dashboard sync only preserves a row's status/score columns against a stale Sheet value when `last_edited_by === 'check-review-status'` — since that marker was never written, the next scheduled Sheet sync overwrote the freshly-detected status back to whatever was still in the Sheet.
+- Fix: `update_entry()` now stamps `last_edited_by: 'check-review-status'` on every patch, activating the existing `import-tabs` protection.
+- Added a regression test (`test_update_entry_marks_status_as_check_review_status_authoritative`) asserting the payload includes the marker.
+- Restarted the local `status_server.py` + ngrok tunnel so the fix is live immediately.
+
+---
+
 *Last updated: July 2, 2026*
 
 ---

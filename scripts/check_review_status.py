@@ -368,12 +368,18 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True,
 def update_entry(entry_id: str, data: dict, updates: dict[str, str],
                  tab: Optional[str] = None, sheet_row_id: Optional[str] = None) -> bool:
     """Apply `updates` (e.g. {status_col: 'Published', score_col: '5'}) to the
-    entry's data blob, then mirror the same fields to the Sheet. Returns True
-    if the sheet sync succeeded (or was skipped), False on failure."""
+    entry's data blob. Does not touch the Sheet — the Sheet is not updated by
+    this checker. last_edited_by is stamped 'check-review-status' so import-tabs
+    (Sheet -> Dashboard sync) knows this row's status/score are authoritative in
+    the DB and must not be reverted to a stale Sheet value."""
     if not updates:
         return True
     updated_data = {**data, **updates}
-    payload = {"data": updated_data, "updated_at": datetime.now(timezone.utc).isoformat()}
+    payload = {
+        "data": updated_data,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "last_edited_by": "check-review-status",
+    }
     r = requests.patch(
         f"{SUPABASE_URL}/rest/v1/entries",
         headers=_headers(),
