@@ -83,6 +83,15 @@ create policy "admins can update edit_log"
   on public.edit_log for update using (public.is_admin()) with check (public.is_admin());
 ```
 
+`profiles` currently has no `insert` policy at all — accounts are only ever created via the `handle_new_user` trigger, which runs as `security definer` and bypasses RLS. Restoring a deleted account requires a client-side insert into `profiles`, so this migration also adds:
+
+```sql
+create policy "admins can insert profiles"
+  on public.profiles for insert with check (public.is_admin());
+```
+
+This closes the account side end-to-end at the database level, not just in the UI. The same isn't true for entries — `entries` already has an "approved users can insert/update entries" policy (any approved user has full entry CRUD today, not just admins), so entry restore is enforced by the UI's admin-only gate plus the admin-only `delete_log`/`edit_log` update policy (which records *who* restored it), consistent with the rest of the entries permission model where regular approved users already have full write access.
+
 ---
 
 ## 2. Write-Path Changes (`src/lib/queries.ts`)
@@ -146,8 +155,9 @@ Both functions guard against a race (two admins restoring the same entry at once
 
 ## 4. UI (`src/pages/ActivityLog.tsx`)
 
-The `/log` page gains two tabs alongside the existing **Sync** view:
+The `/log` page currently renders a single merged feed (entry edits + `admin_logs` account actions) with no tabs — `sync_runs` are shown separately on `/sync`, not here. This gets restructured into tabs, keeping the existing feed as the default:
 
+- **Activity** — the existing merged edits + admin-actions feed, unchanged.
 - **Edits** — `edit_log` rows, newest first, showing actor email, entity type, an identifying label (entry's tab + brand name, or account email), timestamp, and an expandable "view details" showing the raw `before_data`.
 - **Deletes** — same layout, sourced from `delete_log`.
 
