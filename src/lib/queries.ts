@@ -5,7 +5,7 @@ import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
-import type { AuditEntityType } from '../types/audit-log';
+import type { AuditEntityType, AuditLogEntry } from '../types/audit-log';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -773,6 +773,112 @@ export async function fetchAdminLogs(limit = 50): Promise<AdminLogEvent[]> {
     .limit(limit);
   if (error) throw error;
   return (data ?? []) as AdminLogEvent[];
+}
+
+export async function fetchEditLog(limit = 200): Promise<AuditLogEntry[]> {
+  const { data, error } = await supabase
+    .from('edit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as AuditLogEntry[];
+}
+
+export async function fetchDeleteLog(limit = 200): Promise<AuditLogEntry[]> {
+  const { data, error } = await supabase
+    .from('delete_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as AuditLogEntry[];
+}
+
+export async function restoreDeletedEntity(logId: string): Promise<void> {
+  const { data: log, error: selErr } = await supabase
+    .from('delete_log')
+    .select('*')
+    .eq('id', logId)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!log) throw new Error('Log entry not found.');
+  if (log.restored_at) throw new Error('This item has already been restored.');
+
+  const table = log.entity_type === 'account' ? 'profiles' : 'entries';
+  const { error: insErr } = await supabase.from(table).insert(log.before_data);
+  if (insErr) throw insErr;
+
+  const actor = await currentActor();
+  const { error: updErr, count } = await supabase
+    .from('delete_log')
+    .update({ restored_at: new Date().toISOString(), restored_by_email: actor.email }, { count: 'exact' })
+    .eq('id', logId)
+    .is('restored_at', null);
+  if (updErr) throw updErr;
+  if (!count) throw new Error('This item was already restored by someone else.');
+
+  if (log.entity_type === 'entry') invalidateTabCache(log.tab as string);
+}
+
+export async function restoreEditedEntity(logId: string): Promise<void> {
+  const { data: log, error: selErr } = await supabase
+    .from('edit_log')
+    .select('*')
+    .eq('id', logId)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!log) throw new Error('Log entry not found.');
+  if (log.restored_at) throw new Error('This item has already been restored.');
+
+  const table = log.entity_type === 'account' ? 'profiles' : 'entries';
+  const { data: current, error: curErr } = await supabase
+    .from(table)
+    .select('*')
+    .eq('id', log.entity_id)
+    .maybeSingle();
+  if (curErr) throw curErr;
+  if (!current) throw new Error('This row no longer exists — restore the delete first.');
+
+  const actor = await currentActor();
+
+  // Snapshot the state right before the restore so the restore itself can be undone later.
+  await logChange('edit_log', log.entity_type as AuditEntityType, log.entity_id, current, actor, log.tab ?? undefined);
+
+  // Only revert the fields an edit can actually change — never blindly copy
+  // back sync-internal bookkeeping (last_sync_tag, updated_at, sheet_row_id):
+  // an old last_sync_tag could confuse the Sheet sync's echo-loop protection,
+  // and updated_at should reflect the restore happening now, not the past.
+  const beforeData = log.before_data as Record<string, unknown>;
+  const patchFields =
+    log.entity_type === 'account'
+      ? { approved: beforeData.approved, role: beforeData.role }
+      : {
+          data: beforeData.data,
+          tab: beforeData.tab,
+          updated_at: new Date().toISOString(),
+          last_edited_by: 'dashboard',
+          last_edited_email: actor.email,
+        };
+
+  const { error: restoreErr } = await supabase
+    .from(table)
+    .update(patchFields)
+    .eq('id', log.entity_id);
+  if (restoreErr) throw restoreErr;
+
+  const { error: updErr, count } = await supabase
+    .from('edit_log')
+    .update({ restored_at: new Date().toISOString(), restored_by_email: actor.email }, { count: 'exact' })
+    .eq('id', logId)
+    .is('restored_at', null);
+  if (updErr) throw updErr;
+  if (!count) throw new Error('This item was already restored by someone else.');
+
+  if (log.entity_type === 'entry') {
+    invalidateTabCache(current.tab as string);
+    invalidateTabCache(beforeData.tab as string);
+  }
 }
 
 // ---------------------------------------------------------------------------
