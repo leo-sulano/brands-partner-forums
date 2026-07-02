@@ -692,6 +692,19 @@ Fixed a bug reported live where CasinoGuru status checks marked reviews "Publish
 
 ---
 
+## Task 84: Delete/Edit Audit Log with Restore
+
+**Date:** July 2, 2026
+
+Added full audit logging for account (profiles) and row (entries) deletes and edits, with admin-only restore. Previously both were permanent — a delete left no trace, and an edit only stamped who/when without keeping the prior value.
+
+- New `delete_log`/`edit_log` tables (kept separate so rare deletes aren't buried under routine edit volume) snapshot the full row immediately before every delete/update in `queries.ts`, covering `deleteEntries`, `updateEntryData`, `updateMentionStatus`, `moveEntryToTab`, `deleteProfile`, and `updateProfile`.
+- `/log` (`ActivityLog.tsx`) gained "Edits" and "Deletes" tabs alongside its existing feed, each with an admin-only Restore action; restoring an edit itself writes a new edit_log row so it can be undone again.
+- RLS split by entity type: entry rows follow the existing anyone-can-read `entries` policy, account rows are admin-only-read like `admin_logs`. Restoring is admin-only for both, enforced at the RLS level for accounts (new `profiles` insert policy) and via the audit table's admin-only update policy plus the UI gate for entries.
+- Spec: `docs/superpowers/specs/2026-07-02-delete-edit-audit-restore-design.md`. Plan: `docs/superpowers/plans/2026-07-02-delete-edit-audit-restore.md`.
+
+---
+
 *Last updated: July 2, 2026*
 
 ---
