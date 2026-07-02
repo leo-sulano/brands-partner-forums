@@ -705,6 +705,75 @@ Added full audit logging for account (profiles) and row (entries) deletes and ed
 
 ---
 
+## Task 85: Per-Brand Newly-Removed Drilldown on Check Status Run History
+
+**Date:** July 2, 2026
+
+Added a drilldown into `RunHistoryTable` so a completed Check Status run shows exactly which entries newly disappeared from each platform, broken out per brand, instead of only a total removed count.
+
+- New `full_check_runs`/`full_check_removed_entries` tables record a per-platform snapshot of removed entries on every full check run (`recordFullCheckRun` in `queries.ts`).
+- `diffRemovedEntries` (`src/lib/removedEntriesDiff.ts`, with Vitest unit tests — first test file in the repo, so added Vitest config/setup) computes the newly-removed set between consecutive runs.
+- `fetchRemovedEntryDetails` reads back per-platform removal snapshots for a run; `RunHistoryTable.tsx` renders the per-brand diff groups inline, replacing ~165 lines of the old summary-only view in `SyncStatus.tsx`.
+- Same-day follow-up fixes: corrected a diff-groups key-matching bug, aggregated diff groups by tab and allowed retry after a failed fetch, fixed a React key collision, and documented a counting-unit mismatch between the run summary and drilldown detail.
+- Spec: `docs/superpowers/specs/2026-07-02-newly-removed-drilldown-design.md`. Plan: `docs/superpowers/plans/2026-07-02-per-brand-newly-removed-drilldown.md`.
+
+---
+
+## Task 86: AG/CG Password Fields on Entry Edit Modal
+
+**Date:** July 2, 2026
+
+Added AG/CG password fields to `EditEntryModal`, next to the existing AG User/CG User fields.
+
+- Dashboard-only columns with no backing Google Sheet column, so `import-tabs` now merges them back from the existing DB row on every sync — otherwise the next scheduled Sheet resync would silently wipe them.
+
+---
+
+## Task 87: Add GRG – Gulf Recovery Group Brand Tab
+
+**Date:** July 2, 2026
+
+Added GRG (Gulf Recovery Group) as a new dashboard-only, TP-only brand tab — no Google Sheet backing; entries are created directly via the Add Review Account modal.
+
+- Column config mirrors the other single-brand TP-only tabs (Trybet, HazEmirates UAE).
+- Follow-up same day: added an Agent field matching SuprPlay Limited's TP-only template, then linked GRG's Trustpilot URL and widened its Agent column to match TP Affiliate.
+
+---
+
+## Task 88: Fix Add Review Account Modal — Agent Field Only Showed for GRG
+
+**Date:** July 2, 2026
+
+Fixed the Add Review Account modal's Agent field to appear for any tab whose column config includes it, not only GRG.
+
+- Root cause: the field was gated by a hardcoded GRG-only tab check left over from adding GRG's Agent field. Replaced with a lookup against each tab's column config, so TP Affiliate, SuprPlay Limited, and Wizard of Odds also get the Agent input.
+
+---
+
+## Task 89: Fix Brand Name Free-Text Fallback for Single-Brand Tabs
+
+**Date:** July 2, 2026
+
+Fixed the Brand Name field rendering as free text instead of a dropdown in both the Add Review Account and Edit modals for single-brand, dashboard-only tabs like GRG, which have no historical brand data to populate the dropdown from.
+
+- Falls back to `TAB_DEFAULT_BRAND` when a tab has no brand history, so GRG now gets the same dropdown UX as TP Affiliate.
+
+---
+
+## Task 90: Brand Drilldown as a Published/Removed Table
+
+**Date:** July 3, 2026
+
+Replaced the per-brand pill row in the Check Status run-history drilldown (`RunHistoryTable.tsx`) with a Brand/Published/Removed table, and redefined "Removed" to mean this run's newly-removed entries instead of each brand's cumulative removed total.
+
+- Added `publishedBrandCounts` to `TabStatusRow` (`queries.ts`), mirroring the existing `removedBrandCounts` counter so each brand's whole current published total is available alongside its removed count.
+- New `tabBrandGroups` helper sources table rows from the existing `diffGroups` (brands with ≥1 newly-removed entry this run), replacing the old `row.removedBrands` list — a brand with only historical removals and nothing new this run no longer gets a row.
+- Click-to-expand behavior (individual newly-removed account/platform links) is unchanged, just moved from inline pills into the table.
+- Built via brainstorming → plan → subagent-driven implementation (2 tasks, each independently reviewed) → final whole-branch review, all in an isolated worktree/branch merged back to `main` after tests and build passed clean.
+- Spec: `docs/superpowers/specs/2026-07-02-brand-drilldown-table-design.md`. Plan: `docs/superpowers/plans/2026-07-02-brand-drilldown-table.md`.
+
+---
+
 *Last updated: July 2, 2026*
 
 ---
