@@ -358,6 +358,10 @@ const TAB_BRAND_URLS: Record<string, Record<string, string>> = {
     'play mojo':       'https://wizardofodds.com/online-casinos/reviews/playmojo-casino/',
     'rollero':         'https://wizardofodds.com/online-casinos/reviews/rollero-casino/',
   },
+  'GRG - Gulf Recovery Group': {
+    'grg - gulf recovery group': 'https://www.trustpilot.com/review/gulfrecoverygroup.com',
+    'gulf recovery group':       'https://www.trustpilot.com/review/gulfrecoverygroup.com',
+  },
 };
 
 export function getBrandTpUrl(brandName: string, tab?: string): string | undefined {

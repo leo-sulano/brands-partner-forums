@@ -52,7 +52,7 @@ function colWidthClass(header: string, isMultiPlatform = false, tab?: string): s
   if (isLinkCol(header)) return 'w-24';
   if (isStatusCol(header)) return 'w-36';
   const h = header.toLowerCase();
-  if (h === 'agent') return (tab === 'TP Brand Injection' || tab === 'TP Affiliate') ? 'w-20' : 'w-5';
+  if (h === 'agent') return (tab === 'TP Brand Injection' || tab === 'TP Affiliate' || tab === 'GRG - Gulf Recovery Group') ? 'w-20' : 'w-5';
   if (h.includes('account') || h.includes('brand') || h.includes('name')) return 'w-40';
   return 'w-32';
 }
