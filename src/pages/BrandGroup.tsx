@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -1089,10 +1089,10 @@ export default function BrandGroup() {
     ? (() => {
         const seen = new Map<string, string>();
         for (const e of entries) {
-          const v = e.data['Country'];
-          if (v && v.trim()) {
-            const key = v.trim().toLowerCase();
-            if (!seen.has(key)) seen.set(key, v.trim());
+          const v = getEntryCountry(e.data, decodedTab);
+          if (v) {
+            const key = v.toLowerCase();
+            if (!seen.has(key)) seen.set(key, v);
           }
         }
         return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
@@ -1121,7 +1121,7 @@ export default function BrandGroup() {
     : agentFiltered;
 
   const countryFiltered = countryFilter
-    ? proxyFiltered.filter((e) => e.data['Country']?.trim().toLowerCase() === countryFilter.toLowerCase())
+    ? proxyFiltered.filter((e) => getEntryCountry(e.data, decodedTab).toLowerCase() === countryFilter.toLowerCase())
     : proxyFiltered;
 
   // Platform filter only affects visible columns, not row filtering.
@@ -1261,8 +1261,8 @@ export default function BrandGroup() {
     const col = sortCol ?? implicitDateCol;
     if (!col) return filtered;
     return [...filtered].sort((a, b) => {
-      const av = a.data[col] ?? '';
-      const bv = b.data[col] ?? '';
+      const av = col === 'Country' ? getEntryCountry(a.data, decodedTab) : (a.data[col] ?? '');
+      const bv = col === 'Country' ? getEntryCountry(b.data, decodedTab) : (b.data[col] ?? '');
       if (isDateCol(col)) {
         const da = parseCellDate(av);
         const db = parseCellDate(bv);
@@ -2017,7 +2017,7 @@ export default function BrandGroup() {
                               setEditingCell({ entryId: entry.id, header: h, value: display });
                             }}
                           >
-                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                            <CellValue header={h} value={h === 'Country' ? (getEntryCountry(entry.data, decodedTab) || null) : (entry.data[h] ?? null)} rowData={entry.data} />
                           </td>
                         );
                       }
@@ -2026,7 +2026,11 @@ export default function BrandGroup() {
                         <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? `sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}` : ''}`}>
                           <CellValue
                             header={h}
-                            value={entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)}
+                            value={
+                              h === 'Country'
+                                ? (getEntryCountry(entry.data, decodedTab) || null)
+                                : entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)
+                            }
                             rowData={entry.data}
                           />
                         </td>

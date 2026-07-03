@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -8,5 +8,32 @@ describe('TAB_COLUMN_CONFIGS', () => {
       expect(accountIdx, `${tab} has no Account column`).toBeGreaterThanOrEqual(0);
       expect(cols[accountIdx + 1], `${tab}: Country should immediately follow Account`).toBe('Country');
     }
+  });
+});
+
+describe('getEntryCountry', () => {
+  it('returns the real synced Country value when present', () => {
+    const data = { Account: '071 | Test | New Zealand', Country: 'New Zealand' };
+    expect(getEntryCountry(data, 'Rooster Partners')).toBe('New Zealand');
+  });
+
+  it('derives Country from a pipe-delimited Account when the sheet has no Country column', () => {
+    const data = { Account: '1182 | Test | Norway', Country: null };
+    expect(getEntryCountry(data, 'Wizard of Odds')).toBe('Norway');
+  });
+
+  it('derives Country from an "l"-delimited Account (Hanan-sourced Wizard of Odds rows)', () => {
+    const data = { Account: '550 l Hanan l Australia', Country: null };
+    expect(getEntryCountry(data, 'Wizard of Odds')).toBe('Australia');
+  });
+
+  it('falls back to the per-tab default when Account has no parseable country', () => {
+    const data = { Account: '001 - UK Reviews', Country: null };
+    expect(getEntryCountry(data, 'SuprPlay Limited')).toBe('UK');
+  });
+
+  it('returns empty string when there is no real value, no parseable Account, and no tab default', () => {
+    const data = { Account: '001 - UK Reviews', Country: null };
+    expect(getEntryCountry(data, 'Trybet')).toBe('');
   });
 });

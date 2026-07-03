@@ -209,6 +209,32 @@ export const TAB_DEFAULT_BRAND: Record<string, string> = {
   'GRG - Gulf Recovery Group': 'GRG - Gulf Recovery Group',
 };
 
+// Country to use when a tab's Google Sheet has no Country column at all and no
+// per-row value can be derived from Account text (e.g. every row is the same country).
+const TAB_DEFAULT_COUNTRY: Record<string, string> = {
+  'SuprPlay Limited': 'UK',
+};
+
+// Account values are formatted "<id> | <label> | <Country>" (or, for rows copied
+// from Hanan-sourced accounts, "<id> l <label> l <Country>" using a literal "l").
+// Returns '' if the value doesn't match either delimited shape.
+function deriveCountryFromAccount(account: string | null | undefined): string {
+  if (!account) return '';
+  const parts = account.split(/\s*\|\s*|\s+l\s+/);
+  if (parts.length < 3) return '';
+  return parts[parts.length - 1].trim();
+}
+
+// Returns the country to display/sort/filter by for an entry: the real value synced
+// from the Sheet, else one derived from Account text, else a per-tab default.
+export function getEntryCountry(data: Record<string, string | null>, tab: string): string {
+  const raw = data['Country'];
+  if (raw && raw.trim()) return raw.trim();
+  const derived = deriveCountryFromAccount(data['Account']);
+  if (derived) return derived;
+  return TAB_DEFAULT_COUNTRY[tab] ?? '';
+}
+
 // Returns the display label for a column header, with optional tab-specific override.
 export function getColLabel(header: string, tab?: string): string {
   if (tab && TAB_COLUMN_LABELS[tab]?.[header]) {
