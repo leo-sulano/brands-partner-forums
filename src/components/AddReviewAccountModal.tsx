@@ -334,7 +334,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             <SectionHeading label="Account Details" />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
               {ACCOUNT_FIELDS
-                .flatMap((f) => (showAgentField && f.key === 'Account Name' ? [f, AGENT_FIELD] : [f]))
+                .flatMap((f) => (showAgentField && f.key === 'Account Surname' ? [f, AGENT_FIELD] : [f]))
                 .map(renderField)}
             </div>
           </div>

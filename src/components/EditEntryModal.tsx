@@ -27,7 +27,7 @@ const YES_NO_OPTS = [
 
 const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: t }));
 
-const ACCOUNT_FIELD_PRIORITY = ['Agent', 'Account', 'Country', 'Email', 'Password', 'Account Name', 'Account Surname'];
+const ACCOUNT_FIELD_PRIORITY = ['Account', 'Country', 'Proxy Used', 'Email', 'Password', 'Account Name', 'Account Surname', 'Agent'];
 
 const YES_NO_COLS = new Set([
   'Register from Google acount',
