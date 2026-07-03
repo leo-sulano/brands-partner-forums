@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** On every brand tab page, keep the search/filter toolbar and the table's column-header row pinned to the top while data rows scroll underneath them, without breaking horizontal scroll or the frozen checkbox/Account columns.
+**Goal:** On every brand tab page, keep the table's column-header row pinned to the top once it scrolls there, while data rows scroll underneath it — without breaking horizontal scroll or the frozen checkbox/Account columns. (Revised in Task 4: the toolbar does **not** stick — it scrolls away with the page like everything above it.)
 
-**Architecture (revised mid-implementation — see Task 1 note):** The toolbar+table card becomes its own bounded-height, self-scrolling panel (`max-height: calc(100vh - 280px)`, `overflow: auto`), replacing the old `overflow-x-auto`-only wrapper. The toolbar and every `<th>` are `position: sticky` relative to that panel (`top` for the toolbar, `top: toolbarHeight` — tracked live via `ResizeObserver` — for header cells; both also get `left: 0`/existing `left` offsets so they don't drift when the panel scrolls horizontally). The pagination footer stays outside the scrolling div so it's always visible. Z-index values are layered so the sticky toolbar, sticky header, and the table's existing horizontally-frozen columns (checkbox + Account) don't fight over paint order.
+**Architecture (revised twice — see Task 1 and Task 4 notes):** The table (previously wrapped in `<div className="overflow-x-auto">`) is now wrapped in its own bounded-height, self-scrolling panel (`max-height: calc(100vh - 280px)`, `overflow: auto`) that's a `flex-1 min-h-0` child of a `flex flex-col` card. The toolbar and pagination bar are normal, non-sticky siblings of this panel — they scroll with the page like before. Every `<th>` is `position: sticky; top: 0` relative to the panel. Z-index values are layered so the sticky header and the table's existing horizontally-frozen columns (checkbox + Account) don't fight over paint order.
 
 **Tech Stack:** React 19, TypeScript, Tailwind v4 (no component-test framework in this repo — `vitest` only covers pure-function unit tests in `src/lib/`).
 
@@ -157,9 +157,46 @@ Combined into the same commit as Task 1 (see Task 1 Step 5).
 
 - [ ] **Step 5 (manual — do before merging): click through the real app**
 
-Log into the dashboard, open a brand tab with enough rows to scroll (e.g. TP Brand Injection), and confirm:
-- The toolbar and column-header row stick at the top of the table panel while rows scroll; pagination stays visible at the bottom.
-- Selecting a row (switching to "N selected" toolbar) doesn't jump or clip the sticky area.
-- Horizontal scroll: the frozen checkbox + Account columns stay pinned left and render above everything scrolling underneath, including the toolbar and header row.
-- The bounded panel height looks reasonable on a tab with several KPI/platform cards above it (the `calc(100vh - 280px)` estimate is approximate, not exact, for every tab).
-- Try a multi-platform tab (e.g. Rooster Partners) to confirm nothing platform-specific broke.
+Superseded by Task 4's manual-check note below (the toolbar's sticky behavior changed after this step was written).
+
+---
+
+### Task 4: Un-stick the toolbar — only the column header should stick
+
+The user reviewed a live screenshot (multi-platform "Revolution Casino" tab, which has a date-range bar + 3 platform summary boxes above the table) and clarified with an annotated image: the toolbar should **not** stick. It should scroll away with the page exactly like the date-range bar and summary boxes above it. Only the column-header row should stick, and only once it reaches the top.
+
+- [x] **Step 1: Remove the toolbar's sticky wrapper; move it outside the scroll panel**
+
+The toolbar (both the normal filter-bar and the "N selected" variant, rendered via one ternary) is now a plain child of the outer `flex flex-col` card, rendered *before* the scroll-panel div — no wrapping `<div>`, no `ref`, no sticky/z-index classes. The scroll-panel div (`overflow-auto flex-1 min-h-0`) now wraps only the `<table>`.
+
+- [x] **Step 2: Remove the now-unused `toolbarRef`/`toolbarHeight` state and `ResizeObserver` effect**
+
+Deleted entirely — nothing needs to measure the toolbar's height anymore, since the header no longer shares a scroll container with it.
+
+- [x] **Step 3: Change every sticky `<th>` from `style={{ top: toolbarHeight }}` to a plain `top-0` class**
+
+Both the checkbox `<th>` and the `visibleHeaders.map` `<th>` now use `sticky top-0` (Tailwind class, no inline style) instead of the toolbar-height offset.
+
+- [x] **Step 4: Verify it builds**
+
+`npm run build` — exits 0, no TypeScript errors.
+
+- [x] **Step 5: Verify via headless-browser reproduction**
+
+Rebuilt the reproduction with the toolbar as a plain sibling above the scroll panel. 8/8 assertions passed: scrolling the outer page moves the toolbar 1:1 (proving it's not sticky, both for a small scroll and after scrolling to the page's true max); the header never overlaps the toolbar; the header stays fixed at the panel's top while further scrolling moves only the rows; frozen/regular header alignment and z-index ordering still hold; pagination still doesn't move.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/pages/BrandGroup.tsx
+git commit -m "fix: only the column-header row sticks, not the toolbar"
+```
+
+- [ ] **Step 7 (manual — do before merging): click through the real app**
+
+Log into the dashboard and confirm on at least two tabs — a simple one (e.g. TP Brand Injection) and a multi-platform one with more content above the table (e.g. Revolution Casino, which has the date-range bar + 3 platform summary boxes):
+- The toolbar, date-range bar, and summary/KPI boxes all scroll away normally with the page — none of them stick.
+- The column-header row sticks once it reaches the top of its panel; pagination stays visible at the bottom the whole time.
+- Selecting a row (switching to "N selected" toolbar) doesn't jump or clip anything, since that toolbar is no longer part of any sticky calculation.
+- Horizontal scroll: the frozen checkbox + Account columns stay pinned left and render above the header cells and rows scrolling underneath.
+- The bounded panel height looks reasonable (the `calc(100vh - 280px)` estimate is approximate, not exact, for every tab — especially ones with more content above the table like Revolution Casino).
