@@ -74,12 +74,9 @@ Card open tag, changed from `className="rounded-lg border border-slate-200 bg-wh
 
 8/8 assertions passed (toolbar sticks at panel top; header sits flush below it; frozen/regular header offsets match; header re-flows correctly when the toolbar height changes in "N selected" mode; frozen header z-index beats regular header z-index during horizontal scroll; frozen Account column stays visually pinned during horizontal scroll).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
-```bash
-git add src/pages/BrandGroup.tsx
-git commit -m "feat: make brand tab search/filter toolbar sticky on scroll"
-```
+Combined with Tasks 2 and 3 into a single commit (`feat: make brand tab toolbar and column headers sticky within a scrollable panel`) since all three were implemented together as one coherent change.
 
 ---
 
@@ -132,12 +129,9 @@ Every header cell now sticks at `top: toolbarHeight` (flush below the sticky too
 
 Included in the same 8-assertion pass as Task 1 Step 4 (frozen-vs-regular z-index ordering, header offset consistency across both frozen and non-frozen columns).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
-```bash
-git add src/pages/BrandGroup.tsx
-git commit -m "feat: make brand tab column-header row sticky on scroll"
-```
+Combined into the same commit as Task 1 (see Task 1 Step 5).
 
 ---
 
@@ -157,12 +151,9 @@ Removed the old `<div className="overflow-x-auto">` wrapper around just `<table>
 
 Rebuilt the reproduction with the exact final structure (bounded flex-column card → scroll panel div → pagination sibling) and confirmed: pagination bar's `getBoundingClientRect()` top position is identical before and after scrolling 700px inside the panel.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
-```bash
-git add src/pages/BrandGroup.tsx
-git commit -m "fix: keep pagination bar outside the scrollable table panel"
-```
+Combined into the same commit as Task 1 (see Task 1 Step 5).
 
 - [ ] **Step 5 (manual — do before merging): click through the real app**
 
