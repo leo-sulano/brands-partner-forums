@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -1033,6 +1033,9 @@ export default function BrandGroup() {
           else if (CLEAR_ON_DUPLICATE.has(k)) fields[k] = null;
           else fields[k] = entry.data[k] ?? null;
         }
+        // Country tracks the duplicated Account text (with its " dup" suffix
+        // stripped by getCountryForAccount), not the source row's stored value.
+        fields['Country'] = getCountryForAccount(fields['Account'], targetTab) || null;
         // Apply brand override if selected
         if (duplicateBrand && brandCol) fields[brandCol] = duplicateBrand;
         // Apply AG/CG link overrides if provided

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
-import { getColLabel } from '../lib/tab-configs';
+import { getColLabel, getCountryForAccount } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS } from '../lib/tabs';
@@ -228,8 +228,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             onChange={(e) => {
               const val = e.target.value;
               if (h === 'Account') {
-                const parts = val.split(' | ');
-                const country = parts.length >= 3 ? parts[parts.length - 1].trim() : '';
+                const country = getCountryForAccount(val, selectedTab || entry.tab);
                 setFields((f) => ({ ...f, [h]: val, ...(country ? { Country: country } : {}) }));
               } else {
                 setFields((f) => ({ ...f, [h]: val }));
