@@ -80,7 +80,7 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
       </button>
 
       {open && (
-        <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-full z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl`}>
+        <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-full z-[200] mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl`}>
           <div className="mb-3 flex items-center justify-between">
             <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
               <ChevronLeft className="size-4" />

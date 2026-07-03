@@ -485,7 +485,7 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
       </button>
 
       {open && (
-        <div className="absolute left-0 top-full z-30 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+        <div className="absolute left-0 top-full z-[200] mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
           {/* Header */}
           <div className="mb-3 flex items-center justify-between">
             <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
