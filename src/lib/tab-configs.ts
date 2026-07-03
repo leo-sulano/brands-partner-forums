@@ -408,6 +408,10 @@ const TAB_BRAND_URLS: Record<string, Record<string, string>> = {
     'grg - gulf recovery group': 'https://www.trustpilot.com/review/gulfrecoverygroup.com',
     'gulf recovery group':       'https://www.trustpilot.com/review/gulfrecoverygroup.com',
   },
+  'Revolution Casino': {
+    // God Of Casino has no Trustpilot page (AG only) — link to its AskGamblers review page instead.
+    'god of casino': 'https://www.askgamblers.com/online-casinos/reviews/god-of-casino',
+  },
 };
 
 export function getBrandTpUrl(brandName: string, tab?: string): string | undefined {
