@@ -6,6 +6,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   // 3-platform tabs
   'Rooster Partners': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Agent',
@@ -24,6 +25,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'Hanan': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Brands',
@@ -41,6 +43,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'Revolution Casino': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Brands',
@@ -59,6 +62,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   // 1-platform tabs
   'TP Brand Injection': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Agent',
@@ -69,6 +73,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'TP Affiliate': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Agent',
@@ -79,6 +84,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'Trybet': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Brands',
@@ -88,6 +94,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'HazEmirates UAE': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Brands',
@@ -97,6 +104,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'SuprPlay Limited': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Agent',
@@ -107,6 +115,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   ],
   'SilverPlay': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Brands',
@@ -125,6 +134,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   'Wizard of Odds': [
     'Agent',
     'Account',
+    'Country',
     'Proxy Used',
     'Brand Name',
     'Wizard of Odds',
@@ -136,6 +146,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   // Dashboard-only tab, no Google Sheet backing — entries come from Add Review Account.
   'GRG - Gulf Recovery Group': [
     'Account',
+    'Country',
     'Proxy Used',
     'Account Name',
     'Agent',
