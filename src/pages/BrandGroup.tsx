@@ -1707,13 +1707,13 @@ export default function BrandGroup() {
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
                 {loading
                   ? Array.from({ length: 5 }).map((_, i) => (
-                      <th key={i} className="px-[3px] py-3">
+                      <th key={i} className="px-[10px] py-3">
                         <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                       </th>
                     ))
                   : <>
                       {isApproved && (
-                        <th className="w-8 px-2 py-2.5 sticky left-0 z-20 bg-slate-50">
+                        <th className="w-8 px-2 py-2 sticky left-0 z-20 bg-slate-50">
                           <input
                             type="checkbox"
                             aria-label="Select all on this page"
@@ -1745,7 +1745,7 @@ export default function BrandGroup() {
                         <th
                           key={h}
                           onClick={() => handleSort(h)}
-                          className={`px-[3px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''} ${(h === 'Account' || h === 'Account Name') ? `sticky z-20 bg-slate-50 ${isApproved ? 'left-8' : 'left-0'}` : ''}`}
+                          className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''} ${(h === 'Account' || h === 'Account Name') ? `sticky z-20 bg-slate-50 ${isApproved ? 'left-8' : 'left-0'}` : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
@@ -1762,7 +1762,7 @@ export default function BrandGroup() {
                 Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i}>
                     {Array.from({ length: 5 }).map((_, j) => (
-                      <td key={j} className="px-[3px] py-3">
+                      <td key={j} className="px-[10px] py-3">
                         <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
                       </td>
                     ))}
@@ -1784,7 +1784,7 @@ export default function BrandGroup() {
                   >
                     {isApproved && (
                       <td
-                        className={`w-8 px-2 py-2.5 select-none sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
+                        className={`w-8 px-2 py-2 select-none sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
                         onClick={(e) => e.stopPropagation()}
                         data-drag-id={entry.id}
                         onMouseDown={(e) => {
@@ -1863,7 +1863,7 @@ export default function BrandGroup() {
                         if (brandName && brandUrl) {
                           const href = brandUrl.startsWith('http') ? brandUrl : `https://${brandUrl}`;
                           return (
-                            <td key={h} className="px-[3px] py-2.5">
+                            <td key={h} className="px-[10px] py-2">
                               <a
                                 href={href}
                                 target="_blank"
@@ -1879,12 +1879,12 @@ export default function BrandGroup() {
                         }
                         if (brandName) {
                           return (
-                            <td key={h} className="px-[3px] py-2.5">
+                            <td key={h} className="px-[10px] py-2">
                               <span className="text-slate-600 text-sm">{brandName}</span>
                             </td>
                           );
                         }
-                        return <td key={h} className="px-[3px] py-2.5"><span className="text-slate-400">—</span></td>;
+                        return <td key={h} className="px-[10px] py-2"><span className="text-slate-400">—</span></td>;
                       }
                       // URL PAGE: show page name as clickable link using __href hyperlink field
                       if (h === 'URL PAGE') {
@@ -1894,7 +1894,7 @@ export default function BrandGroup() {
                           if (pageUrl) {
                             const href = pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`;
                             return (
-                              <td key={h} className="px-[3px] py-2.5">
+                              <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                                 <a
                                   href={href}
                                   target="_blank"
@@ -1909,19 +1909,19 @@ export default function BrandGroup() {
                             );
                           }
                           return (
-                            <td key={h} className="px-[3px] py-2.5">
+                            <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                               <span className="text-slate-600 text-sm">{pageName}</span>
                             </td>
                           );
                         }
-                        return <td key={h} className="px-[3px] py-2.5" />;
+                        return <td key={h} className="px-[10px] py-2" />;
                       }
                       // Account column: click opens the full edit modal
                       if ((h === 'Account' || h === 'Account Name') && isApproved) {
                         return (
                           <td
                             key={h}
-                            className={`px-[3px] py-2.5 cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
+                            className={`px-[10px] py-2 whitespace-nowrap cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
@@ -1936,7 +1936,7 @@ export default function BrandGroup() {
                         const tpUrl = brandName ? getBrandTpUrl(brandName, decodedTab) : undefined;
                         if (brandName && tpUrl) {
                           return (
-                            <td key={h} className="px-[3px] py-2.5">
+                            <td key={h} className="px-[10px] py-2">
                               <a
                                 href={tpUrl}
                                 target="_blank"
@@ -1951,7 +1951,7 @@ export default function BrandGroup() {
                           );
                         }
                         return (
-                          <td key={h} className="px-[3px] py-2.5">
+                          <td key={h} className="px-[10px] py-2">
                             <CellValue header={h} value={brandName} rowData={entry.data} />
                           </td>
                         );
@@ -1960,7 +1960,7 @@ export default function BrandGroup() {
                       // Operational/system columns: read-only, no inline editing
                       if (h === 'Proxy Used' || h === 'Agent' || h === 'User Name') {
                         return (
-                          <td key={h} className="px-[3px] py-2.5">
+                          <td key={h} className="px-[10px] py-2">
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
                           </td>
                         );
@@ -2041,7 +2041,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[3px] py-2.5 cursor-text hover:bg-violet-50 group"
+                            className="px-[10px] py-2 cursor-text hover:bg-violet-50 group"
                             onClick={() => {
                               const raw = entry.data[h] ?? '';
                               const display = raw ? formatCellValue(raw) : '';
@@ -2054,7 +2054,7 @@ export default function BrandGroup() {
                       }
 
                       return (
-                        <td key={h} className={`px-[3px] py-2.5 ${(h === 'Account' || h === 'Account Name') ? `sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}` : ''}`}>
+                        <td key={h} className={`px-[10px] py-2 ${(h === 'Account' || h === 'Account Name') ? `whitespace-nowrap sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}` : ''}`}>
                           <CellValue
                             header={h}
                             value={
