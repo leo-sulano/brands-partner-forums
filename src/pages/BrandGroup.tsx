@@ -1549,12 +1549,16 @@ export default function BrandGroup() {
       })()}
 
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-        {/* Search + filter bar / action bar — sticky under the app topbar
-            (relative to <main>, the page's single scroll container) so it
-            and the column headers below stay visible together while rows
-            scroll underneath. */}
-        <div ref={toolbarRef} className="sticky top-0 left-0 z-40 bg-white">
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm flex flex-col" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+        {/* Scrollable panel: toolbar + table share one scroll container (both
+            axes) so the sticky toolbar/header below stay visible while rows
+            scroll underneath, and don't drift when scrolled horizontally.
+            Pagination (below) stays outside this div, always visible. The
+            KPI/platform cards and everything else above this card are
+            outside it too, in normal page flow — always visible, never
+            scrolled past. */}
+        <div className="overflow-auto flex-1 min-h-0">
+        <div ref={toolbarRef} className="sticky top-0 left-0 z-40 bg-white will-change-transform">
         {selectedIds.size > 0 ? (
           <div className="flex items-center gap-3 px-1 py-2">
             <span className="text-sm font-medium text-violet-700">
@@ -1733,7 +1737,7 @@ export default function BrandGroup() {
                     ))
                   : <>
                       {isApproved && (
-                        <th className="w-8 px-2 py-2 sticky left-0 z-30 bg-slate-50" style={{ top: toolbarHeight }}>
+                        <th className="w-8 px-2 py-2 sticky left-0 z-30 bg-slate-50 will-change-transform" style={{ top: toolbarHeight }}>
                           <input
                             type="checkbox"
                             aria-label="Select all on this page"
@@ -1768,7 +1772,7 @@ export default function BrandGroup() {
                           key={h}
                           onClick={() => handleSort(h)}
                           style={{ top: toolbarHeight }}
-                          className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                          className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 will-change-transform ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
@@ -2097,8 +2101,9 @@ export default function BrandGroup() {
               )}
             </tbody>
           </table>
+        </div>
 
-        {/* Pagination bar */}
+        {/* Pagination bar — outside the scrollable panel, always visible */}
         {!loading && sorted.length > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
             {/* Left: row range + page size */}

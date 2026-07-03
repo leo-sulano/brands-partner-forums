@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** On every brand tab page, keep the search/filter toolbar and the table's column-header row pinned together at the top once scrolled there, while data rows scroll underneath — without breaking horizontal scroll or the frozen checkbox/Account columns. (Final behavior, confirmed in Task 5: toolbar and header stick together; the date-range bar and KPI/platform cards above scroll away normally.)
+**Goal:** On every brand tab page, keep the search/filter toolbar and the table's column-header row pinned together at the top of a bounded, self-scrolling panel, while data rows scroll underneath — without breaking horizontal scroll or the frozen checkbox/Account columns. The date-range bar and KPI/platform cards above the panel are always visible and never scroll away. (Final behavior, confirmed in Task 7: reverted Tasks 4–5's whole-page-scroll experiment back to the bounded-panel design from Task 1.)
 
-**Architecture (revised three times — see Task 1, Task 4, and Task 5 notes):** `<main>` (`src/App.tsx`) now handles horizontal overflow directly (`overflow-auto` instead of `overflow-y-auto overflow-x-hidden`) — there is no nested scrollable region anywhere. The table's old `<div className="overflow-x-auto">` wrapper is removed; the table is a direct child of the card, and `<main>` shows a horizontal scrollbar when it's wider than the viewport. The toolbar and every `<th>` are `position: sticky` relative to `<main>` (`top: 0` for the toolbar, `top: <toolbar height>` — tracked live via `ResizeObserver` — for header cells; both also get `left: 0`/existing `left` offsets so they stay pinned when the page scrolls horizontally). Z-index values are layered so the sticky toolbar, sticky header, and the table's existing horizontally-frozen columns (checkbox + Account) don't fight over paint order.
+**Architecture (revised five times — see Task 1, Task 4, Task 5, Task 6, and Task 7 notes):** The toolbar+table card is a bounded-height, self-scrolling panel: `flex flex-col` with `max-height: calc(100vh - 280px)` on the outer card, and a `flex-1 min-h-0 overflow-auto` inner div wrapping the toolbar and table together as the actual scroll container. The pagination bar is a plain sibling outside that scroll div, always visible. The toolbar and every `<th>` are `position: sticky` relative to this panel (`top: 0` for the toolbar, `top: toolbarHeight` — tracked live via `ResizeObserver` — for header cells), with `left: 0`/existing `left` offsets so they stay pinned when the panel scrolls horizontally. Z-index values are layered so the sticky toolbar, sticky header, and the table's existing horizontally-frozen columns (checkbox + Account) don't fight over paint order. `src/App.tsx`'s `<main>` is untouched (`overflow-y-auto overflow-x-hidden`, as it always was outside the brief Task 4/5 detour).
 
 **Tech Stack:** React 19, TypeScript, Tailwind v4 (no component-test framework in this repo — `vitest` only covers pure-function unit tests in `src/lib/`).
 
@@ -247,12 +247,61 @@ git add src/App.tsx src/pages/BrandGroup.tsx docs/superpowers/specs/2026-07-03-s
 git commit -m "fix: scroll the whole page as one unit so cards clear before the sticky toolbar/header lock in"
 ```
 
-- [ ] **Step 9 (manual — do before considering this fully verified): click through the real app**
+- [ ] **Step 9:** Superseded by Task 7 (Tasks 4–5's whole-page-scroll architecture was reverted — see below).
+
+---
+
+### Task 6 (interleaved with Task 7 in delivery, kept separate for clarity): gap-elimination attempt
+
+While the whole-page-scroll architecture (Task 4/5) was live, the user reported a data row visible in the gap between the app's topbar and the stuck toolbar. Diagnosed as `<main>`'s own padding (sticky `top` is measured from the scrolling ancestor's padding edge, not its true edge) and fixed with a negative `top` offset (`pagePadding` state, `-pagePadding` for the toolbar, `toolbarHeight - pagePadding` for header cells) plus a defensive `will-change: transform` hint. This fix is now moot for the `<main>`-padding-specific problem it targeted (Task 7 reverts the architecture that had the gap), but the `will-change: transform` hint was kept as a harmless defensive measure against a related Chrome sticky-repaint quirk that could independently affect the bounded-panel version too.
+
+---
+
+### Task 7: Revert Tasks 4–5 — back to the bounded self-scrolling panel (Task 1's design)
+
+The user asked to revert the whole-page-scroll experiment entirely: "can we revert this back to the table only scrollable." Confirmed via a follow-up question: the toolbar, date-range bar, and KPI/platform cards should all stay permanently visible (never scroll away), with only the table's rows scrolling inside their own bounded area. This is exactly Task 1's original bounded-panel architecture.
+
+- [x] **Step 1: Revert `src/App.tsx`**
+
+```tsx
+<main className="flex-1 p-6 md:p-8 overflow-y-auto overflow-x-hidden">
+```
+
+(was `overflow-auto`, from Task 5).
+
+- [x] **Step 2: Remove the `pagePadding` state and its resize listener from `BrandGroup.tsx`**
+
+Deleted entirely — no longer relevant once the toolbar/header aren't sticky relative to `<main>`.
+
+- [x] **Step 3: Restore the bounded panel — card gets `flex flex-col` + `max-height`, an inner `overflow-auto flex-1 min-h-0` div wraps toolbar + table, pagination moves back outside**
+
+Same structure as Task 1/Task 3 originally built. The toolbar's sticky wrapper goes back to plain `sticky top-0 left-0 z-40 bg-white` (dropped the `style={{ top: -pagePadding }}` from Task 6), keeping `will-change-transform`.
+
+- [x] **Step 4: Header `<th>` cells — offset goes back to `toolbarHeight` (not `toolbarHeight - pagePadding`)**
+
+Both the checkbox `<th>` and the `visibleHeaders.map` `<th>` keep `will-change-transform` but drop the `pagePadding` subtraction.
+
+- [x] **Step 5: Verify it builds and tests pass**
+
+`npm run build` and `npm test` — both clean.
+
+- [x] **Step 6: Verify via the original bounded-panel headless reproduction**
+
+Re-ran the exact `sticky-repro3.html`/`verify3.mjs` reproduction from Task 1 (unchanged, since the architecture is now identical to what it modeled): 7/7 assertions pass — toolbar sticks at the panel's top, header sits flush below it, both frozen/regular header alignment and toolbar-height re-flow (for "N selected" mode) hold, pagination never moves, and horizontal scroll preserves both the frozen-column z-index ordering and the toolbar's pinned left position.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/App.tsx src/pages/BrandGroup.tsx docs/superpowers/specs/2026-07-03-sticky-table-header-design.md docs/superpowers/plans/2026-07-03-sticky-table-header.md
+git commit -m "revert: go back to a bounded self-scrolling table panel instead of whole-page scroll"
+```
+
+- [ ] **Step 8 (manual — do before considering this fully verified): click through the real app**
 
 Log in and confirm on at least two tabs — a simple one (TP Brand Injection) and one with more content above the table (Revolution Casino: date-range bar + 3 platform summary boxes):
-- Scrolling anywhere on the page (including with the cursor over the table) scrolls the date-range bar and summary/KPI cards away — they fully disappear.
-- Once they're gone, the toolbar and column-header row lock together at the top, flush with each other, with no gap or overlap.
-- Further scrolling moves only the data rows underneath the stuck toolbar+header.
-- Selecting a row ("N selected" toolbar) doesn't jump or clip the sticky area — the header should re-flow to the new (shorter) toolbar height smoothly.
-- Horizontal scroll: dragging the table sideways moves the whole page's content (date-range bar and KPI cards shift too — this is the accepted trade-off, see the design spec) while the frozen checkbox + Account columns and the sticky toolbar/header stay visually pinned in place.
-- Watch specifically for whether the accepted horizontal-scroll trade-off (KPI cards shifting sideways) feels acceptable in practice, since that's the one open question in this design.
+- The date-range bar and KPI/platform summary cards are always visible — scrolling never moves or hides them, regardless of where the cursor is.
+- The toolbar and column-header row lock together at the top of the table's own bounded panel, flush with each other, with no gap.
+- Scrolling with the cursor over the table moves only the rows inside that panel; the toolbar/header stay fixed; pagination stays visible below the panel the whole time.
+- Selecting a row ("N selected" toolbar) doesn't jump or clip the sticky area.
+- Horizontal scroll (drag the panel's own scrollbar): frozen checkbox + Account columns stay pinned left, the toolbar doesn't drift sideways, and the panel's horizontal scroll is scoped to just the table — the KPI cards above never move.
+- The panel's height (`calc(100vh - 280px)`) looks reasonable — not so short that it wastes screen space, not so tall it pushes pagination off-screen on a normal window size.
