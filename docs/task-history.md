@@ -774,6 +774,33 @@ Replaced the per-brand pill row in the Check Status run-history drilldown (`RunH
 
 ---
 
-*Last updated: July 2, 2026*
+## Task 91: Diagnose AG Status Check Failures — Add Persistent Error Logging
+
+**Date:** July 3, 2026
+
+Investigated a PMS ticket reporting "2 status checks failed" on AskGamblers, whose generic toast wording ("server may not be running") implied the local status server was down. Confirmed the server and ngrok tunnel were healthy — the `errors` count is actually per-*entry*, incremented in `check_ag_for_tab()` only when `fetch_ag_review()` raises during a single page scrape, most likely from an unwrapped `driver.page_source`/`current_url`/`title` call throwing after a swallowed 25s page-load timeout on a slow or Cloudflare-challenged AG page.
+
+The exact two failing entries were unrecoverable: `start_status_server.ps1` launches Flask via `pythonw.exe` with no console and no output redirection, so every `print()` — including the per-entry `ERROR:` line — was silently discarded.
+
+- Added `log_check_error()` in `check_review_status.py`, writing timestamped per-entry exceptions to `scripts/status_check_errors.log` via a dedicated non-propagating logger.
+- Wired it into the four existing print-only exception handlers: TP's `fetch_status()`, and the per-entry loops in `check_ag_status.py`, `check_cg_status.py`, `check_wo_status.py`.
+- No behavior change to status detection itself — purely additive diagnostics so the next failed check is actually investigatable. Full test suite (19 tests) still passes.
+- Follow-up: `scripts/status_server.py` needs a restart (via `start_status_server.ps1`) to pick up the change — not yet restarted since that kills all `python`/`pythonw` processes on the host.
+
+---
+
+## Task 92: Fix Check Status Table Not Refreshing After Completion
+
+**Date:** July 3, 2026
+
+Fixed a bug where clicking "Check Status" (TP/AG/CG/WO) on a brand tab would run the check and update the database, but the visible table stayed on stale data — appearing to ignore the just-completed check while filters (status, platform, brand, agent, proxy) remained exactly as selected.
+
+- Root cause: `fetchAllTabEntries` in `queries.ts` caches each tab's entries for 60 seconds (`tabEntryCache`). Every entry-mutating function (`updateEntryData`, `insertEntry`, `deleteEntries`, `moveEntryToTab`) calls `invalidateTabCache(tab)` right after writing — except the four Check Status trigger functions, which update `entries` via the Selenium backend but never invalidated the cache. The post-check reload (`reloadRef.current()`) could therefore silently serve the pre-check cached snapshot within the TTL window.
+- Fix: added `invalidateTabCache(tab)` to `triggerStatusCheck`, `triggerAgStatusCheck`, `triggerCgStatusCheck`, and `triggerWoStatusCheck`, matching the existing convention used by all other entry mutators.
+- Filter/sort/pagination state was already correctly preserved across reloads (same-tab reload path in `BrandGroup.tsx`) — only the underlying entry data was stale.
+
+---
+
+*Last updated: July 3, 2026*
 
 ---
