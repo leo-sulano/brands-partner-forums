@@ -5,8 +5,9 @@ check_ag_status.py — Selenium stealth AskGamblers review status checker.
 Visits each entry's AskGamblers casino review page, searches player reviews
 for the account username, and writes back Published/Removed status + star rating.
 
-Status values: Published | Removed
-  (no write when username not found and status was not previously Published)
+Status values: Published | Refused | Removed
+  (Refused when not found and not previously Published; Removed when not
+  found and previously Published)
 
 Usage:
     python check_ag_status.py [--tab "Tab Name"] [--headless]
@@ -21,7 +22,6 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -40,6 +40,7 @@ from check_review_status import (
     proxy_for_entry,
     log_check_error,
     page_blocked,
+    resolve_status,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -57,11 +58,10 @@ MAX_LOAD_MORE      = 10    # max "load more" clicks before giving up
 AG_STATUS_COLS = ["AG Review Status"]
 AG_LINK_COLS   = ["AG Review Link", "AG Link"]
 AG_USER_COLS   = ["AG User"]
-AG_DATE_COLS   = ["AG Added"]
 # VERIFY: check the actual column name in the Sheet; update if different
 AG_SCORE_COLS  = ["AG Score added"]
 
-CHECKABLE_STATUSES = {"done", "pending", "published"}
+CHECKABLE_STATUSES = {"done", "pending", "published", "refused"}
 
 # ─── Column helpers ───────────────────────────────────────────────────────────
 
@@ -79,16 +79,6 @@ def _val(data: dict, candidates: list) -> Optional[str]:
     return None
 
 
-def _older_than_one_day(date_str: str) -> bool:
-    """Return True if date_str represents a date more than 24 h ago."""
-    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y"):
-        try:
-            dt = datetime.strptime(date_str.strip(), fmt).replace(tzinfo=timezone.utc)
-            return (datetime.now(timezone.utc) - dt) > timedelta(days=1)
-        except ValueError:
-            continue
-    return True  # unparseable → treat as old
-
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
 def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, country: Optional[str] = None) -> list:
@@ -97,7 +87,7 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, c
         params["tab"] = f"eq.{tab}"
     rows: list = _fetch_all(params)
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending", "refused"}
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -173,8 +163,7 @@ def fetch_ag_review(
 
     Returns (status, rating):
       ('Published', 1-5 or None)  — username found in reviews
-      ('Removed', None)           — not found, current status was 'published'
-      (None, None)                — not found, status was not published (no write needed)
+      (None, None)                — not found; caller resolves the next status via resolve_status()
       ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
     url = ag_link.strip()
@@ -313,13 +302,7 @@ def check_ag_for_tab(
                     continue
 
                 if new_status is None:
-                    current_lower = current.strip().lower()
-                    if current_lower in ("pending", "done"):
-                        ag_added = _val(data, AG_DATE_COLS) or ""
-                        new_status = "Refused" if (not ag_added or _older_than_one_day(ag_added)) else "Pending"
-                    else:
-                        print(f"    -> not found / no status change needed")
-                        continue
+                    new_status = resolve_status(found=False, current_status=current)
 
                 updates: dict = {}
                 if new_status != current:
