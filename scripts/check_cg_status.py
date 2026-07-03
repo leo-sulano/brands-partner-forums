@@ -3,7 +3,8 @@
 check_cg_status.py — Selenium stealth CasinoGuru review status checker.
 
 Visits each entry's CasinoGuru casino review page, searches player reviews
-for the account username, and writes back Published/Removed status + star rating.
+for the account username, and writes back Published/Refused/Removed status
++ star rating.
 
 Usage:
     python check_cg_status.py [--tab "Tab Name"] [--headless]
