@@ -27,6 +27,8 @@ const YES_NO_OPTS = [
 
 const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: t }));
 
+const ACCOUNT_FIELD_PRIORITY = ['Agent', 'Account', 'Country', 'Email', 'Password', 'Account Name', 'Account Surname'];
+
 const YES_NO_COLS = new Set([
   'Register from Google acount',
   'Leaving Review After redirected from  welcome Email',
@@ -170,19 +172,28 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   for (const h of visibleHeaders) sections[sectionOf(h)].push(h);
 
   function reorderAccountFields(fields: string[]): string[] {
-    if (currentTab !== 'Wizard of Odds') return fields;
-    const toMove = ['User Name', 'WO User'].filter((h) => fields.includes(h));
-    if (!toMove.length) return fields;
-    const without = fields.filter((h) => !toMove.includes(h));
-    const asIdx = without.findIndex((h) => h.trim() === 'Account Surname');
-    if (asIdx === -1) return fields;
-    without.splice(asIdx + 1, 0, ...toMove);
-    return without;
+    const priority = ACCOUNT_FIELD_PRIORITY.filter((h) => fields.includes(h));
+    const rest = fields.filter((h) => !priority.includes(h));
+    let ordered = [...priority, ...rest];
+
+    if (currentTab === 'Wizard of Odds') {
+      const toMove = ['User Name', 'WO User'].filter((h) => ordered.includes(h));
+      if (toMove.length) {
+        const without = ordered.filter((h) => !toMove.includes(h));
+        const asIdx = without.findIndex((h) => h.trim() === 'Account Surname');
+        if (asIdx !== -1) {
+          without.splice(asIdx + 1, 0, ...toMove);
+          ordered = without;
+        }
+      }
+    }
+
+    return ordered;
   }
 
-  function renderField(h: string) {
+  function renderField(h: string, cols: 5 | 6 = 6) {
     return (
-      <div key={h} className={isLinkCol(h) ? 'col-span-2 sm:col-span-6' : ''}>
+      <div key={h} className={isLinkCol(h) ? (cols === 5 ? 'col-span-2 sm:col-span-5' : 'col-span-2 sm:col-span-6') : ''}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">
           {getColLabel(h, currentTab)}
         </label>
@@ -301,8 +312,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           {sections.account.length > 0 && (
             <>
               <SectionHeading label="Account Details" />
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {reorderAccountFields(sections.account).map(renderField)}
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
+                {reorderAccountFields(sections.account).map((h) => renderField(h, 5))}
               </div>
             </>
           )}
@@ -312,7 +323,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label={currentTab === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.tp.map(renderField)}
+                {sections.tp.map((h) => renderField(h))}
               </div>
             </>
           )}
@@ -322,7 +333,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="AskGamblers" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.ag.map(renderField)}
+                {sections.ag.map((h) => renderField(h))}
               </div>
             </>
           )}
@@ -332,7 +343,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Casino Guru" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.cg.map(renderField)}
+                {sections.cg.map((h) => renderField(h))}
               </div>
             </>
           )}
@@ -342,7 +353,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Behavior Flags" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.yesno.map(renderField)}
+                {sections.yesno.map((h) => renderField(h))}
               </div>
             </>
           )}
