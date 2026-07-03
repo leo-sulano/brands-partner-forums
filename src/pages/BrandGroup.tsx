@@ -1612,7 +1612,7 @@ export default function BrandGroup() {
           {isApproved && (
             <div className="flex items-center gap-2">
               {lastChecked && (
-                <span className="text-xs text-slate-400 whitespace-nowrap">
+                <span className="text-[5px] text-slate-400 whitespace-nowrap">
                   Last checked: {lastChecked}
                 </span>
               )}
