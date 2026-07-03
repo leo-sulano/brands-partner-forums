@@ -30,6 +30,43 @@ If the IP has changed, get the new one from the AWS Console → EC2 → Instance
 
 ---
 
+## Routine Maintenance Checklist
+
+The one-stop sequence for a periodic check-in on the box — pulls together the health signals and cleanup jobs that live in their own sections further down.
+
+**1. Connect**
+```bash
+ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.179.186.205
+```
+
+**2. Health check**
+```bash
+df -h /                                                # disk usage — investigate if over ~80%
+ps aux | grep -E 'status_server|check_review_status'   # is the API server up? anything stuck running?
+crontab -l                                             # should show 3 jobs: daily scraper, tmp sweep, weekly dnf clean
+tail -30 ~/scraper.log                                 # last scraper run — any errors?
+tail -30 ~/server.log                                  # status server — any errors?
+```
+
+**3. Manual cache cleanup** (if disk looks high before the scheduled jobs would run — see [Maintenance / Cache Cleanup](#maintenance--cache-cleanup) for what these normally run on)
+```bash
+~/cleanup_tmp.sh                             # sweep stale /tmp Chrome profiles now
+sudo dnf clean all                           # clear dnf metadata cache now
+sudo logrotate -f /etc/logrotate.d/scraper   # force log rotation now instead of waiting for midnight
+```
+
+**4. Restart the status server** (if it's down, or serving stale code after a deploy — see [Status Server](#status-server-flask-api-for-dashboard-check-status-button))
+```bash
+pkill -f status_server
+nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+```
+
+**5. If the instance was stopped and restarted**, the public IP changes (see [Elastic IP](#elastic-ip)):
+- Update the `ssh`/`scp` commands throughout this doc with the new IP
+- Re-point the Edge Function: `supabase secrets set EC2_STATUS_URL=http://<new-ip>:5001`
+
+---
+
 ## Running the Script
 
 ### Dry run (no writes — always test first)
@@ -317,6 +354,35 @@ tail -100 ~/scraper.log
 Remove the cron job:
 ```bash
 crontab -e  # delete the line and save
+```
+
+---
+
+## Maintenance / Cache Cleanup
+
+The 8GB root volume has no headroom to waste, so three automated jobs keep it from creeping up. Set up 2026-07-03.
+
+**Log rotation** — `/etc/logrotate.d/scraper` rotates every `~/*.log` file daily, keeps 7 days compressed, uses `copytruncate` (so `status_server.py`'s long-running process doesn't need a restart to pick up the new file). Runs via the box's existing `logrotate.timer` (daily at midnight UTC) — no separate cron needed.
+
+```bash
+sudo logrotate -d /etc/logrotate.d/scraper   # dry run to verify the config
+```
+
+**Stale Chrome profile sweep** — `undetected-chromedriver` creates a temp profile dir under `/tmp` per run (`tempfile.mkdtemp()`) and only cleans it up on a graceful exit; crashes, timeouts, or `pkill -f chrome` leave it behind. `~/cleanup_tmp.sh` deletes `/tmp/tmp*` dirs and Chrome unpacker artifacts older than 24h. Cron: daily at 15:30 UTC (after the 14:00 scraper run).
+
+**dnf cache** — `/var/cache/dnf` is almost entirely repo metadata (solv indexes), not cached packages, so `dnf clean packages` is a no-op here — use `dnf clean all`. Cron: weekly, Sunday 03:00 UTC.
+
+Current crontab:
+```
+0 14 * * * python3 /home/ec2-user/check_review_status.py --headless >> /home/ec2-user/scraper.log 2>&1
+30 15 * * * /home/ec2-user/cleanup_tmp.sh
+0 3 * * 0 sudo dnf clean all > /home/ec2-user/dnf_clean.log 2>&1
+```
+
+Check current disk usage:
+```bash
+df -h /
+du -sh ~/* /tmp/* /var/cache/dnf 2>/dev/null | sort -rh | head -20
 ```
 
 ---

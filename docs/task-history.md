@@ -923,6 +923,23 @@ While exploring whether AG/CG/WO could run entirely on EC2 (avoiding the local-m
 
 ---
 
+## Task 101: EC2 Cache/Storage Cleanup — Prevent the 8GB Root Volume From Filling Up
+
+**Date:** July 3, 2026
+
+User asked to confirm current disk usage on `scraper-leo` (8GB root volume) and whether any cache clearing was in place — there wasn't. Investigated and set up automated cleanup so accumulation doesn't eventually degrade performance or run the box out of space.
+
+- Findings: 3.8G/8.0G used (48%). No `logrotate.d` entry for any of the scraper's `.log` files (append-only, unbounded growth). `/var/cache/dnf` at 151M, entirely repo metadata — `dnf clean packages` is a no-op against it, needs `dnf clean all`. `/tmp` had 230M+ in orphaned `undetected-chromedriver` temp profile dirs — UC creates one per run via `tempfile.mkdtemp()` and only removes it on a graceful exit, so crashes/timeouts/`pkill -f chrome` (the runbook's own troubleshooting step) leak them permanently.
+- Determined these logs are debug/trace output, not a system of record (the real record — status changes, sync results — lives in Supabase's `mentions`/`sync_runs` tables) and carry no compliance/audit retention requirement, so short-retention rotation is appropriate rather than archiving them offsite.
+- Added `/etc/logrotate.d/scraper`: rotates `~/*.log` daily, keeps 7 days compressed, `copytruncate` (so the long-running `status_server.py` process doesn't need restarting to pick up the new file). Runs via the box's existing `logrotate.timer`, no separate cron needed.
+- Added `~/cleanup_tmp.sh` + daily cron (15:30 UTC, after the 14:00 scraper run): deletes stale `/tmp/tmp*` Chrome profile dirs and unpacker artifacts older than 24h (`-mmin +1440`, not `-mtime +1` — the latter's day-rounding meant files needed to be nearly 48h old before matching).
+- Added weekly cron (Sun 03:00 UTC): `dnf clean all`.
+- Verified live: logrotate dry-run parses cleanly; ran cleanup once immediately — `dnf clean all` reclaimed 151M → 4.1M, disk usage dropped 3.8G → 3.7G (46%). Confirmed the sweep correctly skipped today's in-progress run artifacts (mtime-gated) while removing genuinely stale ones.
+- Documented the full setup in `docs/ec2-scraper-runbook.md` under a new "Maintenance / Cache Cleanup" section.
+- Added a "Routine Maintenance Checklist" section (connect → health check → manual cleanup trigger → status-server restart → IP-change handling) consolidating the SSH workflow that was previously scattered across separate sections, so periodic box check-ins don't require piecing commands together from multiple places.
+
+---
+
 *Last updated: July 3, 2026*
 
 ---
