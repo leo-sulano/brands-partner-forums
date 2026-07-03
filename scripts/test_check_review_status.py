@@ -123,3 +123,22 @@ def test_page_blocked_false_for_real_review_page():
             'genuine review content ' * 500 +
             '<script>captcha widget config</script></body></html>')
     assert crs.page_blocked(html, 'Real Casino Review') is False
+
+
+def test_resolve_status_found_is_always_published():
+    assert crs.resolve_status(found=True, current_status='Done') == 'Published'
+    assert crs.resolve_status(found=True, current_status='Pending') == 'Published'
+    assert crs.resolve_status(found=True, current_status='Refused') == 'Published'
+    assert crs.resolve_status(found=True, current_status='Published') == 'Published'
+
+
+def test_resolve_status_not_found_from_published_is_removed():
+    assert crs.resolve_status(found=False, current_status='Published') == 'Removed'
+    assert crs.resolve_status(found=False, current_status='published') == 'Removed'
+    assert crs.resolve_status(found=False, current_status='  Published  ') == 'Removed'
+
+
+def test_resolve_status_not_found_from_done_pending_or_refused_is_refused():
+    assert crs.resolve_status(found=False, current_status='Done') == 'Refused'
+    assert crs.resolve_status(found=False, current_status='Pending') == 'Refused'
+    assert crs.resolve_status(found=False, current_status='Refused') == 'Refused'

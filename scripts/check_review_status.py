@@ -132,6 +132,25 @@ def page_blocked(html: str, title: str = "") -> bool:
     return False
 
 
+# ─── Status resolution (shared by AG/CG) ──────────────────────────────────────
+
+def resolve_status(found: bool, current_status: str) -> str:
+    """Decide the next status from a scrape result. `found` is whether the
+    username was located on the review page; `current_status` is the status
+    before this check. Shared by AG and CG so they can't drift apart:
+      found                              -> Published
+      not found, current was Published   -> Removed
+      not found, current was anything else (Done/Pending/Refused) -> Refused
+    Refused is not a dead end — it's re-checked on every future run, so a
+    review misjudged as Refused before moderation catches up simply flips to
+    Published once it's actually found live."""
+    if found:
+        return "Published"
+    if current_status.strip().lower() == "published":
+        return "Removed"
+    return "Refused"
+
+
 TP_STATUS_COLS = [
     "TP Review Status",
     "Trust Pilot Review Status",
