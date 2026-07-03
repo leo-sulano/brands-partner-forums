@@ -832,6 +832,19 @@ User QA on Task 93 found the new Country column empty on two tabs. Root-caused b
 
 ---
 
+## Task 95: Keep Checked Rows Visible With Live Status Until the View Is Re-filtered
+
+**Date:** July 3, 2026
+
+User reported that after Task 92's cache-invalidation fix, rows still appeared to need a filter/page click before a just-checked status (e.g. Done → Published) showed up in the right bucket. Investigation found no stale-render code path — `BrandGroup.tsx` has no memoization, so `filtered`/`sorted`/`pageRows` recompute fresh on every render off the live `entries` state. Clarified with the user that the actual want was the opposite of "instant auto-move": when a user filters to a status bucket (e.g. Done + Ask Gambler) and runs a check, they want rows that just changed to stay visible in that same list — with their new status shown in place — so they can see what the check just did, rather than having the row vanish the instant it's re-classified. Only a deliberate filter/sort/search/page interaction should cause the view to re-filter and drop the row into its real bucket.
+
+- Added a "Refreshing statuses…" indicator (next to "Last checked") that's visible from when a check finishes until the post-check refetch actually lands — makes a previously-invisible network round-trip visible instead of the table looking frozen.
+- Added `checkedViewSnapshot`: captures the visible row ids plus a signature of every active filter/sort/search/page value at the moment "Check Status" is clicked. While the current signature still matches, `pageRows` renders that exact snapshot of ids — looked up live from `entries`, so status pills reflect the latest check result — instead of recomputing from the active filters. Changing any filter, the platform toggle, sort, search, page size, or Prev/Next invalidates the signature and lifts the freeze immediately.
+- KPI/summary totals (Live/Removed counts, per-platform cards) were already derived independently of `pageRows` and continue updating immediately — only the row-level table list freezes.
+- `npm run build` passes.
+
+---
+
 *Last updated: July 3, 2026*
 
 ---

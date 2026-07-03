@@ -634,6 +634,13 @@ export default function BrandGroup() {
   }
 
   const [checkingStatus, setCheckingStatus] = useState(false);
+  const [refreshingAfterCheck, setRefreshingAfterCheck] = useState(false);
+  // Snapshot of the row ids visible on screen when a check was last kicked off, plus the
+  // filter/sort/page signature at that moment. While the signature still matches the current
+  // one, the table keeps showing exactly those rows (with live cell values) instead of letting
+  // a status change silently drop them out of view — the user wants to see what a check just
+  // changed. Any filter/sort/search/page interaction changes the signature and lifts the freeze.
+  const [checkedViewSnapshot, setCheckedViewSnapshot] = useState<{ ids: string[]; signature: string } | null>(null);
   const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
   const checkDropdownRef = useRef<HTMLDivElement>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
@@ -819,7 +826,10 @@ export default function BrandGroup() {
         if (canceled) return;
         setError(err instanceof Error ? err.message : 'Failed to load');
       } finally {
-        if (!canceled) setLoading(false);
+        if (!canceled) {
+          setLoading(false);
+          setRefreshingAfterCheck(false);
+        }
       }
     })();
 
@@ -1281,7 +1291,16 @@ export default function BrandGroup() {
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(page, totalPages);
-  const pageRows = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+  const liveViewSignature = JSON.stringify([
+    decodedTab, search, brandFilter, agentFilter, proxyFilter, countryFilter,
+    statusFilter, platformFilter, dateFrom, dateTo, sortCol, sortDir, safePage, pageSize,
+  ]);
+  const checkedViewFrozen = checkedViewSnapshot?.signature === liveViewSignature;
+  const pageRows = checkedViewFrozen
+    ? checkedViewSnapshot!.ids
+        .map((id) => entries.find((e) => e.id === id))
+        .filter((e): e is Entry => !!e)
+    : sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
   function handleSort(col: string) {
     if (isNoSortCol(col)) return;
@@ -1321,6 +1340,9 @@ export default function BrandGroup() {
   async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
+    // Freeze exactly what's on screen right now so status updates from this check
+    // update in place instead of dropping rows out of the current filtered view.
+    setCheckedViewSnapshot({ ids: pageRows.map((e) => e.id), signature: liveViewSignature });
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
       for (const p of platforms) {
@@ -1376,6 +1398,7 @@ export default function BrandGroup() {
         kind = 'success';
       }
       setToast({ message: msg, kind });
+      setRefreshingAfterCheck(true);
       reloadRef.current();
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
@@ -1614,6 +1637,11 @@ export default function BrandGroup() {
               {lastChecked && (
                 <span className="text-[5px] text-slate-400 whitespace-nowrap">
                   Last checked: {lastChecked}
+                </span>
+              )}
+              {refreshingAfterCheck && (
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 whitespace-nowrap">
+                  <Loader2 className="size-3 animate-spin" /> Refreshing statuses…
                 </span>
               )}
               {getTabPlatforms(decodedTab).length > 1 ? (
