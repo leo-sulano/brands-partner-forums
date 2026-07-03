@@ -801,6 +801,21 @@ Fixed a bug where clicking "Check Status" (TP/AG/CG/WO) on a brand tab would run
 
 ---
 
+## Task 93: Country Column, Filter, and Sort on Brand Tables
+
+**Date:** July 3, 2026
+
+Added a "Country" column to every brand tab table, positioned immediately after "Account", with sorting and a dropdown filter.
+
+- Country data was already flowing into every entry's row data (synced 1:1 from the Google Sheet into `entries.data['Country']`) — it was simply excluded from the per-tab column whitelist, so this was a whitelist + filter-wiring change, not a data-modeling one.
+- `tab-configs.ts`: inserted `'Country'` immediately after `'Account'` in all 11 tab whitelists (`TAB_COLUMN_CONFIGS`), including the `Wizard of Odds` special case where `Account` is the 2nd array element rather than the 1st.
+- Sorting required no code changes — `Country` isn't a link/status column and isn't in the `isNoSortCol` blacklist, so it became clickable-sortable automatically via the existing generic comparator.
+- `BrandGroup.tsx`: added a `countryFilter` state, a case-insensitively-deduped `uniqueCountries` derivation, and a `countryFiltered` step in the row-filter chain — all mirroring the existing Agent/Proxy filter pattern exactly, including the `noun="countrie"` pluralization quirk so the dropdown reads "All countries".
+- Built via brainstorming → design spec → plan → subagent-driven implementation (2 tasks, each independently reviewed) → final whole-branch review (Ready to merge: Yes, no Critical/Important findings), merged to `main` after tests and build passed clean.
+- Spec: `docs/superpowers/specs/2026-07-03-brand-table-country-column-design.md`. Plan: `docs/superpowers/plans/2026-07-03-brand-table-country-column.md`.
+
+---
+
 *Last updated: July 3, 2026*
 
 ---
