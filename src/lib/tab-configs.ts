@@ -217,10 +217,13 @@ const TAB_DEFAULT_COUNTRY: Record<string, string> = {
 
 // Account values are formatted "<id> | <label> | <Country>" (or, for rows copied
 // from Hanan-sourced accounts, "<id> l <label> l <Country>" using a literal "l").
+// Duplicate Account appends one or more " dup" suffixes (see handleDuplicate in
+// BrandGroup.tsx), which is stripped first so it isn't mistaken for the country.
 // Returns '' if the value doesn't match either delimited shape.
 function deriveCountryFromAccount(account: string | null | undefined): string {
   if (!account) return '';
-  const parts = account.split(/\s*\|\s*|\s+l\s+/);
+  const cleaned = account.replace(/(?:\s+dup)+$/i, '');
+  const parts = cleaned.split(/\s*\|\s*|\s+l\s+/);
   if (parts.length < 3) return '';
   return parts[parts.length - 1].trim();
 }

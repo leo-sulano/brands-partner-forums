@@ -36,4 +36,14 @@ describe('getEntryCountry', () => {
     const data = { Account: '001 - UK Reviews', Country: null };
     expect(getEntryCountry(data, 'Trybet')).toBe('');
   });
+
+  it('strips a trailing " dup" suffix (added by Duplicate Account) before parsing Account', () => {
+    const data = { Account: '550 l Hanan l Australia dup', Country: null };
+    expect(getEntryCountry(data, 'Wizard of Odds')).toBe('Australia');
+  });
+
+  it('strips repeated " dup" suffixes from duplicating an already-duplicated row', () => {
+    const data = { Account: '1182 | Test | Norway dup dup', Country: null };
+    expect(getEntryCountry(data, 'Wizard of Odds')).toBe('Norway');
+  });
 });
