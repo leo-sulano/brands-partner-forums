@@ -845,6 +845,23 @@ User reported that after Task 92's cache-invalidation fix, rows still appeared t
 
 ---
 
+## Task 96: Auto-Derive and Persist Country From Account
+
+**Date:** July 3, 2026
+
+Task 94's `getEntryCountry` fallback was read-time only — it never wrote anything back, and the write paths were inconsistent: Edit Account only derived Country live-as-you-type and only for the `" | "`-delimited shape; Add Review Account never derived it at all; Duplicate Account copied whatever was already stored. User asked to confirm the exact expected behavior (edit `"1303 | Test | Norway"` → `"...Germany"` should update Country to Germany) and then requested it be made automatic everywhere.
+
+- Added `getCountryForAccount(account, tab)` in `tab-configs.ts` — the single write-time derivation rule (reuses Task 94's delimiter/"dup"-strip parsing, falls back to the tab default). Refactored `getEntryCountry` to delegate to it instead of duplicating the logic.
+- **Edit Account** (`EditEntryModal.tsx`): swapped the old `' | '`-only ad-hoc split for a call to `getCountryForAccount`, so it also picks up the `l`-delimiter and per-tab default the old logic couldn't.
+- **Add Review Account** (`AddReviewAccountModal.tsx`): the Account field's `onChange` now also live-derives Country (previously a fully independent manual field). Sheet-row paste is unaffected — it still fills Country from its own pasted cell.
+- **Duplicate Account** (`BrandGroup.tsx` `handleDuplicate`): now recomputes Country from the duplicate's final (`" dup"`-suffixed) Account text against the target tab, instead of copying the source row's stored value as-is.
+- All three write sites call the exact same `getCountryForAccount(account, tab)` signature with contextually-correct tab resolution (insert-target tab for Add/Duplicate, save-target tab for Edit) — confirmed by the final review to produce identical Country values for the same Account text regardless of which flow touched it.
+- Built via brainstorming → design spec → plan → subagent-driven implementation (4 tasks, each independently reviewed) → final whole-branch review (Ready to merge: Yes, no Critical/Important findings), merged to `main` after 38/38 tests and `npm run build` passed clean. Manual interactive verification was limited to a headless boot/console-error check — the app's login wall blocks unattended click-through without test credentials.
+- Spec: `docs/superpowers/specs/2026-07-03-auto-derive-country-from-account-design.md`. Plan: `docs/superpowers/plans/2026-07-03-auto-derive-country-from-account.md`.
+- Out of scope (unchanged): no backfill of existing rows — Country only (re)computes the next time a row's Account is touched via Add/Edit/Duplicate; Task 94's read-time fallback still covers untouched legacy rows for display/sort/filter. No recomputation on tab-switch alone. Editing the Country field directly remains a plain manual edit.
+
+---
+
 *Last updated: July 3, 2026*
 
 ---
