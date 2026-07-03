@@ -807,12 +807,27 @@ Fixed a bug where clicking "Check Status" (TP/AG/CG/WO) on a brand tab would run
 
 Added a "Country" column to every brand tab table, positioned immediately after "Account", with sorting and a dropdown filter.
 
-- Country data was already flowing into every entry's row data (synced 1:1 from the Google Sheet into `entries.data['Country']`) — it was simply excluded from the per-tab column whitelist, so this was a whitelist + filter-wiring change, not a data-modeling one.
+- Country data was already flowing into most tabs' entry row data (synced 1:1 from the Google Sheet into `entries.data['Country']`) — it was simply excluded from the per-tab column whitelist. Two tabs (SuprPlay Limited, Wizard of Odds) turned out to have no Country column in their source sheet at all; see Task 94.
 - `tab-configs.ts`: inserted `'Country'` immediately after `'Account'` in all 11 tab whitelists (`TAB_COLUMN_CONFIGS`), including the `Wizard of Odds` special case where `Account` is the 2nd array element rather than the 1st.
 - Sorting required no code changes — `Country` isn't a link/status column and isn't in the `isNoSortCol` blacklist, so it became clickable-sortable automatically via the existing generic comparator.
 - `BrandGroup.tsx`: added a `countryFilter` state, a case-insensitively-deduped `uniqueCountries` derivation, and a `countryFiltered` step in the row-filter chain — all mirroring the existing Agent/Proxy filter pattern exactly, including the `noun="countrie"` pluralization quirk so the dropdown reads "All countries".
 - Built via brainstorming → design spec → plan → subagent-driven implementation (2 tasks, each independently reviewed) → final whole-branch review (Ready to merge: Yes, no Critical/Important findings), merged to `main` after tests and build passed clean.
 - Spec: `docs/superpowers/specs/2026-07-03-brand-table-country-column-design.md`. Plan: `docs/superpowers/plans/2026-07-03-brand-table-country-column.md`.
+
+---
+
+## Task 94: Fix Empty Country Column on Tabs With No Sheet-Side Country Data
+
+**Date:** July 3, 2026
+
+User QA on Task 93 found the new Country column empty on two tabs. Root-caused by querying the live `entries` table directly rather than guessing: 9 of 11 brand tabs have a real `Country` column in their Google Sheet and synced fine. `SuprPlay Limited` (409 rows) and `Wizard of Odds` (38 rows) have no `Country` column in their sheet at all — the field is simply absent from `entries.data`.
+
+- `SuprPlay Limited`: every single Account value ends in the identical suffix `"NNN - UK Reviews"` — the whole tab is UK-only, so there's no per-row country to parse, just a constant.
+- `Wizard of Odds`: Account text reliably embeds the country as the last segment of a delimited string — `"550 l Hanan l Australia"` (rows copied from Hanan-sourced accounts, delimiter is a literal lowercase "l") or `"1182 | Test | Norway"` (delimiter is a real pipe). Confirmed 36/36 affected rows parse cleanly.
+- Added `getEntryCountry(data, tab)` in `tab-configs.ts`: returns the real synced `Country` value if present, else derives one from Account text (`deriveCountryFromAccount`), else falls back to a new per-tab `TAB_DEFAULT_COUNTRY` map (mirrors the existing `TAB_DEFAULT_BRAND` pattern) — currently just `{'SuprPlay Limited': 'UK'}`.
+- Wired into every place Country is read in `BrandGroup.tsx` — cell display (both the editable and read-only render branches), `uniqueCountries`, the `countryFiltered` predicate, and the sort comparator — so display, filter, and sort all agree instead of only fixing the visible cell.
+- TDD: `tab-configs.test.ts` covers real-value passthrough, both Account delimiter styles, the per-tab default fallback, and the true-empty case. 11/11 tests and `npm run build` pass.
+- The one function that already derived Country from Account (`EditEntryModal.tsx`'s inline edit handler) only fires live when a user manually re-saves that row's Account field — it was never a bulk backfill, which is why only 2 of 38 Wizard of Odds rows had a real value before this fix.
 
 ---
 
