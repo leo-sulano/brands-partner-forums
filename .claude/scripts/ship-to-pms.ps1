@@ -50,11 +50,12 @@ function Invoke-PmsJson($method, $uri, $obj) {
 
 function Invoke-PmsCreate($title, $desc, $labelText, $taskDate) {
     $labelId = Get-LabelId $title $labelText
+    # API requires a date-only string as of 2026-07-03 (full ISO datetime returns 400 "Invalid ISO date")
     if ($taskDate) {
-        try { $dueDate = ([datetime]::ParseExact($taskDate.Trim(), 'MMMM d, yyyy', $null)).ToString('yyyy-MM-dd') + 'T23:59:59.000Z' }
-        catch { $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z' }
+        try { $dueDate = ([datetime]::ParseExact($taskDate.Trim(), 'MMMM d, yyyy', $null)).ToString('yyyy-MM-dd') }
+        catch { $dueDate = (Get-Date).ToString('yyyy-MM-dd') }
     } else {
-        $dueDate = (Get-Date).ToString('yyyy-MM-dd') + 'T23:59:59.000Z'
+        $dueDate = (Get-Date).ToString('yyyy-MM-dd')
     }
     $res = Invoke-PmsJson 'POST' "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" ([ordered]@{
         title       = $title
