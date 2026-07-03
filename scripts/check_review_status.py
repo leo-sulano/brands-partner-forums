@@ -18,6 +18,7 @@ Required env vars (copy .env.example -> .env and fill in):
 
 import argparse
 import json
+import logging
 import os
 import re
 import tempfile
@@ -80,6 +81,26 @@ def _build_proxy_extension(host: str, port: str, user: str, pwd: str) -> str:
 PAGE_LOAD_TIMEOUT = 25
 POST_LOAD_SLEEP = 1.5
 CHROME_RESTART_EVERY = 50  # restart Chrome every N entries to prevent memory exhaustion
+
+# ─── Error logging ───────────────────────────────────────────────────────────
+# status_server.py is launched via pythonw.exe with no console (see
+# start_status_server.ps1), so print() output is discarded. Per-entry scrape
+# exceptions (the "errors" count surfaced in the dashboard toast) must go to a
+# file or they're unrecoverable after the fact.
+ERROR_LOG_PATH = os.path.join(os.path.dirname(__file__), "status_check_errors.log")
+_error_logger = logging.getLogger("status_check_errors")
+_error_logger.setLevel(logging.ERROR)
+_error_logger.propagate = False
+if not _error_logger.handlers:
+    _handler = logging.FileHandler(ERROR_LOG_PATH, encoding="utf-8")
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+    _error_logger.addHandler(_handler)
+
+
+def log_check_error(platform: str, url: str, exc: Exception) -> None:
+    """Persist a per-entry scrape exception so a failed check run stays diagnosable."""
+    _error_logger.error("[%s] %s -> %r", platform, url, exc)
+
 
 TP_STATUS_COLS = [
     "TP Review Status",
@@ -453,6 +474,7 @@ def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Option
         return (status, rating)
     except Exception as exc:
         print(f"    ERROR: {exc}")
+        log_check_error("TP", url, exc)
         return (None, None)
 
 

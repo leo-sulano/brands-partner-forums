@@ -38,6 +38,7 @@ from check_review_status import (
     DELAY_BETWEEN_BATCHES,
     CHROME_RESTART_EVERY,
     proxy_for_entry,
+    log_check_error,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -283,6 +284,7 @@ def check_cg_for_tab(
                     new_status, new_rating = fetch_cg_review(driver, cg_link, cg_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
+                    log_check_error("CG", cg_link, exc)
                     errors += 1
                     continue
 

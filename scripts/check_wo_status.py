@@ -36,6 +36,7 @@ from check_review_status import (
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
+    log_check_error,
 )
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -229,6 +230,7 @@ def check_wo_for_tab(
                     new_status, new_rating = fetch_wo_review(driver, wo_link, wo_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
+                    log_check_error("WO", wo_link, exc)
                     errors += 1
                     continue
 

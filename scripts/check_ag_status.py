@@ -38,6 +38,7 @@ from check_review_status import (
     _headers,
     _fetch_all,
     proxy_for_entry,
+    log_check_error,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -326,6 +327,7 @@ def check_ag_for_tab(
                     new_status, new_rating = fetch_ag_review(driver, ag_link, ag_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
+                    log_check_error("AG", ag_link, exc)
                     errors += 1
                     continue
 
