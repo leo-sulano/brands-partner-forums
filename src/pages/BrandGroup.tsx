@@ -593,6 +593,7 @@ export default function BrandGroup() {
 
   const [agentFilter, setAgentFilter] = useState('');
   const [proxyFilter, setProxyFilter] = useState('');
+  const [countryFilter, setCountryFilter] = useState('');
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
@@ -689,6 +690,7 @@ export default function BrandGroup() {
       setPlatformFilter((['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all'));
       setAgentFilter('');
       setProxyFilter('');
+      setCountryFilter('');
       setDateFrom('');
       setDateTo('');
       setPage(1);
@@ -1083,6 +1085,20 @@ export default function BrandGroup() {
       })()
     : [];
 
+  const uniqueCountries = headers.includes('Country')
+    ? (() => {
+        const seen = new Map<string, string>();
+        for (const e of entries) {
+          const v = e.data['Country'];
+          if (v && v.trim()) {
+            const key = v.trim().toLowerCase();
+            if (!seen.has(key)) seen.set(key, v.trim());
+          }
+        }
+        return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+      })()
+    : [];
+
   const searchFiltered = search.trim()
     ? entries.filter((e) =>
         headers.some((h) => {
@@ -1104,8 +1120,12 @@ export default function BrandGroup() {
     ? agentFiltered.filter((e) => e.data['Proxy Used']?.trim().toLowerCase() === proxyFilter.toLowerCase())
     : agentFiltered;
 
+  const countryFiltered = countryFilter
+    ? proxyFiltered.filter((e) => e.data['Country']?.trim().toLowerCase() === countryFilter.toLowerCase())
+    : proxyFiltered;
+
   // Platform filter only affects visible columns, not row filtering.
-  const platformFiltered = proxyFiltered;
+  const platformFiltered = countryFiltered;
 
   const statusCols = headers.filter(isStatusCol);
   // When a platform card is selected, only check that platform's status column(s).
@@ -1562,6 +1582,14 @@ export default function BrandGroup() {
               value={proxyFilter}
               onChange={(v) => { setProxyFilter(v); setPage(1); }}
               brands={uniqueProxies}
+            />
+          )}
+          {uniqueCountries.length > 1 && (
+            <BrandFilterDropdown
+              noun="countrie"
+              value={countryFilter}
+              onChange={(v) => { setCountryFilter(v); setPage(1); }}
+              brands={uniqueCountries}
             />
           )}
           <FilterDropdown
