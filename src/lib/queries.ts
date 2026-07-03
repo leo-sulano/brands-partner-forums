@@ -598,6 +598,7 @@ export async function triggerStatusCheck(
     const body = await res.text();
     throw new Error(`Status check failed: ${res.status} ${body}`);
   }
+  invalidateTabCache(tab);
   return res.json();
 }
 
@@ -619,6 +620,7 @@ export async function triggerAgStatusCheck(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
+  invalidateTabCache(tab);
   return res.json();
 }
 
@@ -640,6 +642,7 @@ export async function triggerCgStatusCheck(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
+  invalidateTabCache(tab);
   return res.json();
 }
 
@@ -661,6 +664,7 @@ export async function triggerWoStatusCheck(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
+  invalidateTabCache(tab);
   return res.json();
 }
 
