@@ -4,7 +4,7 @@ import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
-import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
+import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount } from '../lib/tab-configs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 
 const STATUS_OPTS = [
@@ -280,7 +280,15 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           <input
             type="text"
             value={fields[f.key]}
-            onChange={(e) => setFields((s) => ({ ...s, [f.key]: e.target.value }))}
+            onChange={(e) => {
+              const val = e.target.value;
+              if (f.key === 'Account') {
+                const country = getCountryForAccount(val, selectedTab);
+                setFields((s) => ({ ...s, [f.key]: val, ...(country ? { Country: country } : {}) }));
+              } else {
+                setFields((s) => ({ ...s, [f.key]: val }));
+              }
+            }}
             placeholder={f.link ? 'https://…' : '—'}
             className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20"
           />
