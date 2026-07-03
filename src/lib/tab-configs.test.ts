@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -45,5 +45,32 @@ describe('getEntryCountry', () => {
   it('strips repeated " dup" suffixes from duplicating an already-duplicated row', () => {
     const data = { Account: '1182 | Test | Norway dup dup', Country: null };
     expect(getEntryCountry(data, 'Wizard of Odds')).toBe('Norway');
+  });
+});
+
+describe('getCountryForAccount', () => {
+  it('derives Country from a pipe-delimited Account', () => {
+    expect(getCountryForAccount('1303 | Test | Germany', 'Wizard of Odds')).toBe('Germany');
+  });
+
+  it('derives Country from an "l"-delimited Account', () => {
+    expect(getCountryForAccount('550 l Hanan l Australia', 'Wizard of Odds')).toBe('Australia');
+  });
+
+  it('strips a trailing " dup" suffix before deriving', () => {
+    expect(getCountryForAccount('1303 | Test | Germany dup', 'Wizard of Odds')).toBe('Germany');
+  });
+
+  it('falls back to the per-tab default when Account has no parseable country', () => {
+    expect(getCountryForAccount('001 - UK Reviews', 'SuprPlay Limited')).toBe('UK');
+  });
+
+  it('returns empty string when unparseable and there is no tab default', () => {
+    expect(getCountryForAccount('001 - UK Reviews', 'Trybet')).toBe('');
+  });
+
+  it('returns empty string for a null/empty Account', () => {
+    expect(getCountryForAccount(null, 'Wizard of Odds')).toBe('');
+    expect(getCountryForAccount('', 'SuprPlay Limited')).toBe('UK');
   });
 });

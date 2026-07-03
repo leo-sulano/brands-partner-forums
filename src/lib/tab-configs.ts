@@ -228,14 +228,20 @@ function deriveCountryFromAccount(account: string | null | undefined): string {
   return parts[parts.length - 1].trim();
 }
 
+// Returns the country that should be set on an entry given a new/edited Account
+// value and its tab: derived from the Account text, else the tab's default.
+// Called whenever Account is set or changed (Add, Edit, Duplicate) to keep
+// Country in sync with it.
+export function getCountryForAccount(account: string | null | undefined, tab: string): string {
+  return deriveCountryFromAccount(account) || TAB_DEFAULT_COUNTRY[tab] || '';
+}
+
 // Returns the country to display/sort/filter by for an entry: the real value synced
-// from the Sheet, else one derived from Account text, else a per-tab default.
+// from the Sheet, else what getCountryForAccount would derive for it.
 export function getEntryCountry(data: Record<string, string | null>, tab: string): string {
   const raw = data['Country'];
   if (raw && raw.trim()) return raw.trim();
-  const derived = deriveCountryFromAccount(data['Account']);
-  if (derived) return derived;
-  return TAB_DEFAULT_COUNTRY[tab] ?? '';
+  return getCountryForAccount(data['Account'], tab);
 }
 
 // Returns the display label for a column header, with optional tab-specific override.
