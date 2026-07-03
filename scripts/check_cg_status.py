@@ -39,6 +39,7 @@ from check_review_status import (
     CHROME_RESTART_EVERY,
     proxy_for_entry,
     log_check_error,
+    page_blocked,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -176,6 +177,7 @@ def fetch_cg_review(
       ('Published', 1-5 or None)  — username found in reviews
       ('Removed', None)           — not found, current status was 'published'
       (None, None)                — not found, status was not published (no write)
+      ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
     url = cg_link.strip()
     if not url.startswith("http"):
@@ -193,9 +195,27 @@ def fetch_cg_review(
         print(f"    redirected off-site -> {driver.current_url}")
         return ("Removed", None)
 
+    # Scroll down to trigger lazy-loaded reviews section
+    try:
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight / 2);")
+        time.sleep(1.5)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(1.5)
+    except Exception:
+        pass
+
     cg_user_lower = cg_user.lower()
 
     for page_num in range(MAX_LOAD_MORE + 1):
+        html = driver.page_source
+
+        # First page only: check for CAPTCHA / bot-block before drawing conclusions.
+        # Must happen before any "not found" conclusion — otherwise a blocked page
+        # reads identically to a genuinely-removed review.
+        if page_num == 0 and page_blocked(html, driver.title):
+            print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
+            return ("__skip__", None)
+
         # Only the rendered visible text proves an authored review exists — the
         # hidden liker tooltip never appears here, unlike in raw page_source.
         try:
@@ -204,7 +224,6 @@ def fetch_cg_review(
             visible_text = ""
 
         if cg_user_lower in visible_text:
-            html = driver.page_source
             context = _find_authored_context(html, html.lower(), cg_user_lower)
             rating = _extract_rating_from_context(context) if context else None
             return ("Published", rating)
@@ -286,6 +305,9 @@ def check_cg_for_tab(
                     print(f"    -> ERROR: {exc}")
                     log_check_error("CG", cg_link, exc)
                     errors += 1
+                    continue
+
+                if new_status == "__skip__":
                     continue
 
                 if new_status is None:

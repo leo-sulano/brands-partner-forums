@@ -862,6 +862,67 @@ Task 94's `getEntryCountry` fallback was read-time only — it never wrote anyth
 
 ---
 
+## Task 97: Diagnose "Check AG Status Only Works on 2 Tabs" — Headless Chrome Blocked by Cloudflare
+
+**Date:** July 3, 2026
+
+User reported that clicking "Check AG" only produced real results on SilverPlay and Revolution Casino, not Rooster Partners or Hanan (all four have `AG Review Status` columns per `tab-configs.ts`). Ruled out a tab-specific cause first: Supabase data showed eligible entries (link + user + checkable status) in all four tabs, and `getTabPlatforms` gates the UI button on the same column check for all four — nothing in the code path singles out 2 tabs.
+
+- Found the actual `status_server.py` process was running headless (`start_status_server.ps1` was last started without `-NoHeadless`). AskGamblers sits behind Cloudflare, which blocks headless Chrome outright but clears for a real headful browser — already documented in `geo_bridge.py`'s `ensure_display()` comment, but that function only forces non-headless on Linux/Xvfb; on Windows (no Xvfb) it silently stays headless.
+- Reproduced directly: called `fetch_ag_review()` against one sample entry from each of the 4 AG tabs. Headless → all 4 got a ~27KB Cloudflare "Just a moment" challenge page (correctly detected and skipped as `__skip__`, so no error was ever raised — the check just silently never finds anything). Non-headless → all 4 got real ~800KB pages with actual review content.
+- Verified the fix end-to-end through the real `/check-ag-status` endpoint (not a bypass) against Hanan's full 11 eligible entries with the server restarted `-NoHeadless`: `{"checked":11,"errors":0,"sheet_errors":0,"updated":0}` — clean run.
+- This means the "2 working tabs" framing was misleading — the block was global (any tab checked while the server ran headless would silently fail), not tab-specific. SilverPlay/Revolution Casino "working" was most likely observed at a time the server happened to be running non-headless.
+- Operational fallout from debugging: repeated hard-kills of the server process while iterating left ~30 orphaned `chrome.exe` child processes (Selenium's `driver.quit()` throws `WinError 6` on this Python 3.14 / undetected-chromedriver combo and doesn't actually terminate the process tree) — cleaned up (left the user's real browser window, identified by its actual window title, untouched). Also left port 5001 (the real port the dashboard hits via ngrok) in a stuck/orphaned-listener state that a plain process restart couldn't clear — not a WSL/Docker NAT exclusion (checked). User opted to clear it with a reboot rather than further live troubleshooting.
+- Action still pending (user-side): after rebooting, run `start_status_server.ps1 -NoHeadless` once — no code changes are required, the existing `ensure_display()`/headless fallback logic already does the right thing on Linux; Windows just needs the flag passed explicitly at launch.
+- No source changes in this task — diagnosis and operational fix only.
+
+---
+
+## Task 98: Fix CG Status Check Silently Writing False "Removed" on Cloudflare Block
+
+**Date:** July 3, 2026
+
+While confirming Task 97's fix also covered CG (user asked "is AG and CG both working now?"), found `check_cg_status.py` had no equivalent of AG's `_page_blocked()` guard. CasinoGuru sits behind the same Cloudflare challenge as AskGamblers, so a headless run hitting the block would fall through `fetch_cg_review`'s "user not found" path — which, for any entry whose current status was `"published"`, hard-codes the result to `("Removed", None)`. Unlike AG's silent `__skip__`, this actively **overwrites good data** with a wrong status in both Supabase and the Sheet.
+
+- Reproduced directly: 2 real `published` CG entries (Hanan, Revolution Casino), checked headless, both came back `"Removed"` — the page never loaded (Cloudflare "Just a moment", 27KB), not because the review was actually gone.
+- Found matching evidence already in production: 3 Hanan CG entries (AidenC8, Serenity9, Lincoln4) got written to `CG Review Status = Removed` by `check-review-status` within the same 15-second window on 2026-07-02 — the signature of one blocked Chrome session working through consecutive entries. Rechecked all 3 non-headless post-fix; none were found even on a fully-loaded real page, so this specific historical batch couldn't be conclusively confirmed as false positives (could be genuinely removed since, or a separate detection gap) — left as-is rather than guessing; the next real CG check on Hanan will re-evaluate them correctly under the fixed logic.
+- Fix: moved `_page_blocked()` out of `check_ag_status.py` into `check_review_status.py` as a shared `page_blocked()` (both AG and CG need identical detection), updated AG's import, and added the same first-page block check to `check_cg_status.py` before it draws any "not found" conclusion. Also added CG's missing scroll-to-trigger-lazy-load step (AG already had it; CG never did, a separate possible detection gap).
+- Added 4 unit tests for the shared `page_blocked()` (challenge title, other Cloudflare titles, tiny page, and a real-page-with-"captcha"-in-a-script-tag negative case) — full suite now 23/23 passing.
+- Verified live: the same 2 previously-false-"Removed" entries now correctly return `__skip__` under headless/blocked conditions, and a known-published entry still correctly returns `"Published"` non-headless with the new scroll step (no regression).
+- `check_wo_status.py` (Wizard of Odds) has the identical missing-guard pattern (hard-codes `"Removed"` on not-found with no block check) — not fixed here since WO wasn't part of what was asked and it's unconfirmed whether wizardofodds.com sits behind the same Cloudflare gate. Flagged for the user to decide on separately.
+
+---
+
+## Task 99: Hide the Non-Headless Chrome Window; Fix `.bat` Regressing to Headless
+
+**Date:** July 3, 2026
+
+After the user rebooted to clear the stuck port 5001 (Task 97), found the server had already been (re)started headless twice via `start_status_server.bat` — a second, undocumented launcher that hardcodes a plain `pythonw status_server.py` with no flags, silently reverting the Task 97/98 fix. Separately, the user asked whether AG/CG could run headless again to avoid a visible Chrome window popping up during checks.
+
+- Explained the tension: true headless is exactly what Cloudflare blocks (confirmed root cause, Task 97) — going back to headless would restore the bug. Proposed the standard middle ground instead: keep Chrome non-headless (so it still passes as a real browser) but move its window off-screen, functionally invisible without tripping the headless fingerprint.
+- `build_driver()` in `check_review_status.py` now adds `--window-position=-2400,-2400` whenever `headless=False`. Verified live: `driver.get_window_rect()` confirms the window renders at `(-2400, -2400)`, and a real AG check against a known entry still returns the correct real page (789KB) and status (`Published`) — Cloudflare bypass unaffected.
+- Fixed `start_status_server.bat` to pass `--no-headless` (previously bare `pythonw status_server.py`, defaulting to headless) so either launcher now produces the correct, working configuration.
+- Cleaned up the 3 redundant `pythonw` processes left over from the reboot (one from an earlier `.ps1` launch, two from the `.bat`) and did a single clean restart via `start_status_server.ps1 -NoHeadless` — healthy on first health check.
+- `npm`-equivalent for this project (`pytest`): 23/23 passing, no regressions.
+
+---
+
+## Task 100: Discover Production AG/CG Checks Actually Run on EC2, Not Locally — Deploy Fixes There
+
+**Date:** July 3, 2026
+
+While exploring whether AG/CG/WO could run entirely on EC2 (avoiding the local-machine Chrome-window/port issues from Tasks 97–99), checked Vercel's environment variables and found **`VITE_CHECK_AG_STATUS_URL` was never set in production**. `src/lib/supabase.ts:26` falls back to `VITE_CHECK_STATUS_URL` when it's absent — which already points at the `proxy-check-status` Supabase Edge Function → EC2, the same path TP uses. This means **production AG/CG checks have been hitting EC2 all along**, not the local machine — Task 74's local-server setup was built but never actually wired into the live dashboard.
+
+- Confirmed EC2 already has everything needed: Xvfb + `pyvirtualdisplay` + `pproxy` installed, and `ENIGMA_PW_<CC>` credentials already configured for Germany/Canada/Norway/New Zealand/Australia/UAE.
+- Verified live on EC2: non-headless Chrome via `ensure_display()`'s Xvfb bypasses AskGamblers' Cloudflare challenge (785KB real page vs 27KB blocked, matching local results exactly). CasinoGuru's block on EC2 turned out to be **IP-reputation-based** (title "Attention Required!", not the "Just a moment" JS challenge) — non-headless alone doesn't clear it, but routing through the country-matched enigmaproxy does (verified: Norway proxy → exit country confirmed `no` → 894KB real page). Checked coverage: 100% of currently-eligible AG (43) and CG (4) entries already have a Country matching a configured proxy.
+- Deployed today's fixed `check_review_status.py`, `check_ag_status.py`, `check_cg_status.py`, `test_check_review_status.py` to EC2 (`scp`) — EC2's copies were from June 30/July 1 and still had the pre-Task-98 CG bug (zero block detection) live in production this whole time.
+- **`status_server.py` had been running on EC2 since July 1** (PID 542614) — deploying new files to disk doesn't reload an already-running Python process. Killed and restarted it (new PID 765900) so the fixes actually took effect.
+- Refreshed the `EC2_STATUS_URL` Supabase secret (`supabase secrets set`) as a precaution — secret values can't be read back to confirm they're still current, so re-setting to the known-correct IP is the only way to be sure after any EC2 restart.
+- Verified end-to-end through the **real production path** (dashboard → Supabase Edge Function → EC2): live CG check on Revolution Casino returned `{"checked":2,"errors":0,"updated":1}` — a genuine status change (Jeremiahh12: Published → Removed) written correctly, confirmed against a fully-loaded, non-blocked page (not a false positive).
+- Net effect: production is fixed with no Vercel changes needed (there was nothing to change). The entire local-machine server setup from Tasks 97–99 (off-screen Chrome window, port 5001 fix, `.bat` fix) remains a valid, working setup for manual/local runs, but is not load-bearing for the live dashboard.
+
+---
+
 *Last updated: July 3, 2026*
 
 ---

@@ -39,6 +39,7 @@ from check_review_status import (
     _fetch_all,
     proxy_for_entry,
     log_check_error,
+    page_blocked,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -122,29 +123,6 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, c
     return out
 
 # ─── Scraping helpers ─────────────────────────────────────────────────────────
-
-# A real bot-challenge page is identified by its TITLE (Cloudflare's interstitial),
-# not by body keywords — a fully-loaded review page legitimately contains words like
-# "captcha" (e.g. in a Cloudflare Turnstile script tag), so keyword-matching the
-# body caused false positives that skipped good pages.
-_BLOCK_TITLE_KEYWORDS = (
-    "just a moment", "attention required", "access denied",
-    "verifying you are human", "verify you are human",
-)
-
-def _page_blocked(html: str, title: str = "") -> bool:
-    """Return True only for an actual bot/Cloudflare challenge page, detected by
-    the challenge title or a tiny page — never by keywords in a real, fully-loaded
-    review page."""
-    t = (title or "").lower()
-    if any(k in t for k in _BLOCK_TITLE_KEYWORDS):
-        print(f"    [blocked] challenge title: {title!r}")
-        return True
-    if len(html) < 5000:  # real AG pages are 100K+; a tiny page is a wall/error
-        print(f"    [blocked] page too small ({len(html)} chars)")
-        return True
-    return False
-
 
 def _extract_rating_from_context(context_html: str) -> Optional[int]:
     """Look for a 1-5 star rating in a chunk of HTML surrounding a username."""
@@ -231,7 +209,7 @@ def fetch_ag_review(
         # First page only: check for CAPTCHA / bot-block before drawing conclusions
         if page_num == 0:
             print(f"    [page] length={len(html)}, url={driver.current_url[:60]}")
-            if _page_blocked(html, driver.title):
+            if page_blocked(html, driver.title):
                 print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
                 return ("__skip__", None)
 

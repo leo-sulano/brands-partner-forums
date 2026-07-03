@@ -102,6 +102,36 @@ def log_check_error(platform: str, url: str, exc: Exception) -> None:
     _error_logger.error("[%s] %s -> %r", platform, url, exc)
 
 
+# ─── Bot-block detection (shared by AG/CG) ────────────────────────────────────
+# AskGamblers and CasinoGuru both sit behind Cloudflare's "Just a moment"
+# challenge, which blocks headless Chrome outright but clears for a real
+# headful browser (see geo_bridge.ensure_display). A real bot-challenge page is
+# identified by its TITLE, not by body keywords — a fully-loaded review page
+# legitimately contains words like "captcha" (e.g. in a Cloudflare Turnstile
+# script tag), so keyword-matching the body caused false positives that
+# skipped good pages.
+_BLOCK_TITLE_KEYWORDS = (
+    "just a moment", "attention required", "access denied",
+    "verifying you are human", "verify you are human",
+)
+
+
+def page_blocked(html: str, title: str = "") -> bool:
+    """Return True only for an actual bot/Cloudflare challenge page, detected by
+    the challenge title or a tiny page — never by keywords in a real, fully-loaded
+    review page. Callers must check this before treating "user not found" as a
+    real result — otherwise a blocked page silently reads the same as a
+    genuinely-removed review."""
+    t = (title or "").lower()
+    if any(k in t for k in _BLOCK_TITLE_KEYWORDS):
+        print(f"    [blocked] challenge title: {title!r}")
+        return True
+    if len(html) < 5000:  # a real review page is 100K+; a tiny page is a wall/error
+        print(f"    [blocked] page too small ({len(html)} chars)")
+        return True
+    return False
+
+
 TP_STATUS_COLS = [
     "TP Review Status",
     "Trust Pilot Review Status",
@@ -439,6 +469,13 @@ def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
 
     if headless:
         options.add_argument("--headless=new")
+    else:
+        # Real (non-headless) Chrome is required to pass Cloudflare's headless
+        # detection on AskGamblers/CasinoGuru — but a visible window popping up
+        # during checks is disruptive. Position it off-screen instead: Chrome
+        # still runs as a fully-rendered, real browser (defeating the headless
+        # fingerprint) without ever appearing on the user's desktop.
+        options.add_argument("--window-position=-2400,-2400")
 
     driver = uc.Chrome(options=options, version_main=149)
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)

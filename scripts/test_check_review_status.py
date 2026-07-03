@@ -98,3 +98,28 @@ def test_update_entry_marks_status_as_check_review_status_authoritative(monkeypa
     crs.update_entry('row-1', {'Review Status': 'Done'}, {'Review Status': 'Published'})
 
     assert captured['json']['last_edited_by'] == 'check-review-status'
+
+
+def test_page_blocked_detects_cloudflare_challenge_title():
+    # Real reported case: headless Chrome hitting AskGamblers/CasinoGuru gets
+    # Cloudflare's interstitial instead of the review page.
+    assert crs.page_blocked('x' * 6000, 'Just a moment...') is True
+
+
+def test_page_blocked_detects_other_challenge_titles():
+    for title in ('Attention Required!', 'Access denied', 'Verifying you are human'):
+        assert crs.page_blocked('x' * 6000, title) is True
+
+
+def test_page_blocked_detects_tiny_page_regardless_of_title():
+    assert crs.page_blocked('short', 'Some Casino Review') is True
+
+
+def test_page_blocked_false_for_real_review_page():
+    # A real, fully-loaded review page can legitimately contain the word
+    # "captcha" (e.g. inside a Cloudflare Turnstile script tag) — must not be
+    # mistaken for a block based on body content.
+    html = ('<html><head><title>Real Review</title></head><body>' +
+            'genuine review content ' * 500 +
+            '<script>captcha widget config</script></body></html>')
+    assert crs.page_blocked(html, 'Real Casino Review') is False
