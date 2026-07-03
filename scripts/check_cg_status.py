@@ -40,6 +40,7 @@ from check_review_status import (
     proxy_for_entry,
     log_check_error,
     page_blocked,
+    resolve_status,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -56,7 +57,7 @@ CG_USER_COLS   = ["CG User"]
 # VERIFY: check the actual column name in the Sheet; update if different
 CG_SCORE_COLS  = ["CG Score added"]
 
-CHECKABLE_STATUSES = {"done", "pending", "published"}
+CHECKABLE_STATUSES = {"done", "pending", "published", "refused"}
 
 
 # ─── Column helpers (same as check_ag_status.py) ─────────────────────────────
@@ -81,7 +82,7 @@ def load_cg_entries(tab: Optional[str] = None, include_published: bool = True, c
         params["tab"] = f"eq.{tab}"
     rows: list = _fetch_all(params)
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending", "refused"}
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -176,7 +177,7 @@ def fetch_cg_review(
     Returns (status, rating):
       ('Published', 1-5 or None)  — username found in reviews
       ('Removed', None)           — not found, current status was 'published'
-      (None, None)                — not found, status was not published (no write)
+      ('Refused', None)           — not found, current status was not 'published'
       ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
     url = cg_link.strip()
@@ -236,9 +237,7 @@ def fetch_cg_review(
             break
         time.sleep(LOAD_MORE_SLEEP)
 
-    if current_status.strip().lower() == "published":
-        return ("Removed", None)
-    return (None, None)
+    return (resolve_status(found=False, current_status=current_status), None)
 
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -308,10 +307,6 @@ def check_cg_for_tab(
                     continue
 
                 if new_status == "__skip__":
-                    continue
-
-                if new_status is None:
-                    print(f"    -> not found / no status change needed")
                     continue
 
                 updates: dict = {}
