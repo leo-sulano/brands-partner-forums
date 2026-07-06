@@ -3,11 +3,14 @@
 check_ag_status.py — Selenium stealth AskGamblers review status checker.
 
 Visits each entry's AskGamblers casino review page, searches player reviews
-for the account username, and writes back Published/Removed status + star rating.
+for the account username, and writes back Published/Pending/Refused/Removed
+status + star rating.
 
-Status values: Published | Refused | Removed
-  (Refused when not found and not previously Published; Removed when not
-  found and previously Published)
+Status values: Published | Pending | Refused | Removed
+  (found -> Published; not found and previously Published -> Removed;
+  not found, not previously Published, added within REFUSED_AFTER_DAYS ->
+  Pending; not found and older than that -> Refused. Published/Removed
+  entries are not re-checked on future runs.)
 
 Usage:
     python check_ag_status.py [--tab "Tab Name"] [--headless]
@@ -58,10 +61,13 @@ MAX_LOAD_MORE      = 10    # max "load more" clicks before giving up
 AG_STATUS_COLS = ["AG Review Status"]
 AG_LINK_COLS   = ["AG Review Link", "AG Link"]
 AG_USER_COLS   = ["AG User"]
+AG_DATE_COLS   = ["Ask Gambler review added"]
 # VERIFY: check the actual column name in the Sheet; update if different
 AG_SCORE_COLS  = ["AG Score added"]
 
-CHECKABLE_STATUSES = {"done", "pending", "published", "refused"}
+# "published" is intentionally excluded — once an entry is confirmed Published
+# (or Removed), it's left alone rather than re-checked on future runs.
+CHECKABLE_STATUSES = {"done", "pending", "refused"}
 
 # ─── Column helpers ───────────────────────────────────────────────────────────
 
@@ -87,7 +93,9 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, c
         params["tab"] = f"eq.{tab}"
     rows: list = _fetch_all(params)
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending", "refused"}
+    # include_published is now a no-op here since CHECKABLE_STATUSES never
+    # contains "published" — kept for signature compatibility with status_server.py.
+    statuses = CHECKABLE_STATUSES
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -302,7 +310,8 @@ def check_ag_for_tab(
                     continue
 
                 if new_status is None:
-                    new_status = resolve_status(found=False, current_status=current)
+                    ag_date = _val(data, AG_DATE_COLS)
+                    new_status = resolve_status(found=False, current_status=current, added_date=ag_date)
 
                 updates: dict = {}
                 if new_status != current:

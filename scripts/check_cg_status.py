@@ -3,8 +3,14 @@
 check_cg_status.py — Selenium stealth CasinoGuru review status checker.
 
 Visits each entry's CasinoGuru casino review page, searches player reviews
-for the account username, and writes back Published/Refused/Removed status
-+ star rating.
+for the account username, and writes back Published/Pending/Refused/Removed
+status + star rating.
+
+Status values: Published | Pending | Refused | Removed
+  (found -> Published; not found and previously Published -> Removed;
+  not found, not previously Published, added within REFUSED_AFTER_DAYS ->
+  Pending; not found and older than that -> Refused. Published/Removed
+  entries are not re-checked on future runs.)
 
 Usage:
     python check_cg_status.py [--tab "Tab Name"] [--headless]
@@ -55,10 +61,13 @@ MAX_LOAD_MORE   = 10
 CG_STATUS_COLS = ["CG Review Status"]
 CG_LINK_COLS   = ["CG Review Link", "CG Link"]
 CG_USER_COLS   = ["CG User"]
+CG_DATE_COLS   = ["Casino Guru review added"]
 # VERIFY: check the actual column name in the Sheet; update if different
 CG_SCORE_COLS  = ["CG Score added"]
 
-CHECKABLE_STATUSES = {"done", "pending", "published", "refused"}
+# "published" is intentionally excluded — once an entry is confirmed Published
+# (or Removed), it's left alone rather than re-checked on future runs.
+CHECKABLE_STATUSES = {"done", "pending", "refused"}
 
 
 # ─── Column helpers (same as check_ag_status.py) ─────────────────────────────
@@ -83,7 +92,9 @@ def load_cg_entries(tab: Optional[str] = None, include_published: bool = True, c
         params["tab"] = f"eq.{tab}"
     rows: list = _fetch_all(params)
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending", "refused"}
+    # include_published is now a no-op here since CHECKABLE_STATUSES never
+    # contains "published" — kept for signature compatibility with status_server.py.
+    statuses = CHECKABLE_STATUSES
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -171,14 +182,15 @@ def _find_authored_context(html: str, html_lower: str, user_lower: str) -> Optio
 
 
 def fetch_cg_review(
-    driver: uc.Chrome, cg_link: str, cg_user: str, current_status: str = ""
+    driver: uc.Chrome, cg_link: str, cg_user: str, current_status: str = "", added_date: str = ""
 ) -> tuple:
     """Visit the CG casino review page and search player reviews for cg_user.
 
     Returns (status, rating):
       ('Published', 1-5 or None)  — username found in reviews
       ('Removed', None)           — not found, current status was 'published'
-      ('Refused', None)           — not found, current status was not 'published'
+      ('Pending', None)           — not found, added within the grace period (see resolve_status)
+      ('Refused', None)           — not found, not previously published, past the grace period
       ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
     url = cg_link.strip()
@@ -238,7 +250,7 @@ def fetch_cg_review(
             break
         time.sleep(LOAD_MORE_SLEEP)
 
-    return (resolve_status(found=False, current_status=current_status), None)
+    return (resolve_status(found=False, current_status=current_status, added_date=added_date), None)
 
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -295,12 +307,13 @@ def check_cg_for_tab(
                 score_col   = _col(data, CG_SCORE_COLS)
                 cg_link     = _val(data, CG_LINK_COLS) or ""
                 cg_user     = _val(data, CG_USER_COLS) or ""
+                cg_date     = _val(data, CG_DATE_COLS) or ""
                 current     = (data.get(status_col, "") or "").strip()
                 current_score = str(data.get(score_col, "") or "") if score_col else ""
 
                 print(f"  [CG {checked}/{total}] {cg_link} (@{cg_user})")
                 try:
-                    new_status, new_rating = fetch_cg_review(driver, cg_link, cg_user, current)
+                    new_status, new_rating = fetch_cg_review(driver, cg_link, cg_user, current, cg_date)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("CG", cg_link, exc)

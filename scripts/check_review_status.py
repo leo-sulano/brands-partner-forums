@@ -24,7 +24,7 @@ import re
 import tempfile
 import time
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional
 
 import requests
@@ -134,13 +134,32 @@ def page_blocked(html: str, title: str = "") -> bool:
 
 # ─── Status resolution (shared by AG/CG) ──────────────────────────────────────
 
-def resolve_status(found: bool, current_status: str) -> str:
+REFUSED_AFTER_DAYS = 1  # grace period before an unconfirmed AG/CG entry flips to Refused
+
+
+def _older_than(date_str: str, days: int) -> bool:
+    """Return True if date_str is more than `days` days in the past."""
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%m/%d/%Y", "%d-%m-%Y"):
+        try:
+            dt = datetime.strptime(date_str.strip(), fmt).replace(tzinfo=timezone.utc)
+            return (datetime.now(timezone.utc) - dt) > timedelta(days=days)
+        except ValueError:
+            continue
+    return False  # unparseable — don't auto-refuse
+
+
+def resolve_status(found: bool, current_status: str, added_date: Optional[str] = None) -> str:
     """Decide the next status from a scrape result. `found` is whether the
     username was located on the review page; `current_status` is the status
-    before this check. Shared by AG and CG so they can't drift apart:
-      found                              -> Published
-      not found, current was Published   -> Removed
-      not found, current was anything else (Done/Pending/Refused) -> Refused
+    before this check; `added_date` is the entry's "review added" date (the
+    AG/CG date column), used for the not-found grace period. Shared by AG
+    and CG so they can't drift apart:
+      found                                     -> Published
+      not found, current was Published          -> Removed
+      not found, current was anything else, and added_date is within
+        REFUSED_AFTER_DAYS                      -> Pending (recheck later)
+      not found, current was anything else, and added_date is older than
+        REFUSED_AFTER_DAYS (or missing/unparseable) -> Refused
     Refused is not a dead end — it's re-checked on every future run, so a
     review misjudged as Refused before moderation catches up simply flips to
     Published once it's actually found live."""
@@ -148,6 +167,8 @@ def resolve_status(found: bool, current_status: str) -> str:
         return "Published"
     if current_status.strip().lower() == "published":
         return "Removed"
+    if added_date and not _older_than(added_date, REFUSED_AFTER_DAYS):
+        return "Pending"
     return "Refused"
 
 

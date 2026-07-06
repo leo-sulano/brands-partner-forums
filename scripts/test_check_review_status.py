@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta, timezone
+
 import check_review_status as crs
 
 
@@ -142,3 +144,27 @@ def test_resolve_status_not_found_from_done_pending_or_refused_is_refused():
     assert crs.resolve_status(found=False, current_status='Done') == 'Refused'
     assert crs.resolve_status(found=False, current_status='Pending') == 'Refused'
     assert crs.resolve_status(found=False, current_status='Refused') == 'Refused'
+
+
+def _days_ago(days: int) -> str:
+    return (datetime.now(timezone.utc) - timedelta(days=days)).strftime('%d/%m/%Y')
+
+
+def test_resolve_status_not_found_within_grace_period_is_pending():
+    # AG/CG entry added today (or yesterday, still under REFUSED_AFTER_DAYS) and
+    # not yet found on the review page should wait as Pending, not jump to Refused.
+    assert crs.resolve_status(found=False, current_status='Done', added_date=_days_ago(0)) == 'Pending'
+
+
+def test_resolve_status_not_found_past_grace_period_is_refused():
+    assert crs.resolve_status(found=False, current_status='Done', added_date=_days_ago(2)) == 'Refused'
+
+
+def test_resolve_status_not_found_no_added_date_defaults_to_refused():
+    assert crs.resolve_status(found=False, current_status='Done', added_date=None) == 'Refused'
+    assert crs.resolve_status(found=False, current_status='Done', added_date='') == 'Refused'
+
+
+def test_resolve_status_published_always_wins_over_grace_period():
+    # Published takes precedence over the grace period even if added_date is recent.
+    assert crs.resolve_status(found=False, current_status='Published', added_date=_days_ago(0)) == 'Removed'
