@@ -1142,7 +1142,7 @@ export default function BrandGroup() {
     ? (() => {
         const group = getBrandGroup(decodedTab, brandFilter);
         return group
-          ? searchFiltered.filter((e) => group.includes((e.data[brandCol] ?? '').trim()))
+          ? searchFiltered.filter((e) => group.some((v) => v.trim() === (e.data[brandCol] ?? '').trim()))
           : searchFiltered.filter((e) => e.data[brandCol] === brandFilter);
       })()
     : searchFiltered;
