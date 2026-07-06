@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -1139,7 +1139,12 @@ export default function BrandGroup() {
     : entries;
 
   const brandFiltered = brandFilter && brandCol
-    ? searchFiltered.filter((e) => e.data[brandCol] === brandFilter)
+    ? (() => {
+        const group = getBrandGroup(decodedTab, brandFilter);
+        return group
+          ? searchFiltered.filter((e) => group.includes((e.data[brandCol] ?? '').trim()))
+          : searchFiltered.filter((e) => e.data[brandCol] === brandFilter);
+      })()
     : searchFiltered;
 
   const agentFiltered = agentFilter && agentCol
