@@ -1438,7 +1438,7 @@ export default function BrandGroup() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 -mt-6 md:-mt-8 pt-[10px]">
       {/* Page actions */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -1470,7 +1470,7 @@ export default function BrandGroup() {
       </div>
 
       {activePlatforms.length <= 1 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mt-[10px]">
           <KpiCard
             label="Total"
             value={loading ? '…' : displayTotals.total.toLocaleString()}
@@ -1502,7 +1502,7 @@ export default function BrandGroup() {
         );
         const cols = visibleCards.length === 1 ? 'sm:grid-cols-1' : visibleCards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
         return (
-        <div className={`grid grid-cols-1 gap-3 ${cols}`}>
+        <div className={`grid grid-cols-1 gap-3 ${cols} mt-[10px]`}>
           {visibleCards.map(({ key, label }) => {
             const active = platformFilter === key;
             return (
