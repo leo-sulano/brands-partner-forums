@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -72,5 +72,36 @@ describe('getCountryForAccount', () => {
   it('returns empty string for a null/empty Account', () => {
     expect(getCountryForAccount(null, 'Wizard of Odds')).toBe('');
     expect(getCountryForAccount('', 'SuprPlay Limited')).toBe('UK');
+  });
+});
+
+describe('getBrandGroup', () => {
+  it('returns the full group when brand matches the first member', () => {
+    expect(getBrandGroup('TP Affiliate', 'Top10 Casinos Review Ca 2026')).toEqual([
+      'Top10 Casinos Review Ca 2026',
+      'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
+    ]);
+  });
+
+  it('returns the same group when brand matches the other member', () => {
+    expect(getBrandGroup('TP Affiliate', 'Best Online Casino in Canada 2026 | Top Rated Online Casinos')).toEqual([
+      'Top10 Casinos Review Ca 2026',
+      'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
+    ]);
+  });
+
+  it('trims whitespace on the incoming brand value before matching', () => {
+    expect(getBrandGroup('TP Affiliate', '  Top10 Casinos Review Ca 2026 ')).toEqual([
+      'Top10 Casinos Review Ca 2026',
+      'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
+    ]);
+  });
+
+  it('returns null for a brand on TP Affiliate that has no group', () => {
+    expect(getBrandGroup('TP Affiliate', 'Aussie Online Pokies')).toBeNull();
+  });
+
+  it('returns null for a tab with no configured groups at all', () => {
+    expect(getBrandGroup('Rooster Partners', 'Top10 Casinos Review Ca 2026')).toBeNull();
   });
 });

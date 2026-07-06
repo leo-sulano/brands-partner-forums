@@ -301,6 +301,26 @@ export function getTabSequenceCol(tab: string): string | null {
   return TAB_SEQUENCE_COL[tab] ?? null;
 }
 
+// Brand names that are the same underlying campaign submitted under different
+// page titles — treated as one combined brand for row filtering and KPI
+// counts, while the Brand filter dropdown still lists each name separately.
+// Each inner array is one merged group.
+const TAB_BRAND_GROUPS: Record<string, string[][]> = {
+  'TP Affiliate': [
+    ['Top10 Casinos Review Ca 2026', 'Best Online Casino in Canada 2026 | Top Rated Online Casinos'],
+  ],
+};
+
+// Returns the full group `brand` belongs to for `tab` (trimmed comparison,
+// so trailing/leading whitespace in the sheet data doesn't break the match),
+// or null if `brand` isn't part of any configured group for that tab.
+export function getBrandGroup(tab: string, brand: string): string[] | null {
+  const groups = TAB_BRAND_GROUPS[tab];
+  if (!groups) return null;
+  const trimmed = brand.trim();
+  return groups.find((g) => g.includes(trimmed)) ?? null;
+}
+
 // Brand name → Trustpilot review page URL. Keys are lowercase for case-insensitive lookup.
 // Includes common spelling variants (with/without space) that appear in the DB.
 export const BRAND_TP_URLS: Record<string, string> = {
