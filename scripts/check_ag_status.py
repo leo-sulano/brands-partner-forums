@@ -44,6 +44,7 @@ from check_review_status import (
     log_check_error,
     page_blocked,
     resolve_status,
+    normalize_review_list_url,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -174,7 +175,7 @@ def fetch_ag_review(
       (None, None)                — not found; caller resolves the next status via resolve_status()
       ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
-    url = ag_link.strip()
+    url = normalize_review_list_url(ag_link.strip())
     if not url.startswith("http"):
         url = f"https://{url}"
     try:

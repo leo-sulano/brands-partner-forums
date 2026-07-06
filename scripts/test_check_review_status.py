@@ -168,3 +168,39 @@ def test_resolve_status_not_found_no_added_date_defaults_to_refused():
 def test_resolve_status_published_always_wins_over_grace_period():
     # Published takes precedence over the grace period even if added_date is recent.
     assert crs.resolve_status(found=False, current_status='Published', added_date=_days_ago(0)) == 'Removed'
+
+
+def test_normalize_review_list_url_strips_trailing_page_number():
+    # Real case: SilverPlay's stored AG link points to page 2, but the review
+    # in question is on page 1. AskGamblers' review order shifts over time, so
+    # a page number pinned into the link at copy-time can go stale; the checker
+    # only ever pages forward from wherever it lands, so it must always start
+    # at the canonical (unpaginated) listing.
+    url = 'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino/2#reviews'
+    assert crs.normalize_review_list_url(url) == (
+        'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino#reviews'
+    )
+
+
+def test_normalize_review_list_url_strips_page_number_without_fragment():
+    url = 'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino/12'
+    assert crs.normalize_review_list_url(url) == (
+        'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino'
+    )
+
+
+def test_normalize_review_list_url_leaves_canonical_url_unchanged():
+    url = 'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino'
+    assert crs.normalize_review_list_url(url) == url
+
+
+def test_normalize_review_list_url_leaves_review_anchor_unchanged():
+    # A #review-<hash> fragment isn't a page number — must not be touched.
+    url = 'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino#review-6a43c6054f08b3cb2e017be3'
+    assert crs.normalize_review_list_url(url) == url
+
+
+def test_normalize_review_list_url_leaves_numeric_looking_slug_unchanged():
+    # A brand slug ending in digits (not an isolated page-number segment) must survive.
+    url = 'https://www.askgamblers.com/online-casinos/reviews/vegas2web-casino'
+    assert crs.normalize_review_list_url(url) == url

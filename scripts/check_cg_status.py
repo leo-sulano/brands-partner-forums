@@ -48,6 +48,7 @@ from check_review_status import (
     log_check_error,
     page_blocked,
     resolve_status,
+    normalize_review_list_url,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -193,7 +194,7 @@ def fetch_cg_review(
       ('Refused', None)           — not found, not previously published, past the grace period
       ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
     """
-    url = cg_link.strip()
+    url = normalize_review_list_url(cg_link.strip())
     if not url.startswith("http"):
         url = f"https://{url}"
     try:

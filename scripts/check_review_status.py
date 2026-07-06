@@ -102,6 +102,25 @@ def log_check_error(platform: str, url: str, exc: Exception) -> None:
     _error_logger.error("[%s] %s -> %r", platform, url, exc)
 
 
+# ─── URL normalization (shared by AG/CG) ──────────────────────────────────────
+# AG/CG review-list links are pasted by hand into the Sheet and occasionally
+# carry a trailing page-number segment (e.g. ".../silverplay-casino/2#reviews")
+# from whatever page happened to be open in the browser at copy time.
+# AskGamblers' review order shifts over time (reviews added/removed), so a
+# page number pinned into the link can go stale — confirmed live: SilverPlay's
+# stored link pointed to page 2 while the target review was on page 1. The
+# checker only ever pages *forward* from wherever it lands (via "Load More"),
+# so a stale page-2 link permanently hides a review that has since moved back
+# to page 1, producing a false Refused/Removed. Stripping any trailing
+# all-digit path segment always starts the search at the canonical listing.
+def normalize_review_list_url(url: str) -> str:
+    """Strip a trailing all-digit page-number path segment, e.g.
+    '.../silverplay-casino/2#reviews' -> '.../silverplay-casino#reviews'.
+    Leaves slugs that merely end in digits (e.g. 'vegas2web-casino') and
+    non-numeric fragments (e.g. '#review-<hash>') untouched."""
+    return re.sub(r"/\d+(#.*)?$", lambda m: m.group(1) or "", url.strip())
+
+
 # ─── Bot-block detection (shared by AG/CG) ────────────────────────────────────
 # AskGamblers and CasinoGuru both sit behind Cloudflare's "Just a moment"
 # challenge, which blocks headless Chrome outright but clears for a real
