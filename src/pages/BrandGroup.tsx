@@ -1554,7 +1554,7 @@ export default function BrandGroup() {
       })()}
 
 
-      <div className="rounded-lg border border-slate-200 bg-white shadow-sm flex flex-col" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="rounded-lg border border-slate-200 bg-white shadow-sm flex flex-col max-h-[calc(100vh-252px)] md:max-h-[calc(100vh-244px)]">
         {/* Scrollable panel: toolbar + table share one scroll container (both
             axes) so the sticky toolbar/header below stay visible while rows
             scroll underneath, and don't drift when scrolled horizontally.
