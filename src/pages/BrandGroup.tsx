@@ -1440,7 +1440,7 @@ export default function BrandGroup() {
   return (
     <div className="space-y-6 -mt-6 md:-mt-8 pt-[10px]">
       {/* Page actions */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-[10px]">
         <div className="flex items-center gap-2">
           <span className="text-xs font-medium text-slate-500 shrink-0">Date range</span>
           <DatePicker
