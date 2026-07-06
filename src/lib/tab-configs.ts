@@ -318,7 +318,7 @@ export function getBrandGroup(tab: string, brand: string): string[] | null {
   const groups = TAB_BRAND_GROUPS[tab];
   if (!groups) return null;
   const trimmed = brand.trim();
-  return groups.find((g) => g.includes(trimmed)) ?? null;
+  return groups.find((g) => g.some((v) => v.trim() === trimmed)) ?? null;
 }
 
 // Brand name → Trustpilot review page URL. Keys are lowercase for case-insensitive lookup.
