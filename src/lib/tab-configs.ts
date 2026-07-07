@@ -11,6 +11,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Account Name',
     'Agent',
     'Brands',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'TP Review Status',
@@ -29,6 +30,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Proxy Used',
     'Account Name',
     'Brands',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'TP Review Status',
@@ -47,6 +49,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Proxy Used',
     'Account Name',
     'Brands',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'TP Review Status',
@@ -88,6 +91,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Proxy Used',
     'Account Name',
     'Brands',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'Trust pilot Review Status',
@@ -98,6 +102,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Proxy Used',
     'Account Name',
     'Brands',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'Trust pilot Review Status',
@@ -109,6 +114,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Account Name',
     'Agent',
     'Brand Name',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'Review Status',
@@ -119,6 +125,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Proxy Used',
     'Account Name',
     'Brands',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'TP Review Status',
@@ -151,6 +158,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Account Name',
     'Agent',
     'Brand Name',
+    'Brand Link',
     'Trust Pilot',
     'Link to the profile',
     'TP Review Status',
@@ -178,7 +186,8 @@ export const COLUMN_LABELS: Record<string, string> = {
   'CG Score added':                                   'CG Score',
   'Brand / TP URL PAGE':                              'Brands',
   'Brand Name':                                        'Brands',
-  'URL PAGE__href':                                    'Brand Links',
+  'Brand / TP URL PAGE__href':                        'Brand Link',
+  'URL PAGE__href':                                    'Brand Link',
   'Removed / Not Published / stil published date':    'Removed/ Not Pub./Published',
 };
 
@@ -191,7 +200,7 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
     'Wizard of Odds':           'WO Date',
     'WoO Review Status':        'WO Status',
     'Wizard of OddsScore added':'WO Score',
-    'Link to the profile':      'Profile Link',
+    'Link to the profile':      'Brand Link',
     'User Name':                'WO User',
   },
 };
@@ -199,6 +208,20 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
 // Returns the ordered column list for a tab, or null if no config exists.
 export function getTabColumns(tab: string): string[] | null {
   return TAB_COLUMN_CONFIGS[tab] ?? null;
+}
+
+// Candidate column names that hold a row's brand identity, in priority order.
+// Shared by every consumer that needs to resolve "which key is the brand name
+// for this tab" — duplicating this list per-file is how a prior bug shipped
+// (Add Review Account modal hardcoded 'Brand Name' for every tab, silently
+// orphaning rows on tabs that actually key brand identity under 'Brands').
+export const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
+
+// The column that holds this tab's brand identity, resolved from its column
+// whitelist. Falls back to 'Brand Name' only for tabs with no config entry.
+export function getBrandNameCol(tab: string): string {
+  const cols = TAB_COLUMN_CONFIGS[tab];
+  return (cols && BRAND_COLS.find((c) => cols.includes(c))) || 'Brand Name';
 }
 
 // Default brand name shown in the Brands column when the sheet value is empty.
@@ -530,6 +553,30 @@ export function getBrandAgUrl(brandName: string): string | undefined {
 
 export function getBrandCgUrl(brandName: string): string | undefined {
   return BRAND_CG_URLS[brandName.toLowerCase().trim()];
+}
+
+// The column that holds this tab's brand-constant link — the one page to
+// visit/cite for that brand, as opposed to any per-review confirmation link.
+// TP Brand Injection and TP Affiliate reuse their brand-name cell's __href
+// companion; Wizard of Odds reuses "Link to the profile" as its one platform
+// link (verified against live data: exactly one URL per brand there, unlike
+// every other tab where that same column holds 20-70+ distinct per-review
+// confirmation links and must not be brand-derived).
+export function getBrandLinkCol(tab: string): string {
+  if (tab === 'TP Brand Injection') return 'Brand / TP URL PAGE__href';
+  if (tab === 'TP Affiliate') return 'URL PAGE__href';
+  if (tab === 'Wizard of Odds') return 'Link to the profile';
+  return 'Brand Link';
+}
+
+// Resolves the value to auto-fill into a tab's brand-link column. TP
+// Affiliate's page titles have no external brand identity to hardcode
+// against, so only the tab-local consensus (brandProfiles) can supply a
+// value there; every other tab prefers the static map, falling back to the
+// tab-local value for brands not yet in it.
+export function resolveBrandLink(brand: string, tab: string, tabLocalValue?: string): string {
+  if (tab === 'TP Affiliate') return tabLocalValue ?? '';
+  return getBrandTpUrl(brand, tab) || tabLocalValue || '';
 }
 
 // Returns true if the tab has TP + AG + CG platform columns.

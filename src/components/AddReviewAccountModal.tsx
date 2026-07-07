@@ -4,7 +4,7 @@ import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
-import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount } from '../lib/tab-configs';
+import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount, getBrandNameCol, getBrandLinkCol, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 
 const STATUS_OPTS = [
@@ -34,6 +34,7 @@ type FieldDef = {
   link?: boolean;
   span?: boolean;
   yesno?: boolean;
+  isBrand?: boolean;
 };
 
 const AGENT_FIELD: FieldDef = { key: 'Agent', label: 'Agent' };
@@ -50,7 +51,8 @@ const ACCOUNT_FIELDS: FieldDef[] = [
   { key: 'Authenticator Backup', label: 'Authenticator Backup', sensitive: true },
   { key: 'Process',              label: 'Process' },
   { key: 'Details',              label: 'Details',              span: true },
-  { key: 'Brand Name',           label: 'Brand Name' },
+  // Brand Name + Brand Link are injected dynamically below — their underlying
+  // key depends on which tab is selected (see getBrandNameCol/getBrandLinkCol).
   { key: 'Reveiw Language',                              label: 'Review Language' },
   { key: 'Mobile or deskstop ?',                         label: 'Mobile or Desktop' },
   { key: 'Redirection from Search Engine (which one?)',  label: 'Redirection (Search Engine)' },
@@ -136,6 +138,8 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const [fields, setFields] = useState<Record<string, string>>(() => ({
     ...Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),
     ...YES_NO_DEFAULTS,
+    [getBrandNameCol(currentTab)]: '',
+    [getBrandLinkCol(currentTab)]: '',
   }));
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -147,6 +151,22 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const availableBrands = selectedTab === currentTab
     ? (Object.keys(brandProfiles).length > 0 ? Object.keys(brandProfiles).sort() : [TAB_DEFAULT_BRAND[selectedTab]].filter(Boolean) as string[])
     : [];
+
+  // The brand-identity and brand-link columns differ per tab (e.g. 'Brands' for
+  // Rooster Partners, 'Brand / TP URL PAGE' for TP Brand Injection) — resolved
+  // from the same shared source tab-configs.ts uses elsewhere, so this can't
+  // drift out of sync the way the old hardcoded 'Brand Name' key did.
+  const brandNameCol = getBrandNameCol(selectedTab);
+  const brandLinkCol = getBrandLinkCol(selectedTab);
+  const brandField: FieldDef = { key: brandNameCol, label: 'Brand Name', isBrand: true };
+  // Wizard of Odds already renders this same key inside TP_FIELDS (relabeled
+  // "Brand Link" there) — only inject a standalone field when the tab's link
+  // lives under its own dedicated key.
+  const brandLinkField: FieldDef | null =
+    brandLinkCol === 'Link to the profile' ? null : { key: brandLinkCol, label: 'Brand Link', link: true };
+  const tpFields = TP_FIELDS.map((f) =>
+    f.key === 'Link to the profile' && selectedTab === 'Wizard of Odds' ? { ...f, label: 'Brand Link' } : f,
+  );
 
   function toggleReveal(key: string) {
     setRevealed((s) => {
@@ -161,7 +181,8 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     setFields((s) => ({
       ...s,
       'Agent': '',
-      'Brand Name': '',
+      [getBrandNameCol(tab)]: '',
+      [getBrandLinkCol(tab)]: '',
       'Link to the profile': '',
       'Ask Gambler review added': '',
       'AG Review Status': '',
@@ -174,9 +195,14 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
 
   function handleBrandChange(brand: string) {
     setFields((s) => {
-      const next: Record<string, string> = { ...s, 'Brand Name': brand };
+      const next: Record<string, string> = { ...s, [brandNameCol]: brand };
       if (!brand) return next;
       const profile = brandProfiles[brand];
+      next[brandLinkCol] = resolveBrandLink(brand, selectedTab, profile?.[brandLinkCol]);
+      if (isMulti) {
+        next['AG Review Link'] = profile?.['AG Review Link'] || getBrandAgUrl(brand) || '';
+        next['CG Review Link'] = profile?.['CG Review Link'] || getBrandCgUrl(brand) || '';
+      }
       if (!profile) return next;
       if (profile['Ask Gambler review added']) next['Ask Gambler review added'] = profile['Ask Gambler review added'];
       if (profile['AG Review Status'])         next['AG Review Status']         = profile['AG Review Status'];
@@ -192,6 +218,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     try {
       const saveFields = [
         ...(showAgentField ? [AGENT_FIELD] : []),
+        brandField, ...(brandLinkField ? [brandLinkField] : []),
         ...ACCOUNT_FIELDS, ...TP_FIELDS,
         ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
         ...YES_NO_FIELDS,
@@ -238,7 +265,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     return (
       <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-6' : ''}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">{f.label}</label>
-        {f.key === 'Brand Name' && availableBrands.length > 0 ? (
+        {f.isBrand && availableBrands.length > 0 ? (
           <BrandSelectDropdown
             value={fields[f.key]}
             onChange={handleBrandChange}
@@ -343,6 +370,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
               {ACCOUNT_FIELDS
                 .flatMap((f) => (showAgentField && f.key === 'Account Surname' ? [f, AGENT_FIELD] : [f]))
+                .flatMap((f) => (f.key === 'Details' ? [f, brandField, ...(brandLinkField ? [brandLinkField] : [])] : [f]))
                 .map(renderField)}
             </div>
           </div>
@@ -351,7 +379,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           <div>
             <SectionHeading label="Trust Pilot" />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-              {TP_FIELDS.map(renderField)}
+              {tpFields.map(renderField)}
             </div>
           </div>
 

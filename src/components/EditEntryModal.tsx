@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
-import { getColLabel, getCountryForAccount, getBrandTpUrl, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
+import { getColLabel, getCountryForAccount, getBrandAgUrl, getBrandCgUrl, getBrandLinkCol, resolveBrandLink } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS } from '../lib/tabs';
@@ -103,8 +103,6 @@ const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) =>
   { col: 'AG Review Link', fallback: getBrandAgUrl },
   { col: 'CG Review Link', fallback: getBrandCgUrl },
 ];
-const BRAND_TP_URL_COL = 'Brand / TP URL PAGE__href';
-const AFFILIATE_URL_COL = 'URL PAGE__href';
 
 export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles }: Props) {
   const [fields, setFields] = useState<Record<string, string>>(() => {
@@ -302,20 +300,9 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                         for (const { col, fallback } of BRAND_PROFILE_LINK_COLS) {
                           if (col in next) next[col] = profile?.[col] || fallback(v) || '';
                         }
-                        if (BRAND_TP_URL_COL in next) {
-                          next[BRAND_TP_URL_COL] = getBrandTpUrl(v, tabForLookup) ?? '';
-                        }
-                        // TP Affiliate's page-name column has no external brand identity to
-                        // hardcode against, but every existing row for a given page name
-                        // already agrees on one URL — reuse that tab-local consensus.
-                        if (AFFILIATE_URL_COL in next) {
-                          next[AFFILIATE_URL_COL] = profile?.[AFFILIATE_URL_COL] ?? '';
-                        }
-                        // On every other tab "Link to the profile" is the per-account link to
-                        // the review it submitted (unique per row — never brand-derived). Only
-                        // on Wizard of Odds does that same column hold the brand's one WO page.
-                        if (tabForLookup === 'Wizard of Odds' && 'Link to the profile' in next) {
-                          next['Link to the profile'] = getBrandTpUrl(v, tabForLookup) ?? '';
+                        const linkCol = getBrandLinkCol(tabForLookup);
+                        if (linkCol in next) {
+                          next[linkCol] = resolveBrandLink(v, tabForLookup, profile?.[linkCol]);
                         }
                         return next;
                       });

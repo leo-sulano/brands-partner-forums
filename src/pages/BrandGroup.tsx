@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, type StatusCheckScope } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -298,7 +298,6 @@ const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
   { value: 'cg',  label: 'Casino Guru',  dot: 'bg-violet-500' },
 ];
 
-const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE', 'Account Name'];
 const BRAND_LINK_COLS = ['AG Review Link', 'CG Review Link'];
 const NO_BRAND_FILTER_TABS = new Set(['HazEmirates UAE', 'Trybet', 'SilverPlay', 'GRG - Gulf Recovery Group']);
 
@@ -916,7 +915,7 @@ export default function BrandGroup() {
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
     if (!brandCol) return {};
-    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href'];
+    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href', 'Brand Link'];
     // Count occurrences per brand+col so a handful of mistyped/copy-pasted outlier
     // rows can't outrank the value the vast majority of that brand's rows agree on.
     const counts: Record<string, Record<string, Record<string, number>>> = {};
@@ -2194,6 +2193,13 @@ export default function BrandGroup() {
               const anIdx = hdrs.indexOf('Account Name');
               if (anIdx !== -1) hdrs.splice(anIdx + 1, 0, 'Agent');
               else hdrs.push('Agent');
+            }
+            // Same fix for 'Brand Link' — newly added to tabs whose tab_schemas
+            // predates it, so it won't be in fullHeaders until a sync runs.
+            if (getTabColumns(decodedTab)?.includes('Brand Link') && !hdrs.includes('Brand Link')) {
+              const brandIdx = brandCol ? hdrs.indexOf(brandCol) : -1;
+              if (brandIdx !== -1) hdrs.splice(brandIdx + 1, 0, 'Brand Link');
+              else hdrs.push('Brand Link');
             }
             for (const [afterCol, field] of DASHBOARD_ONLY_MODAL_FIELDS) {
               const dupIdx = hdrs.indexOf(field);
