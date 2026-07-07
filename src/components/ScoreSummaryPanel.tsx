@@ -5,6 +5,7 @@ import {
   computeScoreSummary,
   isoToDate,
   ratingLabel,
+  PLATFORM_MAX_SCORE,
   type BrandSummary,
   type Platform,
   type RatingLabel,
@@ -24,13 +25,19 @@ const LABEL_PILL: Record<RatingLabel, string> = {
   Bad: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
 };
 
-const STAR_COLOR: Record<number, string> = {
-  5: 'text-emerald-500',
-  4: 'text-green-500',
-  3: 'text-amber-500',
-  2: 'text-orange-500',
-  1: 'text-rose-500',
-};
+// 5 color tiers regardless of scale — a 1-10 score buckets 2 values per tier
+// (9-10 emerald, 7-8 green, ...) so AG's wider table still reads as the same
+// green-to-red gradient as TP/CG's 5-column one.
+const STAR_TIER_COLOR = ['text-rose-500', 'text-orange-500', 'text-amber-500', 'text-green-500', 'text-emerald-500'];
+
+function starColor(value: number, maxScore: number): string {
+  const tier = Math.ceil(value / (maxScore / 5));
+  return STAR_TIER_COLOR[tier - 1];
+}
+
+function starsFor(maxScore: number): StarRating[] {
+  return Array.from({ length: maxScore }, (_, i) => maxScore - i);
+}
 
 const PLATFORM_OPTS: { value: Platform; label: string; dot: string }[] = [
   { value: 'tp', label: 'TrustPilot',  dot: 'bg-blue-500' },
@@ -61,6 +68,8 @@ export default function ScoreSummaryPanel({ entries }: Props) {
     () => computeScoreSummary(entries, range, [], platform),
     [entries, range, platform],
   );
+
+  const maxScore = PLATFORM_MAX_SCORE[platform];
 
   // Tab options come from the raw entries so the dropdown lists every tab that
   // has data, not just those that survived the active date filter.
@@ -129,7 +138,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
                 : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={filteredBrands} />
+            <GroupedSummary rows={filteredBrands} maxScore={maxScore} />
           )}
 
           {result.excludedRows > 0 && (
@@ -258,7 +267,7 @@ function TabFilterDropdown({
   );
 }
 
-function GroupedSummary({ rows }: { rows: BrandSummary[] }) {
+function GroupedSummary({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
@@ -307,30 +316,31 @@ function GroupedSummary({ rows }: { rows: BrandSummary[] }) {
                 />
               </button>
             </header>
-            {!isCollapsed && <SummaryTable rows={brands} />}
+            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} />}
           </section>
         );
       })}
-      {groups.length > 1 && <GrandTotal rows={rows} />}
+      {groups.length > 1 && <GrandTotal rows={rows} maxScore={maxScore} />}
     </div>
   );
 }
 
 // Bottom bar summing every column across all brands in every group shown.
-function GrandTotal({ rows }: { rows: BrandSummary[] }) {
-  const t = useMemo(() => computeColumnTotals(rows), [rows]);
+function GrandTotal({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number }) {
+  const stars = starsFor(maxScore);
+  const t = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
   return (
     <section className="overflow-x-auto rounded-md border-2 border-violet-200 bg-violet-50/40">
       <table className="w-full table-fixed text-sm">
-        <SummaryColgroup />
+        <SummaryColgroup maxScore={maxScore} />
         <thead className="text-xs uppercase tracking-wide text-slate-500">
           <tr>
             <th scope="col" className="px-3 py-2 text-left font-medium">All brands</th>
-            {STARS.map((s) => (
+            {stars.map((s) => (
               <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
                 <span className="inline-flex items-center justify-end gap-0.5">
                   <span className="tabular-nums">{s}</span>
-                  <Star className={`size-3 fill-current ${STAR_COLOR[s]}`} />
+                  <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
                 </span>
               </th>
             ))}
@@ -345,7 +355,7 @@ function GrandTotal({ rows }: { rows: BrandSummary[] }) {
             <td className="px-3 py-2 text-left text-slate-600">
               {rows.length} brand{rows.length !== 1 ? 's' : ''}
             </td>
-            {STARS.map((s) => (
+            {stars.map((s) => (
               <td
                 key={s}
                 className={`px-2 py-2 text-right tabular-nums ${t.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'}`}
@@ -385,8 +395,6 @@ function GrandTotal({ rows }: { rows: BrandSummary[] }) {
   );
 }
 
-const STARS: StarRating[] = [5, 4, 3, 2, 1];
-
 interface ColumnTotals {
   counts: Record<StarRating, number>;
   unrated: number;
@@ -398,34 +406,37 @@ interface ColumnTotals {
 
 // Sums every column across a set of brand rows. Used by both the per-group
 // Total row and the all-brands grand total.
-function computeColumnTotals(rows: BrandSummary[]): ColumnTotals {
-  const counts: Record<StarRating, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+function computeColumnTotals(rows: BrandSummary[], maxScore: number): ColumnTotals {
+  const stars = starsFor(maxScore);
+  const counts: Record<StarRating, number> = {};
+  for (const s of stars) counts[s] = 0;
   let unrated = 0;
   for (const r of rows) {
-    for (const s of STARS) counts[s] += r.counts[s];
+    for (const s of stars) counts[s] += r.counts[s] ?? 0;
     unrated += r.unrated;
   }
-  const rated = counts[1] + counts[2] + counts[3] + counts[4] + counts[5];
+  let rated = 0;
+  let weighted = 0;
+  for (const s of stars) {
+    rated += counts[s];
+    weighted += s * counts[s];
+  }
   const total = rated + unrated;
-  const average =
-    rated === 0
-      ? null
-      : Math.round(((counts[1] + 2 * counts[2] + 3 * counts[3] + 4 * counts[4] + 5 * counts[5]) / rated) * 10) / 10;
-  return { counts, unrated, rated, total, average, label: ratingLabel(average) };
+  const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
+  return { counts, unrated, rated, total, average, label: ratingLabel(average, maxScore) };
 }
 
 // Shared fixed column widths so every group table (and the grand total) lines
-// up vertically. Brand column flexes; numeric/rating columns are fixed.
-function SummaryColgroup({ showGroup = false }: { showGroup?: boolean }) {
+// up vertically. Brand column flexes; numeric/rating columns are fixed. The
+// number of star columns varies by platform (5 for TP/CG, 10 for AG).
+function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean; maxScore: number }) {
   return (
     <colgroup>
       {showGroup && <col className="w-32" />}
       <col />
-      <col className="w-16" />
-      <col className="w-16" />
-      <col className="w-16" />
-      <col className="w-16" />
-      <col className="w-16" />
+      {Array.from({ length: maxScore }, (_, i) => (
+        <col key={i} className="w-16" />
+      ))}
       <col className="w-20" />
       <col className="w-20" />
       <col className="w-24" />
@@ -434,15 +445,15 @@ function SummaryColgroup({ showGroup = false }: { showGroup?: boolean }) {
   );
 }
 
-function SummaryTable({ rows }: { rows: BrandSummary[] }) {
-  const stars = STARS;
+function SummaryTable({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number }) {
+  const stars = starsFor(maxScore);
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
-  const totals = useMemo(() => computeColumnTotals(rows), [rows]);
+  const totals = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
 
   return (
     <div className="overflow-x-auto">
       <table className="w-full table-fixed text-sm">
-        <SummaryColgroup showGroup={showGroup} />
+        <SummaryColgroup showGroup={showGroup} maxScore={maxScore} />
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr>
             {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium">Group</th>}
@@ -451,7 +462,7 @@ function SummaryTable({ rows }: { rows: BrandSummary[] }) {
               <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
                 <span className="inline-flex items-center justify-end gap-0.5">
                   <span className="tabular-nums">{s}</span>
-                  <Star className={`size-3 fill-current ${STAR_COLOR[s]}`} />
+                  <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
                 </span>
               </th>
             ))}
