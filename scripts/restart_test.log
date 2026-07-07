@@ -1,0 +1,5 @@
+[server] Listening on http://localhost:5001
+[server] VITE_CHECK_STATUS_URL=http://localhost:5001/check-status
+[server] Token auth ENABLED (CHECK_STATUS_TOKEN is set)
+ * Serving Flask app 'status_server'
+ * Debug mode: off

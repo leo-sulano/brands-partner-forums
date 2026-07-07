@@ -1,0 +1,6 @@
+2026-07-06 21:39:09  restart_failed  no response from /health after 10s; PID(s) 18772 stopped and relaunched, but /health still unresponsive after restart -- manual attention needed
+2026-07-06 22:05:56  restart_failed  no response from /health after 10s; PID(s) 16676 stopped and relaunched, but /health still unresponsive after restart -- manual attention needed
+2026-07-06 22:08:00  restart_failed  no response from /health after 10s; PID(s) 11548 stopped and relaunched, but /health still unresponsive after restart -- manual attention needed
+2026-07-07 15:53:46  restarted  no response from /health after 10s; no matching process found stopped and relaunched
+2026-07-07 15:54:41  restart_failed  no response from /health after 10s; no matching process found stopped and relaunched, but /health still unresponsive after restart -- manual attention needed
+2026-07-07 15:54:53  restarted  no response from /health after 10s; no matching process found stopped and relaunched
