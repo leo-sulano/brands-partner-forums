@@ -14,7 +14,7 @@ Brands Partner Forum/
 │   ├── components/         # Sidebar, Topbar, KpiCard, MentionsTable, TopList, TimeSeriesChart, StatusBadge, Toast
 │   ├── pages/              # Overview, MentionDetail, SyncStatus
 │   ├── lib/                # supabase (client), queries (data access), format (helpers)
-│   └── types/              # mention, sync
+│   └── types/              # mention, entry, brand-entry, audit-log, etc.
 ├── supabase/
 │   ├── schema.sql          # mentions + sync_runs tables, indexes
 │   └── functions/          # Supabase Edge Functions (ai-assistant, check-review-status, etc.)
@@ -51,10 +51,8 @@ Brands Partner Forum/
 ### Current Tasks
 - [x] Brainstorm + design spec (`docs/superpowers/specs/2026-05-15-forums-dashboard-design.md`)
 - [x] Scaffold project structure (config, src, supabase, docs)
-- [ ] Confirm Google Sheet schema and access method (service account vs. public CSV)
 - [ ] Implement `lib/queries.ts` against real Supabase schema
 - [ ] Wire Overview KPIs, time-series, and top lists
-- [ ] Implement `sync-sheet` Edge Function with real Sheet read + upsert
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
