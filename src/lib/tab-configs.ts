@@ -440,6 +440,98 @@ export function getBrandTpUrl(brandName: string, tab?: string): string | undefin
   return BRAND_TP_URLS[key];
 }
 
+// AskGamblers review-page URLs, keyed like BRAND_TP_URLS. Only brands reviewed
+// on AG (Rooster Partners / Revolution Casino / SilverPlay / Hanan groups) are
+// populated here — sourced from the majority value already used across existing
+// entries for that brand, not guessed.
+const BRAND_AG_URLS: Record<string, string> = {
+  'lucky7even':        'https://www.askgamblers.com/online-casinos/reviews/lucky7even-casino',
+  'rooster.bet':       'https://www.askgamblers.com/online-casinos/reviews/rooster-bet-casino',
+  'fortune play':      'https://www.askgamblers.com/online-casinos/reviews/fortune-play-casino',
+  'fortuneplay':       'https://www.askgamblers.com/online-casinos/reviews/fortune-play-casino',
+  'spinjo':            'https://www.askgamblers.com/online-casinos/reviews/spinjo-casino',
+  'spinsup':           'https://www.askgamblers.com/online-casinos/reviews/spinsup-casino',
+  'rocketspin':        'https://www.askgamblers.com/online-casinos/reviews/rocket-spin-casino',
+  'rocket spin':       'https://www.askgamblers.com/online-casinos/reviews/rocket-spin-casino',
+  'play mojo':         'https://www.askgamblers.com/online-casinos/reviews/playmojo-casino',
+  'lucky vibe':        'https://www.askgamblers.com/online-casinos/reviews/lucky-vibe-casino',
+  'luckyvibe':         'https://www.askgamblers.com/online-casinos/reviews/lucky-vibe-casino',
+  'rollero':           'https://www.askgamblers.com/online-casinos/reviews/rollero-casino',
+  'revolution':        'https://www.askgamblers.com/online-casinos/reviews/revolution-casino',
+  'revolution casino': 'https://www.askgamblers.com/online-casinos/reviews/revolution-casino',
+  'revolution 1':      'https://www.askgamblers.com/online-casinos/reviews/revolution-casino',
+  'midarion':          'https://www.askgamblers.com/online-casinos/reviews/midarion-casino',
+  'silverplay':        'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino',
+  'silver play':       'https://www.askgamblers.com/online-casinos/reviews/silverplay-casino',
+  'zodiacbet.com':     'https://www.askgamblers.com/online-casinos/reviews/zodiacbet-casino',
+  'zodiacbet':         'https://www.askgamblers.com/online-casinos/reviews/zodiacbet-casino',
+  'pribet.com':        'https://www.askgamblers.com/online-casinos/reviews/pribet-casino',
+  'pribet':            'https://www.askgamblers.com/online-casinos/reviews/pribet-casino',
+  'emirbet.com':       'https://www.askgamblers.com/online-casinos/reviews/emirbet-casino',
+  'emirbet':           'https://www.askgamblers.com/online-casinos/reviews/emirbet-casino',
+  'cryptoroyal.com':   'https://www.askgamblers.com/online-casinos/reviews/cryptoroyal-casino',
+  'cryptoroyal':       'https://www.askgamblers.com/online-casinos/reviews/cryptoroyal-casino',
+  'dachbet.com':       'https://www.askgamblers.com/online-casinos/reviews/dachbet-casino',
+  'dachbet':           'https://www.askgamblers.com/online-casinos/reviews/dachbet-casino',
+  'winmega.com':       'https://www.askgamblers.com/online-casinos/reviews/winmega-casino',
+  'winmega':           'https://www.askgamblers.com/online-casinos/reviews/winmega-casino',
+  'olympusbet.com':    'https://www.askgamblers.com/online-casinos/reviews/olympusbet-casino',
+  'olympusbet':        'https://www.askgamblers.com/online-casinos/reviews/olympusbet-casino',
+  'realspin.com':      'https://www.askgamblers.com/online-casinos/reviews/realspin-casino',
+  'realspin':          'https://www.askgamblers.com/online-casinos/reviews/realspin-casino',
+  'lucknation.com':    'https://www.askgamblers.com/online-casinos/reviews/lucknation-casino',
+  'lucknation':        'https://www.askgamblers.com/online-casinos/reviews/lucknation-casino',
+  'god of casino':     'https://www.askgamblers.com/online-casinos/reviews/god-of-casino',
+};
+
+// Casino Guru review-page URLs, keyed like BRAND_TP_URLS/BRAND_AG_URLS.
+const BRAND_CG_URLS: Record<string, string> = {
+  'lucky7even':        'https://casinoguru-en.com/lucky7even-casino-review',
+  'rooster.bet':       'https://casinoguru-en.com/rooster-bet-casino-review',
+  'fortune play':      'https://casinoguru-en.com/fortune-play-casino-review',
+  'fortuneplay':       'https://casinoguru-en.com/fortune-play-casino-review',
+  'spinjo':            'https://casinoguru-en.com/spinjo-casino-review',
+  'spinsup':           'https://casinoguru-en.com/spinsup-casino-review',
+  'rocketspin':        'https://casinoguru-en.com/rocket-spin-casino-review',
+  'rocket spin':       'https://casinoguru-en.com/rocket-spin-casino-review',
+  'play mojo':         'https://casinoguru-en.com/playmojo-casino-review',
+  'lucky vibe':        'https://casinoguru-en.com/luckyvibe-casino-review',
+  'luckyvibe':         'https://casinoguru-en.com/luckyvibe-casino-review',
+  'rollero':           'https://casino.guru/rollero-casino-review',
+  'revolution':        'https://casinoguru-en.com/revolution-casino-review',
+  'revolution casino': 'https://casinoguru-en.com/revolution-casino-review',
+  'revolution 1':      'https://casinoguru-en.com/revolution-casino-review',
+  'midarion':          'https://casinoguru-en.com/midasluck-casino-review',
+  'silverplay':        'https://casino.guru/silverplay-casino-review',
+  'silver play':       'https://casino.guru/silverplay-casino-review',
+  'zodiacbet.com':     'https://casino.guru/zodiacbet-casino-review',
+  'zodiacbet':         'https://casino.guru/zodiacbet-casino-review',
+  'pribet.com':        'https://casino.guru/pribet-casino-review',
+  'pribet':            'https://casino.guru/pribet-casino-review',
+  'emirbet.com':       'https://casino.guru/emirbet-casino-review',
+  'emirbet':           'https://casino.guru/emirbet-casino-review',
+  'cryptoroyal.com':   'https://casino.guru/cryptoroyal-casino-review',
+  'cryptoroyal':       'https://casino.guru/cryptoroyal-casino-review',
+  'dachbet.com':       'https://casino.guru/dachbet-casino-review',
+  'dachbet':           'https://casino.guru/dachbet-casino-review',
+  'winmega.com':       'https://casino.guru/winmega-co-casino-review',
+  'winmega':           'https://casino.guru/winmega-co-casino-review',
+  'olympusbet.com':    'https://casino.guru/olympusbet-casino-review',
+  'olympusbet':        'https://casino.guru/olympusbet-casino-review',
+  'realspin.com':      'https://casino.guru/realspin-casino-review',
+  'realspin':          'https://casino.guru/realspin-casino-review',
+  'lucknation.com':    'https://casino.guru/lucknation-casino-review',
+  'lucknation':        'https://casino.guru/lucknation-casino-review',
+};
+
+export function getBrandAgUrl(brandName: string): string | undefined {
+  return BRAND_AG_URLS[brandName.toLowerCase().trim()];
+}
+
+export function getBrandCgUrl(brandName: string): string | undefined {
+  return BRAND_CG_URLS[brandName.toLowerCase().trim()];
+}
+
 // Returns true if the tab has TP + AG + CG platform columns.
 export function hasMultiPlatform(tab: string): boolean {
   const cols = TAB_COLUMN_CONFIGS[tab];

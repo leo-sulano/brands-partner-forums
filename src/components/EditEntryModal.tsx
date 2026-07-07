@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
-import { getColLabel, getCountryForAccount, getBrandTpUrl } from '../lib/tab-configs';
+import { getColLabel, getCountryForAccount, getBrandTpUrl, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS } from '../lib/tabs';
@@ -99,7 +99,10 @@ interface Props {
   brandProfiles?: Record<string, Record<string, string>>;
 }
 
-const BRAND_PROFILE_LINK_COLS = ['AG Review Link', 'CG Review Link'];
+const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
+  { col: 'AG Review Link', fallback: getBrandAgUrl },
+  { col: 'CG Review Link', fallback: getBrandCgUrl },
+];
 const BRAND_TP_URL_COL = 'Brand / TP URL PAGE__href';
 
 export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles }: Props) {
@@ -294,8 +297,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                       const profile = brandProfiles?.[v];
                       setFields((f) => {
                         const next = { ...f, [brandCol]: v };
-                        for (const col of BRAND_PROFILE_LINK_COLS) {
-                          if (col in next) next[col] = profile?.[col] ?? '';
+                        for (const { col, fallback } of BRAND_PROFILE_LINK_COLS) {
+                          if (col in next) next[col] = profile?.[col] || fallback(v) || '';
                         }
                         if (BRAND_TP_URL_COL in next) {
                           next[BRAND_TP_URL_COL] = getBrandTpUrl(v, selectedTab || entry.tab) ?? '';
