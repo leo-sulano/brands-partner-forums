@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, RefreshCw, ScrollText,
+  LayoutDashboard, ScrollText,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
   Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
   type LucideIcon,
@@ -157,15 +157,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 >
                   <BarChart3 className="size-4" />
                   {!isCollapsed && 'Score Summary'}
-                </NavLink>
-                <NavLink
-                  to="/sync"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Check Status' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <RefreshCw className="size-4" />
-                  {!isCollapsed && 'Check Status'}
                 </NavLink>
                 <NavLink
                   to="/log"
