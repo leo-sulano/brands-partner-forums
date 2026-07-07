@@ -4,7 +4,7 @@ import DatePicker from './DatePicker';
 import {
   computeScoreSummary,
   isoToDate,
-  ratingLabel,
+  summarizeCounts,
   PLATFORM_MAX_SCORE,
   type BrandSummary,
   type Platform,
@@ -415,15 +415,8 @@ function computeColumnTotals(rows: BrandSummary[], maxScore: number): ColumnTota
     for (const s of stars) counts[s] += r.counts[s] ?? 0;
     unrated += r.unrated;
   }
-  let rated = 0;
-  let weighted = 0;
-  for (const s of stars) {
-    rated += counts[s];
-    weighted += s * counts[s];
-  }
-  const total = rated + unrated;
-  const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
-  return { counts, unrated, rated, total, average, label: ratingLabel(average, maxScore) };
+  const { total, rated, average, label } = summarizeCounts(counts, unrated, maxScore);
+  return { counts, unrated, rated, total, average, label };
 }
 
 // Shared fixed column widths so every group table (and the grand total) lines

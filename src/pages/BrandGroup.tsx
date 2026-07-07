@@ -23,8 +23,7 @@ const HIDDEN_COLS = new Set(['id', 'last_sync_tag', 'score added', 'review statu
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
 // Dashboard-only fields with no Sheet column — never come from tab_schemas, so they're
-// force-inserted into the edit modal right after their paired "User" field. Preserved
-// across Sheet resyncs by DASHBOARD_ONLY_COLS in supabase/functions/import-tabs.
+// force-inserted into the edit modal right after their paired "User"/"Status" field.
 const DASHBOARD_ONLY_MODAL_FIELDS: Array<[string, string]> = [
   ['AG User', 'AG Password'],
   ['CG User', 'CG Password'],

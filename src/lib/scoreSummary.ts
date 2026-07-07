@@ -127,6 +127,26 @@ export function ratingLabel(avg: number | null, maxScore: number = 5): RatingLab
   return null;
 }
 
+// Shared by computeScoreSummary (per-brand) and ScoreSummaryPanel's
+// computeColumnTotals (per-group/grand totals) so the weighted-average math
+// can't drift between the two call sites.
+export function summarizeCounts(
+  counts: Record<number, number>,
+  unrated: number,
+  maxScore: number,
+): { total: number; rated: number; average: number | null; label: RatingLabel | null } {
+  let rated = 0;
+  let weighted = 0;
+  for (let i = 1; i <= maxScore; i++) {
+    const c = counts[i] ?? 0;
+    rated += c;
+    weighted += i * c;
+  }
+  const total = rated + unrated;
+  const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
+  return { total, rated, average, label: ratingLabel(average, maxScore) };
+}
+
 function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
@@ -202,24 +222,16 @@ export function computeScoreSummary(
   }
 
   const summaries: BrandSummary[] = [...buckets.values()].map((b) => {
-    const counts = b.counts;
-    let rated = 0;
-    let weighted = 0;
-    for (let i = 1; i <= maxScore; i++) {
-      rated += counts[i];
-      weighted += i * counts[i];
-    }
-    const total = rated + b.unrated;
-    const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
+    const { total, rated, average, label } = summarizeCounts(b.counts, b.unrated, maxScore);
     return {
       tab: b.tab,
       brand: b.brand,
-      counts,
+      counts: b.counts,
       unrated: b.unrated,
       total,
       rated,
       average,
-      label: ratingLabel(average, maxScore),
+      label,
     };
   });
 
