@@ -24,7 +24,7 @@ const LABEL_PILL: Record<RatingLabel, string> = {
   Bad: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
 };
 
-const STAR_COLOR: Record<1 | 2 | 3 | 4 | 5, string> = {
+const STAR_COLOR: Record<number, string> = {
   5: 'text-emerald-500',
   4: 'text-green-500',
   3: 'text-amber-500',
