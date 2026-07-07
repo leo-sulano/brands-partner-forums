@@ -46,6 +46,7 @@ from check_review_status import (
     resolve_status,
     normalize_review_list_url,
     STATUS_FILTER_MAP,
+    matches_scope_filters,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -93,6 +94,9 @@ def load_ag_entries(
     include_published: bool = True,
     country: Optional[str] = None,
     status_filter: Optional[str] = None,
+    brands: Optional[list[str]] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -104,6 +108,7 @@ def load_ag_entries(
     # status_filter (driven by the dashboard's status-filter dropdown) narrows to
     # exactly that status instead — the opt-in path for re-checking Published/Removed.
     statuses = STATUS_FILTER_MAP.get(status_filter, set()) if status_filter else CHECKABLE_STATUSES
+    brand_set = set(brands) if brands else None
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -117,13 +122,13 @@ def load_ag_entries(
         current = (data.get(status_col) or "").strip().lower()
         if current not in statuses:
             continue
+        # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
+        # a Check Status run can be scoped to exactly what's currently filtered.
+        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
+            continue
         print(f"  [load] id={row['id']} status={current!r} user={ag_user!r} link={ag_link[:40]!r}")
         out.append(row)
     print(f"  [load] {len(out)} eligible AG entries (from {len(rows)} total in tab)")
-    if country:
-        target_cc = country_code_for_entry({"Country": country})
-        out = [r for r in out if country_code_for_entry(r.get("data") or {}) == target_cc]
-        print(f"  [load] filtered to country={country!r} (cc={target_cc!r}): {len(out)} entries")
     # Group brands by their resolved geo proxy so each country = one Chrome launch.
     out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
     return out
@@ -257,13 +262,16 @@ def check_ag_for_tab(
     headless: bool = True,
     country: Optional[str] = None,
     status_filter: Optional[str] = None,
+    brands: Optional[list] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
 ) -> dict:
     """Run AG status check for all eligible entries in `tab`.
     Returns {checked, updated, errors, sheet_errors, total}."""
     ensure_bridges()
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
-    entries = load_ag_entries(tab, include_published, country, status_filter)
+    entries = load_ag_entries(tab, include_published, country, status_filter, brands, agent, proxy)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}

@@ -1,7 +1,7 @@
 import check_wo_status as wos
 
 
-def _row(status: str, link: str = 'https://wizardofodds.com/x', user: str = 'User1') -> dict:
+def _row(status: str, link: str = 'https://wizardofodds.com/x', user: str = 'User1', **extra) -> dict:
     return {
         'id': 'row-1',
         'tab': 'Wizard of Odds',
@@ -10,6 +10,7 @@ def _row(status: str, link: str = 'https://wizardofodds.com/x', user: str = 'Use
             'WoO Review Status': status,
             'Link to the profile': link,
             'WoO User': user,
+            **extra,
         },
     }
 
@@ -61,3 +62,16 @@ def test_load_wo_entries_status_filter_unmapped_value_yields_no_entries(monkeypa
     result = wos.load_wo_entries('Wizard of Odds', status_filter='on-pause')
 
     assert result == []
+
+
+def test_load_wo_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
+    rows = [
+        _row('Done', user='Kauri80', **{'Brand Name': 'Luckyvibe', 'Proxy Used': 'Proxylite'}, Agent='Lai', Country='New Zealand'),
+        _row('Done', user='NiklasWeber', **{'Brand Name': 'Rollero', 'Proxy Used': 'Enigma'}, Agent='Levi', Country='Germany'),
+    ]
+    monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
+
+    result = wos.load_wo_entries('Wizard of Odds', brands=['Rollero'], agent='Levi', proxy='Enigma', country='Germany')
+
+    assert len(result) == 1
+    assert result[0]['data']['WoO User'] == 'NiklasWeber'

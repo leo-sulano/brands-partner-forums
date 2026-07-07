@@ -98,7 +98,7 @@ export default function SyncStatus() {
           : `Checking "${tab}" — ${picked} brand${picked !== 1 ? 's' : ''} (${i + 1}/${tabsToRun.length})…`
       );
       try {
-        await triggerStatusCheck(tab, true, full ? undefined : [...selection[tab]!]);
+        await triggerStatusCheck(tab, { includePublished: true, brands: full ? undefined : [...selection[tab]!] });
         succeeded++;
       } catch {
         failed++;

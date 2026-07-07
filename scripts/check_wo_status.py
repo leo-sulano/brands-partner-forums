@@ -36,6 +36,7 @@ from check_review_status import (
     DELAY_BETWEEN_BATCHES,
     log_check_error,
     STATUS_FILTER_MAP,
+    matches_scope_filters,
 )
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -84,6 +85,10 @@ def load_wo_entries(
     tab: Optional[str] = None,
     include_published: bool = True,
     status_filter: Optional[str] = None,
+    brands: Optional[list] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
+    country: Optional[str] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -100,6 +105,7 @@ def load_wo_entries(
         statuses = STATUS_FILTER_MAP.get(status_filter, set())
     else:
         statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    brand_set = set(brands) if brands else None
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -110,6 +116,10 @@ def load_wo_entries(
             continue
         current = (data.get(status_col) or "").strip().lower()
         if current not in statuses:
+            continue
+        # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
+        # a Check Status run can be scoped to exactly what's currently filtered.
+        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
             continue
         out.append(row)
     return out
@@ -214,8 +224,12 @@ def check_wo_for_tab(
     include_published: bool = True,
     headless: bool = True,
     status_filter: Optional[str] = None,
+    brands: Optional[list] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
+    country: Optional[str] = None,
 ) -> dict:
-    entries = load_wo_entries(tab, include_published, status_filter)
+    entries = load_wo_entries(tab, include_published, status_filter, brands, agent, proxy, country)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}

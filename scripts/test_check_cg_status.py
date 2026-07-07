@@ -1,7 +1,7 @@
 import check_cg_status as cgs
 
 
-def _row(status: str, cg_link: str = 'https://casino.guru/x', cg_user: str = 'User1') -> dict:
+def _row(status: str, cg_link: str = 'https://casino.guru/x', cg_user: str = 'User1', **extra) -> dict:
     return {
         'id': 'row-1',
         'tab': 'Rooster Partners',
@@ -10,6 +10,7 @@ def _row(status: str, cg_link: str = 'https://casino.guru/x', cg_user: str = 'Us
             'CG Review Status': status,
             'CG Review Link': cg_link,
             'CG User': cg_user,
+            **extra,
         },
     }
 
@@ -51,3 +52,16 @@ def test_load_cg_entries_status_filter_unmapped_value_yields_no_entries(monkeypa
     result = cgs.load_cg_entries('Rooster Partners', status_filter='on-pause')
 
     assert result == []
+
+
+def test_load_cg_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
+    rows = [
+        _row('Done', cg_user='Kauri80', Brands='Luckyvibe', Agent='Lai', **{'Proxy Used': 'Proxylite'}, Country='New Zealand'),
+        _row('Done', cg_user='NiklasWeber', Brands='Rollero', Agent='Levi', **{'Proxy Used': 'Enigma'}, Country='Germany'),
+    ]
+    monkeypatch.setattr(cgs, '_fetch_all', lambda params: rows)
+
+    result = cgs.load_cg_entries('Rooster Partners', brands=['Rollero'], agent='Levi', proxy='Enigma', country='Germany')
+
+    assert len(result) == 1
+    assert result[0]['data']['CG User'] == 'NiklasWeber'

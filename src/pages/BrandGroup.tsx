@@ -10,7 +10,7 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, type StatusCheckScope } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
@@ -1369,20 +1369,27 @@ export default function BrandGroup() {
     // update in place instead of dropping rows out of the current filtered view.
     setCheckedViewSnapshot({ ids: pageRows.map((e) => e.id), signature: liveViewSignature });
     // Every platform normally skips Published/Removed entries to avoid re-scraping
-    // every already-resolved account on every run. Filtering the table to a status
-    // first (e.g. Live) and then clicking Check Status opts into re-checking just
-    // that status for whichever platform(s) this run covers.
+    // every already-resolved account on every run. Filtering the table — by status,
+    // brand, agent, proxy, or country — and then clicking Check Status scopes that
+    // run to exactly what's currently filtered, for whichever platform(s) it covers.
     const activeStatusFilter = statusFilter !== 'all' ? statusFilter : undefined;
     const filterLabel = activeStatusFilter ? STATUS_OPTS.find((o) => o.value === statusFilter)?.label : undefined;
+    const scope: StatusCheckScope = {
+      statusFilter: activeStatusFilter,
+      brands: brandFilter ? (getBrandGroup(decodedTab, brandFilter) ?? [brandFilter]) : undefined,
+      agent: agentFilter || undefined,
+      proxy: proxyFilter || undefined,
+      country: countryFilter || undefined,
+    };
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
       for (const p of platforms) {
         try {
           let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
-          if (p === 'tp') r = await triggerStatusCheck(decodedTab, false, undefined, activeStatusFilter);
-          else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab, false, activeStatusFilter);
-          else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab, false, activeStatusFilter);
-          else r = await triggerWoStatusCheck(decodedTab, false, activeStatusFilter);
+          if (p === 'tp') r = await triggerStatusCheck(decodedTab, scope);
+          else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab, scope);
+          else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab, scope);
+          else r = await triggerWoStatusCheck(decodedTab, scope);
           results.push(r);
         } catch {
           results.push({ updated: 0, errors: 1 });

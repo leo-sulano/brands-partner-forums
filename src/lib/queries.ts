@@ -571,14 +571,39 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
 }
 
 // ---------------------------------------------------------------------------
-// TP review status check trigger
+// TP/AG/CG/WO review status check triggers
 // ---------------------------------------------------------------------------
+
+// Every field mirrors one of the dashboard's own filter dropdowns — set to opt
+// into re-checking entries a platform normally skips (e.g. statusFilter:'live'
+// re-checks Published entries for a Published -> Removed transition) or to
+// scope a check to exactly what's currently filtered in the table. Omit a
+// field (or the whole object) for the platform's normal default sweep.
+export interface StatusCheckScope {
+  includePublished?: boolean;
+  statusFilter?: string;
+  brands?: string[];
+  agent?: string;
+  proxy?: string;
+  country?: string;
+}
+
+function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<string, unknown>) {
+  return {
+    tab,
+    include_published: scope.includePublished ?? false,
+    status_filter: scope.statusFilter,
+    brands: scope.brands,
+    agent: scope.agent,
+    proxy: scope.proxy,
+    country: scope.country,
+    ...extra,
+  };
+}
 
 export async function triggerStatusCheck(
   tab: string,
-  includePublished = false,
-  brands?: string[],
-  statusFilter?: string,
+  scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_STATUS_URL) {
     throw new Error(
@@ -593,7 +618,7 @@ export async function triggerStatusCheck(
       // Skip ngrok's free-tier browser-warning interstitial so we always get JSON.
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished, brands, status_filter: statusFilter }),
+    body: JSON.stringify(statusCheckBody(tab, scope)),
   });
   if (!res.ok) {
     const body = await res.text();
@@ -603,14 +628,9 @@ export async function triggerStatusCheck(
   return res.json();
 }
 
-// statusFilter opts into re-checking a status AG/CG normally skip (e.g. 'live'
-// re-checks Published entries for a Published -> Removed transition) — pass
-// the dashboard's active status-filter value, or omit for the normal
-// done/pending/refused sweep.
 export async function triggerAgStatusCheck(
   tab: string,
-  includePublished = false,
-  statusFilter?: string,
+  scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
@@ -620,7 +640,7 @@ export async function triggerAgStatusCheck(
       Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished, platform: 'ag', status_filter: statusFilter }),
+    body: JSON.stringify(statusCheckBody(tab, scope, { platform: 'ag' })),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -632,8 +652,7 @@ export async function triggerAgStatusCheck(
 
 export async function triggerCgStatusCheck(
   tab: string,
-  includePublished = false,
-  statusFilter?: string,
+  scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
@@ -643,7 +662,7 @@ export async function triggerCgStatusCheck(
       Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished, platform: 'cg', status_filter: statusFilter }),
+    body: JSON.stringify(statusCheckBody(tab, scope, { platform: 'cg' })),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -655,8 +674,7 @@ export async function triggerCgStatusCheck(
 
 export async function triggerWoStatusCheck(
   tab: string,
-  includePublished = false,
-  statusFilter?: string,
+  scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
   if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
@@ -666,7 +684,7 @@ export async function triggerWoStatusCheck(
       Authorization: `Bearer ${CHECK_STATUS_TOKEN || SUPABASE_ANON_KEY}`,
       'ngrok-skip-browser-warning': 'true',
     },
-    body: JSON.stringify({ tab, include_published: includePublished, platform: 'wo', status_filter: statusFilter }),
+    body: JSON.stringify(statusCheckBody(tab, scope, { platform: 'wo' })),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));

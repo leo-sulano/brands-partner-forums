@@ -105,6 +105,45 @@ def test_load_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch
     assert result == []
 
 
+def test_matches_scope_filters_no_filters_matches_everything():
+    assert crs.matches_scope_filters({'Agent': 'Lai', 'Proxy Used': 'Enigma', 'Country': 'Germany'}) is True
+    assert crs.matches_scope_filters({}) is True
+
+
+def test_matches_scope_filters_brands_matches_via_find_brand_col():
+    data = {'Brands': 'Rollero'}
+    assert crs.matches_scope_filters(data, brands={'Rollero', 'Luckyvibe'}) is True
+    assert crs.matches_scope_filters(data, brands={'Luckyvibe'}) is False
+    # No brand column present at all -> never matches an active brand filter.
+    assert crs.matches_scope_filters({}, brands={'Rollero'}) is False
+
+
+def test_matches_scope_filters_agent_case_insensitive_and_trimmed():
+    assert crs.matches_scope_filters({'Agent': ' Lai '}, agent='lai') is True
+    assert crs.matches_scope_filters({'Agent': 'Lai'}, agent='Levi') is False
+    assert crs.matches_scope_filters({}, agent='Lai') is False
+
+
+def test_matches_scope_filters_proxy_case_insensitive_and_trimmed():
+    assert crs.matches_scope_filters({'Proxy Used': ' Enigma '}, proxy='enigma') is True
+    assert crs.matches_scope_filters({'Proxy Used': 'SpyderProxy'}, proxy='Enigma') is False
+
+
+def test_matches_scope_filters_country_matches_via_resolved_code():
+    # Same convention AG/CG's --country CLI flag already uses: compare resolved
+    # ISO codes so "Germany" and "DE" behave identically, not raw string equality.
+    assert crs.matches_scope_filters({'Country': 'Germany'}, country='Germany') is True
+    assert crs.matches_scope_filters({'Country': 'DE'}, country='Germany') is True
+    assert crs.matches_scope_filters({'Country': 'Germany'}, country='Norway') is False
+
+
+def test_matches_scope_filters_combines_all_filters_with_and():
+    data = {'Brands': 'Rollero', 'Agent': 'Lai', 'Proxy Used': 'Enigma', 'Country': 'Germany'}
+    assert crs.matches_scope_filters(data, brands={'Rollero'}, agent='Lai', proxy='Enigma', country='Germany') is True
+    # Any single mismatched filter fails the whole check.
+    assert crs.matches_scope_filters(data, brands={'Rollero'}, agent='Levi', proxy='Enigma', country='Germany') is False
+
+
 def test_load_entries_filters_by_brands_ignores_whitespace(monkeypatch):
     rows = [
         _row('Brand / TP URL PAGE', 'Boho Casino '),

@@ -31,6 +31,8 @@ import requests
 from dotenv import load_dotenv
 import undetected_chromedriver as uc
 
+from geo_proxy import country_code_for_entry
+
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -445,6 +447,37 @@ def find_brand_col(data: dict) -> Optional[str]:
     return None
 
 
+# Mirrors the dashboard's own Brand/Agent/Proxy/Country filter dropdowns so a
+# "Check Status" run can be scoped to exactly what's currently filtered in the
+# table for any of TP/AG/CG/WO, the same way status_filter scopes to a status.
+def matches_scope_filters(
+    data: dict,
+    brands: Optional[set[str]] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
+    country: Optional[str] = None,
+) -> bool:
+    """Return True if `data` matches every provided scope filter (all filters
+    that are set must match — same AND semantics as the dashboard's own filter
+    chain). Country compares resolved ISO codes (via country_code_for_entry)
+    rather than raw strings, so "Germany" and "DE" behave identically — same
+    convention AG/CG's --country CLI flag already uses. Agent/Proxy are a
+    case-insensitive, trimmed equality check against the raw column value; a
+    blank column value never matches a non-blank filter."""
+    if brands is not None:
+        brand_col = find_brand_col(data)
+        brand_val = (data.get(brand_col) or "").strip() if brand_col else ""
+        if not brand_col or brand_val not in brands:
+            return False
+    if agent and (data.get("Agent") or "").strip().lower() != agent.strip().lower():
+        return False
+    if proxy and (data.get("Proxy Used") or "").strip().lower() != proxy.strip().lower():
+        return False
+    if country and country_code_for_entry(data) != country_code_for_entry({"Country": country}):
+        return False
+    return True
+
+
 def _fetch_all(params: dict) -> list:
     """Paginate through Supabase REST (server caps at 1000 rows per request).
 
@@ -474,7 +507,9 @@ def _fetch_all(params: dict) -> list:
 
 
 def load_entries(tab: Optional[str] = None, include_published: bool = True,
-                  brands: Optional[list[str]] = None, status_filter: Optional[str] = None) -> list[dict]:
+                  brands: Optional[list[str]] = None, status_filter: Optional[str] = None,
+                  agent: Optional[str] = None, proxy: Optional[str] = None,
+                  country: Optional[str] = None) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
@@ -501,11 +536,8 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True,
         current = (data.get(status_col) or "").strip().lower()
         if current not in statuses:
             continue
-        if brand_set is not None:
-            brand_col = find_brand_col(data)
-            brand_val = (data.get(brand_col) or "").strip() if brand_col else ""
-            if not brand_col or brand_val not in brand_set:
-                continue
+        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
+            continue
         out.append(row)
     return out
 

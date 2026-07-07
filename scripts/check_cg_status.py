@@ -50,6 +50,7 @@ from check_review_status import (
     resolve_status,
     normalize_review_list_url,
     STATUS_FILTER_MAP,
+    matches_scope_filters,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -92,6 +93,9 @@ def load_cg_entries(
     include_published: bool = True,
     country: Optional[str] = None,
     status_filter: Optional[str] = None,
+    brands: Optional[list] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -103,6 +107,7 @@ def load_cg_entries(
     # status_filter (driven by the dashboard's status-filter dropdown) narrows to
     # exactly that status instead — the opt-in path for re-checking Published/Removed.
     statuses = STATUS_FILTER_MAP.get(status_filter, set()) if status_filter else CHECKABLE_STATUSES
+    brand_set = set(brands) if brands else None
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -114,11 +119,11 @@ def load_cg_entries(
         current = (data.get(status_col) or "").strip().lower()
         if current not in statuses:
             continue
+        # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
+        # a Check Status run can be scoped to exactly what's currently filtered.
+        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
+            continue
         out.append(row)
-    if country:
-        target_cc = country_code_for_entry({"Country": country})
-        out = [r for r in out if country_code_for_entry(r.get("data") or {}) == target_cc]
-        print(f"  [load] filtered to country={country!r} (cc={target_cc!r}): {len(out)} entries")
     out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
     return out
 
@@ -272,11 +277,14 @@ def check_cg_for_tab(
     headless: bool = True,
     country: Optional[str] = None,
     status_filter: Optional[str] = None,
+    brands: Optional[list] = None,
+    agent: Optional[str] = None,
+    proxy: Optional[str] = None,
 ) -> dict:
     ensure_bridges()
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
-    entries = load_cg_entries(tab, include_published, country, status_filter)
+    entries = load_cg_entries(tab, include_published, country, status_filter, brands, agent, proxy)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}

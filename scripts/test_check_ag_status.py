@@ -1,7 +1,7 @@
 import check_ag_status as ags
 
 
-def _row(status: str, ag_link: str = 'https://www.askgamblers.com/x', ag_user: str = 'User1') -> dict:
+def _row(status: str, ag_link: str = 'https://www.askgamblers.com/x', ag_user: str = 'User1', **extra) -> dict:
     return {
         'id': 'row-1',
         'tab': 'Rooster Partners',
@@ -10,6 +10,7 @@ def _row(status: str, ag_link: str = 'https://www.askgamblers.com/x', ag_user: s
             'AG Review Status': status,
             'AG Review Link': ag_link,
             'AG User': ag_user,
+            **extra,
         },
     }
 
@@ -59,3 +60,18 @@ def test_load_ag_entries_status_filter_unmapped_value_yields_no_entries(monkeypa
     result = ags.load_ag_entries('Rooster Partners', status_filter='on-pause')
 
     assert result == []
+
+
+def test_load_ag_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
+    # Mirrors the dashboard's own Brand/Agent/Proxy/Country filter dropdowns —
+    # a Check Status run can be scoped to exactly what's currently filtered.
+    rows = [
+        _row('Done', ag_user='Kauri80', Brands='Luckyvibe', Agent='Lai', **{'Proxy Used': 'Proxylite'}, Country='New Zealand'),
+        _row('Done', ag_user='NiklasWeber', Brands='Rollero', Agent='Levi', **{'Proxy Used': 'Enigma'}, Country='Germany'),
+    ]
+    monkeypatch.setattr(ags, '_fetch_all', lambda params: rows)
+
+    result = ags.load_ag_entries('Rooster Partners', brands=['Rollero'], agent='Levi', proxy='Enigma', country='Germany')
+
+    assert len(result) == 1
+    assert result[0]['data']['AG User'] == 'NiklasWeber'
