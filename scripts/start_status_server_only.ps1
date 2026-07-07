@@ -16,10 +16,22 @@ $pyArgs = "`"$scriptDir\status_server.py`" --port $Port"
 if ($NoHeadless) { $pyArgs += ' --no-headless' }
 Start-Process -FilePath $pythonw -ArgumentList $pyArgs -WorkingDirectory $scriptDir -WindowStyle Hidden
 
-Start-Sleep -Seconds 6
-try {
-    Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 5 | Out-Null
+# Poll instead of a single fixed-delay check -- a cold-cache interpreter
+# start (heavy Flask/Selenium/undetected-chromedriver imports) can take much
+# longer than a few seconds, and a single check-after-sleep falsely reports
+# failure even though the server comes up moments later.
+$deadline = (Get-Date).AddSeconds(30)
+$healthy = $false
+while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 1
+    try {
+        Invoke-RestMethod -Uri "http://127.0.0.1:$Port/health" -TimeoutSec 2 | Out-Null
+        $healthy = $true
+        break
+    } catch {}
+}
+if ($healthy) {
     Write-Host '[start] Flask healthy'
-} catch {
+} else {
     Write-Warning '[start] Flask did not answer /health'
 }

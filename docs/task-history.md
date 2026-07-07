@@ -940,6 +940,89 @@ User asked to confirm current disk usage on `scraper-leo` (8GB root volume) and 
 
 ---
 
-*Last updated: July 3, 2026*
+## Task 102: UI Polish — Toolbar Gap Tightening
+
+**Date:** July 6, 2026
+
+Tightened the vertical gap between the KPI cards, toolbar, and table card on brand tab pages from 24–32px down to a consistent 10px.
+
+- First pass added `mt-[10px]` to the KPI grid, but Tailwind's `space-y-6` sets `margin-bottom` directly on the toolbar via a zero-specificity `:where()` rule, which won the margin-collapse against it — the gap didn't actually shrink.
+- Fix: added `mb-[10px]` on the toolbar itself, overriding `space-y-6` directly instead of fighting it from the other side.
+- Same-day follow-up (Task 104) had to reclaim table-card height that this freed up.
+
+---
+
+## Task 103: Merge TP Affiliate Brand Pair for Counts/Filter
+
+**Date:** July 6, 2026
+
+TP Affiliate had two Brand values ("Top10 Casinos Review Ca 2026" and "Best Online Casino in Canada 2026 | Top Rated Online Casinos") that are the same underlying campaign under different page titles, splitting its KPI counts and brand-filter results across two rows.
+
+- Added `TAB_BRAND_GROUPS` config (`tab-configs.ts`) and a `getBrandGroup(tab, brand)` helper defining which brand values merge into one group for counting/filtering purposes, while both values remain individually selectable in dropdowns.
+- Wired the group lookup into `BrandGroup.tsx`'s `brandFiltered` row-matching logic.
+- Two same-day trim bugs found and fixed: `getBrandGroup` needed to trim both the config value and the live cell value before comparing (not just the incoming value), and `brandFiltered` had the same one-sided-trim gap independently — fixed to `group.some((v) => v.trim() === ...)` on both sides so a future `TAB_BRAND_GROUPS` entry with stray whitespace can't silently break filtering.
+- Two stale code snippets in the design spec (both still showing the pre-fix one-sided-trim version) were caught and synced to match the shipped code during final review.
+- Spec: `docs/superpowers/specs/2026-07-06-tp-affiliate-brand-group-design.md`. Plan: `docs/superpowers/plans/2026-07-06-tp-affiliate-brand-group.md`.
+
+---
+
+## Task 104: Reclaim Table Card Height After Toolbar-Gap Tightening
+
+**Date:** July 6, 2026
+
+The table card's height was calculated as `calc(100vh - 280px)`, a value calibrated back when the toolbar/KPI spacing above it was 24–32px. Task 102 tightened that spacing to 10px, leaving the freed space as dead whitespace above the pagination bar instead of letting the card grow into it. Adjusted the height calculation to reclaim that space.
+
+---
+
+## Task 105: 24h Grace Period Before AG/CG Marks a Review Refused
+
+**Date:** July 6, 2026
+
+Newly-added AskGamblers/CasinoGuru entries were flipping straight to "Refused" on their very first check, sometimes just minutes after being posted — before the review had any real chance to appear.
+
+- `resolve_status()` now checks the entry's "review added" date and holds it at Pending for the first 24 hours before it's eligible to fall back to Refused.
+- Also stopped re-checking entries already resolved to Published/Removed for AG/CG (TP behavior unchanged) — no reason to keep re-scraping a settled result.
+
+---
+
+## Task 106: Housekeeping — Ignore `.vercel/.env`, Untrack Stray `.pyc`, Log a Scheduled-Check Run
+
+**Date:** July 6, 2026
+
+Small cleanup pass alongside the day's other work: added `.vercel/.env` to local gitignore, untracked a `.pyc` file that had been committed before the repo's `__pycache__/*.pyc` gitignore rule existed, and logged a routine scheduled-check run.
+
+---
+
+## Task 107: Status Server Watchdog — Detect, Restart, Log, Alert
+
+**Date:** July 6–7, 2026
+
+Built automated recovery for `status_server.py` (the local Flask bridge behind the dashboard's "Check Status" button) so a hung/crashed process gets restarted without a manual SSH-in-and-relaunch. Spec: `docs/superpowers/specs/2026-07-06-status-server-watchdog-design.md`. Plan: `docs/superpowers/plans/2026-07-06-status-server-watchdog.md`.
+
+**Task 1 — extracted `scripts/start_status_server_only.ps1`** out of `start_status_server.ps1`: just the "launch `status_server.py` via `pythonw`, wait, health-check" logic, with none of the blanket kill-all-python-processes or `ngrok`-restart behavior that's fine for a human-initiated restart but unsafe for something an unattended task would run every 5 minutes. `start_status_server.ps1` now delegates to it and is otherwise unchanged.
+
+**Task 2 — `watchdog_events` table** (migration `20260706190000_add_watchdog_events.sql`): `id`, `occurred_at`, `outcome` (`restarted` | `restart_failed`), `detail`; RLS restricted to approved-user read, writes are service-role-only from the watchdog script.
+
+**Task 3 — `scripts/watchdog.ps1` + registration:** pings `/health` every 5 min via a Windows Scheduled Task, and on failure stops the matching `python.exe`/`pythonw.exe` process and relaunches via the Task 1 helper, then best-effort logs to `scripts/watchdog.log`, writes a `watchdog_events` row, and emails `WATCHDOG_ALERT_TO` via Gmail SMTP — each of the three independent so one failing doesn't block the others. `scripts/register_watchdog_task.ps1` registers the 5-minute Scheduled Task (`ForumsDashboardWatchdog`).
+
+- **2026-07-06 manual verification failed**: `scripts/watchdog.log` showed 3 real test runs (21:39, 22:05, 22:08), all `restart_failed` — the script correctly detected the server down and attempted the relaunch each time, but `/health` stayed unresponsive afterward in every case.
+- **2026-07-07 root cause found**: `start_status_server_only.ps1` used a fixed `Start-Sleep -Seconds 6` + one 5s health-check request (~11s total) before declaring the relaunch failed. `status_server.py`'s import chain (Flask, Selenium, undetected-chromedriver) can take longer than that on a cold start, so the process was actually coming up fine — just not within the arbitrary window. Reproduced directly: a fresh helper run on a throwaway port logged the failure warning while the process was alive and answering `/health` moments later.
+- **Fix**: replaced the fixed sleep+single-check with a poll loop (1s interval, 30s ceiling) in `start_status_server_only.ps1` — returns as soon as the server is actually healthy instead of giving up on a clock.
+- **Re-verified end-to-end against the live port-5001 server**: unresponsive-path test now logs `restarted` (both locally and in `watchdog_events`) and `/health` recovers; failed-restart-path test (script temporarily renamed away) still correctly logs `restart_failed` within the new 30s budget — confirming the fix doesn't mask genuine failures — and immediately self-heals to `restarted` once the file is restored. Scheduled Task `ForumsDashboardWatchdog` is registered and running every 5 minutes (`LastTaskResult: 0`).
+- Task 4 (dashboard "Server Health" section showing `watchdog_events` on the Check Status page) has not been started — no `WatchdogEventsTable.tsx` yet.
+
+---
+
+## Task 108: Fix Stale Page-Numbered AG/CG Review Links Causing False Refused
+
+**Date:** July 6, 2026
+
+AskGamblers/CasinoGuru review-list links are hand-pasted into the Sheet and can carry a trailing page-number segment that goes stale as the site's review order shifts over time. The checker only ever paged forward via "Load More," so a stale page-2 link permanently hid a review that had moved back to page 1, producing a false "Refused" — confirmed live on SilverPlay/StefanH959, part of a batch of 81/105 affected SilverPlay entries.
+
+- Added `normalize_review_list_url()` to strip a trailing all-digit path segment before `driver.get()`, wired into both `fetch_ag_review()` and `fetch_cg_review()`.
+
+---
+
+*Last updated: July 7, 2026*
 
 ---
