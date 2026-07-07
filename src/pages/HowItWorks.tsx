@@ -71,7 +71,6 @@ const FEATURES: FeatureSection[] = [
     bullets: [
       'Counts only Published entries by design (raw sheet totals run higher because they include Removed/Refused)',
     ],
-    adminOnly: true,
   },
   {
     title: 'Ask AI',
@@ -92,7 +91,6 @@ const FEATURES: FeatureSection[] = [
       'Tracks entry edits and admin actions (approvals, revokes, role changes)',
       'Edited or deleted entries can be restored from here',
     ],
-    adminOnly: true,
   },
   {
     title: 'Admin Users',
