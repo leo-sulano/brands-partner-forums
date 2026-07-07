@@ -74,12 +74,14 @@ const TP_FIELDS: FieldDef[] = [
 const AG_FIELDS: FieldDef[] = [
   { key: 'Ask Gambler review added', label: 'AG Added' },
   { key: 'AG Review Status',         label: 'AG Status',      status: true },
+  { key: 'AG Score added',           label: 'AG Score (1-10)' },
   { key: 'AG Review Link',           label: 'AG Review Link', link: true },
 ];
 
 const CG_FIELDS: FieldDef[] = [
   { key: 'Casino Guru review added', label: 'CG Added' },
   { key: 'CG Review Status',         label: 'CG Status',      status: true },
+  { key: 'CG Score added',           label: 'CG Score (1-5)' },
   { key: 'CG Review Link',           label: 'CG Review Link', link: true },
 ];
 

@@ -28,6 +28,8 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 const DASHBOARD_ONLY_MODAL_FIELDS: Array<[string, string]> = [
   ['AG User', 'AG Password'],
   ['CG User', 'CG Password'],
+  ['AG Review Status', 'AG Score added'],
+  ['CG Review Status', 'CG Score added'],
 ];
 
 
