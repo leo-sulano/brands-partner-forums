@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
-  LayoutDashboard, ScrollText,
+  LayoutDashboard, ScrollText, BookOpen,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
   Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
   type LucideIcon,
@@ -35,6 +35,7 @@ const TAB_ICONS: Record<string, LucideIcon> = {
 const topLinks = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/ask-ai', label: 'Ask AI', icon: Bot, end: true },
+  { to: '/how-it-works', label: 'How it works', icon: BookOpen, end: true },
 ];
 
 const linkClass = (isActive: boolean, isCollapsed = false) =>
