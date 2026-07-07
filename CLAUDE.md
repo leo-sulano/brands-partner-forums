@@ -1,7 +1,7 @@
 # CLAUDE Context — Brands Partner Forum
 
 ## Purpose
-Internal brand-monitoring dashboard. Reads forum-mention data that an upstream Edge Function pulls from a Google Sheet into Supabase, and presents it as an overview, per-mention detail, and a sync-status admin page.
+Internal brand-monitoring dashboard. Entries are created and edited directly in Supabase, the dashboard's sole data store with no external sync, and presented as an overview, per-mention detail, and a sync-status admin page.
 
 ## Tech Stack
 Vite 6 · React 19 · TypeScript · Tailwind v4 · React Router v7 · Recharts · Supabase (Postgres + Edge Functions) · Vercel
@@ -17,14 +17,13 @@ Brands Partner Forum/
 │   └── types/              # mention, sync
 ├── supabase/
 │   ├── schema.sql          # mentions + sync_runs tables, indexes
-│   └── functions/
-│       └── sync-sheet/     # Deno Edge Function: Google Sheet → mentions upsert
+│   └── functions/          # Supabase Edge Functions (ai-assistant, check-review-status, etc.)
 ├── docs/superpowers/specs/ # design specs
 └── public/
 ```
 
 ## Architecture Rules
-- **Data flow:** Google Sheet → `sync-sheet` Edge Function → `mentions` table → React reads via supabase-js
+- **Data flow:** Supabase is the sole data store — entries are created and edited directly in the dashboard via `supabase-js`. No external sync (the Google Sheet integration was fully disconnected 2026-07-07).
 - **Auth:** email+password login via Supabase Auth, gated by admin-approval (`profiles.approved`). `AuthContext` holds session/profile; `ProtectedRoute` wraps every app route except `/login`, `/signup`, `/reset-password`. Vercel password protection also guards the deploy on top of this.
 - **Data access:** all Supabase queries live in `src/lib/queries.ts`. Pages and components import from there, never call `supabase.from(...)` directly.
 - **Routing:** React Router v7 declarative routes — `/`, `/mentions/:id`, `/brands/:tab`, `/sync`, `/log`, `/score-summary`, `/ask-ai`, `/admin/users`, plus public `/login`, `/signup`, `/reset-password`.
@@ -34,13 +33,11 @@ Brands Partner Forum/
 ## Data Model
 - `mentions(id, source_row_id, forum, thread_title, mention_text, url, author, posted_at, keyword, sentiment, status, synced_at)`
 - `sync_runs(id, started_at, finished_at, rows_seen, rows_upserted, rows_skipped, error_message, status)`
-- `source_row_id` is the idempotency key for upserts from the Sheet.
 
 ## Development Guidelines
 - TypeScript strict mode. No `any` unless commented why.
 - Pages own data fetching via `lib/queries.ts`; components stay presentational.
 - Env vars are read once in `src/lib/supabase.ts`. Never hardcode URLs or keys.
-- Sync function (`supabase/functions/sync-sheet/index.ts`) must write a `sync_runs` row for every invocation, even on failure.
 
 ## Deployment
 - `npm run build` → `dist/` → Vercel (config in `vercel.json`).
@@ -61,6 +58,13 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-07:* Fully disconnected the Google Sheet from the dashboard — deleted the
+  `sync-sheet`, `push-to-sheet`, `import-tabs`, and `backfill-brand-hrefs` Edge Functions
+  (repo source + live Supabase deployment) along with the frontend code that only served
+  them (`fetchSyncRuns`, `subscribeSyncRuns`, `src/types/sync.ts`). The Sheet→DB direction
+  was already disabled 2026-06-26; this removes the now-unused DB→Sheet path and its dead
+  readers. `apps-script/Code.gs` and the Sheet itself are untouched. Spec:
+  `docs/superpowers/specs/2026-07-07-google-sheet-disconnect-design.md`.
 - *2026-06-02:* Added AI assistant (OpenAI **gpt-4o-mini**). Floating chat widget on
   every authenticated page, backed by the `ai-assistant` Edge Function (holds
   `OPENAI_API_KEY`, runs a read-only tool-calling loop over `entries`, streams via SSE).
@@ -77,4 +81,3 @@ Brands Partner Forum/
 - Recharts pinned to v2; revisit if a major upgrade is available at install time.
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.
-- Cron schedule for `sync-sheet` not yet defined (proposed hourly).

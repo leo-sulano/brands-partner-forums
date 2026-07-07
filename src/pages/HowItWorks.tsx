@@ -27,7 +27,7 @@ const INTRO =
   "This dashboard is the team's internal tool for tracking review-removal requests across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds. It centralizes brand-by-brand entry tracking, automated status checks, and reporting in one place — plus an AI assistant that can answer questions over the data.";
 
 const DATA_FLOW =
-  "Entries used to live in a shared Google Sheet that synced into this dashboard. Today the dashboard is edited directly and is the live source of truth — the Sheet is no longer the operational record. Status changes (live vs. removed) come from the automated Check Status runs below, not manual edits.";
+  "Entries are created and edited directly in the dashboard, which is the single source of truth for all data. Status changes (live vs. removed) come from the automated Check Status runs below, not manual edits.";
 
 const FEATURES: FeatureSection[] = [
   {
