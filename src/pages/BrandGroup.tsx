@@ -916,7 +916,7 @@ export default function BrandGroup() {
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
     if (!brandCol) return {};
-    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link'];
+    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href'];
     // Count occurrences per brand+col so a handful of mistyped/copy-pasted outlier
     // rows can't outrank the value the vast majority of that brand's rows agree on.
     const counts: Record<string, Record<string, Record<string, number>>> = {};
