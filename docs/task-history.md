@@ -1023,6 +1023,21 @@ AskGamblers/CasinoGuru review-list links are hand-pasted into the Sheet and can 
 
 ---
 
+## Task 109: Score Summary — Wire Up AG/CG Scoring (1-5 vs 1-10)
+
+**Date:** July 7, 2026
+
+Score Summary previously showed a real per-brand score breakdown for TrustPilot only — `PLATFORM_SCORE_KEYS.ag`/`.cg` were empty arrays, so every published AskGamblers/CasinoGuru review was silently bucketed as "Unrated." Spec: `docs/superpowers/specs/2026-07-07-score-summary-ag-cg-scoring-design.md`. Plan: `docs/superpowers/plans/2026-07-07-score-summary-ag-cg-scoring.md`. Built via superpowers:subagent-driven-development in an isolated worktree.
+
+- **Task 1** — generalized `src/lib/scoreSummary.ts` from a hardcoded 1-5 scale to a per-platform max score (`PLATFORM_MAX_SCORE: { tp: 5, ag: 10, cg: 5 }`), wired real score keys (`AG Score added`, `CG Score added`), generalized `parseScore`/`ratingLabel` to take a `maxScore` param. New `scoreSummary.test.ts` (12 tests). A pre-existing NUL-byte corruption in `scoreSummary.ts` surfaced and was fixed during this task.
+- **Task 2** — generalized `ScoreSummaryPanel.tsx`'s table (star columns, colors, colgroup widths, column totals) to render a variable number of columns per platform instead of a fixed 5 — AskGamblers now shows 10 star columns (10→1) scrolling horizontally in its own container.
+- **Task 3** — added `AG Score added` (1-10) / `CG Score added` (1-5) fields to the Add Review Account modal and force-inserted them into the Edit modal via `DASHBOARD_ONLY_MODAL_FIELDS`, same convention as TP's existing `Score added` field. Edit-only — no `tab-configs.ts` whitelist change, stays out of the main brand table.
+- **Task 4** — end-to-end verification: `npm run build` clean, `npm test` 36/36 passing, human-confirmed live manual browser walkthrough (real Supabase login) — AG/CG score fields render and persist, TP=5/CG=5/AG=10 star columns render correctly, no console errors.
+- **Final whole-branch review** (opus): ready to merge. One Important item — AG only accepts whole-number scores 1-10, so a decimal entry (e.g. `8.4`, common for real AskGamblers ratings) is silently bucketed as Unrated — flagged as a documented no-validation design choice rather than a defect; confirmed leave-as-is. Two Minor nits fixed: extracted a shared `summarizeCounts()` helper (dedupes weighted-average math between `computeScoreSummary` and `ScoreSummaryPanel`'s `computeColumnTotals`), trimmed a stale comment referencing the already-deleted `import-tabs` Sheet-resync mechanism.
+- Merged to `main` (fast-forward, `37b9d4d..aff80c5`) and pushed to origin.
+
+---
+
 *Last updated: July 7, 2026*
 
 ---
