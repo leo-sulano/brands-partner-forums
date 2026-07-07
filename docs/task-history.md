@@ -1038,6 +1038,70 @@ Score Summary previously showed a real per-brand score breakdown for TrustPilot 
 
 ---
 
+## Task 110: Check Status Reliability — Deterministic Pagination & Opt-In Scope Filtering
+
+**Date:** July 7, 2026
+
+Fixed a data-loss bug in Check Status and extended it to run against only what's currently filtered on screen instead of always re-scraping every tab.
+
+- Paginating Supabase entries via limit/offset with no `ORDER BY` let Postgres return rows in an unstable order across requests, silently dropping entries that fell on a page boundary — confirmed live: two Done AG entries on Rooster Partners were never checked because of it. Ordering by `id` makes pagination deterministic; applied the same fix to Wizard of Odds' loader, which had no pagination at all (a single request with a hard 1000-row cap).
+- Removed AG/CG's fixed 10-"Load More" cap in review-list scraping so a review far down a long list isn't wrongly marked not-found, and added a Removed-stays-Removed branch to `resolve_status` so a re-checked Removed entry that's still not found doesn't fall through to Pending/Refused.
+- Filtering the dashboard's Status dropdown to Live or Removed and clicking Check Status now scopes that run to exactly that status for any of TP/AG/CG/WO, letting resolved entries be re-checked on demand without re-scraping every already-settled account.
+- Extended the same opt-in scoping to Brand, Agent, Proxy, and Country — all five filters now combine (AND) to scope a Check Status run to exactly what's filtered in the table. Added a shared `matches_scope_filters()` in `check_review_status.py` so the four platform loaders can't drift apart, and refactored the four `trigger*StatusCheck` functions from positional args to a `StatusCheckScope` options object.
+- Follow-up: hid the dedicated Check Status nav link — its removal-detection purpose is now covered per-tab via this same scoping on each brand tab's own Check Status button. Route and page are untouched, so it's a one-line revert if needed again.
+
+---
+
+## Task 111: How It Works Page
+
+**Date:** July 7, 2026
+
+Added a new `/how-it-works` page explaining the dashboard's features to all users (public, no login gate), plus a sidebar link. Same-day follow-up fixed the topbar falling through to the generic "Brands Partner Forum" title instead of showing the page title (matching every other page), dropped the now-redundant in-page heading, removed the irrelevant Check Status feature card, and widened the layout to full-page with a 3-column desktop / responsive feature grid.
+
+Spec: `docs/superpowers/specs/2026-07-07-how-it-works-page-design.md`. Plan: `docs/superpowers/plans/2026-07-07-how-it-works-page.md`.
+
+---
+
+## Task 112: Remove Inaccurate Admin Badge from Score Summary and Activity Log
+
+**Date:** July 7, 2026
+
+Removed the "Admin" badge from Score Summary and Activity Log in the sidebar — both pages are open to any approved user, not admin-only, despite sitting in the sidebar's "Admin" grouping.
+
+---
+
+## Task 113: Google Sheet Full Disconnect — Remove Remaining Write-Back Path
+
+**Date:** July 7, 2026
+
+Completed the Google Sheet disconnect started 2026-07-07 by deleting the last write-back Edge Functions and their now-dead frontend callers, leaving Supabase as the dashboard's sole data store.
+
+- Deleted the `sync-sheet`, `push-to-sheet`, `import-tabs`, and `backfill-brand-hrefs` Edge Functions (repo source and live Supabase deployment).
+- Removed the frontend code that only served them — `fetchSyncRuns`, `subscribeSyncRuns`, `src/types/sync.ts` — along with the dead `sync_runs` UI.
+- Removed Google Sheet references from `CLAUDE.md`, `.env.example`, and type declarations; removed now-obsolete Google Sheet tasks from tracking docs.
+- Noted `check-review-status` deliberately left untouched — it still pushes changed rows to the Sheet via the Apps Script web app whenever a Check Status run detects a change; `apps-script/Code.gs` and the Sheet itself are untouched.
+
+Spec: `docs/superpowers/specs/2026-07-07-google-sheet-disconnect-design.md`. Plan: `docs/superpowers/plans/2026-07-07-google-sheet-disconnect.md`.
+
+---
+
+## Task 114: Unified Brand Link Field Across All Brand Tabs
+
+**Date:** July 7, 2026
+
+Every brand tab now has a consistently-labeled "Brand Link" field, auto-filled and re-filled on brand selection in both the Edit Entry and Add Review Account modals — previously only 3 of 11 tabs had this under inconsistent keys/labels, and the other 8 had no per-brand link at all.
+
+- Fixed the GRG tab's URL slug: generic slug derivation turned "GRG - Gulf Recovery Group" into `grg---gulf-recovery-group`; added a targeted override so it reads `gulf-recovery-group`.
+- Fixed brand-change in the edit modal only refreshing AG/CG Review Link from `brandProfiles`, leaving Brand / TP URL stale from the previous brand.
+- Added `BRAND_AG_URLS`/`BRAND_CG_URLS` static fallback tables (seeded from each brand's established majority-value link) for when a brand's first entry in a tab has no other rows to derive a link from.
+- Fixed brand-derived link sync on TP Affiliate (aggregates its "Brand Links" `URL PAGE__href` column the same way AG/CG links are aggregated) and Wizard of Odds (which reuses the "Link to the profile" column name for a single per-brand WO page, unlike every other tab where that column means a per-review confirmation link — scoped strictly to WO so it can't bleed into that column's other meaning).
+- TP Brand Injection, TP Affiliate, and Wizard of Odds kept their existing link columns, just relabeled to "Brand Link" to avoid a data migration; the other 8 tabs got a new column backed by the existing `BRAND_TP_URLS` map. While wiring the Add modal, found it hardcoded the brand-name key as `'Brand Name'` for every tab regardless of the tab's real column (`'Brands'` for Rooster Partners/Hanan/Revolution Casino/SilverPlay/Trybet/HazEmirates UAE, etc.) — confirmed against live data this had orphaned 12 existing rows; added shared `getBrandNameCol()`/`getBrandLinkCol()` resolvers in `tab-configs.ts` so modals and `BrandGroup.tsx` resolve these from one source instead of drifting independently again, plus a migration backfilling the 12 orphaned rows.
+- Hid Brand Link from table rendering (`TABLE_HIDDEN_COLS`) — it's meant to be edited via Add/Edit, not shown as an inline column.
+
+Spec: `docs/superpowers/specs/2026-07-07-unified-brand-link-design.md`.
+
+---
+
 *Last updated: July 7, 2026*
 
 ---
