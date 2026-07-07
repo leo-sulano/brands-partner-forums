@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
-import { getColLabel, getCountryForAccount } from '../lib/tab-configs';
+import { getColLabel, getCountryForAccount, getBrandTpUrl } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS } from '../lib/tabs';
@@ -100,6 +100,7 @@ interface Props {
 }
 
 const BRAND_PROFILE_LINK_COLS = ['AG Review Link', 'CG Review Link'];
+const BRAND_TP_URL_COL = 'Brand / TP URL PAGE__href';
 
 export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles }: Props) {
   const [fields, setFields] = useState<Record<string, string>>(() => {
@@ -295,6 +296,9 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                         const next = { ...f, [brandCol]: v };
                         for (const col of BRAND_PROFILE_LINK_COLS) {
                           if (col in next) next[col] = profile?.[col] ?? '';
+                        }
+                        if (BRAND_TP_URL_COL in next) {
+                          next[BRAND_TP_URL_COL] = getBrandTpUrl(v, selectedTab || entry.tab) ?? '';
                         }
                         return next;
                       });
