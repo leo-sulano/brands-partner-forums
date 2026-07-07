@@ -1,7 +1,6 @@
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
 import type { Mention, MentionStatus } from '../types/mention';
-import type { SyncRun } from '../types/sync';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
 import type { BrandEntry, TabKpis } from '../types/brand-entry';
@@ -165,16 +164,6 @@ function tallyTop(values: string[], limit: number): TopItem[] {
     .map(([label, count]) => ({ label, count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, limit);
-}
-
-export async function fetchSyncRuns(limit = 500): Promise<SyncRun[]> {
-  const { data, error } = await supabase
-    .from('sync_runs')
-    .select('*')
-    .order('started_at', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data ?? []) as SyncRun[];
 }
 
 export interface EditEvent {

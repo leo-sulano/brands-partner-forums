@@ -55,13 +55,3 @@ export function subscribeEntries(
     supabase.removeChannel(channel);
   };
 }
-
-export function subscribeSyncRuns(onChange: () => void): () => void {
-  const channel = supabase
-    .channel(`sync-runs-realtime-${crypto.randomUUID()}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'sync_runs' }, onChange)
-    .subscribe();
-  return () => {
-    supabase.removeChannel(channel);
-  };
-}
