@@ -210,6 +210,12 @@ export function getTabColumns(tab: string): string[] | null {
   return TAB_COLUMN_CONFIGS[tab] ?? null;
 }
 
+// Columns that stay part of a tab's config (modal fields, brand-link
+// resolution, the Edit modal's stale-schema injection) but should never
+// render as a table column — Brand Link is edited only via the Add/Edit
+// modals, never inline in the table.
+export const TABLE_HIDDEN_COLS = new Set(['Brand Link']);
+
 // Candidate column names that hold a row's brand identity, in priority order.
 // Shared by every consumer that needs to resolve "which key is the brand name
 // for this tab" — duplicating this list per-file is how a prior bug shipped
