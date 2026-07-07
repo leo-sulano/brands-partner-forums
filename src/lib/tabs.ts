@@ -19,8 +19,13 @@ export function isOperationalTab(s: string): s is OperationalTab {
 }
 
 // Slug helpers for URL routing. Spaces → '-', lowercase. Reversible via direct lookup.
+// Manual overrides for tabs whose display name doesn't map to a clean slug (e.g. " - " separators).
+const SLUG_OVERRIDES: Partial<Record<OperationalTab, string>> = {
+  'GRG - Gulf Recovery Group': 'gulf-recovery-group',
+};
+
 export function tabToSlug(tab: string): string {
-  return tab.toLowerCase().replace(/\s+/g, '-');
+  return SLUG_OVERRIDES[tab as OperationalTab] ?? tab.toLowerCase().replace(/\s+/g, '-');
 }
 
 export function slugToTab(slug: string): OperationalTab | null {
