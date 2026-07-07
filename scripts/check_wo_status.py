@@ -21,7 +21,6 @@ import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
-import requests
 from dotenv import load_dotenv
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
@@ -32,18 +31,17 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 from check_review_status import (
     build_driver,
     update_entry,
-    _headers,
-    SUPABASE_URL,
+    _fetch_all,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
     log_check_error,
+    STATUS_FILTER_MAP,
 )
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
 POST_LOAD_SLEEP = 2.5
 LOAD_MORE_SLEEP = 1.5
-MAX_LOAD_MORE   = 10
 
 WO_STATUS_COLS = ["WoO Review Status"]
 WO_LINK_COLS   = ["Link to the profile"]
@@ -82,15 +80,26 @@ def _older_than(date_str: str, days: int) -> bool:
 
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
-def load_wo_entries(tab: Optional[str] = None, include_published: bool = True) -> list:
+def load_wo_entries(
+    tab: Optional[str] = None,
+    include_published: bool = True,
+    status_filter: Optional[str] = None,
+) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
-    r = requests.get(f"{SUPABASE_URL}/rest/v1/entries", headers=_headers(), params=params)
-    r.raise_for_status()
-    rows: list = r.json()
+    # _fetch_all paginates with a deterministic order — a single unpaginated
+    # request here would silently truncate at Supabase's 1000-row cap for any
+    # tab with more entries (same class of bug fixed for TP/AG/CG's loaders).
+    rows: list = _fetch_all(params)
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    # status_filter (driven by the dashboard's status-filter dropdown) narrows to
+    # exactly that status — the opt-in path for re-checking Published/Removed,
+    # which CHECKABLE_STATUSES/include_published never cover on their own.
+    if status_filter:
+        statuses = STATUS_FILTER_MAP.get(status_filter, set())
+    else:
+        statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -204,8 +213,9 @@ def check_wo_for_tab(
     tab: Optional[str] = None,
     include_published: bool = True,
     headless: bool = True,
+    status_filter: Optional[str] = None,
 ) -> dict:
-    entries = load_wo_entries(tab, include_published)
+    entries = load_wo_entries(tab, include_published, status_filter)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}

@@ -4,8 +4,14 @@ import check_review_status as crs
 
 
 class _FakeResponse:
+    def __init__(self, payload=None):
+        self._payload = payload
+
     def raise_for_status(self):
         pass
+
+    def json(self):
+        return self._payload
 
 
 def test_find_brand_col_prefers_first_match():
@@ -54,6 +60,51 @@ def test_load_entries_without_brands_returns_all(monkeypatch):
     assert len(result) == 2
 
 
+def test_load_entries_status_filter_live_scopes_to_published(monkeypatch):
+    # A user filtering the table to "Live" and clicking Check Status opts into
+    # re-checking Published TP entries specifically, same as AG/CG.
+    rows = [
+        _row('Brand / TP URL PAGE', 'A', status='Done'),
+        _row('Brand / TP URL PAGE', 'B', status='Pending'),
+        _row('Brand / TP URL PAGE', 'C', status='Published'),
+    ]
+    monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
+
+    result = crs.load_entries('TP Brand Injection', status_filter='live')
+
+    assert len(result) == 1
+    assert result[0]['data']['Review Status'] == 'Published'
+
+
+def test_load_entries_status_filter_removed_scopes_to_refused_and_removed(monkeypatch):
+    # TP's default CHECKABLE_STATUSES never includes Refused/Removed at all —
+    # this is the first path that lets a Refused/Removed TP entry be re-checked.
+    rows = [
+        _row('Brand / TP URL PAGE', 'A', status='Done'),
+        _row('Brand / TP URL PAGE', 'B', status='Refused'),
+        _row('Brand / TP URL PAGE', 'C', status='Removed'),
+        _row('Brand / TP URL PAGE', 'D', status='Published'),
+    ]
+    monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
+
+    result = crs.load_entries('TP Brand Injection', status_filter='removed')
+
+    statuses = {r['data']['Review Status'] for r in result}
+    assert statuses == {'Refused', 'Removed'}
+
+
+def test_load_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch):
+    rows = [
+        _row('Brand / TP URL PAGE', 'A', status='Done'),
+        _row('Brand / TP URL PAGE', 'B', status='Published'),
+    ]
+    monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
+
+    result = crs.load_entries('TP Brand Injection', status_filter='on-pause')
+
+    assert result == []
+
+
 def test_load_entries_filters_by_brands_ignores_whitespace(monkeypatch):
     rows = [
         _row('Brand / TP URL PAGE', 'Boho Casino '),
@@ -82,6 +133,30 @@ def test_load_entries_skips_rows_with_no_brand_col_when_filtering(monkeypatch):
     result = crs.load_entries('TP Brand Injection', include_published=True, brands=['Boho Casino'])
 
     assert result == []
+
+
+def test_fetch_all_paginates_with_deterministic_order(monkeypatch):
+    # Real incident: paginating via limit/offset with no ORDER BY let Postgres
+    # return rows in an unstable order across the two separate HTTP requests,
+    # silently dropping a row that fell on the page-1/page-2 boundary — the AG
+    # status checker never saw it, so "Check Status" reported fewer entries
+    # checked than were actually eligible. Every page must request the same
+    # explicit order so page boundaries are stable.
+    page1 = [{'id': f'row-{i}'} for i in range(1000)]
+    page2 = [{'id': f'row-{i}'} for i in range(1000, 1234)]
+    captured_params = []
+
+    def fake_get(url, headers=None, params=None):
+        captured_params.append(params)
+        offset = params['offset']
+        return _FakeResponse(page1 if offset == 0 else page2)
+
+    monkeypatch.setattr(crs.requests, 'get', fake_get)
+
+    result = crs._fetch_all({'select': 'id', 'tab': 'eq.Rooster Partners'})
+
+    assert len(result) == 1234
+    assert all(p['order'] == 'id' for p in captured_params)
 
 
 def test_update_entry_marks_status_as_check_review_status_authoritative(monkeypatch):
@@ -168,6 +243,19 @@ def test_resolve_status_not_found_no_added_date_defaults_to_refused():
 def test_resolve_status_published_always_wins_over_grace_period():
     # Published takes precedence over the grace period even if added_date is recent.
     assert crs.resolve_status(found=False, current_status='Published', added_date=_days_ago(0)) == 'Removed'
+
+
+def test_resolve_status_not_found_from_removed_stays_removed():
+    # A Removed entry is only re-checked when explicitly opted into via the
+    # 'removed' status filter — if still not found, it must stay Removed rather
+    # than falling into the Pending/Refused grace-period branch meant for
+    # never-yet-published entries.
+    assert crs.resolve_status(found=False, current_status='Removed') == 'Removed'
+    assert crs.resolve_status(found=False, current_status='removed', added_date=_days_ago(0)) == 'Removed'
+
+
+def test_resolve_status_found_flips_removed_back_to_published():
+    assert crs.resolve_status(found=True, current_status='Removed') == 'Published'
 
 
 def test_normalize_review_list_url_strips_trailing_page_number():

@@ -1,0 +1,63 @@
+import check_wo_status as wos
+
+
+def _row(status: str, link: str = 'https://wizardofodds.com/x', user: str = 'User1') -> dict:
+    return {
+        'id': 'row-1',
+        'tab': 'Wizard of Odds',
+        'sheet_row_id': 'sr-1',
+        'data': {
+            'WoO Review Status': status,
+            'Link to the profile': link,
+            'WoO User': user,
+        },
+    }
+
+
+def test_load_wo_entries_paginates_via_fetch_all(monkeypatch):
+    # load_wo_entries previously issued a single unpaginated request, silently
+    # truncating at Supabase's 1000-row cap for any tab with more entries — the
+    # same class of bug fixed for TP/AG/CG. It must go through the shared,
+    # deterministically-ordered paginating helper instead.
+    rows = [_row('Done')]
+    captured = {}
+
+    def fake_fetch_all(params):
+        captured['params'] = params
+        return rows
+
+    monkeypatch.setattr(wos, '_fetch_all', fake_fetch_all)
+
+    result = wos.load_wo_entries('Wizard of Odds')
+
+    assert captured['params']['tab'] == 'eq.Wizard of Odds'
+    assert len(result) == 1
+
+
+def test_load_wo_entries_default_excludes_refused_and_removed(monkeypatch):
+    rows = [_row('Done'), _row('Pending'), _row('Published'), _row('Refused'), _row('Removed')]
+    monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
+
+    result = wos.load_wo_entries('Wizard of Odds')
+
+    statuses = {r['data']['WoO Review Status'] for r in result}
+    assert statuses == {'Done', 'Pending', 'Published'}
+
+
+def test_load_wo_entries_status_filter_removed_scopes_to_refused_and_removed(monkeypatch):
+    rows = [_row('Done'), _row('Refused'), _row('Removed'), _row('Published')]
+    monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
+
+    result = wos.load_wo_entries('Wizard of Odds', status_filter='removed')
+
+    statuses = {r['data']['WoO Review Status'] for r in result}
+    assert statuses == {'Refused', 'Removed'}
+
+
+def test_load_wo_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch):
+    rows = [_row('Done'), _row('Pending'), _row('Published')]
+    monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
+
+    result = wos.load_wo_entries('Wizard of Odds', status_filter='on-pause')
+
+    assert result == []

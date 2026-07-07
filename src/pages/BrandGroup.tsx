@@ -1368,15 +1368,21 @@ export default function BrandGroup() {
     // Freeze exactly what's on screen right now so status updates from this check
     // update in place instead of dropping rows out of the current filtered view.
     setCheckedViewSnapshot({ ids: pageRows.map((e) => e.id), signature: liveViewSignature });
+    // Every platform normally skips Published/Removed entries to avoid re-scraping
+    // every already-resolved account on every run. Filtering the table to a status
+    // first (e.g. Live) and then clicking Check Status opts into re-checking just
+    // that status for whichever platform(s) this run covers.
+    const activeStatusFilter = statusFilter !== 'all' ? statusFilter : undefined;
+    const filterLabel = activeStatusFilter ? STATUS_OPTS.find((o) => o.value === statusFilter)?.label : undefined;
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
       for (const p of platforms) {
         try {
           let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
-          if (p === 'tp') r = await triggerStatusCheck(decodedTab);
-          else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab);
-          else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab);
-          else r = await triggerWoStatusCheck(decodedTab);
+          if (p === 'tp') r = await triggerStatusCheck(decodedTab, false, undefined, activeStatusFilter);
+          else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab, false, activeStatusFilter);
+          else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab, false, activeStatusFilter);
+          else r = await triggerWoStatusCheck(decodedTab, false, activeStatusFilter);
           results.push(r);
         } catch {
           results.push({ updated: 0, errors: 1 });
@@ -1416,10 +1422,10 @@ export default function BrandGroup() {
         msg = `${totalUpdated} review${totalUpdated !== 1 ? 's' : ''} updated`;
         kind = 'success';
       } else if (totalChecked > 0) {
-        msg = `Checked ${totalChecked} entr${totalChecked !== 1 ? 'ies' : 'y'} — no status changes`;
+        msg = `Checked ${totalChecked} ${filterLabel ? `${filterLabel} ` : ''}entr${totalChecked !== 1 ? 'ies' : 'y'} — no status changes`;
         kind = 'success';
       } else {
-        msg = 'No entries found to check';
+        msg = filterLabel ? `No ${filterLabel} entries found to check` : 'No entries found to check';
         kind = 'success';
       }
       setToast({ message: msg, kind });

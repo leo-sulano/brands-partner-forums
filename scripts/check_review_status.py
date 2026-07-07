@@ -175,6 +175,9 @@ def resolve_status(found: bool, current_status: str, added_date: Optional[str] =
     and CG so they can't drift apart:
       found                                     -> Published
       not found, current was Published          -> Removed
+      not found, current was Removed            -> Removed (stays put; a
+        Removed entry is only ever re-checked when explicitly requested via
+        STATUS_FILTER_MAP, and re-found flips it back to Published above)
       not found, current was anything else, and added_date is within
         REFUSED_AFTER_DAYS                      -> Pending (recheck later)
       not found, current was anything else, and added_date is older than
@@ -184,11 +187,29 @@ def resolve_status(found: bool, current_status: str, added_date: Optional[str] =
     Published once it's actually found live."""
     if found:
         return "Published"
-    if current_status.strip().lower() == "published":
+    current_lower = current_status.strip().lower()
+    if current_lower == "published":
+        return "Removed"
+    if current_lower == "removed":
         return "Removed"
     if added_date and not _older_than(added_date, REFUSED_AFTER_DAYS):
         return "Pending"
     return "Refused"
+
+
+# Maps the dashboard's status-filter dropdown value to the raw status values
+# eligible for a check when that filter is active. Shared by all four platform
+# checkers (TP/AG/CG/WO) — their default CHECKABLE_STATUSES deliberately
+# excludes "published" and "removed" (to avoid re-scraping every already-
+# resolved account on every run); this map lets a user opt into re-checking
+# either by filtering the table to that status first and then clicking Check
+# Status, scoped to just that status.
+STATUS_FILTER_MAP: dict[str, set[str]] = {
+    "done":     {"done"},
+    "pending":  {"pending"},
+    "live":     {"published"},
+    "removed":  {"refused", "removed"},
+}
 
 
 TP_STATUS_COLS = [
@@ -425,7 +446,15 @@ def find_brand_col(data: dict) -> Optional[str]:
 
 
 def _fetch_all(params: dict) -> list:
-    """Paginate through Supabase REST (server caps at 1000 rows per request)."""
+    """Paginate through Supabase REST (server caps at 1000 rows per request).
+
+    Postgres/PostgREST make no ordering guarantee across separate requests
+    without an explicit ORDER BY — confirmed live: fetching a 2380-row tab
+    without one silently dropped rows across the offset=1000/2000 page
+    boundary, so entries eligible for a status check were never loaded and
+    the "Check Status" button reported fewer checked than were actually due.
+    Ordering by the primary key makes every page's row set stable.
+    """
     PAGE = 1000
     all_rows: list = []
     offset = 0
@@ -433,7 +462,7 @@ def _fetch_all(params: dict) -> list:
         r = requests.get(
             f"{SUPABASE_URL}/rest/v1/entries",
             headers=_headers(),
-            params={**params, "limit": PAGE, "offset": offset},
+            params={**params, "order": "id", "limit": PAGE, "offset": offset},
         )
         r.raise_for_status()
         batch: list = r.json()
@@ -445,13 +474,19 @@ def _fetch_all(params: dict) -> list:
 
 
 def load_entries(tab: Optional[str] = None, include_published: bool = True,
-                  brands: Optional[list[str]] = None) -> list[dict]:
+                  brands: Optional[list[str]] = None, status_filter: Optional[str] = None) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
     rows: list[dict] = _fetch_all(params)
 
-    statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    # status_filter (driven by the dashboard's status-filter dropdown) narrows to
+    # exactly that status — the opt-in path for re-checking Published/Removed,
+    # which CHECKABLE_STATUSES/include_published never cover on their own.
+    if status_filter:
+        statuses = STATUS_FILTER_MAP.get(status_filter, set())
+    else:
+        statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
     brand_set = set(brands) if brands else None
 
     out = []

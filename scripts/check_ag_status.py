@@ -45,6 +45,7 @@ from check_review_status import (
     page_blocked,
     resolve_status,
     normalize_review_list_url,
+    STATUS_FILTER_MAP,
     SUPABASE_URL,
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
@@ -57,7 +58,6 @@ from geo_bridge import ensure_bridges, ensure_display
 
 POST_LOAD_SLEEP    = 5.0   # seconds after page load for JS to render reviews
 LOAD_MORE_SLEEP    = 1.5   # seconds after clicking "load more"
-MAX_LOAD_MORE      = 10    # max "load more" clicks before giving up
 
 AG_STATUS_COLS = ["AG Review Status"]
 AG_LINK_COLS   = ["AG Review Link", "AG Link"]
@@ -88,7 +88,12 @@ def _val(data: dict, candidates: list) -> Optional[str]:
 
 # ─── Supabase ────────────────────────────────────────────────────────────────
 
-def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, country: Optional[str] = None) -> list:
+def load_ag_entries(
+    tab: Optional[str] = None,
+    include_published: bool = True,
+    country: Optional[str] = None,
+    status_filter: Optional[str] = None,
+) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
@@ -96,7 +101,9 @@ def load_ag_entries(tab: Optional[str] = None, include_published: bool = True, c
 
     # include_published is now a no-op here since CHECKABLE_STATUSES never
     # contains "published" — kept for signature compatibility with status_server.py.
-    statuses = CHECKABLE_STATUSES
+    # status_filter (driven by the dashboard's status-filter dropdown) narrows to
+    # exactly that status instead — the opt-in path for re-checking Published/Removed.
+    statuses = STATUS_FILTER_MAP.get(status_filter, set()) if status_filter else CHECKABLE_STATUSES
     out = []
     for row in rows:
         data: dict = row.get("data") or {}
@@ -201,7 +208,12 @@ def fetch_ag_review(
 
     ag_user_lower = ag_user.lower()
 
-    for page_num in range(MAX_LOAD_MORE + 1):
+    # No page cap — page all the way to the true last "Load More" before
+    # concluding not-found. A fixed cap previously stopped at page 10, which
+    # could wrongly call a review "not found" (and mark it Refused/Removed)
+    # when it was really just further back in a long review list.
+    page_num = 0
+    while True:
         html = driver.page_source
 
         # First page only: check for CAPTCHA / bot-block before drawing conclusions
@@ -228,10 +240,8 @@ def fetch_ag_review(
             rating = _extract_rating_from_context(context)
             return ("Published", rating)
 
-        if page_num >= MAX_LOAD_MORE:
-            break
-
         clicked = _try_load_more(driver)
+        page_num += 1
         if not clicked:
             break
         time.sleep(LOAD_MORE_SLEEP)
@@ -246,13 +256,14 @@ def check_ag_for_tab(
     include_published: bool = True,
     headless: bool = True,
     country: Optional[str] = None,
+    status_filter: Optional[str] = None,
 ) -> dict:
     """Run AG status check for all eligible entries in `tab`.
     Returns {checked, updated, errors, sheet_errors, total}."""
     ensure_bridges()
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
-    entries = load_ag_entries(tab, include_published, country)
+    entries = load_ag_entries(tab, include_published, country, status_filter)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}

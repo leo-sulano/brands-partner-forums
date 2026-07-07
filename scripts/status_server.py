@@ -83,6 +83,7 @@ def check_status():
     include_published: bool = bool(body.get('include_published', False))
     platform: str = (body.get('platform') or 'tp').lower()
     brands: list[str] | None = body.get('brands') or None
+    status_filter: str | None = body.get('status_filter') or None
 
     # Platform-namespaced lock so TP/AG/CG/WO can run concurrently on the same tab.
     # TP keeps its legacy key format for backwards compat with any running checks.
@@ -99,24 +100,24 @@ def check_status():
         # Dispatch non-TP platforms to their dedicated checkers.
         if platform == 'ag':
             print(f'\n[server] AG check started ({scope})')
-            result = check_ag_for_tab(tab, include_published=include_published, headless=headless)
+            result = check_ag_for_tab(tab, include_published=include_published, headless=headless, status_filter=status_filter)
             print(f'[server] AG done. {result}')
             return jsonify(result)
 
         if platform == 'cg':
             print(f'\n[server] CG check started ({scope})')
-            result = check_cg_for_tab(tab, include_published=include_published, headless=headless)
+            result = check_cg_for_tab(tab, include_published=include_published, headless=headless, status_filter=status_filter)
             print(f'[server] CG done. {result}')
             return jsonify(result)
 
         if platform == 'wo':
             print(f'\n[server] WO check started ({scope})')
-            result = check_wo_for_tab(tab, include_published=include_published, headless=headless)
+            result = check_wo_for_tab(tab, include_published=include_published, headless=headless, status_filter=status_filter)
             print(f'[server] WO done. {result}')
             return jsonify(result)
 
         # Default: TP Selenium check.
-        entries = load_entries(tab, include_published=include_published, brands=brands)
+        entries = load_entries(tab, include_published=include_published, brands=brands, status_filter=status_filter)
         total = len(entries)
         print(f'\n[server] TP check started — {total} entries ({scope})')
 
@@ -190,6 +191,7 @@ def check_ag_status_route():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
+    status_filter: str | None = body.get('status_filter') or None
     tab_key = f'ag__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -201,7 +203,7 @@ def check_ag_status_route():
         headless: bool = app.config.get('HEADLESS', False)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] AG check started ({scope})')
-        result = check_ag_for_tab(tab, include_published=include_published, headless=headless)
+        result = check_ag_for_tab(tab, include_published=include_published, headless=headless, status_filter=status_filter)
         print(f'[server] AG done. {result}')
         return jsonify(result)
     finally:
@@ -220,6 +222,7 @@ def check_cg_status_route():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
+    status_filter: str | None = body.get('status_filter') or None
     tab_key = f'cg__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -231,7 +234,7 @@ def check_cg_status_route():
         headless: bool = app.config.get('HEADLESS', False)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] CG check started ({scope})')
-        result = check_cg_for_tab(tab, include_published=include_published, headless=headless)
+        result = check_cg_for_tab(tab, include_published=include_published, headless=headless, status_filter=status_filter)
         print(f'[server] CG done. {result}')
         return jsonify(result)
     finally:
@@ -250,6 +253,7 @@ def check_wo_status_route():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
+    status_filter: str | None = body.get('status_filter') or None
     tab_key = f'wo__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -261,7 +265,7 @@ def check_wo_status_route():
         headless: bool = app.config.get('HEADLESS', False)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] WO check started ({scope})')
-        result = check_wo_for_tab(tab, include_published=include_published, headless=headless)
+        result = check_wo_for_tab(tab, include_published=include_published, headless=headless, status_filter=status_filter)
         print(f'[server] WO done. {result}')
         return jsonify(result)
     finally:
