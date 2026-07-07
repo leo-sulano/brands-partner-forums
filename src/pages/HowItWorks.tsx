@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Handshake, RefreshCw, BarChart3, Bot, ScrollText, Users,
+  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -24,17 +24,17 @@ const ICON_COLOR_CLASSES: Record<IconColor, string> = {
 };
 
 const INTRO =
-  "This dashboard is the team's internal tool for tracking review-removal requests across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds. It centralizes brand-by-brand entry tracking, automated status checks, and reporting in one place — plus an AI assistant that can answer questions over the data.";
+  "This dashboard is the team's internal tool for tracking review-removal requests across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds. It centralizes brand by brand entry tracking, automated status checks, and reporting in one place, plus an AI assistant that can answer questions over the data.";
 
 const DATA_FLOW =
-  "Entries are created and edited directly in the dashboard, which is the single source of truth for all data. Status changes (live vs. removed) come from the automated Check Status runs below, not manual edits.";
+  "Entries are created and edited directly in the dashboard, which is the single source of truth for all data. Status changes (live vs. removed) come from the automated Check Status runs, not manual edits.";
 
 const FEATURES: FeatureSection[] = [
   {
     title: 'Overview',
     icon: LayoutDashboard,
     iconColor: 'blue',
-    blurb: 'The landing page — a rollup of where every brand tab stands right now.',
+    blurb: 'The landing page, a rollup of where every brand tab stands right now.',
     bullets: [
       'KPI cards per brand tab: live, removed, pending, and done counts',
       'Platform breakdown chart across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds',
@@ -45,22 +45,11 @@ const FEATURES: FeatureSection[] = [
     title: 'Brand Tabs',
     icon: Handshake,
     iconColor: 'violet',
-    blurb: 'One tab per brand group — the core workspace for day-to-day tracking.',
+    blurb: 'One tab per brand group, the core workspace for day-to-day tracking.',
     bullets: [
       'Browse every tracked account/entry for that brand group, filterable and sortable',
-      'Add, edit, or delete entries directly — this is the live source of truth',
+      'Add, edit, or delete entries directly, this is the live source of truth',
       'Trigger a Check Status run scoped to that tab',
-    ],
-  },
-  {
-    title: 'Check Status',
-    icon: RefreshCw,
-    iconColor: 'emerald',
-    blurb: 'Automated detection of whether a review or profile is still live or has been removed.',
-    bullets: [
-      'Runs per platform (TP/AG/CG/WO) from the Check Status button on each brand tab',
-      'Scoped by status, brand, agent, proxy, and country filters so you only re-check what changed',
-      "Writes results back into the entry's status column automatically",
     ],
   },
   {
@@ -78,7 +67,7 @@ const FEATURES: FeatureSection[] = [
     iconColor: 'violet',
     blurb: "A chat assistant that can answer questions over the dashboard's data.",
     bullets: [
-      "Read-only — it can look up and summarize entries, it can't edit anything",
+      "Read-only, it can look up and summarize entries, it can't edit anything",
       'Supports voice input where the browser allows it',
     ],
   },
@@ -107,13 +96,10 @@ const FEATURES: FeatureSection[] = [
 
 export default function HowItWorks() {
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-xl font-semibold text-slate-900">How it works</h1>
-        <p className="mt-2 text-sm text-slate-600 leading-relaxed">{INTRO}</p>
-      </div>
+    <div className="space-y-6">
+      <p className="text-sm text-slate-600 leading-relaxed">{INTRO}</p>
 
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
           Where the data comes from
         </p>
@@ -124,9 +110,9 @@ export default function HowItWorks() {
         <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
           Features
         </p>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-xl border border-slate-200 bg-white shadow-sm p-5">
+            <div key={f.title} className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
               <div className="flex items-start gap-3">
                 <div
                   className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${ICON_COLOR_CLASSES[f.iconColor]}`}
