@@ -1,5 +1,6 @@
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
+import { getTabColumns } from './tab-configs';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
@@ -303,6 +304,10 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
   if (error) throw error;
   const headers = (data?.headers ?? []) as string[];
   const filtered = headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
+  // Dashboard-only tabs (no Google Sheet backing) never get a tab_schemas row —
+  // fall back to the tab's configured column whitelist so KPI/status queries
+  // still find their status columns instead of silently zeroing out.
+  if (filtered.length === 0) return getTabColumns(tab) ?? [];
   return Array.from(new Set(filtered));
 }
 
