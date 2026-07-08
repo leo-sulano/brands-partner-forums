@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import BrandTabsModal from '../components/BrandTabsModal';
 
 type IconColor = 'blue' | 'violet' | 'emerald' | 'amber' | 'rose' | 'slate';
 
@@ -113,6 +115,7 @@ const FEATURES: FeatureSection[] = [
 
 export default function HowItWorks() {
   const { isAdmin } = useAuth();
+  const [showBrandTabsModal, setShowBrandTabsModal] = useState(false);
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-600 leading-relaxed">{INTRO}</p>
@@ -177,7 +180,8 @@ export default function HowItWorks() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => {
             const clickable = Boolean(f.href) && (!f.adminOnly || isAdmin);
-            const cardClass = `rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 transition-shadow ${clickable ? 'hover:shadow-md hover:border-violet-300 cursor-pointer' : ''}`;
+            const opensModal = f.title === 'Brand Tabs';
+            const cardClass = `rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 transition-shadow ${(clickable || opensModal) ? 'hover:shadow-md hover:border-violet-300 cursor-pointer' : ''}`;
             const content = (
               <div className="flex items-start gap-3">
                 <div
@@ -206,11 +210,26 @@ export default function HowItWorks() {
                 </div>
               </div>
             );
-            return clickable ? (
-              <Link key={f.title} to={f.href!} className={cardClass}>
-                {content}
-              </Link>
-            ) : (
+            if (clickable) {
+              return (
+                <Link key={f.title} to={f.href!} className={cardClass}>
+                  {content}
+                </Link>
+              );
+            }
+            if (opensModal) {
+              return (
+                <button
+                  key={f.title}
+                  type="button"
+                  onClick={() => setShowBrandTabsModal(true)}
+                  className={`${cardClass} w-full text-left`}
+                >
+                  {content}
+                </button>
+              );
+            }
+            return (
               <div key={f.title} className={cardClass}>
                 {content}
               </div>
@@ -218,6 +237,8 @@ export default function HowItWorks() {
           })}
         </div>
       </div>
+
+      {showBrandTabsModal && <BrandTabsModal onClose={() => setShowBrandTabsModal(false)} />}
     </div>
   );
 }
