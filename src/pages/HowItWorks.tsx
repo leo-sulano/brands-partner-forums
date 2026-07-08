@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Handshake, RefreshCw, BarChart3, Bot, ScrollText, Users,
+  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -59,17 +59,6 @@ const FEATURES: FeatureSection[] = [
       'Browse every tracked account/entry for that brand group, filterable and sortable',
       'Add, edit, or delete entries directly, this is the live source of truth',
       'Trigger a Check Status run scoped to that tab',
-    ],
-  },
-  {
-    title: 'Check Status',
-    icon: RefreshCw,
-    iconColor: 'emerald',
-    blurb: 'Runs an automated checker against Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds to detect whether each entry is still live or has been removed.',
-    bullets: [
-      'Per-tab button; multi-platform tabs let you check all platforms at once or just one',
-      'Scoped to whatever filters are active — status, brand, agent, proxy, or country — so you can re-check just a subset',
-      'Updates the status column and shows a toast summary once the run completes',
     ],
   },
   {
@@ -147,6 +136,29 @@ export default function HowItWorks() {
             ))}
           </ol>
         </div>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+          Check Status
+        </p>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Runs an automated checker against Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds to detect whether each entry is still live or has been removed.
+        </p>
+        <ul className="mt-3 space-y-1">
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Per-tab button; multi-platform tabs let you check all platforms at once or just one</span>
+          </li>
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Scoped to whatever filters are active — status, brand, agent, proxy, or country — so you can re-check just a subset</span>
+          </li>
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Updates the status column and shows a toast summary once the run completes</span>
+          </li>
+        </ul>
       </div>
 
       <div>
