@@ -1,7 +1,9 @@
+import { Link } from 'react-router-dom';
 import {
   LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 type IconColor = 'blue' | 'violet' | 'emerald' | 'amber' | 'rose' | 'slate';
 
@@ -12,6 +14,7 @@ interface FeatureSection {
   blurb: string;
   bullets: string[];
   adminOnly?: boolean;
+  href?: string;
 }
 
 const ICON_COLOR_CLASSES: Record<IconColor, string> = {
@@ -49,6 +52,7 @@ const FEATURES: FeatureSection[] = [
       'Platform breakdown chart across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds',
       'A feed of recent mentions for quick scanning',
     ],
+    href: '/',
   },
   {
     title: 'Brand Tabs',
@@ -69,6 +73,7 @@ const FEATURES: FeatureSection[] = [
     bullets: [
       'Counts only Published entries by design (raw sheet totals run higher because they include Removed/Refused)',
     ],
+    href: '/score-summary',
   },
   {
     title: 'Ask AI',
@@ -79,6 +84,7 @@ const FEATURES: FeatureSection[] = [
       "Read-only, it can look up and summarize entries, it can't edit anything",
       'Supports voice input where the browser allows it',
     ],
+    href: '/ask-ai',
   },
   {
     title: 'Activity Log',
@@ -89,6 +95,7 @@ const FEATURES: FeatureSection[] = [
       'Tracks entry edits and admin actions (approvals, revokes, role changes)',
       'Edited or deleted entries can be restored from here',
     ],
+    href: '/log',
   },
   {
     title: 'Admin Users',
@@ -100,10 +107,12 @@ const FEATURES: FeatureSection[] = [
       'Admins can promote/demote other admins and revoke access',
     ],
     adminOnly: true,
+    href: '/admin/users',
   },
 ];
 
 export default function HowItWorks() {
+  const { isAdmin } = useAuth();
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-600 leading-relaxed">{INTRO}</p>
@@ -166,8 +175,10 @@ export default function HowItWorks() {
           Features
         </p>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+          {FEATURES.map((f) => {
+            const clickable = Boolean(f.href) && (!f.adminOnly || isAdmin);
+            const cardClass = `rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 transition-shadow ${clickable ? 'hover:shadow-md hover:border-violet-300 cursor-pointer' : ''}`;
+            const content = (
               <div className="flex items-start gap-3">
                 <div
                   className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${ICON_COLOR_CLASSES[f.iconColor]}`}
@@ -194,8 +205,17 @@ export default function HowItWorks() {
                   </ul>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+            return clickable ? (
+              <Link key={f.title} to={f.href!} className={cardClass}>
+                {content}
+              </Link>
+            ) : (
+              <div key={f.title} className={cardClass}>
+                {content}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
