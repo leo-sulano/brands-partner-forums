@@ -3,6 +3,7 @@ import { Link, Navigate } from 'react-router-dom';
 import { MessagesSquare, Loader2, CheckCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 export default function Signup() {
   const { session } = useAuth();
@@ -13,6 +14,22 @@ export default function Signup() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  async function handleGoogleSignIn() {
+    setGoogleError(null);
+    setGoogleLoading(true);
+    const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: siteUrl },
+    });
+    if (err) {
+      setGoogleError(err.message);
+      setGoogleLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -64,6 +81,20 @@ export default function Signup() {
             <span className="text-lg font-semibold text-slate-900 tracking-tight">Brands Partner Forum</span>
           </div>
           <p className="text-sm text-slate-500">Create a new account</p>
+        </div>
+
+        <GoogleAuthButton onClick={handleGoogleSignIn} loading={googleLoading} />
+
+        {googleError && (
+          <div className="mt-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            {googleError}
+          </div>
+        )}
+
+        <div className="my-4 flex items-center gap-3">
+          <div className="h-px flex-1 bg-slate-200" />
+          <span className="text-xs text-slate-400">or sign up with email</span>
+          <div className="h-px flex-1 bg-slate-200" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
