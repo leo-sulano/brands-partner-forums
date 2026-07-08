@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { MessagesSquare, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { AUTH_ERROR_STORAGE_KEY } from '../lib/authError';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 
 export default function Login() {
   const { session } = useAuth();
@@ -12,12 +14,35 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const [resetMode, setResetMode] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const stashed = sessionStorage.getItem(AUTH_ERROR_STORAGE_KEY);
+    if (stashed) {
+      setError(stashed);
+      sessionStorage.removeItem(AUTH_ERROR_STORAGE_KEY);
+    }
+  }, []);
+
+  async function handleGoogleSignIn() {
+    setError(null);
+    setGoogleLoading(true);
+    const siteUrl = import.meta.env.VITE_SITE_URL || window.location.origin;
+    const { error: err } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: siteUrl },
+    });
+    if (err) {
+      setError(err.message);
+      setGoogleLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -117,6 +142,14 @@ export default function Login() {
           )
         ) : (
           <>
+            <GoogleAuthButton onClick={handleGoogleSignIn} loading={googleLoading} />
+
+            <div className="my-4 flex items-center gap-3">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="text-xs text-slate-400">or continue with email</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-slate-500">Email</label>
