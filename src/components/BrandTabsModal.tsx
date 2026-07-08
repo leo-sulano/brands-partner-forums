@@ -1,4 +1,5 @@
 // src/components/BrandTabsModal.tsx
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
@@ -16,8 +17,16 @@ const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
 };
 
 export default function BrandTabsModal({ onClose }: Props) {
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={(e) => e.key === 'Escape' && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
 
