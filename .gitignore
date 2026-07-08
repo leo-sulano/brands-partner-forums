@@ -26,6 +26,8 @@ __pycache__/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+scripts/*.log
+scripts/logs/
 
 # Editors
 .vscode/*

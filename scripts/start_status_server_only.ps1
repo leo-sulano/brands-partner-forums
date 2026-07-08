@@ -14,7 +14,25 @@ if (-not (Test-Path $pythonw)) { $pythonw = $realPyExe }
 
 $pyArgs = "`"$scriptDir\status_server.py`" --port $Port"
 if ($NoHeadless) { $pyArgs += ' --no-headless' }
-Start-Process -FilePath $pythonw -ArgumentList $pyArgs -WorkingDirectory $scriptDir -WindowStyle Hidden
+
+# pythonw.exe has no console, so stdout/stderr are normally discarded --
+# meaning a crash leaves zero trace. Redirect both to fixed paths, but archive
+# whatever's there first: Start-Process truncates on open, and the previous
+# run's output (the thing most worth reading right after a crash-triggered
+# restart) would otherwise be wiped before anyone can look at it.
+$stdoutLog = Join-Path $scriptDir 'server_debug.log'
+$stderrLog = Join-Path $scriptDir 'server_debug_err.log'
+$logArchiveDir = Join-Path $scriptDir 'logs'
+foreach ($log in @($stdoutLog, $stderrLog)) {
+    if (Test-Path $log) {
+        New-Item -ItemType Directory -Force -Path $logArchiveDir | Out-Null
+        $archived = Join-Path $logArchiveDir "$(Get-Date -Format 'yyyyMMdd_HHmmss')_$(Split-Path $log -Leaf)"
+        Move-Item $log $archived -Force
+    }
+}
+
+Start-Process -FilePath $pythonw -ArgumentList $pyArgs -WorkingDirectory $scriptDir -WindowStyle Hidden `
+    -RedirectStandardOutput $stdoutLog -RedirectStandardError $stderrLog
 
 # Poll instead of a single fixed-delay check -- a cold-cache interpreter
 # start (heavy Flask/Selenium/undetected-chromedriver imports) can take much
