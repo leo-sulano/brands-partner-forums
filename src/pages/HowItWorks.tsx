@@ -71,8 +71,10 @@ const FEATURES: FeatureSection[] = [
     title: 'Score Summary',
     icon: BarChart3,
     iconColor: 'amber',
-    blurb: 'A rollup of published counts per brand, used for reporting.',
+    blurb: 'A star-rating rollup per brand across Trustpilot, AskGamblers, and Casino.Guru — Published reviews only.',
     bullets: [
+      'Switch platforms to see that platform\'s star distribution per brand (1–5 stars for Trustpilot/Casino.Guru, 1–10 for AskGamblers)',
+      'Each brand gets a weighted average and a Rating label (Excellent, Great, Average, Poor, Bad)',
       'Counts only Published entries by design (raw sheet totals run higher because they include Removed/Refused)',
     ],
     href: '/score-summary',
