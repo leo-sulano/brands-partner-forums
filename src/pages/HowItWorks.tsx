@@ -29,6 +29,15 @@ const INTRO =
 const DATA_FLOW =
   "Entries are created and edited directly in the dashboard, which is the single source of truth for all data. Status changes (live vs. removed) come from the automated Check Status runs, not manual edits.";
 
+const GETTING_STARTED_STEPS = [
+  'Log in with your approved account.',
+  'Open a brand tab from the sidebar.',
+  'Click "Add Review Account" to create a new entry.',
+  'Click an entry\'s account name to open Edit Entry and update it.',
+  'Click "Check Status" to run an automated check against the tracked platforms.',
+  'Watch the status column and the toast confirm once the check completes.',
+];
+
 const FEATURES: FeatureSection[] = [
   {
     title: 'Overview',
@@ -104,6 +113,29 @@ export default function HowItWorks() {
           Where the data comes from
         </p>
         <p className="mt-2 text-sm text-slate-600 leading-relaxed">{DATA_FLOW}</p>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+          Getting Started
+        </p>
+        <div className="grid gap-5 lg:grid-cols-2 lg:items-center">
+          <img
+            src="/getting-started.gif"
+            alt="Walkthrough: logging in, adding an entry, editing it, and running Check Status"
+            className="w-full rounded-lg border border-slate-200"
+          />
+          <ol className="space-y-2">
+            {GETTING_STARTED_STEPS.map((step, i) => (
+              <li key={step} className="flex gap-3 text-sm text-slate-600">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-semibold text-violet-600">
+                  {i + 1}
+                </span>
+                <span>{step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
 
       <div>
