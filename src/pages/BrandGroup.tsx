@@ -12,8 +12,9 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, type StatusCheckScope } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, getScoreCol } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
+import { parseScore, PLATFORM_MAX_SCORE } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -175,12 +176,14 @@ const PLATFORM_DATE_COLS = {
   tp: 'Trust Pilot',
   ag: 'Ask Gambler review added',
   cg: 'Casino Guru review added',
+  wo: 'Wizard of Odds',
 } as const;
 
 const PLATFORM_STATUS_COL = {
   tp: 'TP Review Status',
   ag: 'AG Review Status',
   cg: 'CG Review Status',
+  wo: 'WoO Review Status',
 } as const;
 
 // Columns that belong to each platform — used to hide non-selected platform cols.
@@ -580,9 +583,13 @@ export default function BrandGroup() {
   const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>('all');
   const [showTotalModal, setShowTotalModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg'>(
-    (['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all')
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg' | 'wo'>(
+    (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
   );
+  const [ratingFilter, setRatingFilter] = useState<number | null>(() => {
+    const r = Number(searchParams.get('rating'));
+    return Number.isInteger(r) && r > 0 ? r : null;
+  });
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [sortCol, setSortCol] = useState<string | null>(() => readSortFromStorage(decodedTab).col);
@@ -709,9 +716,13 @@ export default function BrandGroup() {
       setFullHeaders([]);
       setError(null);
       setSearch('');
-      setBrandFilter('');
+      setBrandFilter(searchParams.get('brand') ?? '');
       setStatusFilter('all');
-      setPlatformFilter((['tp', 'ag', 'cg'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' : 'all'));
+      setPlatformFilter((['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all'));
+      setRatingFilter((() => {
+        const r = Number(searchParams.get('rating'));
+        return Number.isInteger(r) && r > 0 ? r : null;
+      })());
       setAgentFilter('');
       setProxyFilter('');
       setCountryFilter('');
@@ -853,6 +864,18 @@ export default function BrandGroup() {
 
     return () => { canceled = true; };
   }, [decodedTab, reloadSeq]);
+
+  // Re-sync platform/brand/rating from the URL whenever the query string changes on an
+  // already-mounted tab — e.g. clicking from one Score Summary star-count link to another
+  // for the same brand-group tab. The effect above only re-derives these on an actual tab
+  // change; without this, such same-tab navigations would silently keep the old filters.
+  useEffect(() => {
+    const p = searchParams.get('platform');
+    setPlatformFilter(['tp', 'ag', 'cg', 'wo'].includes(p ?? '') ? (p as 'tp' | 'ag' | 'cg' | 'wo') : 'all');
+    setBrandFilter(searchParams.get('brand') ?? '');
+    const r = Number(searchParams.get('rating'));
+    setRatingFilter(Number.isInteger(r) && r > 0 ? r : null);
+  }, [searchParams]);
 
   useEffect(() => {
     setSelectedIds(new Set());
@@ -1170,9 +1193,26 @@ export default function BrandGroup() {
     : platformFilter === 'tp'
       ? statusCols.filter((h) => TP_STATUS_VARIANTS.has(h))
       : statusCols.filter((h) => h.toLowerCase() === PLATFORM_STATUS_COL[platformFilter].toLowerCase());
+
+  // Rating filter (arrives via Score Summary star-count links): only meaningful when a
+  // specific platform is active, since a rating value is only comparable within one
+  // platform's score column. Matches Published-status rows only, exactly mirroring what
+  // Score Summary counted — not "any status with that score."
+  const activePlatformForRating = platformFilter !== 'all' ? platformFilter : null;
+  const ratingFiltered = (() => {
+    if (ratingFilter == null || !activePlatformForRating) return platformFiltered;
+    const scoreCol = getScoreCol(activePlatformForRating, headers);
+    if (!scoreCol) return platformFiltered;
+    const maxScore = PLATFORM_MAX_SCORE[activePlatformForRating];
+    return platformFiltered.filter((e) =>
+      activeStatusCols.some((h) => (e.data[h] ?? '').trim().toLowerCase() === 'published') &&
+      parseScore(e.data[scoreCol], maxScore) === ratingFilter,
+    );
+  })();
+
   const statusFiltered = statusFilter === 'all'
-    ? platformFiltered
-    : platformFiltered.filter((e) =>
+    ? ratingFiltered
+    : ratingFiltered.filter((e) =>
         activeStatusCols.some((h) => {
           const v = (e.data[h] ?? '').toLowerCase();
           if (statusFilter === 'live') return isLive(v);
@@ -1206,7 +1246,7 @@ export default function BrandGroup() {
 
   const filtered = applyDateFilter(statusFiltered);
   // kpiBase skips status filter so platform card counts always show full live/removed totals.
-  const kpiBase = applyDateFilter(platformFiltered);
+  const kpiBase = applyDateFilter(ratingFiltered);
 
 
   // Platform card counts — computed from kpiBase so they always reflect active filters.
@@ -1628,6 +1668,30 @@ export default function BrandGroup() {
             <span className="text-xs text-slate-400 whitespace-nowrap">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
             </span>
+          )}
+          {(brandFilter || ratingFilter != null) && (
+            <div className="flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs text-violet-700 whitespace-nowrap">
+              <span>
+                Filtered by:
+                {brandFilter ? ` ${brandFilter}` : ''}
+                {platformFilter !== 'all' ? ` · ${platformFilter.toUpperCase()}` : ''}
+                {ratingFilter != null ? ` · Rating ${ratingFilter}` : ''}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setBrandFilter('');
+                  setRatingFilter(null);
+                  setPlatformFilter('all');
+                  setSearchParams({});
+                  setPage(1);
+                }}
+                className="text-violet-500 hover:text-violet-700 transition-colors"
+                aria-label="Clear brand/rating filter"
+              >
+                <X className="size-3" />
+              </button>
+            </div>
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
           {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && (
