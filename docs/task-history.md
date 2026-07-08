@@ -1102,6 +1102,88 @@ Spec: `docs/superpowers/specs/2026-07-07-unified-brand-link-design.md`.
 
 ---
 
-*Last updated: July 7, 2026*
+## Task 115: Google Sign-In (Login / Signup)
+
+**Date:** July 8, 2026
+
+Added a "Continue with Google" option to both `Login.tsx` and `Signup.tsx`, alongside (not replacing) the existing email/password flow.
+
+- Open to any Google account, same exposure as the existing open password signup — gated by the same admin-approval flow (`profiles.approved`), since the approval trigger fires on any `auth.users` insert regardless of provider. No `AuthContext`/`ProtectedRoute`/schema changes needed.
+- Fixed a related redirect bug: `ProtectedRoute`'s `<Navigate to="/login" replace />` drops the URL hash, which would silently lose a failed/cancelled Google OAuth attempt's `#error=...` fragment. Stashed the hash into `sessionStorage` at the top of `main.tsx` before React Router mounts; `Login.tsx` reads and clears it on mount.
+- Built via subagent-driven-development in an isolated worktree, merged and pushed same day. Requires the Supabase Site URL to stay set to the production domain (same dependency as password reset) — if it drifts back to localhost, Google sign-in breaks too.
+- Spec: `docs/superpowers/specs/2026-07-08-google-oauth-login-design.md`. Plan: `docs/superpowers/plans/2026-07-08-google-oauth-login.md`.
+
+---
+
+## Task 116: Getting Started Walkthrough on How It Works Page
+
+**Date:** July 8, 2026
+
+Added a numbered step-by-step walkthrough (login → add an entry → edit an entry → run Check Status → see the result) to the top of the How It Works page, alongside an animated GIF of the real flow.
+
+- No video/screenshot tool exists in this environment, so the GIF is produced by `scripts/capture-getting-started.mjs`, a one-time, human-supervised Playwright script that logs in with real credentials, drives the flow against the `GRG - Gulf Recovery Group` tab using a disposable demo entry, and deletes it afterward. Run via `npm run capture:demo` (needs `npm run dev` running first, plus `CAPTURE_EMAIL`/`CAPTURE_PASSWORD` env vars).
+- The Check Status backend is stubbed (`page.route` intercept) during capture so the loading/result states are deterministic regardless of whether `status_server.py` happens to be running.
+- Review-pass fixes to the capture script: moved `demoEntryCreated = true` to right after the Add Account click (where the DB insert actually happens) so a later render-delay/flake can't skip cleanup and orphan a real row; added a top-level `.catch()` so a surviving exception exits cleanly instead of an unhandled-rejection warning; captured the login screenshot before filling in credentials so the committed GIF never shows a real email in plaintext; fixed the Edit Entry modal wait to gate on the Save button actually closing instead of the live-updating `<h2>` title; fixed the cleanup's final delete-confirmation wait to use the row locator instead of an exact-name match, so it doesn't resolve early and race an in-flight Supabase delete when the run fails before the rename step.
+- Found and fixed a related bug while testing against GRG (a dashboard-only tab with no Google Sheet backing): `fetchTabHeaders` returned an empty list for tabs with no `tab_schemas` row, so `fetchTabKpis` couldn't resolve a status column and Overview showed 0 total despite real entries existing. Now falls back to the tab's `TAB_COLUMN_CONFIGS` whitelist, matching the fallback `BrandGroup.tsx` already used.
+- Operational fallout: recovering the `sandbox@optinetsolutions.com` account during testing hit Supabase's default-mailer rate limit on both signup and password-reset emails — logged as a known backlog item (needs custom SMTP; immediate unblock is an admin-side direct password reset).
+- Re-run manually whenever the UI changes enough to make the GIF stale.
+- Spec: `docs/superpowers/specs/2026-07-08-getting-started-walkthrough-design.md`. Plan: `docs/superpowers/plans/2026-07-08-getting-started-walkthrough.md`.
+
+---
+
+## Task 117: Dashboard Favicon
+
+**Date:** July 8, 2026
+
+Set the browser tab favicon to the existing `Brand-Partners-Forums.webp` brand logo (already used in the sidebar), replacing the Vite default icon.
+
+---
+
+## Task 118: Check Status Standalone Section on How It Works
+
+**Date:** July 8, 2026
+
+Added a dedicated "Check Status" explanation to the How It Works page — previously the feature had no card in the Features grid at all.
+
+- First pass added a "Check Status" card into the existing Features grid alongside Overview/Brand Tabs/etc.
+- Follow-up promoted it out of the grid into its own standalone section (matching the page's Getting Started/Data Flow sections), since Check Status is a cross-cutting action rather than a page like the other Features entries — describes what it checks (Trustpilot/AskGamblers/Casino.Guru/Wizard of Odds), the per-tab/per-platform button, that a run can be scoped to whatever filters are active (status/brand/agent/proxy/country), and that it updates the status column with a toast summary on completion.
+- Spec: `docs/superpowers/specs/2026-07-08-check-status-feature-card-design.md` and `docs/superpowers/specs/2026-07-08-check-status-standalone-section-design.md`. Plans: `docs/superpowers/plans/2026-07-08-check-status-feature-card.md` and `docs/superpowers/plans/2026-07-08-check-status-standalone-section.md`.
+
+---
+
+## Task 119: Clickable Feature Cards on How It Works
+
+**Date:** July 8, 2026
+
+Feature cards on the How It Works page (Overview, Score Summary, Ask AI, Activity Log, Admin Users) are now clickable, linking directly to their pages instead of being purely descriptive.
+
+- Admin Users card only links through for admin users, matching its existing `adminOnly` gate.
+- Spec: `docs/superpowers/specs/2026-07-08-clickable-feature-cards-design.md`. Plan: `docs/superpowers/plans/2026-07-08-clickable-feature-cards.md`.
+
+---
+
+## Task 120: Brand Tabs Modal
+
+**Date:** July 8, 2026
+
+Added a `BrandTabsModal` component, opened from the Brand Tabs card on How It Works, listing every brand tab as a direct link instead of requiring a sidebar hunt.
+
+- Escape-key handling implemented as a document-level `useEffect` listener rather than a focus-dependent `onKeyDown` on the outer div, so Escape closes the modal regardless of where browser focus currently sits.
+- Spec: `docs/superpowers/specs/2026-07-08-brand-tabs-modal-design.md`. Plan: `docs/superpowers/plans/2026-07-08-brand-tabs-modal.md`.
+
+---
+
+## Task 121: Score Summary Card Fixes on How It Works
+
+**Date:** July 8, 2026
+
+Two same-day corrections to the Score Summary presentation:
+
+- `ScoreSummaryPanel.tsx`'s platform tabs now show each platform's real favicon (Trustpilot/AskGamblers/Casino.Guru), matching the icon pattern already used on Overview, instead of generic colored dots.
+- The Score Summary card's copy on How It Works was rewritten to describe what it actually shows — a star-rating rollup per platform with weighted averages and rating labels — replacing vague "published counts" wording.
+
+---
+
+*Last updated: July 8, 2026*
 
 ---
