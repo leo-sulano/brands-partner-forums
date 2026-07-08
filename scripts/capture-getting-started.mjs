@@ -102,9 +102,13 @@ async function run() {
     await fieldInput(page, 'Account Name').fill(DEMO_ACCOUNT_NAME); // Add modal's own field labels, not COLUMN_LABELS
     await shoot(page, 1800);
     await page.getByRole('button', { name: 'Add Account' }).click();
+    // Set immediately after the click — this is the point the DB insert
+    // actually happens. If either of the following waits times out for an
+    // unrelated reason (render delay, transient flake), cleanup must still
+    // run so a real row is never silently orphaned in production.
+    demoEntryCreated = true;
     await page.locator('h2', { hasText: 'Add Review Account' }).waitFor({ state: 'hidden' });
     await page.getByText(DEMO_ACCOUNT_NAME, { exact: true }).waitFor();
-    demoEntryCreated = true;
     await shoot(page, 1500);
 
     // 4. Edit the entry — Edit Entry modal labels route through
@@ -161,4 +165,7 @@ function buildGif() {
   console.log(`Wrote ${frames.length} frames to ${OUTPUT_GIF}`);
 }
 
-run();
+run().catch((err) => {
+  console.error(err);
+  process.exitCode = 1;
+});
