@@ -56,6 +56,17 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-08:* Added a "Getting Started" walkthrough to the How It Works page — a numbered
+  step list (login → add an entry → edit an entry → run Check Status → see the result) next
+  to an animated GIF (`public/getting-started.gif`) captured from the real running app. No
+  video/screenshot tool exists in this environment, so the GIF is produced by a one-time,
+  human-supervised Playwright script (`scripts/capture-getting-started.mjs`, run via
+  `npm run capture:demo`) that logs in, drives the flow against the `GRG - Gulf Recovery
+  Group` tab using a disposable demo entry, and deletes it afterward — re-run manually
+  whenever the UI changes enough to make the GIF stale (needs `npm run dev` running first,
+  plus `CAPTURE_EMAIL`/`CAPTURE_PASSWORD` env vars). Spec:
+  `docs/superpowers/specs/2026-07-08-getting-started-walkthrough-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-08-getting-started-walkthrough.md`.
 - *2026-07-07:* Fully disconnected the Google Sheet from the dashboard — deleted the
   `sync-sheet`, `push-to-sheet`, `import-tabs`, and `backfill-brand-hrefs` Edge Functions
   (repo source + live Supabase deployment) along with the frontend code that only served
