@@ -230,6 +230,22 @@ export function getBrandNameCol(tab: string): string {
   return (cols && BRAND_COLS.find((c) => cols.includes(c))) || 'Brand Name';
 }
 
+// Score-value column candidates per platform, in priority order. TP has
+// historically inconsistent naming across tabs (hence the fallback list);
+// AG/CG/WO each have exactly one known raw column name.
+export const PLATFORM_SCORE_COLS: Record<'tp' | 'ag' | 'cg' | 'wo', readonly string[]> = {
+  tp: ['TP Score added', 'Score added', 'Score Added', 'Score'],
+  ag: ['AG Score added'],
+  cg: ['CG Score added'],
+  wo: ['Wizard of OddsScore added'],
+};
+
+// The actual header present in `headers` for a given platform's score column,
+// or null if this tab has none of the known candidates.
+export function getScoreCol(platform: 'tp' | 'ag' | 'cg' | 'wo', headers: string[]): string | null {
+  return PLATFORM_SCORE_COLS[platform].find((c) => headers.includes(c)) ?? null;
+}
+
 // Default brand name shown in the Brands column when the sheet value is empty.
 export const TAB_DEFAULT_BRAND: Record<string, string> = {
   'Trybet': 'Trybet',
