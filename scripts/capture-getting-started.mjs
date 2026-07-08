@@ -154,7 +154,7 @@ async function run() {
         // Press Enter instead of clicking the modal's "Delete" button, which
         // would now be ambiguous alongside the toolbar's "Delete" button.
         await page.getByPlaceholder('delete').press('Enter');
-        await page.getByText(DEMO_ACCOUNT_NAME_EDITED, { exact: true }).waitFor({ state: 'hidden', timeout: 5000 });
+        await row.waitFor({ state: 'hidden', timeout: 5000 });
       } catch (cleanupErr) {
         console.error('Cleanup failed — delete the demo entry manually:', cleanupErr);
       }
