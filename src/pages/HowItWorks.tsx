@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users,
+  LayoutDashboard, Handshake, RefreshCw, BarChart3, Bot, ScrollText, Users,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -59,6 +59,17 @@ const FEATURES: FeatureSection[] = [
       'Browse every tracked account/entry for that brand group, filterable and sortable',
       'Add, edit, or delete entries directly, this is the live source of truth',
       'Trigger a Check Status run scoped to that tab',
+    ],
+  },
+  {
+    title: 'Check Status',
+    icon: RefreshCw,
+    iconColor: 'emerald',
+    blurb: 'Runs an automated checker against Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds to detect whether each entry is still live or has been removed.',
+    bullets: [
+      'Per-tab button; multi-platform tabs let you check all platforms at once or just one',
+      'Scoped to whatever filters are active — status, brand, agent, proxy, or country — so you can re-check just a subset',
+      'Updates the status column and shows a toast summary once the run completes',
     ],
   },
   {
