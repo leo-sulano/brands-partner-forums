@@ -1184,6 +1184,20 @@ Two same-day corrections to the Score Summary presentation:
 
 ---
 
+## Task 122: Remove Standalone Check Status / Full Check Page
+
+**Date:** July 8, 2026
+
+Fully removed the standalone Check Status page (`/sync`) and its bulk "Run Full Check" feature (Task 75's scoped tab/brand picker) — its removal-detection purpose was already covered per-tab by Task 110's opt-in scope filtering, and the sidebar link to it had already been hidden.
+
+- Deleted `SyncStatus.tsx`, `FullCheckScopePicker.tsx`, `RunHistoryTable.tsx`, and `removedEntriesDiff.ts` (+ test) — confirmed via full dependency search that none are referenced anywhere else.
+- Removed the `/sync` route and lazy import from `App.tsx`, and the `/sync` title mapping from `Topbar.tsx`.
+- Removed the now-dead `fetchAllTabsStatusSummary`, `fetchRemovedEntryDetails`, `recordFullCheckRun`, `fetchFullCheckRuns`, `fetchRemovedEntriesForRun` and their types from `queries.ts`. Confirmed `triggerStatusCheck`/`triggerAgStatusCheck`/`triggerCgStatusCheck`/`triggerWoStatusCheck`/`getActiveChecks` — the functions behind every brand tab's own Check Status button — are untouched; they only call the EC2 status server directly and never read/wrote the tables below.
+- Dropped the now-orphaned `full_check_runs` and `full_check_removed_entries` tables (migration `20260708150000`) — verified no Python script, Edge Function, or other migration referenced them, and the one FK (`full_check_removed_entries.entry_id → entries.id`) only pointed at `entries`, never the reverse, so nothing in any brand tab's data was affected.
+- **Follow-up needed:** the Blocked PMS task "Manual Browser QA: Scoped Full Check (Task 75) & Country Auto-Derive (Task 96)" is now half-moot — Task 75's feature no longer exists, so only Task 96 (Country Auto-Derive) still needs a manual browser QA pass.
+
+---
+
 *Last updated: July 8, 2026*
 
 ---

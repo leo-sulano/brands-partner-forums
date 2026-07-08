@@ -10,7 +10,6 @@ const Signup        = lazy(() => import('./pages/Signup'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const Overview    = lazy(() => import('./pages/Overview'));
 const MentionDetail = lazy(() => import('./pages/MentionDetail'));
-const SyncStatus  = lazy(() => import('./pages/SyncStatus'));
 const BrandGroup  = lazy(() => import('./pages/BrandGroup'));
 const AdminUsers  = lazy(() => import('./pages/AdminUsers'));
 const ActivityLog = lazy(() => import('./pages/ActivityLog'));
@@ -76,7 +75,6 @@ export default function App() {
             <Route path="/brands/:tab" element={<BrandGroup />} />
             <Route path="/ask-ai" element={<AskAI />} />
             <Route path="/how-it-works" element={<HowItWorks />} />
-            <Route path="/sync" element={<SyncStatus />} />
             <Route path="/log" element={<ActivityLog />} />
             <Route path="/score-summary" element={<ScoreSummary />} />
             <Route path="/admin/users" element={<AdminUsers />} />

@@ -94,7 +94,6 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   let brandTab: string | null = null;
   if (pathname === '/') title = 'Overview';
   else if (pathname === '/how-it-works') title = 'How it works';
-  else if (pathname === '/sync') title = 'Check Status';
   else if (pathname === '/score-summary') title = 'Score Summary';
   else if (pathname === '/admin/users') title = 'Admin — Users';
   else if (pathname === '/log') title = 'Log';
