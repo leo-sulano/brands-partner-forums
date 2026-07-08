@@ -39,10 +39,10 @@ function starsFor(maxScore: number): StarRating[] {
   return Array.from({ length: maxScore }, (_, i) => maxScore - i);
 }
 
-const PLATFORM_OPTS: { value: Platform; label: string; dot: string }[] = [
-  { value: 'tp', label: 'TrustPilot',  dot: 'bg-blue-500' },
-  { value: 'ag', label: 'AskGamblers', dot: 'bg-amber-500' },
-  { value: 'cg', label: 'CasinoGuru',  dot: 'bg-violet-500' },
+const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
+  { value: 'tp', label: 'TrustPilot',  icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32' },
+  { value: 'ag', label: 'AskGamblers', icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32' },
+  { value: 'cg', label: 'CasinoGuru',  icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=32' },
 ];
 
 const PLATFORM_DATE_LABEL: Record<Platform, string> = {
@@ -174,7 +174,12 @@ function PlatformFilter({
               : 'text-slate-600 hover:bg-violet-50'
           }`}
         >
-          <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />
+          <img
+            src={opt.icon}
+            alt=""
+            className="size-3 shrink-0 rounded-sm"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
           {opt.label}
         </button>
       ))}
