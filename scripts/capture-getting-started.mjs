@@ -82,9 +82,9 @@ async function run() {
   try {
     // 1. Login
     await page.goto(`${BASE_URL}/login`);
+    await shoot(page, 1500); // blank login page — never screenshot with real credentials filled in
     await page.locator('input[type=email]').fill(EMAIL);
     await page.locator('input[type=password]').fill(PASSWORD);
-    await shoot(page, 1500);
     await page.getByRole('button', { name: 'Sign In' }).click();
     await page.waitForURL(`${BASE_URL}/`);
     await page.locator('h1', { hasText: 'Overview' }).waitFor();
@@ -118,6 +118,12 @@ async function run() {
     await fieldInput(page, 'Acc. Name').fill(DEMO_ACCOUNT_NAME_EDITED);
     await shoot(page, 1800);
     await page.getByRole('button', { name: 'Save Changes' }).click();
+    // Wait for the modal to actually close before checking the table — its
+    // <h2> title is the live value of the Account Name field, so it already
+    // reads the edited value the instant it's typed. Without this wait,
+    // getByText(DEMO_ACCOUNT_NAME_EDITED) below could resolve against the
+    // still-open modal's heading instead of the finished table state.
+    await page.getByRole('button', { name: 'Save Changes' }).waitFor({ state: 'hidden' });
     await page.getByText(DEMO_ACCOUNT_NAME_EDITED, { exact: true }).waitFor();
     await shoot(page, 1500);
 
@@ -130,7 +136,15 @@ async function run() {
   } finally {
     if (demoEntryCreated) {
       try {
-        const row = page.locator('tr').filter({ has: page.getByText(DEMO_ACCOUNT_NAME_EDITED, { exact: true }) });
+        // Match on the original (unedited) name without `exact: true`. If the
+        // run failed before the rename in step 4, the row still bears
+        // DEMO_ACCOUNT_NAME; if it failed after, the row bears
+        // DEMO_ACCOUNT_NAME_EDITED, which contains DEMO_ACCOUNT_NAME as a
+        // substring. Either way this matches the row — there is only ever
+        // one demo row in this table at a time — whereas an exact match on
+        // the edited name would find nothing if the rename never happened,
+        // silently orphaning the row.
+        const row = page.locator('tr').filter({ has: page.getByText(DEMO_ACCOUNT_NAME) });
         await row.getByRole('checkbox', { name: 'Select row' }).check();
         // Only one "Delete" button exists at this point (the row-selection
         // toolbar's) — the confirm modal's own "Delete" button doesn't exist
