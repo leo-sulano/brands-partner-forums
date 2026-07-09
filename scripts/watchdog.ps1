@@ -44,7 +44,7 @@ foreach ($p in $procs) {
     Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue
 }
 
-& (Join-Path $scriptDir 'start_status_server_only.ps1') -Port $port
+& (Join-Path $scriptDir 'start_status_server_only.ps1') -Port $port -NoHeadless
 
 $recovered = Test-Health
 
