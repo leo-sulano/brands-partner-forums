@@ -486,7 +486,18 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
         <tfoot className="border-t-2 border-slate-200 bg-slate-50/80">
           <tr className="font-semibold text-slate-800">
             {showGroup && <td className="px-3 py-2" />}
-            <td className="px-3 py-2 text-left">Total</td>
+            <td className="px-3 py-2 text-left">
+              <Link
+                to={
+                  rows.length === 1
+                    ? `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&brand=${encodeURIComponent(rows[0].brand)}`
+                    : `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}`
+                }
+                className="font-medium text-slate-800 hover:text-violet-600 hover:underline"
+              >
+                Total
+              </Link>
+            </td>
             {stars.map((s) => (
               <td
                 key={s}
