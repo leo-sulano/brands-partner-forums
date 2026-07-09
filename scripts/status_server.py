@@ -65,6 +65,17 @@ def _is_authorized() -> bool:
     return presented == CHECK_STATUS_TOKEN
 
 
+# Trustpilot and AskGamblers/CasinoGuru have opposite headless-Chrome tolerances
+# on this host: Trustpilot's bot check ("Verifying Connection") trips on a real
+# headful browser but passes headless, while Cloudflare's challenge on
+# AskGamblers/CasinoGuru does the reverse (blocks headless, clears for headful)
+# -- confirmed empirically 2026-07-09 (3/3 vs 3/3 trials each way). A single
+# global --no-headless launch flag can't satisfy both, so each platform gets
+# its own fixed setting instead of trusting app.config['HEADLESS']. WO showed
+# no preference either way in testing, so it's grouped with AG/CG.
+PLATFORM_HEADLESS = {'tp': True, 'ag': False, 'cg': False, 'wo': False}
+
+
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'ok': True})
@@ -97,13 +108,12 @@ def check_status():
         return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
 
     _active_tabs.add(tab_key)
-    headless: bool = app.config.get('HEADLESS', False)
     scope = f'tab: {tab}' if tab else 'all tabs'
     try:
         # Dispatch non-TP platforms to their dedicated checkers.
         if platform == 'ag':
             print(f'\n[server] AG check started ({scope})')
-            result = check_ag_for_tab(tab, include_published=include_published, headless=headless,
+            result = check_ag_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['ag'],
                                        status_filter=status_filter, brands=brands, agent=agent,
                                        proxy=proxy, country=country)
             print(f'[server] AG done. {result}')
@@ -111,7 +121,7 @@ def check_status():
 
         if platform == 'cg':
             print(f'\n[server] CG check started ({scope})')
-            result = check_cg_for_tab(tab, include_published=include_published, headless=headless,
+            result = check_cg_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['cg'],
                                        status_filter=status_filter, brands=brands, agent=agent,
                                        proxy=proxy, country=country)
             print(f'[server] CG done. {result}')
@@ -119,7 +129,7 @@ def check_status():
 
         if platform == 'wo':
             print(f'\n[server] WO check started ({scope})')
-            result = check_wo_for_tab(tab, include_published=include_published, headless=headless,
+            result = check_wo_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['wo'],
                                        status_filter=status_filter, brands=brands, agent=agent,
                                        proxy=proxy, country=country)
             print(f'[server] WO done. {result}')
@@ -134,7 +144,7 @@ def check_status():
         if not total:
             return jsonify({'checked': 0, 'updated': 0, 'errors': 0, 'total': 0})
 
-        driver = build_driver(headless=headless)
+        driver = build_driver(headless=PLATFORM_HEADLESS['tp'])
         checked = updated = errors = sheet_errors = 0
 
         try:
@@ -214,10 +224,9 @@ def check_ag_status_route():
 
     _active_tabs.add(tab_key)
     try:
-        headless: bool = app.config.get('HEADLESS', False)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] AG check started ({scope})')
-        result = check_ag_for_tab(tab, include_published=include_published, headless=headless,
+        result = check_ag_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['ag'],
                                    status_filter=status_filter, brands=brands, agent=agent,
                                    proxy=proxy, country=country)
         print(f'[server] AG done. {result}')
@@ -251,10 +260,9 @@ def check_cg_status_route():
 
     _active_tabs.add(tab_key)
     try:
-        headless: bool = app.config.get('HEADLESS', False)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] CG check started ({scope})')
-        result = check_cg_for_tab(tab, include_published=include_published, headless=headless,
+        result = check_cg_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['cg'],
                                    status_filter=status_filter, brands=brands, agent=agent,
                                    proxy=proxy, country=country)
         print(f'[server] CG done. {result}')
@@ -288,10 +296,9 @@ def check_wo_status_route():
 
     _active_tabs.add(tab_key)
     try:
-        headless: bool = app.config.get('HEADLESS', False)
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] WO check started ({scope})')
-        result = check_wo_for_tab(tab, include_published=include_published, headless=headless,
+        result = check_wo_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['wo'],
                                    status_filter=status_filter, brands=brands, agent=agent,
                                    proxy=proxy, country=country)
         print(f'[server] WO done. {result}')
@@ -311,11 +318,13 @@ def active_checks():
 if __name__ == '__main__':
     ap = argparse.ArgumentParser(description='Local Selenium status-check server')
     ap.add_argument('--port', type=int, default=5001)
-    ap.add_argument('--no-headless', dest='headless', action='store_false', help='Show Chrome browser window')
+    # Accepted for compatibility with existing launch scripts (start_status_server*,
+    # watchdog.ps1) but no longer changes checker behavior -- see PLATFORM_HEADLESS.
+    ap.add_argument('--no-headless', dest='headless', action='store_false',
+                     help='(no-op; each platform now fixes its own Chrome mode)')
     ap.set_defaults(headless=True)
     args = ap.parse_args()
 
-    app.config['HEADLESS'] = args.headless
     print(f'[server] Listening on http://localhost:{args.port}')
     print(f'[server] VITE_CHECK_STATUS_URL=http://localhost:{args.port}/check-status')
     if CHECK_STATUS_TOKEN:

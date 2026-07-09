@@ -1198,6 +1198,19 @@ Fully removed the standalone Check Status page (`/sync`) and its bulk "Run Full 
 
 ---
 
+## Task 123: Fix Stale/Wrong AG Statuses — Watchdog Headless Regression + Per-Platform Chrome Mode
+
+**Date:** July 9, 2026
+
+Investigated a reported false "Refused" AG status (account 583 | Hanan | Canada, Rooster.bet) and a stuck "Done" AG status (account 1304 | Test | New Zealand, Lucky7even) — both were live-published reviews the checker had failed to detect.
+
+- Root cause #1 (immediate): `watchdog.ps1`'s auto-restart of `status_server.py` (fires whenever `/health` goes unresponsive — several times on 2026-07-06/07 per `watchdog.log`) called `start_status_server_only.ps1` without `-NoHeadless`, silently dropping back to headless Chrome on every restart. AskGamblers/CasinoGuru's Cloudflare challenge blocks headless Chrome outright, so AG/CG checks from the live server were silently skipping (or, worse, timing-based grace logic wrote real wrong statuses) instead of finding reviews that were actually live. Manually re-ran both affected entries once the server was back on a real (non-headless) browser — both flipped to `Published`, confirmed directly in Supabase.
+- Root cause #2 (deeper): fixing #1 by always forcing non-headless would have broken Trustpilot — empirically confirmed (3/3 vs 3/3 trials) that Trustpilot's bot check ("Verifying Connection") trips on a *real* headful browser but passes headless, the exact opposite of AskGamblers/CasinoGuru. A single global `--no-headless` launch flag can't satisfy both. Worse, TP's `fetch_status()` has no block-detection guard, so a blocked page silently defaults to `"Published"` — a wrong TP status could be silently written with no error signal.
+- Fix: `status_server.py` now hardcodes a `PLATFORM_HEADLESS` map (`tp: True`, `ag/cg/wo: False`) and every check route uses its platform's fixed setting instead of the server-wide `--no-headless` flag/`app.config['HEADLESS']`. The CLI flag is still accepted (existing launch scripts pass it) but is now a documented no-op. `watchdog.ps1` still passes `-NoHeadless` on restart for consistency with the boot script, though it no longer affects behavior.
+- Verified live through the actual dashboard endpoint (`/check-status`) post-fix for all four platforms: TP (61 entries, correct real-page loads, no false "Verifying Connection" defaults), AG (Refused → Published), CG (page loaded fully, genuinely-not-found status correctly reconfirmed, not a silent block), WO (unaffected either way — no bot-blocking observed in testing).
+
+---
+
 ## Task 124: Score Summary Clickable Navigation + Wizard of Odds Platform
 
 **Date:** July 9, 2026
