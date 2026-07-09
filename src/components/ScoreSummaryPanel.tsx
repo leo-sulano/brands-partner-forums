@@ -9,7 +9,6 @@ import {
   PLATFORM_MAX_SCORE,
   type BrandSummary,
   type Platform,
-  type RatingLabel,
   type Star as StarRating,
 } from '../lib/scoreSummary';
 import { tabToSlug } from '../lib/tabs';
@@ -18,14 +17,6 @@ import type { Entry } from '../types/entry';
 interface Props {
   entries: Entry[];
 }
-
-const LABEL_PILL: Record<RatingLabel, string> = {
-  Excellent: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200',
-  Great: 'bg-green-50 text-green-700 ring-1 ring-green-200',
-  Average: 'bg-amber-50 text-amber-700 ring-1 ring-amber-200',
-  Poor: 'bg-orange-50 text-orange-700 ring-1 ring-orange-200',
-  Bad: 'bg-rose-50 text-rose-700 ring-1 ring-rose-200',
-};
 
 // 5 color tiers regardless of scale — a 1-10 score buckets 2 values per tier
 // (9-10 emerald, 7-8 green, ...) so AG's wider table still reads as the same
@@ -355,8 +346,6 @@ function GrandTotal({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number
             ))}
             <th scope="col" className="px-2 py-2 text-right font-medium">Unrtd</th>
             <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
-            <th scope="col" className="px-2 py-2 text-right font-medium">Avg</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">Rating</th>
           </tr>
         </thead>
         <tbody>
@@ -376,27 +365,6 @@ function GrandTotal({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number
               {t.unrated.toLocaleString()}
             </td>
             <td className="px-2 py-2 text-right tabular-nums">{t.total.toLocaleString()}</td>
-            <td className="px-2 py-2 text-right tabular-nums">
-              {t.average == null ? (
-                <span className="text-slate-400">—</span>
-              ) : (
-                <span className="inline-flex items-baseline gap-1">
-                  {t.rated > 0 && t.rated < t.total && (
-                    <span className="text-[10px] font-normal text-slate-400">/{t.rated}</span>
-                  )}
-                  <span>{t.average.toFixed(1)}</span>
-                </span>
-              )}
-            </td>
-            <td className="px-3 py-2">
-              {t.label ? (
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${LABEL_PILL[t.label]}`}>
-                  {t.label}
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400">—</span>
-              )}
-            </td>
           </tr>
         </tbody>
       </table>
@@ -407,10 +375,7 @@ function GrandTotal({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number
 interface ColumnTotals {
   counts: Record<StarRating, number>;
   unrated: number;
-  rated: number;
   total: number;
-  average: number | null;
-  label: RatingLabel | null;
 }
 
 // Sums every column across a set of brand rows. Used by both the per-group
@@ -424,8 +389,8 @@ function computeColumnTotals(rows: BrandSummary[], maxScore: number): ColumnTota
     for (const s of stars) counts[s] += r.counts[s] ?? 0;
     unrated += r.unrated;
   }
-  const { total, rated, average, label } = summarizeCounts(counts, unrated, maxScore);
-  return { counts, unrated, rated, total, average, label };
+  const { total } = summarizeCounts(counts, unrated, maxScore);
+  return { counts, unrated, total };
 }
 
 // Shared fixed column widths so every group table (and the grand total) lines
@@ -441,8 +406,6 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
       ))}
       <col className="w-20" />
       <col className="w-20" />
-      <col className="w-24" />
-      <col className="w-32" />
     </colgroup>
   );
 }
@@ -476,8 +439,6 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               Unrtd
             </th>
             <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
-            <th scope="col" className="px-2 py-2 text-right font-medium">Avg</th>
-            <th scope="col" className="px-3 py-2 text-left font-medium">Rating</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -519,27 +480,6 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800">
                 {r.total.toLocaleString()}
               </td>
-              <td className="px-2 py-1.5 text-right tabular-nums">
-                {r.average == null ? (
-                  <span className="text-slate-300">—</span>
-                ) : (
-                  <span className="inline-flex items-baseline gap-1">
-                    {r.rated > 0 && r.rated < r.total && (
-                      <span className="text-[10px] text-slate-400">/{r.rated}</span>
-                    )}
-                    <span className="font-semibold text-slate-800">{r.average.toFixed(1)}</span>
-                  </span>
-                )}
-              </td>
-              <td className="px-3 py-1.5">
-                {r.label ? (
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${LABEL_PILL[r.label]}`}>
-                    {r.label}
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-300">—</span>
-                )}
-              </td>
             </tr>
           ))}
         </tbody>
@@ -561,27 +501,6 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               {totals.unrated.toLocaleString()}
             </td>
             <td className="px-2 py-2 text-right tabular-nums">{totals.total.toLocaleString()}</td>
-            <td className="px-2 py-2 text-right tabular-nums">
-              {totals.average == null ? (
-                <span className="text-slate-400">—</span>
-              ) : (
-                <span className="inline-flex items-baseline gap-1">
-                  {totals.rated > 0 && totals.rated < totals.total && (
-                    <span className="text-[10px] font-normal text-slate-400">/{totals.rated}</span>
-                  )}
-                  <span>{totals.average.toFixed(1)}</span>
-                </span>
-              )}
-            </td>
-            <td className="px-3 py-2">
-              {totals.label ? (
-                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${LABEL_PILL[totals.label]}`}>
-                  {totals.label}
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400">—</span>
-              )}
-            </td>
           </tr>
         </tfoot>
       </table>
