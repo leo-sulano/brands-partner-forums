@@ -29,7 +29,7 @@ from flask_cors import CORS
 from check_review_status import (
     load_entries, build_driver, fetch_status,
     find_status_col, find_score_col, update_entry,
-    BATCH_SIZE, DELAY_BETWEEN_BATCHES,
+    BATCH_SIZE, DELAY_BETWEEN_BATCHES, CHROME_RESTART_EVERY,
 )
 from check_ag_status import check_ag_for_tab
 from check_cg_status import check_cg_for_tab
@@ -152,6 +152,19 @@ def check_status():
                 batch = entries[i : i + BATCH_SIZE]
                 for entry in batch:
                     checked += 1
+
+                    # Restart Chrome every N entries -- same safeguard check_review_status.py's
+                    # own CLI path (and the AG/CG checkers) already use; this loop was the one
+                    # place missing it, which is why multi-hour "all tabs" runs would hang partway
+                    # through once the long-lived renderer process degraded.
+                    if checked > 1 and (checked - 1) % CHROME_RESTART_EVERY == 0:
+                        print(f'  ... restarting Chrome at entry {checked}/{total}\n')
+                        try:
+                            driver.quit()
+                        except Exception:
+                            pass
+                        driver = build_driver(headless=PLATFORM_HEADLESS['tp'])
+
                     data: dict = entry['data']
                     status_col = find_status_col(data)
                     score_col = find_score_col(data)
