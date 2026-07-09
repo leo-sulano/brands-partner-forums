@@ -12,7 +12,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, type StatusCheckScope } from '../lib/queries';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, getScoreCol } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
@@ -1201,13 +1201,13 @@ export default function BrandGroup() {
   const activePlatformForRating = platformFilter !== 'all' ? platformFilter : null;
   const ratingFiltered = (() => {
     if (ratingFilter == null || !activePlatformForRating) return platformFiltered;
-    const scoreCol = getScoreCol(activePlatformForRating, fullHeaders);
-    if (!scoreCol) return platformFiltered;
     const maxScore = PLATFORM_MAX_SCORE[activePlatformForRating];
-    return platformFiltered.filter((e) =>
-      activeStatusCols.some((h) => (e.data[h] ?? '').trim().toLowerCase() === 'published') &&
-      parseScore(e.data[scoreCol], maxScore) === ratingFilter,
-    );
+    const candidates = PLATFORM_SCORE_COLS[activePlatformForRating];
+    return platformFiltered.filter((e) => {
+      if (!activeStatusCols.some((h) => (e.data[h] ?? '').trim().toLowerCase() === 'published')) return false;
+      const raw = candidates.map((c) => e.data[c]).find((v) => v != null && v !== '');
+      return parseScore(raw, maxScore) === ratingFilter;
+    });
   })();
 
   const statusFiltered = statusFilter === 'all'

@@ -240,12 +240,6 @@ export const PLATFORM_SCORE_COLS: Record<'tp' | 'ag' | 'cg' | 'wo', readonly str
   wo: ['Wizard of OddsScore added'],
 };
 
-// The actual header present in `headers` for a given platform's score column,
-// or null if this tab has none of the known candidates.
-export function getScoreCol(platform: 'tp' | 'ag' | 'cg' | 'wo', headers: string[]): string | null {
-  return PLATFORM_SCORE_COLS[platform].find((c) => headers.includes(c)) ?? null;
-}
-
 // Default brand name shown in the Brands column when the sheet value is empty.
 export const TAB_DEFAULT_BRAND: Record<string, string> = {
   'Trybet': 'Trybet',

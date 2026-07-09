@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getScoreCol } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -103,22 +103,5 @@ describe('getBrandGroup', () => {
 
   it('returns null for a tab with no configured groups at all', () => {
     expect(getBrandGroup('Rooster Partners', 'Top10 Casinos Review Ca 2026')).toBeNull();
-  });
-});
-
-describe('getScoreCol', () => {
-  it('resolves the first matching TP score column variant present in headers', () => {
-    expect(getScoreCol('tp', ['Brands', 'Score added'])).toBe('Score added');
-    expect(getScoreCol('tp', ['Brands', 'TP Score added'])).toBe('TP Score added');
-  });
-
-  it('resolves AG, CG, and WO score columns exactly', () => {
-    expect(getScoreCol('ag', ['Brands', 'AG Score added'])).toBe('AG Score added');
-    expect(getScoreCol('cg', ['Brands', 'CG Score added'])).toBe('CG Score added');
-    expect(getScoreCol('wo', ['Brand Name', 'Wizard of OddsScore added'])).toBe('Wizard of OddsScore added');
-  });
-
-  it('returns null when the tab has none of the known score columns', () => {
-    expect(getScoreCol('ag', ['Brands', 'TP Score added'])).toBeNull();
   });
 });
