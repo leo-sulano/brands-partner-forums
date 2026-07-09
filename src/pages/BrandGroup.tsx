@@ -1702,7 +1702,16 @@ export default function BrandGroup() {
           {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && (
             <BrandFilterDropdown
               value={brandFilter}
-              onChange={(v) => { setBrandFilter(v); setPage(1); }}
+              onChange={(v) => {
+                setBrandFilter(v);
+                setSearchParams((prev) => {
+                  const params = new URLSearchParams(prev);
+                  if (v) params.set('brand', v);
+                  else params.delete('brand');
+                  return params;
+                });
+                setPage(1);
+              }}
               brands={uniqueBrands}
               noun="brand"
             />
