@@ -1571,7 +1571,12 @@ export default function BrandGroup() {
                 onClick={() => {
                   const next = active ? 'all' : key;
                   setPlatformFilter(next);
-                  setSearchParams(next === 'all' ? {} : { platform: next });
+                  setSearchParams((prev) => {
+                    const params = new URLSearchParams(prev);
+                    if (next === 'all') params.delete('platform');
+                    else params.set('platform', next);
+                    return params;
+                  });
                   setPage(1);
                 }}
                 className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-violet-200 hover:bg-violet-50'}`}
@@ -1736,7 +1741,12 @@ export default function BrandGroup() {
               value={platformFilter}
               onChange={(v) => {
                 setPlatformFilter(v);
-                setSearchParams(v === 'all' ? {} : { platform: v });
+                setSearchParams((prev) => {
+                  const params = new URLSearchParams(prev);
+                  if (v === 'all') params.delete('platform');
+                  else params.set('platform', v);
+                  return params;
+                });
                 setPage(1);
               }}
               options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
