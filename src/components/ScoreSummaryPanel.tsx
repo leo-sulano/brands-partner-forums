@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Check, ChevronDown, Star, X } from 'lucide-react';
 import DatePicker from './DatePicker';
 import {
@@ -11,6 +12,7 @@ import {
   type RatingLabel,
   type Star as StarRating,
 } from '../lib/scoreSummary';
+import { tabToSlug } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 
 interface Props {
@@ -43,12 +45,14 @@ const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
   { value: 'tp', label: 'TrustPilot',  icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32' },
   { value: 'ag', label: 'AskGamblers', icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32' },
   { value: 'cg', label: 'CasinoGuru',  icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=32' },
+  { value: 'wo', label: 'Wizard of Odds', icon: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=32' },
 ];
 
 const PLATFORM_DATE_LABEL: Record<Platform, string> = {
   tp: 'Trust Pilot date',
   ag: 'AskGamblers date',
   cg: 'CasinoGuru date',
+  wo: 'Wizard of Odds date',
 };
 
 export default function ScoreSummaryPanel({ entries }: Props) {
@@ -138,7 +142,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
                 : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={filteredBrands} maxScore={maxScore} />
+            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} />
           )}
 
           {result.excludedRows > 0 && (
@@ -272,7 +276,7 @@ function TabFilterDropdown({
   );
 }
 
-function GroupedSummary({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number }) {
+function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; maxScore: number; platform: Platform }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
@@ -321,7 +325,7 @@ function GroupedSummary({ rows, maxScore }: { rows: BrandSummary[]; maxScore: nu
                 />
               </button>
             </header>
-            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} />}
+            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} />}
           </section>
         );
       })}
@@ -443,7 +447,7 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
   );
 }
 
-function SummaryTable({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number }) {
+function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxScore: number; platform: Platform }) {
   const stars = starsFor(maxScore);
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   const totals = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
@@ -482,7 +486,14 @@ function SummaryTable({ rows, maxScore }: { rows: BrandSummary[]; maxScore: numb
               {showGroup && (
                 <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={r.tab}>{r.tab}</td>
               )}
-              <td className="px-3 py-1.5 font-medium text-slate-800 truncate" title={r.brand}>{r.brand}</td>
+              <td className="px-3 py-1.5 truncate" title={r.brand}>
+                <Link
+                  to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
+                  className="font-medium text-slate-800 hover:text-violet-600 hover:underline"
+                >
+                  {r.brand}
+                </Link>
+              </td>
               {stars.map((s) => (
                 <td
                   key={s}
@@ -490,7 +501,16 @@ function SummaryTable({ rows, maxScore }: { rows: BrandSummary[]; maxScore: numb
                     r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
                   }`}
                 >
-                  {r.counts[s].toLocaleString()}
+                  {r.counts[s] > 0 ? (
+                    <Link
+                      to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=${s}`}
+                      className="hover:text-violet-600 hover:underline"
+                    >
+                      {r.counts[s].toLocaleString()}
+                    </Link>
+                  ) : (
+                    r.counts[s].toLocaleString()
+                  )}
                 </td>
               ))}
               <td className={`px-2 py-1.5 text-right tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>

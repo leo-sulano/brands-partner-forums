@@ -1211,6 +1211,24 @@ Investigated a reported false "Refused" AG status (account 583 | Hanan | Canada,
 
 ---
 
+## Task 124: Score Summary Clickable Navigation + Wizard of Odds Platform
+
+**Date:** July 9, 2026
+
+Made Score Summary's brand names and star-count cells clickable, deep-linking into the Brands tab with brand/platform/rating filters pre-applied, and added Wizard of Odds as a fourth Score Summary platform (1-5 scale) so the feature covers all platforms.
+
+- `src/lib/scoreSummary.ts`: `Platform` type, `PLATFORM_MAX_SCORE`, and the platform key maps now include `wo`.
+- `src/lib/tab-configs.ts`: new exported `PLATFORM_SCORE_COLS` map of candidate score-column names per platform.
+- `src/components/ScoreSummaryPanel.tsx`: brand-name cells and non-zero star-count cells are now links to `/brands/:tab?platform=...&brand=...[&rating=...]`; added a Wizard of Odds platform toggle.
+- `src/pages/BrandGroup.tsx`: reads `platform`/`brand`/`rating` from the URL and filters accordingly (rating matches require exact score + Published status, mirroring what Score Summary counted); fixed a reactivity gap where navigating between two Score-Summary-originated links for the same tab didn't re-apply filters; added an active-filter chip with a clear action.
+- Two follow-up fixes surfaced during code review: the platform KPI-card/dropdown and the brand-filter dropdown previously wrote to the URL by replacing the whole query string, which silently cleared any other active filter (brand/rating, or brand, respectively) on selection — both now merge into the existing query string instead.
+- **Manual authenticated browser click-through performed** (Playwright, real login, real Supabase data) — found and fixed a real bug the automated tests missed: the rating filter resolved a platform's score column via a header list, which is always empty for schema-less/dashboard-only tabs (e.g. GRG - Gulf Recovery Group has no `tab_schemas` row), so the filter silently showed all rows instead of just the matching ones on those tabs. Fixed by checking each row's own data directly for the first populated candidate score key — the same pattern `computeScoreSummary` already uses — instead of resolving one column name per tab. `getScoreCol()` (from the initial implementation) became dead code and was removed along with its tests. Re-verified live: GRG's 5★ link now correctly shows 4 matching rows instead of all 5. All other flows (brand click, star click, same-tab reactivity, clear-chip, platform switch, WO toggle) confirmed working live.
+- **Separate pre-existing bug found, not fixed here** (confirmed unrelated to this feature — reproduces on a bare Score Summary page load with zero clicks): a React "duplicate key" warning for id `139b4c61-e4a3-4a89-a27c-396023556605` plus a "concurrent rendering... recovered" error in the browser console. Needs its own investigation — likely a duplicate row or duplicate React key somewhere in Score Summary's rendering or the underlying `entries` data.
+- Built via superpowers:subagent-driven-development in an isolated worktree/branch (`score-summary-clickable-nav`); 36/36 tests passing, `npm run build` clean; final whole-branch review Ready to merge; manual QA performed post-review and one additional bug found+fixed as a result.
+- Spec: `docs/superpowers/specs/2026-07-08-score-summary-clickable-navigation-design.md`. Plan: `docs/superpowers/plans/2026-07-08-score-summary-clickable-navigation.md`.
+
+---
+
 *Last updated: July 9, 2026*
 
 ---

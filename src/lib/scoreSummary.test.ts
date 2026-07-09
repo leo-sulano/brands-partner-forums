@@ -86,6 +86,19 @@ describe('computeScoreSummary', () => {
     expect(brand.label).toBe('Poor');
   });
 
+  it('reads WO scores on a 1-5 scale', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Wizard of Odds', { 'Brand Name': 'ZodiacBet.com', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '4' }),
+      makeEntry('2', 'Wizard of Odds', { 'Brand Name': 'ZodiacBet.com', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '3' }),
+    ];
+    const result = computeScoreSummary(entries, noRange, [], 'wo');
+    const [brand] = result.brands;
+    expect(brand.counts[4]).toBe(1);
+    expect(brand.counts[3]).toBe(1);
+    expect(brand.average).toBe(3.5);
+    expect(brand.label).toBe('Average');
+  });
+
   it('reads AG scores on a 1-10 scale', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'AG Review Status': 'Published', 'AG Score added': '9' }),

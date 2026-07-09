@@ -2,10 +2,10 @@ import type { Entry } from '../types/entry';
 
 export type Star = number;
 export type RatingLabel = 'Excellent' | 'Great' | 'Average' | 'Poor' | 'Bad';
-export type Platform = 'tp' | 'ag' | 'cg';
+export type Platform = 'tp' | 'ag' | 'cg' | 'wo';
 
 // TrustPilot and CasinoGuru score reviews 1-5; AskGamblers scores 1-10.
-export const PLATFORM_MAX_SCORE: Record<Platform, number> = { tp: 5, ag: 10, cg: 5 };
+export const PLATFORM_MAX_SCORE: Record<Platform, number> = { tp: 5, ag: 10, cg: 5, wo: 5 };
 
 export interface BrandSummary {
   tab: string;
@@ -37,18 +37,21 @@ const PLATFORM_STATUS_KEYS: Record<Platform, readonly string[]> = {
   tp: ['TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status'],
   ag: ['AG Review Status'],
   cg: ['CG Review Status'],
+  wo: ['WoO Review Status'],
 };
 
 const PLATFORM_DATE_KEYS: Record<Platform, readonly string[]> = {
   tp: ['Trust Pilot'],
   ag: ['Ask Gambler review added'],
   cg: ['Casino Guru review added'],
+  wo: ['Wizard of Odds'],
 };
 
 const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
   tp: ['TP Score added', 'Score added', 'Score Added', 'Score'],
   ag: ['AG Score added'],
   cg: ['CG Score added'],
+  wo: ['Wizard of OddsScore added'],
 };
 
 function pick(data: Record<string, string | null>, keys: readonly string[]): string | null {
