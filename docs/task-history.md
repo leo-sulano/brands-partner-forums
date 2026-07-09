@@ -1229,6 +1229,19 @@ Made Score Summary's brand names and star-count cells clickable, deep-linking in
 
 ---
 
+## Task 125: Score Summary — Clickable Total Row + Avg/Rating Column Removal
+
+**Date:** July 9, 2026
+
+Made each per-group "Total" row in Score Summary clickable, and removed the `Avg`/`Rating` columns from both the per-group table and the cross-group "All brands" bar, across all four platforms.
+
+- `src/components/ScoreSummaryPanel.tsx`: the `SummaryTable` `tfoot`'s "Total" cell is now a `Link` — single-brand groups link to that brand's page (same href as clicking the brand name), multi-brand groups link to the group's page with no brand filter. Styled to match the existing brand-name link.
+- The `GrandTotal` ("All brands") bar intentionally stays plain text — it spans unrelated groups/tabs with no single link destination.
+- Dropped the `Avg` and `Rating` `<th>`/`<td>` cells and their two `SummaryColgroup` columns from both tables; removed the now-unused `LABEL_PILL` map and `RatingLabel` import. `scoreSummary.ts`'s `summarizeCounts()` (and its test coverage) is untouched — it still computes `average`/`label`, just nothing renders them anymore.
+- Spec: `docs/superpowers/specs/2026-07-09-score-summary-total-row-link-avg-rating-removal-design.md`. Plan: `docs/superpowers/plans/2026-07-09-score-summary-total-row-link-avg-rating-removal.md`.
+
+---
+
 *Last updated: July 9, 2026*
 
 ---
