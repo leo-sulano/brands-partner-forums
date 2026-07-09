@@ -431,16 +431,28 @@ never blocks the others or the restart itself."
 
 ### Task 4: Dashboard "Server Health" section
 
+> **Deviation note (2026-07-09):** `SyncStatus.tsx` (the standalone Check
+> Status page this task targeted) was fully removed on 2026-07-08 (Task 122,
+> `297a6c9`) before this task was picked up — along with `RunHistoryTable`,
+> `FullCheckScopePicker`, and `fetchFullCheckRuns`. Re-scoped by user decision
+> to add a "Server Health" tab to the Log page (`ActivityLog.tsx`) instead,
+> as a fourth tab alongside Activity/Edits/Deletes, using that page's inline
+> component + card-list styling convention rather than a separate
+> `WatchdogEventsTable.tsx`. Also gated to `profile.email ===
+> 'leo@optinetsolutions.com'` only, per user request — stricter than the
+> page's normal any-approved-user access. The steps below are left as
+> originally written for history; see `docs/task-history.md`'s Task 107
+> entry for what was actually shipped.
+
 **Files:**
 - Modify: `src/lib/queries.ts`
-- Create: `src/components/WatchdogEventsTable.tsx`
-- Modify: `src/pages/SyncStatus.tsx`
+- Modify: `src/pages/ActivityLog.tsx` (inline `ServerHealthFeed` component, not a separate file)
 
 **Interfaces:**
 - Consumes: table `public.watchdog_events` (Task 2).
 - Produces: `export interface WatchdogEvent { id: string; occurred_at: string; outcome: 'restarted' | 'restart_failed'; detail: string; }` and `export async function fetchWatchdogEvents(limit = 20): Promise<WatchdogEvent[]>` in `src/lib/queries.ts`, consumed by `SyncStatus.tsx`. `WatchdogEventsTable` takes `{ events: WatchdogEvent[] }` and renders `null` when `events.length === 0`.
 
-- [ ] **Step 1: Add `WatchdogEvent` + `fetchWatchdogEvents` to `queries.ts`**
+- [x] **Step 1: Add `WatchdogEvent` + `fetchWatchdogEvents` to `queries.ts`**
 
 Add to `src/lib/queries.ts`, immediately after the existing `fetchFullCheckRuns` function (after line 1092):
 
@@ -463,7 +475,7 @@ export async function fetchWatchdogEvents(limit = 20): Promise<WatchdogEvent[]> 
 }
 ```
 
-- [ ] **Step 2: Create `WatchdogEventsTable.tsx`**
+- [x] **Step 2: Create `WatchdogEventsTable.tsx`**
 
 Create `src/components/WatchdogEventsTable.tsx`:
 
@@ -519,7 +531,7 @@ export default function WatchdogEventsTable({ events }: WatchdogEventsTableProps
 }
 ```
 
-- [ ] **Step 3: Wire into `SyncStatus.tsx`**
+- [x] **Step 3: Wire into `SyncStatus.tsx`**
 
 In `src/pages/SyncStatus.tsx`, update the import block (currently line 1–7):
 
@@ -564,7 +576,7 @@ Render the new section right after `<RunHistoryTable runs={checkHistory} />` (cu
 
 (This closes the existing "Full Check Status" `<div className="space-y-4">` block, then adds the new sibling section before the toast — matching how the existing sections are laid out as siblings inside the top-level `space-y-6` container.)
 
-- [ ] **Step 4: Build check**
+- [x] **Step 4: Build check**
 
 Run:
 ```bash
@@ -572,7 +584,7 @@ npm run build
 ```
 Expected: builds with no TypeScript errors. (Per project convention, `tsc --noEmit` alone is not a valid check here — always use the full build.)
 
-- [ ] **Step 5: Manual verification against real data**
+- [x] **Step 5: Manual verification against real data**
 
 Insert a temporary row:
 ```bash
@@ -584,7 +596,7 @@ supabase db execute --sql "delete from watchdog_events where detail = 'manual te
 ```
 Reload the page and confirm the "Server Health" section disappears entirely (not an empty table — no heading, no card).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/lib/queries.ts src/components/WatchdogEventsTable.tsx src/pages/SyncStatus.tsx

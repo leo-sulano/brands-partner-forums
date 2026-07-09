@@ -819,6 +819,23 @@ export async function fetchDeleteLog(limit = 200): Promise<AuditLogEntry[]> {
   return (data ?? []) as AuditLogEntry[];
 }
 
+export interface WatchdogEvent {
+  id: string;
+  occurred_at: string;
+  outcome: 'restarted' | 'restart_failed';
+  detail: string;
+}
+
+export async function fetchWatchdogEvents(limit = 50): Promise<WatchdogEvent[]> {
+  const { data, error } = await supabase
+    .from('watchdog_events')
+    .select('id, occurred_at, outcome, detail')
+    .order('occurred_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as WatchdogEvent[];
+}
+
 export async function restoreDeletedEntity(logId: string): Promise<void> {
   const { data: log, error: selErr } = await supabase
     .from('delete_log')
