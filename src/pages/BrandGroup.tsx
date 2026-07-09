@@ -1201,7 +1201,7 @@ export default function BrandGroup() {
   const activePlatformForRating = platformFilter !== 'all' ? platformFilter : null;
   const ratingFiltered = (() => {
     if (ratingFilter == null || !activePlatformForRating) return platformFiltered;
-    const scoreCol = getScoreCol(activePlatformForRating, headers);
+    const scoreCol = getScoreCol(activePlatformForRating, fullHeaders);
     if (!scoreCol) return platformFiltered;
     const maxScore = PLATFORM_MAX_SCORE[activePlatformForRating];
     return platformFiltered.filter((e) =>
