@@ -1198,6 +1198,23 @@ Fully removed the standalone Check Status page (`/sync`) and its bulk "Run Full 
 
 ---
 
-*Last updated: July 8, 2026*
+## Task 124: Score Summary Clickable Navigation + Wizard of Odds Platform
+
+**Date:** July 9, 2026
+
+Made Score Summary's brand names and star-count cells clickable, deep-linking into the Brands tab with brand/platform/rating filters pre-applied, and added Wizard of Odds as a fourth Score Summary platform (1-5 scale) so the feature covers all platforms.
+
+- `src/lib/scoreSummary.ts`: `Platform` type, `PLATFORM_MAX_SCORE`, and the platform key maps now include `wo`.
+- `src/lib/tab-configs.ts`: new exported `getScoreCol(platform, headers)` resolves which loaded column holds a given platform's score, handling TP's several historical column-name variants.
+- `src/components/ScoreSummaryPanel.tsx`: brand-name cells and non-zero star-count cells are now links to `/brands/:tab?platform=...&brand=...[&rating=...]`; added a Wizard of Odds platform toggle.
+- `src/pages/BrandGroup.tsx`: reads `platform`/`brand`/`rating` from the URL and filters accordingly (rating matches require exact score + Published status, mirroring what Score Summary counted); fixed a reactivity gap where navigating between two Score-Summary-originated links for the same tab didn't re-apply filters; added an active-filter chip with a clear action.
+- Two follow-up fixes surfaced during review: the platform KPI-card/dropdown and the brand-filter dropdown previously wrote to the URL by replacing the whole query string, which silently cleared any other active filter (brand/rating, or brand, respectively) on selection — both now merge into the existing query string instead.
+- Built via superpowers:subagent-driven-development in an isolated worktree/branch (`score-summary-clickable-nav`); 39/39 tests passing, `npm run build` clean; final whole-branch review Ready to merge after 2 fix rounds.
+- Spec: `docs/superpowers/specs/2026-07-08-score-summary-clickable-navigation-design.md`. Plan: `docs/superpowers/plans/2026-07-08-score-summary-clickable-navigation.md`.
+- **Follow-up needed:** the manual authenticated browser click-through (login → brand-name click → star-count click → switching platforms → clearing the chip → Wizard of Odds tab) has not been performed — no browser automation tooling or login credentials were available in the execution environment. Verify by hand before marking this task Done.
+
+---
+
+*Last updated: July 9, 2026*
 
 ---
