@@ -499,7 +499,18 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 totals.unrated.toLocaleString()
               )}
             </td>
-            <td className="px-2 py-2 text-right tabular-nums">{totals.total.toLocaleString()}</td>
+            <td className="px-2 py-2 text-right tabular-nums">
+              {totals.total > 0 ? (
+                <Link
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}`}
+                  className="hover:text-violet-600 hover:underline"
+                >
+                  {totals.total.toLocaleString()}
+                </Link>
+              ) : (
+                totals.total.toLocaleString()
+              )}
+            </td>
           </tr>
         </tfoot>
       </table>
