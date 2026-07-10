@@ -56,6 +56,13 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-10:* Brand Name in Add Review Account (and Edit Entry, since it shares the same
+  `BrandSelectDropdown` component) is now creatable — typing a name with no case-insensitive
+  match in the existing list shows a `+ Add "<text>"` row that sets it as a free-typed brand,
+  on every brand tab. Previously the field only let you pick from brands already seen in that
+  tab's data, with no way to add a genuinely new one. Spec:
+  `docs/superpowers/specs/2026-07-10-manual-brand-entry-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-10-manual-brand-entry.md`.
 - *2026-07-08:* Added a "Getting Started" walkthrough to the How It Works page — a numbered
   step list (login → add an entry → edit an entry → run Check Status → see the result) next
   to an animated GIF (`public/getting-started.gif`) captured from the real running app. No
@@ -91,4 +98,13 @@ Brands Partner Forum/
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.
 - The Google Sheet disconnect (2026-07-07) deliberately left `check-review-status` untouched: it still pushes changed rows to the Sheet via the Apps Script web app (`APPS_SCRIPT_URL`/`APPS_SCRIPT_SECRET` Supabase secrets) whenever a Check Status run detects a change. Revisit if a truly Sheet-free dashboard is required — either remove that push call or unset those two secrets on the function.
+- Trybet's table view shows "—" in its "Brands" column even when an entry's brand value is
+  correctly saved (confirmed 2026-07-10 via the raw Supabase insert payload — the value is
+  genuinely persisted, this is a read/display-only issue). Likely a key mismatch between the
+  column `getBrandNameCol()` resolves for writes (`'Brands'`, from the `TAB_COLUMN_CONFIGS`
+  whitelist) and whatever `BrandGroup.tsx` resolves for the rendered header/cell from
+  `tab_schemas` (`BrandGroup.tsx:948-952,2216`) — not yet root-caused further. Pre-existing;
+  unrelated to the 2026-07-10 manual-brand-entry change (reproduces via the old plain-input
+  fallback too). Worth a follow-up look since it makes a correctly-saved new brand look like
+  the save silently failed.
 - Supabase Auth still uses the default built-in email sender, which caps auth emails (signup confirmation, password reset, magic link) project-wide at a few per hour. Hit in practice 2026-07-08 trying to recover the `sandbox@optinetsolutions.com` account — both signup and password-reset threw "email rate limit exceeded" back to back. Fix: wire up a free custom SMTP provider (e.g. Resend, free tier, no card required) under Authentication → Emails / SMTP Settings to remove the cap. Immediate unblock without waiting: Authentication → Users → select user → Reset Password sets a new password directly, no email sent.
