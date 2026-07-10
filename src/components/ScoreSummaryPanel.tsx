@@ -320,55 +320,7 @@ function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; ma
           </section>
         );
       })}
-      {groups.length > 1 && <GrandTotal rows={rows} maxScore={maxScore} />}
     </div>
-  );
-}
-
-// Bottom bar summing every column across all brands in every group shown.
-function GrandTotal({ rows, maxScore }: { rows: BrandSummary[]; maxScore: number }) {
-  const stars = starsFor(maxScore);
-  const t = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
-  return (
-    <section className="overflow-x-auto rounded-md border-2 border-violet-200 bg-violet-50/40">
-      <table className="w-full table-fixed text-sm">
-        <SummaryColgroup maxScore={maxScore} />
-        <thead className="text-xs uppercase tracking-wide text-slate-500">
-          <tr>
-            <th scope="col" className="px-3 py-2 text-left font-medium">All brands</th>
-            {stars.map((s) => (
-              <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
-                <span className="inline-flex items-center justify-end gap-0.5">
-                  <span className="tabular-nums">{s}</span>
-                  <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
-                </span>
-              </th>
-            ))}
-            <th scope="col" className="px-2 py-2 text-right font-medium">Unrtd</th>
-            <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr className="font-semibold text-slate-800">
-            <td className="px-3 py-2 text-left text-slate-600">
-              {rows.length} brand{rows.length !== 1 ? 's' : ''}
-            </td>
-            {stars.map((s) => (
-              <td
-                key={s}
-                className={`px-2 py-2 text-right tabular-nums ${t.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'}`}
-              >
-                {t.counts[s].toLocaleString()}
-              </td>
-            ))}
-            <td className={`px-2 py-2 text-right tabular-nums ${t.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
-              {t.unrated.toLocaleString()}
-            </td>
-            <td className="px-2 py-2 text-right tabular-nums">{t.total.toLocaleString()}</td>
-          </tr>
-        </tbody>
-      </table>
-    </section>
   );
 }
 
@@ -475,10 +427,28 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 </td>
               ))}
               <td className={`px-2 py-1.5 text-right tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                {r.unrated.toLocaleString()}
+                {r.unrated > 0 ? (
+                  <Link
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=unrated`}
+                    className="hover:text-violet-600 hover:underline"
+                  >
+                    {r.unrated.toLocaleString()}
+                  </Link>
+                ) : (
+                  r.unrated.toLocaleString()
+                )}
               </td>
               <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800">
-                {r.total.toLocaleString()}
+                {r.total > 0 ? (
+                  <Link
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
+                    className="hover:text-violet-600 hover:underline"
+                  >
+                    {r.total.toLocaleString()}
+                  </Link>
+                ) : (
+                  r.total.toLocaleString()
+                )}
               </td>
             </tr>
           ))}
@@ -505,11 +475,29 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                   totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
                 }`}
               >
-                {totals.counts[s].toLocaleString()}
+                {totals.counts[s] > 0 ? (
+                  <Link
+                    to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=${s}`}
+                    className="hover:text-violet-600 hover:underline"
+                  >
+                    {totals.counts[s].toLocaleString()}
+                  </Link>
+                ) : (
+                  totals.counts[s].toLocaleString()
+                )}
               </td>
             ))}
             <td className={`px-2 py-2 text-right tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
-              {totals.unrated.toLocaleString()}
+              {totals.unrated > 0 ? (
+                <Link
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=unrated`}
+                  className="hover:text-violet-600 hover:underline"
+                >
+                  {totals.unrated.toLocaleString()}
+                </Link>
+              ) : (
+                totals.unrated.toLocaleString()
+              )}
             </td>
             <td className="px-2 py-2 text-right tabular-nums">{totals.total.toLocaleString()}</td>
           </tr>
