@@ -120,7 +120,7 @@ const LINK_STATUS_COL: Record<string, string> = {
 // Refined from Overview.tsx's PLATFORM_ICON_BG hue family per user feedback:
 // CG uses its real brand green instead of amber, and WO took CG's old amber.
 const PLATFORM_STAR_COLOR: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
-  tp: 'text-emerald-500',
+  tp: 'text-emerald-600',
   ag: 'text-red-500',
   cg: 'text-green-500',
   wo: 'text-amber-500',
