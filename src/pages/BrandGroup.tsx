@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2,
+  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2, Star,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import EditEntryModal from '../components/EditEntryModal';
@@ -117,7 +117,38 @@ const LINK_STATUS_COL: Record<string, string> = {
   'CG Review Link': 'CG Review Status',
 };
 
-function CellValue({ header, value, rowData }: { header: string; value: string | null; rowData?: Record<string, string | null> }) {
+// Refined from Overview.tsx's PLATFORM_ICON_BG hue family per user feedback:
+// CG uses its real brand green instead of amber, and WO took CG's old amber.
+const PLATFORM_STAR_COLOR: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
+  tp: 'text-emerald-500',
+  ag: 'text-red-500',
+  cg: 'text-green-500',
+  wo: 'text-amber-500',
+};
+
+// 'Link to the profile' is TP's link header everywhere except Wizard of
+// Odds, which reuses it for that platform instead.
+function linkColPlatform(header: string, tab: string): 'tp' | 'ag' | 'cg' | 'wo' | null {
+  if (header === 'AG Review Link') return 'ag';
+  if (header === 'CG Review Link') return 'cg';
+  if (header === 'Link to the profile') return tab === 'Wizard of Odds' ? 'wo' : 'tp';
+  return null;
+}
+
+// Star display only: unlike parseScore (which requires a clean integer and
+// otherwise buckets into "unrated" for Score Summary), the star floors a
+// fractional score so e.g. a recorded 4.5 shows as a 4-star badge instead of
+// showing no star at all.
+function parseStarScore(raw: string | null | undefined, maxScore: number): number | null {
+  if (raw == null) return null;
+  const n = Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  const floored = Math.floor(n);
+  if (floored < 1 || floored > maxScore) return null;
+  return floored;
+}
+
+function CellValue({ header, value, rowData, tab }: { header: string; value: string | null; rowData?: Record<string, string | null>; tab?: string }) {
   if (isDateCol(header) && (!value || value.trim() === '')) {
     return (
       <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-900">
@@ -136,6 +167,14 @@ function CellValue({ header, value, rowData }: { header: string; value: string |
       }
     }
     const href = value.startsWith('http') ? value : `https://${value}`;
+    const platform = tab != null ? linkColPlatform(header, tab) : null;
+    let score: number | null = null;
+    let maxScore = 0;
+    if (platform && rowData) {
+      maxScore = PLATFORM_MAX_SCORE[platform];
+      const raw = PLATFORM_SCORE_COLS[platform].map((c) => rowData[c]).find((v) => v != null && v !== '');
+      score = parseStarScore(raw, maxScore);
+    }
     return (
       <a
         href={href}
@@ -145,6 +184,12 @@ function CellValue({ header, value, rowData }: { header: string; value: string |
         className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 transition-colors whitespace-nowrap"
       >
         <ExternalLink className="size-3" /> View
+        {score != null && platform && (
+          <span title={`Score: ${score}/${maxScore}`} className="relative inline-flex size-4 shrink-0 items-center justify-center">
+            <Star className={`absolute inset-0 size-4 fill-current ${PLATFORM_STAR_COLOR[platform]}`} />
+            <span className="relative text-[8px] font-bold leading-none text-white">{score}</span>
+          </span>
+        )}
       </a>
     );
   }
@@ -2077,7 +2122,7 @@ export default function BrandGroup() {
                             className={`px-[10px] py-2 whitespace-nowrap cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
                             onClick={() => setEditEntry(entry)}
                           >
-                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
                           </td>
                         );
                       }
@@ -2105,7 +2150,7 @@ export default function BrandGroup() {
                         }
                         return (
                           <td key={h} className="px-[10px] py-2">
-                            <CellValue header={h} value={brandName} rowData={entry.data} />
+                            <CellValue header={h} value={brandName} rowData={entry.data} tab={decodedTab} />
                           </td>
                         );
                       }
@@ -2114,7 +2159,7 @@ export default function BrandGroup() {
                       if (h === 'Proxy Used' || h === 'Agent' || h === 'User Name') {
                         return (
                           <td key={h} className="px-[10px] py-2">
-                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} />
+                            <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
                           </td>
                         );
                       }
@@ -2201,7 +2246,7 @@ export default function BrandGroup() {
                               setEditingCell({ entryId: entry.id, header: h, value: display });
                             }}
                           >
-                            <CellValue header={h} value={h === 'Country' ? (getEntryCountry(entry.data, decodedTab) || null) : (entry.data[h] ?? null)} rowData={entry.data} />
+                            <CellValue header={h} value={h === 'Country' ? (getEntryCountry(entry.data, decodedTab) || null) : (entry.data[h] ?? null)} rowData={entry.data} tab={decodedTab} />
                           </td>
                         );
                       }
@@ -2216,6 +2261,7 @@ export default function BrandGroup() {
                                 : entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)
                             }
                             rowData={entry.data}
+                            tab={decodedTab}
                           />
                         </td>
                       );
