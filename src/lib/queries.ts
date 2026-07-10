@@ -614,8 +614,8 @@ export async function triggerStatusCheck(
     body: JSON.stringify(statusCheckBody(tab, scope)),
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Status check failed: ${res.status} ${body}`);
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? `Status check failed: HTTP ${res.status}`);
   }
   invalidateTabCache(tab);
   return res.json();

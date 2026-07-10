@@ -1440,6 +1440,10 @@ export default function BrandGroup() {
     };
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
+      // Populated when the request itself failed (e.g. another check already
+      // running on the server) rather than individual entries erroring during
+      // the scrape — surfaced directly instead of the generic fallback below.
+      const requestErrors: string[] = [];
       for (const p of platforms) {
         try {
           let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
@@ -1448,7 +1452,8 @@ export default function BrandGroup() {
           else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab, scope);
           else r = await triggerWoStatusCheck(decodedTab, scope);
           results.push(r);
-        } catch {
+        } catch (err) {
+          requestErrors.push(err instanceof Error ? err.message : String(err));
           results.push({ updated: 0, errors: 1 });
         }
       }
@@ -1471,7 +1476,9 @@ export default function BrandGroup() {
       let msg: string;
       let kind: ToastKind;
       if (totalErrors > 0 && totalUpdated === 0) {
-        msg = `${totalErrors} check${totalErrors !== 1 ? 's' : ''} failed — server may not be running`;
+        msg = requestErrors.length > 0
+          ? [...new Set(requestErrors)].join('; ')
+          : `${totalErrors} check${totalErrors !== 1 ? 's' : ''} failed — server may not be running`;
         kind = 'error';
       } else if (totalUpdated > 0 && totalErrors > 0 && totalSheetErrors > 0) {
         msg = `${totalUpdated} updated, ${totalErrors} checks failed, ${totalSheetErrors} sheet sync failed`;

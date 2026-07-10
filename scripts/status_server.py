@@ -49,6 +49,19 @@ _tab_locks: dict[str, threading.Lock] = {}
 _tab_locks_mutex = threading.Lock()
 _active_tabs: set[str] = set()
 
+# The EC2 host is a t2.small (2GB RAM) -- one Chrome+Selenium session already
+# uses several hundred MB, and two running at once (e.g. a TP check on one
+# tab overlapping an AG check on another) has been observed crashing Chrome
+# under memory pressure, which then cascades into "errors" for every
+# remaining entry in that run. The per-tab locks above only stop the *same*
+# tab/platform from double-running, so a second, global lock serializes
+# every platform's Selenium run across the whole box.
+_global_run_lock = threading.Lock()
+CONCURRENT_CHECK_ERROR = (
+    'Another check is already running on the server (a different tab or platform) '
+    '-- only one can run at a time. Wait for it to finish and retry.'
+)
+
 
 def _get_tab_lock(key: str) -> threading.Lock:
     with _tab_locks_mutex:
@@ -106,6 +119,10 @@ def check_status():
     lock = _get_tab_lock(tab_key)
     if not lock.acquire(blocking=False):
         return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
+
+    if not _global_run_lock.acquire(blocking=False):
+        lock.release()
+        return jsonify({'error': CONCURRENT_CHECK_ERROR}), 409
 
     _active_tabs.add(tab_key)
     scope = f'tab: {tab}' if tab else 'all tabs'
@@ -210,6 +227,7 @@ def check_status():
 
     finally:
         _active_tabs.discard(tab_key)
+        _global_run_lock.release()
         lock.release()
 
 
@@ -235,6 +253,10 @@ def check_ag_status_route():
     if not lock.acquire(blocking=False):
         return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
 
+    if not _global_run_lock.acquire(blocking=False):
+        lock.release()
+        return jsonify({'error': CONCURRENT_CHECK_ERROR}), 409
+
     _active_tabs.add(tab_key)
     try:
         scope = f'tab: {tab}' if tab else 'all tabs'
@@ -246,6 +268,7 @@ def check_ag_status_route():
         return jsonify(result)
     finally:
         _active_tabs.discard(tab_key)
+        _global_run_lock.release()
         lock.release()
 
 
@@ -271,6 +294,10 @@ def check_cg_status_route():
     if not lock.acquire(blocking=False):
         return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
 
+    if not _global_run_lock.acquire(blocking=False):
+        lock.release()
+        return jsonify({'error': CONCURRENT_CHECK_ERROR}), 409
+
     _active_tabs.add(tab_key)
     try:
         scope = f'tab: {tab}' if tab else 'all tabs'
@@ -282,6 +309,7 @@ def check_cg_status_route():
         return jsonify(result)
     finally:
         _active_tabs.discard(tab_key)
+        _global_run_lock.release()
         lock.release()
 
 
@@ -307,6 +335,10 @@ def check_wo_status_route():
     if not lock.acquire(blocking=False):
         return jsonify({'error': 'A check is already running for this brand — wait and retry'}), 409
 
+    if not _global_run_lock.acquire(blocking=False):
+        lock.release()
+        return jsonify({'error': CONCURRENT_CHECK_ERROR}), 409
+
     _active_tabs.add(tab_key)
     try:
         scope = f'tab: {tab}' if tab else 'all tabs'
@@ -318,6 +350,7 @@ def check_wo_status_route():
         return jsonify(result)
     finally:
         _active_tabs.discard(tab_key)
+        _global_run_lock.release()
         lock.release()
 
 
