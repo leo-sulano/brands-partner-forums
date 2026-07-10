@@ -267,7 +267,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     return (
       <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-6' : ''}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">{f.label}</label>
-        {f.isBrand && availableBrands.length > 0 ? (
+        {f.isBrand ? (
           <BrandSelectDropdown
             value={fields[f.key]}
             onChange={handleBrandChange}
