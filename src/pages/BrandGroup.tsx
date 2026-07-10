@@ -586,9 +586,10 @@ export default function BrandGroup() {
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg' | 'wo'>(
     (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
   );
-  const [ratingFilter, setRatingFilter] = useState<number | 'unrated' | null>(() => {
+  const [ratingFilter, setRatingFilter] = useState<number | 'unrated' | 'any' | null>(() => {
     const raw = searchParams.get('rating');
     if (raw === 'unrated') return 'unrated';
+    if (raw === 'any') return 'any';
     const r = Number(raw);
     return Number.isInteger(r) && r > 0 ? r : null;
   });
@@ -724,6 +725,7 @@ export default function BrandGroup() {
       setRatingFilter((() => {
         const raw = searchParams.get('rating');
         if (raw === 'unrated') return 'unrated';
+        if (raw === 'any') return 'any';
         const r = Number(raw);
         return Number.isInteger(r) && r > 0 ? r : null;
       })());
@@ -880,6 +882,8 @@ export default function BrandGroup() {
     const raw = searchParams.get('rating');
     if (raw === 'unrated') {
       setRatingFilter('unrated');
+    } else if (raw === 'any') {
+      setRatingFilter('any');
     } else {
       const r = Number(raw);
       setRatingFilter(Number.isInteger(r) && r > 0 ? r : null);
@@ -1203,10 +1207,11 @@ export default function BrandGroup() {
       ? statusCols.filter((h) => TP_STATUS_VARIANTS.has(h))
       : statusCols.filter((h) => h.toLowerCase() === PLATFORM_STATUS_COL[platformFilter].toLowerCase());
 
-  // Rating filter (arrives via Score Summary star-count links): only meaningful when a
+  // Rating filter (arrives via Score Summary star-count/Total links): only meaningful when a
   // specific platform is active, since a rating value is only comparable within one
   // platform's score column. Matches Published-status rows only, exactly mirroring what
-  // Score Summary counted — not "any status with that score."
+  // Score Summary counted — not "any status with that score." 'any' matches every Published
+  // row for the platform regardless of score, mirroring a Score Summary Total link.
   const activePlatformForRating = platformFilter !== 'all' ? platformFilter : null;
   const ratingFiltered = (() => {
     if (ratingFilter == null || !activePlatformForRating) return platformFiltered;
@@ -1214,6 +1219,7 @@ export default function BrandGroup() {
     const candidates = PLATFORM_SCORE_COLS[activePlatformForRating];
     return platformFiltered.filter((e) => {
       if (!activeStatusCols.some((h) => (e.data[h] ?? '').trim().toLowerCase() === 'published')) return false;
+      if (ratingFilter === 'any') return true;
       const raw = candidates.map((c) => e.data[c]).find((v) => v != null && v !== '');
       const score = parseScore(raw, maxScore);
       return ratingFilter === 'unrated' ? score == null : score === ratingFilter;
@@ -1690,7 +1696,7 @@ export default function BrandGroup() {
                 Filtered by:
                 {brandFilter ? ` ${brandFilter}` : ''}
                 {platformFilter !== 'all' ? ` · ${platformFilter.toUpperCase()}` : ''}
-                {ratingFilter != null ? ` · Rating ${ratingFilter === 'unrated' ? 'Unrated' : ratingFilter}` : ''}
+                {ratingFilter != null ? ` · ${ratingFilter === 'unrated' ? 'Rating Unrated' : ratingFilter === 'any' ? 'Published' : `Rating ${ratingFilter}`}` : ''}
               </span>
               <button
                 type="button"

@@ -441,7 +441,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800">
                 {r.total > 0 ? (
                   <Link
-                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=any`}
                     className="hover:text-violet-600 hover:underline"
                   >
                     {r.total.toLocaleString()}
@@ -460,8 +460,8 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               <Link
                 to={
                   rows.length === 1
-                    ? `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&brand=${encodeURIComponent(rows[0].brand)}`
-                    : `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}`
+                    ? `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&brand=${encodeURIComponent(rows[0].brand)}&rating=any`
+                    : `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`
                 }
                 className="font-medium text-slate-800 hover:text-violet-600 hover:underline"
               >
@@ -502,7 +502,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
             <td className="px-2 py-2 text-right tabular-nums">
               {totals.total > 0 ? (
                 <Link
-                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}`}
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`}
                   className="hover:text-violet-600 hover:underline"
                 >
                   {totals.total.toLocaleString()}
