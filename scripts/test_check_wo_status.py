@@ -75,3 +75,25 @@ def test_load_wo_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
 
     assert len(result) == 1
     assert result[0]['data']['WoO User'] == 'NiklasWeber'
+
+
+class _FakeDriver:
+    current_url = 'https://wizardofodds.com/online-casinos/reviews/test-casino/'
+    page_source = '<html>no match here</html>'
+
+    def get(self, url):
+        pass
+
+    def find_elements(self, by, value):
+        return []
+
+
+def test_fetch_wo_review_does_not_crash_when_user_not_found(monkeypatch):
+    # fetch_wo_review referenced an undefined MAX_LOAD_MORE constant, so every
+    # real call raised NameError and was counted as an error — a 100% failure
+    # rate for WO Check Status confirmed live in production 2026-07-10.
+    monkeypatch.setattr(wos.time, 'sleep', lambda *_: None)
+
+    status, rating = wos.fetch_wo_review(_FakeDriver(), 'https://wizardofodds.com/x', 'NoSuchUser')
+
+    assert (status, rating) == (None, None)

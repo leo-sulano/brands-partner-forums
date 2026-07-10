@@ -38,6 +38,7 @@ from check_review_status import (
     STATUS_FILTER_MAP,
     matches_scope_filters,
 )
+from geo_bridge import ensure_display
 
 # ─── Config ──────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,11 @@ def fetch_wo_review(
 
     wo_user_lower = wo_user.lower()
 
-    for page_num in range(MAX_LOAD_MORE + 1):
+    # No page cap — page all the way to the true last "Load More" before
+    # concluding not-found, same reasoning as AG/CG (see check_ag_status.py):
+    # a fixed cap can wrongly call a review "not found" when it's really just
+    # further back in a long review list.
+    while True:
         html = driver.page_source
         html_lower = html.lower()
 
@@ -203,9 +208,6 @@ def fetch_wo_review(
             context = html[max(0, idx - 500) : idx + 1500]
             rating = _extract_rating_from_context(context)
             return ("Published", rating)
-
-        if page_num >= MAX_LOAD_MORE:
-            break
 
         clicked = _try_load_more(driver)
         if not clicked:
@@ -233,6 +235,14 @@ def check_wo_for_tab(
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
+
+    # WO runs non-headless (see PLATFORM_HEADLESS in status_server.py), same as AG/CG,
+    # but has no display to render into on a headless Linux box — Chrome fails to start
+    # (SessionNotCreatedException: chrome not reachable) without a virtual one. Starting
+    # it here, not just relying on AG/CG having already started theirs, means a WO-only
+    # run works on its own.
+    if ensure_display():
+        headless = False
 
     checked = updated = errors = sheet_errors = 0
     driver = build_driver(headless=headless)
