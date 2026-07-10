@@ -184,6 +184,7 @@ export const COLUMN_LABELS: Record<string, string> = {
   'CG Review Link':                                   'CG Link',
   'AG Score added':                                   'AG Score',
   'CG Score added':                                   'CG Score',
+  'Score added':                                       'TP Score (legacy)',
   'Brand / TP URL PAGE':                              'Brands',
   'Brand Name':                                        'Brands',
   'Brand / TP URL PAGE__href':                        'Brand Link',
