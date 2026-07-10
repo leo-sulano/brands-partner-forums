@@ -586,8 +586,10 @@ export default function BrandGroup() {
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg' | 'wo'>(
     (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
   );
-  const [ratingFilter, setRatingFilter] = useState<number | null>(() => {
-    const r = Number(searchParams.get('rating'));
+  const [ratingFilter, setRatingFilter] = useState<number | 'unrated' | null>(() => {
+    const raw = searchParams.get('rating');
+    if (raw === 'unrated') return 'unrated';
+    const r = Number(raw);
     return Number.isInteger(r) && r > 0 ? r : null;
   });
   const [dateFrom, setDateFrom] = useState('');
@@ -720,7 +722,9 @@ export default function BrandGroup() {
       setStatusFilter('all');
       setPlatformFilter((['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all'));
       setRatingFilter((() => {
-        const r = Number(searchParams.get('rating'));
+        const raw = searchParams.get('rating');
+        if (raw === 'unrated') return 'unrated';
+        const r = Number(raw);
         return Number.isInteger(r) && r > 0 ? r : null;
       })());
       setAgentFilter('');
@@ -873,8 +877,13 @@ export default function BrandGroup() {
     const p = searchParams.get('platform');
     setPlatformFilter(['tp', 'ag', 'cg', 'wo'].includes(p ?? '') ? (p as 'tp' | 'ag' | 'cg' | 'wo') : 'all');
     setBrandFilter(searchParams.get('brand') ?? '');
-    const r = Number(searchParams.get('rating'));
-    setRatingFilter(Number.isInteger(r) && r > 0 ? r : null);
+    const raw = searchParams.get('rating');
+    if (raw === 'unrated') {
+      setRatingFilter('unrated');
+    } else {
+      const r = Number(raw);
+      setRatingFilter(Number.isInteger(r) && r > 0 ? r : null);
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -1206,7 +1215,8 @@ export default function BrandGroup() {
     return platformFiltered.filter((e) => {
       if (!activeStatusCols.some((h) => (e.data[h] ?? '').trim().toLowerCase() === 'published')) return false;
       const raw = candidates.map((c) => e.data[c]).find((v) => v != null && v !== '');
-      return parseScore(raw, maxScore) === ratingFilter;
+      const score = parseScore(raw, maxScore);
+      return ratingFilter === 'unrated' ? score == null : score === ratingFilter;
     });
   })();
 
@@ -1680,7 +1690,7 @@ export default function BrandGroup() {
                 Filtered by:
                 {brandFilter ? ` ${brandFilter}` : ''}
                 {platformFilter !== 'all' ? ` · ${platformFilter.toUpperCase()}` : ''}
-                {ratingFilter != null ? ` · Rating ${ratingFilter}` : ''}
+                {ratingFilter != null ? ` · Rating ${ratingFilter === 'unrated' ? 'Unrated' : ratingFilter}` : ''}
               </span>
               <button
                 type="button"
