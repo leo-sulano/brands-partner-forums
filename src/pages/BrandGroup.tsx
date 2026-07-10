@@ -1374,7 +1374,7 @@ export default function BrandGroup() {
   const sorted = (() => {
     const seq = getTabSequence(decodedTab);
     const seqCol = getTabSequenceCol(decodedTab);
-    if (seq && seqCol) {
+    if (seq && seqCol && !sortCol) {
       const seqLower = seq.map(s => s.toLowerCase());
       return [...filtered].sort((a, b) => {
         // Primary: most recent date first
