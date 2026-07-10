@@ -1242,6 +1242,95 @@ Made each per-group "Total" row in Score Summary clickable, and removed the `Avg
 
 ---
 
-*Last updated: July 9, 2026*
+## Task 126: Fix WO Check Status Failing 100% of the Time on Every Brand Tab
+
+**Date:** July 10, 2026
+
+`fetch_wo_review` referenced an undefined `MAX_LOAD_MORE` constant, so every real Wizard of Odds check threw a `NameError` immediately — a 100% failure rate present since the feature's first commit (2026-06-26).
+
+- Removed the fixed page cap entirely in favor of an uncapped loop, matching the same fix already applied to AG/CG for the identical false-negative reasoning.
+- That unmasked a second bug: WO runs Chrome non-headless like AG/CG but never started the Xvfb virtual display those two rely on, so Chrome failed to launch on the headless EC2 box once the `NameError` stopped short-circuiting every call. Added the same `ensure_display()` call AG/CG already use.
+- Verified live against production (Vercel bundle → Edge Function → EC2): 0 errors, 3/3 updated on the real Wizard of Odds tab.
+
+---
+
+## Task 127: Score Summary — Remove All-Brands Total Box, Clickable Total Cells, Fix Platform-Only Filter
+
+**Date:** July 10, 2026
+
+Follow-on Score Summary work: dropped the standalone "All brands" grand-total box in favor of deep-linking the existing per-brand and per-group cells, then fixed a filtering bug those new links exposed.
+
+- `cc96c92`: Removed the all-brands grand-total box; made the per-brand `Unrtd`/`Total` cells and per-group Total row's star/`Unrtd` cells deep-link into the filtered BrandGroup view (added `rating=unrated` support to BrandGroup's rating filter).
+- `6be17fb`: Made the per-group Total row's numeric total cell clickable too, linking to that tab's brand page filtered to the selected platform — matching the existing Total label link.
+- `5c191a5`: Found and fixed that BrandGroup's platform filter only narrowed visible status columns, not the row list, so navigating from any Score Summary Total link showed every row for the tab instead of the Published-only set the total actually counted. Added a `rating=any` sentinel that reuses the existing Published-status filter without constraining score, wired to all three Total links (per-brand, per-group label, per-group numeric).
+
+---
+
+## Task 128: Serialize Check Status Runs Across Platforms — Stop Concurrent-Chrome Crashes on EC2
+
+**Date:** July 10, 2026
+
+Two overlapping Selenium checks (different tabs/platforms) on the 2GB t2.small EC2 box were crashing one Chrome process under memory pressure, cascading into every remaining entry in that run failing with `Connection refused` — surfaced to users as a misleading "server may not be running" toast.
+
+- Added a global lock across all four check routes so only one Selenium run happens at a time.
+- Stopped swallowing the real rejection message in the dashboard's error toast.
+
+---
+
+## Task 129: Manual Brand Name Entry — Creatable Brand Dropdown
+
+**Date:** July 10, 2026
+
+Brand Name in Add Review Account (and Edit Entry, since it shares the same `BrandSelectDropdown` component) is now creatable — typing a name with no case-insensitive match in the existing list shows a `+ Add "<text>"` row that sets it as a free-typed brand, on every brand tab. Previously the field only let you pick from brands already seen in that tab's data, with no way to add a genuinely new one.
+
+- Also fixed: the brand dropdown wasn't rendered at all in Add Review Account when a tab had no known brands yet — now always shown.
+- Final whole-branch review flagged that `BrandSelectDropdown` is shared with `EditEntryModal`, so the new creatable behavior applies there too (verified working). Also surfaced a pre-existing, unrelated display bug: Trybet's table view shows "—" in its Brands column even when the value is correctly saved (see Known Issues).
+- Spec: `docs/superpowers/specs/2026-07-10-manual-brand-entry-design.md`. Plan: `docs/superpowers/plans/2026-07-10-manual-brand-entry.md`.
+
+---
+
+## Task 130: Platform-Colored Score Star on Review Link Columns
+
+**Date:** July 10, 2026
+
+Adds a small filled star with the score number inside, next to the "View" link pill for TP, AG, CG, and WO review-link columns, colored per platform (TP emerald, AG red, CG green, WO amber). Only rendered when the row has a valid recorded score; fractional scores (e.g. 4.5) floor to the displayed integer instead of hiding the star.
+
+- Darkened the TP star to `emerald-600` after an initial pass had insufficient contrast.
+- Relabeled the legacy TP "Score added" field in the Edit modal (distinct from "TP Score Added") to avoid confusion — both showed identical text, but only TP Score Added feeds Score Summary (see `PLATFORM_SCORE_COLS` priority).
+- Spec: `docs/superpowers/specs/2026-07-10-platform-score-star-design.md`.
+
+---
+
+## Task 131: Fix Account Surname Duplicate Field & Priority Position in Edit Modal
+
+**Date:** July 10, 2026
+
+Two related bugs in the Edit Entry modal's field ordering, both traced to the canonical header being `"Account Surname "` (trailing space):
+
+- Legacy sheet-import rows can carry the value under a whitespace-variant key (`"Account Surname "` vs `"Account Surname"`), which rendered as a second, empty field alongside the real one — merged into a single field.
+- `ACCOUNT_FIELD_PRIORITY` matched headers by exact string, so it never matched the trailing-space header and fell to the end of the field list instead of its intended slot right before Agent — now matches by trimmed label.
+
+---
+
+## Task 132: Fix Column Sorting on TP Brand Injection / TP Affiliate Tabs
+
+**Date:** July 10, 2026
+
+The fixed brand-sequence sort order applied unconditionally on these two tabs, ignoring any column the user clicked to sort by — clicking a header still toggled the sort icon and updated state, but row order never changed. The sequence order is now only used as the default when no column sort is active.
+
+---
+
+## Task 133: Score Summary — Floor Decimal Scores Instead of Dropping to Unrated
+
+**Date:** July 11, 2026
+
+Wizard of Odds' 4.5 scores were landing in the Unrated bucket on Score Summary instead of counting as 4-star, because `parseScore()` required a clean integer and rejected any decimal.
+
+- Changed `parseScore()` in `src/lib/scoreSummary.ts` to floor a fractional score to its whole-star bucket instead of requiring an exact integer match — mirrors `parseStarScore` in `BrandGroup.tsx`, already used for the per-row star badge.
+- Applied to all four platforms (TP/AG/CG/WO) rather than WO alone, so an AG `8.4` now also counts as 8-star instead of Unrated — this reverses a prior "integer-only for AG" convention that was revisited once WO exposed the same gap visibly.
+
+---
+
+*Last updated: July 11, 2026*
 
 ---

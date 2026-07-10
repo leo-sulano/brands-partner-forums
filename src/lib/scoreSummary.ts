@@ -62,13 +62,16 @@ function pick(data: Record<string, string | null>, keys: readonly string[]): str
   return null;
 }
 
+// Floors fractional scores to their whole-star bucket (e.g. a recorded 4.5
+// counts as 4-star) instead of dropping them to "unrated" — matches the
+// per-row star badge's parseStarScore in BrandGroup.tsx.
 export function parseScore(raw: string | null | undefined, maxScore: number): Star | null {
   if (raw == null) return null;
-  const s = String(raw).trim();
-  if (!/^\d{1,2}$/.test(s)) return null;
-  const n = Number(s);
-  if (n < 1 || n > maxScore) return null;
-  return n;
+  const n = Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  const floored = Math.floor(n);
+  if (floored < 1 || floored > maxScore) return null;
+  return floored;
 }
 
 // Date format used in the sheet/dashboard is DD/MM/YYYY (European, matches

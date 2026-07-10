@@ -135,10 +135,8 @@ function linkColPlatform(header: string, tab: string): 'tp' | 'ag' | 'cg' | 'wo'
   return null;
 }
 
-// Star display only: unlike parseScore (which requires a clean integer and
-// otherwise buckets into "unrated" for Score Summary), the star floors a
-// fractional score so e.g. a recorded 4.5 shows as a 4-star badge instead of
-// showing no star at all.
+// Same flooring behavior as parseScore in lib/scoreSummary.ts, kept separate
+// since this one only needs to return a display value, not bucket a count.
 function parseStarScore(raw: string | null | undefined, maxScore: number): number | null {
   if (raw == null) return null;
   const n = Number(String(raw).trim());
