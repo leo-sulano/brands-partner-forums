@@ -2337,8 +2337,13 @@ export default function BrandGroup() {
           headers={(() => {
             const filteredFull = fullHeaders.filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
             const base = new Set(filteredFull);
+            const trimmedBase = new Set(filteredFull.map((h) => h.trim()));
+            // Legacy sheet-import rows can carry a whitespace-variant key alongside the
+            // canonical header (e.g. "Account Surname" vs "Account Surname "). Skip those
+            // as extras so they don't render as a second, duplicate field — EditEntryModal
+            // falls back to the whitespace-variant value when the canonical key is empty.
             const extras = Object.keys(editEntry.data).filter(
-              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !base.has(k),
+              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !base.has(k) && !trimmedBase.has(k.trim()),
             );
             const hdrs = [...filteredFull, ...extras];
             // Ensure a tab-configured column always shows, even on entries saved

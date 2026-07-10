@@ -108,7 +108,13 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const h of headers) {
-      const raw = entry.data[h] ?? '';
+      let raw = entry.data[h] ?? '';
+      if (!raw) {
+        // Legacy sheet-import rows can carry the real value under a whitespace-variant
+        // key (e.g. "Account Surname " instead of "Account Surname").
+        const altKey = Object.keys(entry.data).find((k) => k !== h && k.trim() === h.trim() && entry.data[k]);
+        if (altKey) raw = entry.data[altKey] ?? '';
+      }
       init[h] = raw ? formatCellValue(raw) : '';
     }
     return init;
