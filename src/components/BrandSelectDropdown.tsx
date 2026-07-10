@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Search, X, Check } from 'lucide-react';
+import { ChevronDown, Search, X, Check, Plus } from 'lucide-react';
 
 interface Props {
   value: string;
@@ -27,6 +27,10 @@ export default function BrandSelectDropdown({ value, onChange, brands, disabled 
   const visible = search.trim()
     ? brands.filter((b) => b.toLowerCase().includes(search.toLowerCase()))
     : brands;
+
+  const trimmedSearch = search.trim();
+  const hasExactMatch = trimmedSearch !== '' && brands.some((b) => b.toLowerCase() === trimmedSearch.toLowerCase());
+  const showAddOption = trimmedSearch !== '' && !hasExactMatch;
 
   return (
     <div className="relative" ref={ref}>
@@ -75,6 +79,16 @@ export default function BrandSelectDropdown({ value, onChange, brands, disabled 
             )}
           </div>
           <div className="max-h-56 overflow-y-auto py-1">
+            {showAddOption && (
+              <button
+                type="button"
+                onClick={() => { onChange(trimmedSearch); setOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-violet-700 transition-colors hover:bg-violet-50"
+              >
+                <Plus className="size-3 shrink-0 text-violet-500" />
+                <span className="flex-1 truncate">Add "{trimmedSearch}"</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
@@ -83,7 +97,7 @@ export default function BrandSelectDropdown({ value, onChange, brands, disabled 
               <span className="flex-1">— Select brand —</span>
               {!value && <Check className="size-3 text-violet-500" />}
             </button>
-            {visible.length === 0 && (
+            {visible.length === 0 && !showAddOption && (
               <div className="px-3 py-4 text-center text-xs text-slate-400">No brands match</div>
             )}
             {visible.map((brand) => (
