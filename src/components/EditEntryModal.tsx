@@ -181,7 +181,11 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   for (const h of visibleHeaders) sections[sectionOf(h)].push(h);
 
   function reorderAccountFields(fields: string[]): string[] {
-    const priority = ACCOUNT_FIELD_PRIORITY.filter((h) => fields.includes(h));
+    // Match by trimmed label — some canonical headers (e.g. "Account Surname ")
+    // carry stray whitespace, so exact-string matches against ACCOUNT_FIELD_PRIORITY miss.
+    const priority = ACCOUNT_FIELD_PRIORITY
+      .map((h) => fields.find((f) => f.trim() === h))
+      .filter((h): h is string => h !== undefined);
     const rest = fields.filter((h) => !priority.includes(h));
     let ordered = [...priority, ...rest];
 
