@@ -887,6 +887,13 @@ export default function BrandGroup() {
           if (validSavedCol) {
             setSortCol(validSavedCol);
             setSortDir(saved.dir);
+          } else if (getTabSequence(decodedTab)) {
+            // Tabs with a fixed brand-sequence default (TP Brand Injection, TP
+            // Affiliate) must land on that sequence order on a fresh load —
+            // auto-picking the date column here would immediately defeat the
+            // `!sortCol` check the sequence sort relies on.
+            setSortCol(null);
+            setSortDir('desc');
           } else {
             const defaultDateCol = ENTRY_DATE_COLS.find((col) =>
               populated.some((h) => h.toLowerCase() === col.toLowerCase()),
@@ -1431,9 +1438,17 @@ export default function BrandGroup() {
     if (isNoSortCol(col)) return;
     let newCol: string | null;
     let newDir: 'asc' | 'desc';
+    const secondDir = isDateCol(col) ? 'asc' : 'desc';
     if (sortCol === col) {
-      newCol = col;
-      newDir = sortDir === 'asc' ? 'desc' : 'asc';
+      if (sortDir === secondDir) {
+        // Third click: clear back to this tab's default order (fixed brand
+        // sequence when defined, otherwise implicit newest-first date sort).
+        newCol = null;
+        newDir = 'asc';
+      } else {
+        newCol = col;
+        newDir = secondDir;
+      }
     } else {
       newCol = col;
       newDir = isDateCol(col) ? 'desc' : 'asc';
