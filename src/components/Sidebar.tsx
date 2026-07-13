@@ -70,6 +70,20 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const { isAdmin, session } = useAuth();
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
+  const [hoverExpanded, setHoverExpanded] = useState(false);
+
+  const header = (isCollapsed: boolean) => (
+    <div className={`py-5 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
+      <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+      {!isCollapsed && (
+        <span className="font-semibold tracking-tight whitespace-nowrap">
+          <span className="text-white">Brands </span>
+          <span className="text-violet-400">Partner</span>
+          <span className="text-white"> Forum</span>
+        </span>
+      )}
+    </div>
+  );
 
   const navContent = (isCollapsed: boolean) => (
     <>
@@ -201,21 +215,29 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   return (
     <>
       {/* Desktop sidebar */}
-      <aside
-        className={`hidden md:flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'md:w-16' : 'md:w-60'}`}
+      <div
+        className="hidden md:block relative shrink-0"
+        onMouseEnter={() => collapsed && setHoverExpanded(true)}
+        onMouseLeave={() => collapsed && setHoverExpanded(false)}
       >
-        <div className={`py-5 flex items-center border-b border-slate-800 ${collapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
-          <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
-          {!collapsed && (
-            <span className="font-semibold tracking-tight whitespace-nowrap">
-              <span className="text-white">Brands </span>
-              <span className="text-violet-400">Partner</span>
-              <span className="text-white"> Forum</span>
-            </span>
-          )}
-        </div>
-        {navContent(collapsed)}
-      </aside>
+        <aside
+          className={`flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-60'}`}
+        >
+          {header(collapsed)}
+          {navContent(collapsed)}
+        </aside>
+
+        {collapsed && (
+          <aside
+            className={`fixed inset-y-0 left-0 z-30 w-60 flex flex-col bg-slate-900 text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
+              hoverExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            }`}
+          >
+            {header(false)}
+            {navContent(false)}
+          </aside>
+        )}
+      </div>
 
       {/* Mobile drawer */}
       {open && (
