@@ -17,7 +17,7 @@ When the desktop sidebar is pinned collapsed (via the existing manual toggle but
 - The desktop `<aside>` is wrapped in a `<div>` with `onMouseEnter`/`onMouseLeave` handlers that set `hoverExpanded`, active only when `collapsed` is `true` (no-op handlers when pinned expanded).
 - The in-flow `<aside>` always renders at its current width (`md:w-16` collapsed / `md:w-60` expanded) so the page layout never jumps.
 - When `collapsed && hoverExpanded`, an additional `<aside>` renders as a fixed overlay:
-  - `fixed inset-y-0 left-0 z-30 md:w-60`
+  - `fixed inset-y-0 left-0 z-[45] md:w-60` (raised from an initial `z-30` after task review found it collided with `BrandGroup.tsx`'s sticky toolbar (`z-40`) and sticky frozen columns (`z-30`) in the same screen region; `z-[45]` sits above all in-page chrome while staying below `z-50` modals/menus)
   - Same visual treatment as the normal sidebar (`bg-slate-900 text-slate-100`, border, logo header), using `navContent(false)` (i.e., the fully-expanded nav content) so it looks identical to the pinned-expanded sidebar.
   - `shadow-xl` to read as a floating panel above page content.
   - Same `transition` duration (200ms) as the existing collapse/expand animation, applied to opacity so it fades in/out (avoids animating `width` on a `fixed` element, which is less reliable across browsers than the existing flex-based width transition).
