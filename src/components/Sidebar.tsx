@@ -229,7 +229,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
         {collapsed && (
           <aside
-            className={`fixed inset-y-0 left-0 z-30 w-60 flex flex-col bg-slate-900 text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
+            inert={!hoverExpanded}
+            className={`fixed inset-y-0 left-0 z-[45] w-60 flex flex-col bg-slate-900 text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
               hoverExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
