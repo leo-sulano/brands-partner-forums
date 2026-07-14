@@ -1,5 +1,5 @@
-import { useState, useRef, useLayoutEffect, type ReactNode, type Ref } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
@@ -40,36 +40,12 @@ const topLinks = [
 
 const linkClass = (isActive: boolean, isCollapsed = false) =>
   [
-    'relative flex items-center py-2 text-sm transition-colors',
+    'flex items-center rounded-md py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
-      ? 'bg-white text-slate-900 rounded-l-full'
-      : 'rounded-md text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
+      ? 'bg-violet-500/20 text-violet-100'
+      : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
-
-function NavItem({ to, end, icon: Icon, label, isCollapsed, onClick, extra }: {
-  to: string;
-  end?: boolean;
-  icon: LucideIcon;
-  label: string;
-  isCollapsed: boolean;
-  onClick?: () => void;
-  extra?: ReactNode;
-}) {
-  return (
-    <NavLink
-      to={to}
-      end={end}
-      onClick={onClick}
-      title={isCollapsed ? label : undefined}
-      className={({ isActive }) => linkClass(isActive, isCollapsed)}
-    >
-      <Icon className="size-4 shrink-0" />
-      {!isCollapsed && <span className="truncate flex-1">{label}</span>}
-      {!isCollapsed && extra}
-    </NavLink>
-  );
-}
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
@@ -92,43 +68,9 @@ interface SidebarProps {
 
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { isAdmin, session } = useAuth();
-  const location = useLocation();
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<{ top: number; right: number; height: number } | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const navRef = useRef<HTMLElement>(null);
-
-  useLayoutEffect(() => {
-    const navEl = navRef.current;
-    const wrapperEl = wrapperRef.current;
-    if (!navEl || !wrapperEl) return;
-
-    function recalc() {
-      const activeEl = navEl!.querySelector('a[aria-current="page"]');
-      if (!activeEl) {
-        setActiveTab(null);
-        return;
-      }
-      const rowRect = activeEl.getBoundingClientRect();
-      const wrapperRect = wrapperEl!.getBoundingClientRect();
-      setActiveTab({
-        top: rowRect.top - wrapperRect.top,
-        right: rowRect.right - wrapperRect.left,
-        height: rowRect.height,
-      });
-    }
-
-    navEl.querySelector('a[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
-    recalc();
-    navEl.addEventListener('scroll', recalc);
-    window.addEventListener('resize', recalc);
-    return () => {
-      navEl.removeEventListener('scroll', recalc);
-      window.removeEventListener('resize', recalc);
-    };
-  }, [location.pathname, collapsed, brandsOpen, adminOpen]);
 
   const header = (isCollapsed: boolean) => (
     <div className={`py-5 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
@@ -143,11 +85,21 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     </div>
   );
 
-  const navContent = (isCollapsed: boolean, trackedNavRef?: Ref<HTMLElement>) => (
+  const navContent = (isCollapsed: boolean) => (
     <>
-      <nav ref={trackedNavRef} className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {topLinks.map(({ to, label, icon, end }) => (
-          <NavItem key={to} to={to} end={end} icon={icon} label={label} isCollapsed={isCollapsed} onClick={() => onClose?.()} />
+      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+        {topLinks.map(({ to, label, icon: Icon, end }) => (
+          <NavLink
+            key={to}
+            to={to}
+            end={end}
+            onClick={() => onClose?.()}
+            title={isCollapsed ? label : undefined}
+            className={({ isActive }) => linkClass(isActive, isCollapsed)}
+          >
+            <Icon className="size-4 shrink-0" />
+            {!isCollapsed && label}
+          </NavLink>
         ))}
 
         {isCollapsed
@@ -168,14 +120,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           const Icon = TAB_ICONS[tab] ?? Syringe;
           const platforms = getTabPlatforms(tab);
           return (
-            <NavItem
+            <NavLink
               key={tab}
               to={`/brands/${tabToSlug(tab)}`}
-              icon={Icon}
-              label={tab}
-              isCollapsed={isCollapsed}
               onClick={() => onClose?.()}
-              extra={
+              title={isCollapsed ? tab : undefined}
+              className={({ isActive }) => linkClass(isActive, isCollapsed)}
+            >
+              <Icon className="size-4 shrink-0" />
+              {!isCollapsed && <span className="truncate flex-1">{tab}</span>}
+              {!isCollapsed && (
                 <span className="flex items-center gap-0.5 shrink-0">
                   {platforms.map((p) => (
                     <img
@@ -187,8 +141,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     />
                   ))}
                 </span>
-              }
-            />
+              )}
+            </NavLink>
           );
         })}
 
@@ -210,10 +164,34 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
             {adminOpen && (
               <>
-                <NavItem to="/score-summary" icon={BarChart3} label="Score Summary" isCollapsed={isCollapsed} onClick={() => onClose?.()} />
-                <NavItem to="/log" icon={ScrollText} label="Log" isCollapsed={isCollapsed} onClick={() => onClose?.()} />
+                <NavLink
+                  to="/score-summary"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Score Summary' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
+                  <BarChart3 className="size-4" />
+                  {!isCollapsed && 'Score Summary'}
+                </NavLink>
+                <NavLink
+                  to="/log"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Log' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
+                  <ScrollText className="size-4" />
+                  {!isCollapsed && 'Log'}
+                </NavLink>
                 {isAdmin && (
-                  <NavItem to="/admin/users" icon={Users} label="Users" isCollapsed={isCollapsed} onClick={() => onClose?.()} />
+                  <NavLink
+                    to="/admin/users"
+                    onClick={() => onClose?.()}
+                    title={isCollapsed ? 'Users' : undefined}
+                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                  >
+                    <Users className="size-4" />
+                    {!isCollapsed && 'Users'}
+                  </NavLink>
                 )}
               </>
             )}
@@ -238,7 +216,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     <>
       {/* Desktop sidebar */}
       <div
-        ref={wrapperRef}
         className="hidden md:block relative shrink-0"
         onMouseEnter={() => collapsed && setHoverExpanded(true)}
         onMouseLeave={() => collapsed && setHoverExpanded(false)}
@@ -247,16 +224,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           className={`flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-60'}`}
         >
           {header(collapsed)}
-          {navContent(collapsed, navRef)}
+          {navContent(collapsed)}
         </aside>
-
-        {activeTab !== null && (
-          <div
-            aria-hidden="true"
-            style={{ top: activeTab.top, left: activeTab.right - 1, height: activeTab.height }}
-            className="pointer-events-none absolute z-[45] w-6 rounded-r-full bg-white transition-[left] duration-200 ease-in-out"
-          />
-        )}
 
         {collapsed && (
           <aside
