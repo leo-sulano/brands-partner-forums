@@ -1,5 +1,5 @@
-import { useState, type ReactNode } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useState, useRef, useLayoutEffect, type ReactNode, type Ref } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
@@ -43,7 +43,7 @@ const linkClass = (isActive: boolean, isCollapsed = false) =>
     'flex items-center rounded-md py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
-      ? 'bg-violet-500/25 text-violet-100 shadow-[0_0_14px_3px_rgba(167,139,250,0.55)]'
+      ? 'bg-violet-500/20 text-violet-100'
       : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
 
@@ -92,9 +92,38 @@ interface SidebarProps {
 
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { isAdmin, session } = useAuth();
+  const location = useLocation();
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
+  const [glowTop, setGlowTop] = useState<number | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+
+  useLayoutEffect(() => {
+    const navEl = navRef.current;
+    const wrapperEl = wrapperRef.current;
+    if (!navEl || !wrapperEl) return;
+
+    function recalc() {
+      const activeEl = navEl!.querySelector('a[aria-current="page"]');
+      if (!activeEl) {
+        setGlowTop(null);
+        return;
+      }
+      const rowRect = activeEl.getBoundingClientRect();
+      const wrapperRect = wrapperEl!.getBoundingClientRect();
+      setGlowTop(rowRect.top + rowRect.height / 2 - wrapperRect.top);
+    }
+
+    recalc();
+    navEl.addEventListener('scroll', recalc);
+    window.addEventListener('resize', recalc);
+    return () => {
+      navEl.removeEventListener('scroll', recalc);
+      window.removeEventListener('resize', recalc);
+    };
+  }, [location.pathname, collapsed, brandsOpen, adminOpen]);
 
   const header = (isCollapsed: boolean) => (
     <div className={`py-5 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
@@ -109,9 +138,9 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     </div>
   );
 
-  const navContent = (isCollapsed: boolean) => (
+  const navContent = (isCollapsed: boolean, trackedNavRef?: Ref<HTMLElement>) => (
     <>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav ref={trackedNavRef} className="flex-1 p-3 space-y-1 overflow-y-auto">
         {topLinks.map(({ to, label, icon, end }) => (
           <NavItem key={to} to={to} end={end} icon={icon} label={label} isCollapsed={isCollapsed} onClick={() => onClose?.()} />
         ))}
@@ -204,6 +233,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     <>
       {/* Desktop sidebar */}
       <div
+        ref={wrapperRef}
         className="hidden md:block relative shrink-0"
         onMouseEnter={() => collapsed && setHoverExpanded(true)}
         onMouseLeave={() => collapsed && setHoverExpanded(false)}
@@ -212,8 +242,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           className={`flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-60'}`}
         >
           {header(collapsed)}
-          {navContent(collapsed)}
+          {navContent(collapsed, navRef)}
         </aside>
+
+        {glowTop !== null && (
+          <div
+            aria-hidden="true"
+            style={{ top: glowTop }}
+            className={`pointer-events-none absolute z-[45] h-12 w-12 -translate-y-1/2 -translate-x-1/3 rounded-full bg-violet-400/60 blur-xl transition-[left] duration-200 ease-in-out ${collapsed ? 'left-16' : 'left-60'}`}
+          />
+        )}
 
         {collapsed && (
           <aside
