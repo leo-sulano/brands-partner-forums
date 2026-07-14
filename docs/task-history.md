@@ -1331,6 +1331,19 @@ Wizard of Odds' 4.5 scores were landing in the Unrated bucket on Score Summary i
 
 ---
 
-*Last updated: July 11, 2026*
+## Task 134: Sidebar Hover-to-Expand
+
+**Date:** July 14, 2026
+
+When the desktop sidebar is pinned collapsed (via the existing manual toggle), hovering the mouse over it now temporarily expands it as a floating overlay on top of page content — moving the mouse away collapses it back. Content never shifts or resizes.
+
+- `Sidebar.tsx` gained a `hoverExpanded` state; the in-flow `<aside>` still reserves its pinned width (`w-16`/`w-60`) so the layout never jumps, while a `fixed`-position overlay `<aside>` (reusing the existing `navContent`/new `header` helpers) fades in/out on hover, only ever mounting when pinned collapsed.
+- Task review caught two issues in the first pass: the overlay's `z-30` collided with `BrandGroup.tsx`'s sticky toolbar (`z-40`) and sticky frozen columns (`z-30`) in the same on-screen region, and the hidden overlay stayed keyboard-focusable (`pointer-events-none` doesn't remove elements from the tab order). Fixed by raising the overlay to `z-[45]` and adding `inert={!hoverExpanded}`.
+- Manual toggle, `App.tsx`, and `localStorage` persistence untouched; mobile drawer untouched.
+- Spec: `docs/superpowers/specs/2026-07-13-sidebar-hover-expand-design.md`. Plan: `docs/superpowers/plans/2026-07-13-sidebar-hover-expand.md`.
+
+---
+
+*Last updated: July 14, 2026*
 
 ---
