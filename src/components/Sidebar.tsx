@@ -96,33 +96,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
-  const [glowTop, setGlowTop] = useState<number | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
 
   useLayoutEffect(() => {
-    const navEl = navRef.current;
-    const wrapperEl = wrapperRef.current;
-    if (!navEl || !wrapperEl) return;
-
-    function recalc() {
-      const activeEl = navEl!.querySelector('a[aria-current="page"]');
-      if (!activeEl) {
-        setGlowTop(null);
-        return;
-      }
-      const rowRect = activeEl.getBoundingClientRect();
-      const wrapperRect = wrapperEl!.getBoundingClientRect();
-      setGlowTop(rowRect.top + rowRect.height / 2 - wrapperRect.top);
-    }
-
-    recalc();
-    navEl.addEventListener('scroll', recalc);
-    window.addEventListener('resize', recalc);
-    return () => {
-      navEl.removeEventListener('scroll', recalc);
-      window.removeEventListener('resize', recalc);
-    };
+    navRef.current?.querySelector('a[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
   }, [location.pathname, collapsed, brandsOpen, adminOpen]);
 
   const header = (isCollapsed: boolean) => (
@@ -233,7 +210,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     <>
       {/* Desktop sidebar */}
       <div
-        ref={wrapperRef}
         className="hidden md:block relative shrink-0"
         onMouseEnter={() => collapsed && setHoverExpanded(true)}
         onMouseLeave={() => collapsed && setHoverExpanded(false)}
@@ -244,14 +220,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           {header(collapsed)}
           {navContent(collapsed, navRef)}
         </aside>
-
-        {glowTop !== null && (
-          <div
-            aria-hidden="true"
-            style={{ top: glowTop }}
-            className={`pointer-events-none absolute z-[45] h-12 w-12 -translate-y-1/2 -translate-x-1/3 rounded-full bg-violet-400/60 blur-xl transition-[left] duration-200 ease-in-out ${collapsed ? 'left-16' : 'left-60'}`}
-          />
-        )}
 
         {collapsed && (
           <aside
