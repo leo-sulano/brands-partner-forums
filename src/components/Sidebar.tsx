@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
@@ -40,12 +40,43 @@ const topLinks = [
 
 const linkClass = (isActive: boolean, isCollapsed = false) =>
   [
-    'flex items-center rounded-md py-2 text-sm transition-colors',
+    'relative flex items-center rounded-md py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
       ? 'bg-violet-500/20 text-violet-100'
       : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
+
+function NavItem({ to, end, icon: Icon, label, isCollapsed, onClick, extra }: {
+  to: string;
+  end?: boolean;
+  icon: LucideIcon;
+  label: string;
+  isCollapsed: boolean;
+  onClick?: () => void;
+  extra?: ReactNode;
+}) {
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      onClick={onClick}
+      title={isCollapsed ? label : undefined}
+      className={({ isActive }) => linkClass(isActive, isCollapsed)}
+    >
+      {({ isActive }) => (
+        <>
+          {isActive && (
+            <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-violet-400" />
+          )}
+          <Icon className="size-4 shrink-0" />
+          {!isCollapsed && <span className="truncate flex-1">{label}</span>}
+          {!isCollapsed && extra}
+        </>
+      )}
+    </NavLink>
+  );
+}
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
@@ -88,18 +119,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const navContent = (isCollapsed: boolean) => (
     <>
       <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-        {topLinks.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            onClick={() => onClose?.()}
-            title={isCollapsed ? label : undefined}
-            className={({ isActive }) => linkClass(isActive, isCollapsed)}
-          >
-            <Icon className="size-4 shrink-0" />
-            {!isCollapsed && label}
-          </NavLink>
+        {topLinks.map(({ to, label, icon, end }) => (
+          <NavItem key={to} to={to} end={end} icon={icon} label={label} isCollapsed={isCollapsed} onClick={() => onClose?.()} />
         ))}
 
         {isCollapsed
@@ -120,16 +141,14 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           const Icon = TAB_ICONS[tab] ?? Syringe;
           const platforms = getTabPlatforms(tab);
           return (
-            <NavLink
+            <NavItem
               key={tab}
               to={`/brands/${tabToSlug(tab)}`}
+              icon={Icon}
+              label={tab}
+              isCollapsed={isCollapsed}
               onClick={() => onClose?.()}
-              title={isCollapsed ? tab : undefined}
-              className={({ isActive }) => linkClass(isActive, isCollapsed)}
-            >
-              <Icon className="size-4 shrink-0" />
-              {!isCollapsed && <span className="truncate flex-1">{tab}</span>}
-              {!isCollapsed && (
+              extra={
                 <span className="flex items-center gap-0.5 shrink-0">
                   {platforms.map((p) => (
                     <img
@@ -141,8 +160,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     />
                   ))}
                 </span>
-              )}
-            </NavLink>
+              }
+            />
           );
         })}
 
@@ -164,34 +183,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
             {adminOpen && (
               <>
-                <NavLink
-                  to="/score-summary"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Score Summary' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <BarChart3 className="size-4" />
-                  {!isCollapsed && 'Score Summary'}
-                </NavLink>
-                <NavLink
-                  to="/log"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Log' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <ScrollText className="size-4" />
-                  {!isCollapsed && 'Log'}
-                </NavLink>
+                <NavItem to="/score-summary" icon={BarChart3} label="Score Summary" isCollapsed={isCollapsed} onClick={() => onClose?.()} />
+                <NavItem to="/log" icon={ScrollText} label="Log" isCollapsed={isCollapsed} onClick={() => onClose?.()} />
                 {isAdmin && (
-                  <NavLink
-                    to="/admin/users"
-                    onClick={() => onClose?.()}
-                    title={isCollapsed ? 'Users' : undefined}
-                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                  >
-                    <Users className="size-4" />
-                    {!isCollapsed && 'Users'}
-                  </NavLink>
+                  <NavItem to="/admin/users" icon={Users} label="Users" isCollapsed={isCollapsed} onClick={() => onClose?.()} />
                 )}
               </>
             )}
