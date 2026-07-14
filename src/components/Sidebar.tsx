@@ -40,11 +40,11 @@ const topLinks = [
 
 const linkClass = (isActive: boolean, isCollapsed = false) =>
   [
-    'flex items-center rounded-md py-2 text-sm transition-colors',
+    'relative flex items-center py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
-      ? 'bg-violet-500/20 text-violet-100'
-      : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
+      ? 'bg-white text-slate-900 rounded-l-full'
+      : 'rounded-md text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
 
 function NavItem({ to, end, icon: Icon, label, isCollapsed, onClick, extra }: {
@@ -96,7 +96,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
-  const [glowTop, setGlowTop] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<{ top: number; right: number; height: number } | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
 
@@ -108,12 +108,16 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     function recalc() {
       const activeEl = navEl!.querySelector('a[aria-current="page"]');
       if (!activeEl) {
-        setGlowTop(null);
+        setActiveTab(null);
         return;
       }
       const rowRect = activeEl.getBoundingClientRect();
       const wrapperRect = wrapperEl!.getBoundingClientRect();
-      setGlowTop(rowRect.top + rowRect.height / 2 - wrapperRect.top);
+      setActiveTab({
+        top: rowRect.top - wrapperRect.top,
+        right: rowRect.right - wrapperRect.left,
+        height: rowRect.height,
+      });
     }
 
     navEl.querySelector('a[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
@@ -246,11 +250,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           {navContent(collapsed, navRef)}
         </aside>
 
-        {glowTop !== null && (
+        {activeTab !== null && (
           <div
             aria-hidden="true"
-            style={{ top: glowTop }}
-            className={`pointer-events-none absolute z-[45] h-12 w-12 -translate-y-1/2 -translate-x-1/3 rounded-full bg-violet-400/60 blur-xl transition-[left] duration-200 ease-in-out ${collapsed ? 'left-16' : 'left-60'}`}
+            style={{ top: activeTab.top, left: activeTab.right - 1, height: activeTab.height }}
+            className="pointer-events-none absolute z-[45] w-6 rounded-r-full bg-white transition-[left] duration-200 ease-in-out"
           />
         )}
 
