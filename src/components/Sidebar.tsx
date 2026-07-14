@@ -38,14 +38,27 @@ const topLinks = [
   { to: '/how-it-works', label: 'How it works', icon: BookOpen, end: true },
 ];
 
-const linkClass = (isActive: boolean, isCollapsed = false) =>
-  [
-    'flex items-center rounded-md py-2 text-sm transition-colors',
-    isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
-    isActive
-      ? 'bg-violet-500/20 text-violet-100'
-      : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
-  ].join(' ');
+const linkClass = (isActive: boolean, isCollapsed = false) => {
+  const base = 'flex items-center rounded-md py-2 text-sm transition-[background-color,color,margin-right] duration-200 ease-in-out';
+  const layout = isCollapsed ? 'justify-center px-0' : 'gap-3 px-3';
+
+  if (!isActive) {
+    return [base, layout, 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100'].join(' ');
+  }
+
+  if (isCollapsed) {
+    // Collapsed notch variant added in Task 2.
+    return [base, layout, 'bg-violet-500/20 text-violet-100'].join(' ');
+  }
+
+  const notch = [
+    'relative -mr-5 bg-white text-slate-900',
+    "before:content-[''] before:absolute before:-top-5 before:right-0 before:h-5 before:w-5 before:rounded-tl-full before:bg-white",
+    "after:content-[''] after:absolute after:-bottom-5 after:right-0 after:h-5 after:w-5 after:rounded-bl-full after:bg-white",
+  ];
+
+  return [base, layout, ...notch].join(' ');
+};
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
   return (
@@ -87,7 +100,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
   const navContent = (isCollapsed: boolean) => (
     <>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className={`flex-1 space-y-1 overflow-y-auto ${isCollapsed ? 'p-3' : 'pl-3 pt-5 pb-5 pr-8'}`}>
         {topLinks.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -221,7 +234,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         onMouseLeave={() => collapsed && setHoverExpanded(false)}
       >
         <aside
-          className={`flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-60'}`}
+          className={`flex flex-col h-screen bg-slate-900 text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-64'}`}
         >
           {header(collapsed)}
           {navContent(collapsed)}
@@ -230,7 +243,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         {collapsed && (
           <aside
             inert={!hoverExpanded}
-            className={`fixed inset-y-0 left-0 z-[45] w-60 flex flex-col bg-slate-900 text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
+            className={`fixed inset-y-0 left-0 z-[45] w-64 flex flex-col bg-slate-900 text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
               hoverExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
