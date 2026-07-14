@@ -67,7 +67,7 @@ function NavItem({ to, end, icon: Icon, label, isCollapsed, onClick, extra }: {
       {({ isActive }) => (
         <>
           {isActive && (
-            <span className="absolute -left-3 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full bg-violet-400" />
+            <span className="absolute right-0 top-1/2 h-6 w-1.5 -translate-y-1/2 rounded-full bg-violet-400" />
           )}
           <Icon className="size-4 shrink-0" />
           {!isCollapsed && <span className="truncate flex-1">{label}</span>}
