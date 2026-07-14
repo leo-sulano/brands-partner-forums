@@ -47,8 +47,12 @@ const linkClass = (isActive: boolean, isCollapsed = false) => {
   }
 
   if (isCollapsed) {
-    // Collapsed notch variant added in Task 2.
-    return [base, layout, 'bg-violet-500/20 text-violet-100'].join(' ');
+    const notch = [
+      'relative -mr-2.5 bg-white text-slate-900',
+      "before:content-[''] before:absolute before:-top-2.5 before:right-0 before:h-2.5 before:w-2.5 before:rounded-tl-full before:bg-white",
+      "after:content-[''] after:absolute after:-bottom-2.5 after:right-0 after:h-2.5 after:w-2.5 after:rounded-bl-full after:bg-white",
+    ];
+    return [base, layout, ...notch].join(' ');
   }
 
   const notch = [
