@@ -242,7 +242,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
       {/* Mobile drawer */}
       {open && (
-        <div className="md:hidden fixed inset-0 z-40 flex">
+        <div className="md:hidden fixed inset-0 z-[45] flex">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50"
