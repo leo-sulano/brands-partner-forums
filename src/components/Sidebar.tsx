@@ -40,10 +40,10 @@ const topLinks = [
 
 const linkClass = (isActive: boolean, isCollapsed = false) =>
   [
-    'relative flex items-center rounded-md py-2 text-sm transition-colors',
+    'flex items-center rounded-md py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
-      ? 'bg-violet-500/20 text-violet-100'
+      ? 'bg-violet-500/25 text-violet-100 shadow-[0_0_14px_3px_rgba(167,139,250,0.55)]'
       : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
   ].join(' ');
 
@@ -64,16 +64,9 @@ function NavItem({ to, end, icon: Icon, label, isCollapsed, onClick, extra }: {
       title={isCollapsed ? label : undefined}
       className={({ isActive }) => linkClass(isActive, isCollapsed)}
     >
-      {({ isActive }) => (
-        <>
-          {isActive && (
-            <span className="absolute right-0 top-1/2 h-6 w-1.5 -translate-y-1/2 rounded-full bg-violet-400" />
-          )}
-          <Icon className="size-4 shrink-0" />
-          {!isCollapsed && <span className="truncate flex-1">{label}</span>}
-          {!isCollapsed && extra}
-        </>
-      )}
+      <Icon className="size-4 shrink-0" />
+      {!isCollapsed && <span className="truncate flex-1">{label}</span>}
+      {!isCollapsed && extra}
     </NavLink>
   );
 }
