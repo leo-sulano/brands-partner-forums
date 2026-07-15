@@ -2095,23 +2095,23 @@ export default function BrandGroup() {
                           if (pageUrl) {
                             const href = pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`;
                             return (
-                              <td key={h} className="px-[10px] py-2">
+                              <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                                 <a
                                   href={href}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  className="flex max-w-[240px] items-start gap-1 text-sm font-medium text-blue-600 hover:underline"
+                                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
                                 >
-                                  <ExternalLink className="size-3 shrink-0 mt-0.5" />
-                                  <span className="whitespace-normal">{pageName}</span>
+                                  <ExternalLink className="size-3 shrink-0" />
+                                  {pageName}
                                 </a>
                               </td>
                             );
                           }
                           return (
-                            <td key={h} className="px-[10px] py-2">
-                              <span className="block max-w-[240px] whitespace-normal text-sm text-slate-600">{pageName}</span>
+                            <td key={h} className="px-[10px] py-2 whitespace-nowrap">
+                              <span className="text-slate-600 text-sm">{pageName}</span>
                             </td>
                           );
                         }
