@@ -2070,11 +2070,10 @@ export default function BrandGroup() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                title={brandName}
-                                className="flex max-w-[220px] items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                                className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
                               >
                                 <ExternalLink className="size-3 shrink-0" />
-                                <span className="min-w-0 truncate">{brandName}</span>
+                                {brandName}
                               </a>
                             </td>
                           );
@@ -2082,7 +2081,7 @@ export default function BrandGroup() {
                         if (brandName) {
                           return (
                             <td key={h} className="px-[10px] py-2">
-                              <span title={brandName} className="block max-w-[220px] truncate text-slate-600 text-sm">{brandName}</span>
+                              <span className="text-slate-600 text-sm">{brandName}</span>
                             </td>
                           );
                         }
@@ -2096,24 +2095,23 @@ export default function BrandGroup() {
                           if (pageUrl) {
                             const href = pageUrl.startsWith('http') ? pageUrl : `https://${pageUrl}`;
                             return (
-                              <td key={h} className="px-[10px] py-2">
+                              <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                                 <a
                                   href={href}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  title={pageName}
-                                  className="flex max-w-[220px] items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                                  className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
                                 >
                                   <ExternalLink className="size-3 shrink-0" />
-                                  <span className="min-w-0 truncate">{pageName}</span>
+                                  {pageName}
                                 </a>
                               </td>
                             );
                           }
                           return (
-                            <td key={h} className="px-[10px] py-2">
-                              <span title={pageName} className="block max-w-[220px] truncate text-slate-600 text-sm">{pageName}</span>
+                            <td key={h} className="px-[10px] py-2 whitespace-nowrap">
+                              <span className="text-slate-600 text-sm">{pageName}</span>
                             </td>
                           );
                         }
@@ -2145,11 +2143,10 @@ export default function BrandGroup() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={(e) => e.stopPropagation()}
-                                title={brandName}
-                                className="flex max-w-[220px] items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                                className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
                               >
                                 <ExternalLink className="size-3 shrink-0" />
-                                <span className="min-w-0 truncate">{brandName}</span>
+                                {brandName}
                               </a>
                             </td>
                           );
