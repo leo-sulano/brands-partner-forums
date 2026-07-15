@@ -1940,11 +1940,12 @@ export default function BrandGroup() {
                       )}
                       {visibleHeaders.map((h) => {
                         const isFrozenCol = h === 'Account' || h === 'Account Name';
+                        const isBrandCol = h === 'Brands' || h === 'Brand Name' || h === 'Brand' || h === 'Brand / TP URL PAGE';
                         return (
                         <th
                           key={h}
                           onClick={() => handleSort(h)}
-                          style={{ top: toolbarHeight }}
+                          style={{ top: toolbarHeight, ...(isBrandCol ? { width: 470, minWidth: 470 } : {}) }}
                           className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 will-change-transform ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
