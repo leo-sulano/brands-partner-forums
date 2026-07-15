@@ -1899,7 +1899,7 @@ export default function BrandGroup() {
         )}
         </div>
 
-          <table className="min-w-max w-full text-sm">
+          <table className="min-w-max text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
                 {loading
