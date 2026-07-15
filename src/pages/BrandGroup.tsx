@@ -1899,7 +1899,7 @@ export default function BrandGroup() {
         )}
         </div>
 
-          <table className="min-w-max text-sm">
+          <table className="min-w-max w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-left">
                 {loading
@@ -1954,6 +1954,10 @@ export default function BrandGroup() {
                         </th>
                         );
                       })}
+                      {/* Filler column: absorbs leftover table width so a wide
+                          container doesn't stretch the widest real column
+                          (e.g. Brand) with a disproportionate gap. */}
+                      <th className="sticky bg-slate-50 will-change-transform z-[25]" style={{ top: toolbarHeight }} />
                     </>
                 }
               </tr>
@@ -1971,7 +1975,7 @@ export default function BrandGroup() {
                 ))
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={(isApproved ? visibleHeaders.length + 1 : visibleHeaders.length) || 5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={(isApproved ? visibleHeaders.length + 2 : visibleHeaders.length + 1) || 5} className="px-4 py-8 text-center text-slate-400">
                     {search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Check Status page.'}
                   </td>
                 </tr>
@@ -2269,6 +2273,7 @@ export default function BrandGroup() {
                         </td>
                       );
                     })}
+                    <td />
                   </tr>
                   );
                 })
