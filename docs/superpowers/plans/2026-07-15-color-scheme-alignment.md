@@ -14,6 +14,7 @@
 - Casino Guru's platform badge/dot stays violet in exactly these 5 spots (do not rename): `src/components/Topbar.tsx` line with `cg: 'bg-violet-100 text-violet-700 border border-violet-200'`; `src/pages/Overview.tsx` line with `cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', ...}`; `src/pages/BrandGroup.tsx` both `{ ..., label: 'Casino Guru', dot: 'bg-violet-500' }` lines (there are two, at different line numbers for two separate dropdown components).
 - Topbar's `AVATAR_COLORS` array keeps `'bg-violet-500'` as its first entry (decorative, not accent chrome) — do not rename.
 - Sidebar's `border-slate-800` header/footer borders are unchanged — only `bg-slate-900` (the panel background) becomes `bg-indigo-950`.
+- `src/components/TimeSeriesChart.tsx:35`'s hardcoded `stroke="#4f46e5"` is this task's single accent color (found during Task 1 review, not in the original file list) and becomes `#2563eb`. `src/pages/Overview.tsx`'s `PLATFORM_COLORS.WizardOfOdds: '#6366f1'` is a categorical platform color (distinct from Trustpilot's blue in the same legend) and must NOT change.
 - Verification is `npm run build` (this project's `tsc --noEmit` alone does not catch everything — always use the full build).
 - No deploy in this pass — local (`npm run dev`) only.
 
@@ -116,11 +117,14 @@ git commit -m "style: sidebar background from slate-900 to indigo-950"
 
 ---
 
-### Task 3: Bulk rename `violet-*` → `blue-*` accent classes (with Casino Guru / avatar exceptions)
+### Task 3: Bulk rename `violet-*` → `blue-*` accent classes (with Casino Guru / avatar exceptions), plus one hardcoded hex accent
 
 **Files:**
 - Modify (blanket replace, all 23): `src/pages/ActivityLog.tsx`, `src/pages/AdminUsers.tsx`, `src/components/EditEntryModal.tsx`, `src/pages/HowItWorks.tsx`, `src/pages/MentionDetail.tsx`, `src/components/DatePicker.tsx`, `src/pages/Login.tsx`, `src/components/BrandTabsModal.tsx`, `src/pages/BrandGroup.tsx`, `src/components/AddReviewAccountModal.tsx`, `src/components/TotalBreakdownModal.tsx`, `src/components/AssistantWidget.tsx`, `src/pages/Signup.tsx`, `src/components/SelectDropdown.tsx`, `src/components/Topbar.tsx`, `src/pages/AskAI.tsx`, `src/components/ScoreSummaryPanel.tsx`, `src/pages/Overview.tsx`, `src/components/BrandSelectDropdown.tsx`, `src/pages/ResetPassword.tsx`, `src/components/ProtectedRoute.tsx`, `src/components/Sidebar.tsx`, `src/components/MentionsTable.tsx`
 - Then revert (5 exception lines): `src/components/Topbar.tsx`, `src/pages/Overview.tsx`, `src/pages/BrandGroup.tsx` (×2)
+- Modify (1 hardcoded hex, found during Task 1 review): `src/components/TimeSeriesChart.tsx:35`
+
+**Note on the hardcoded hex fix:** `TimeSeriesChart.tsx`'s `<Line stroke="#4f46e5" .../>` is this chart's single accent line color (old indigo `--color-brand-600` value, hardcoded instead of using the token) — not a categorical/multi-series color, so it follows the same accent→blue rule as everything else in this task. This is different from `src/pages/Overview.tsx`'s `PLATFORM_COLORS.WizardOfOdds: '#6366f1'`, which is one of 4 categorical platform-distinguishing colors in a donut/legend that already includes Trustpilot at blue (`#3b82f6`) — changing WizardOfOdds to blue too would make two platforms in the same legend visually collide, so that one is explicitly OUT of scope and must NOT be changed (same reasoning as the Casino Guru badge exceptions below).
 
 **Interfaces:**
 - No exported interface changes — visual only.
@@ -161,7 +165,19 @@ Expected: command exits 0, no output.
 Run: `grep -rn "violet-" src/`
 Expected: no matches (0 results). This confirms Step 1 ran across every file that had `violet-`.
 
-- [ ] **Step 3: Revert the Casino Guru platform badge in `Topbar.tsx`**
+- [ ] **Step 3: Fix the hardcoded hex accent in `TimeSeriesChart.tsx`**
+
+At `src/components/TimeSeriesChart.tsx:35`:
+```tsx
+                stroke="#4f46e5"
+```
+becomes:
+```tsx
+                stroke="#2563eb"
+```
+Do NOT touch `src/pages/Overview.tsx`'s `PLATFORM_COLORS.WizardOfOdds: '#6366f1'` — that one is a categorical platform-distinguishing color (see the task header note above) and must stay indigo.
+
+- [ ] **Step 4: Revert the Casino Guru platform badge in `Topbar.tsx`**
 
 Find (now reads, after Step 1's replace):
 ```tsx
@@ -172,7 +188,7 @@ in the `PLATFORM_BADGE_CLS` object (originally `src/components/Topbar.tsx:20`). 
   cg: 'bg-violet-100 text-violet-700 border border-violet-200',
 ```
 
-- [ ] **Step 4: Revert the avatar color in `Topbar.tsx`**
+- [ ] **Step 5: Revert the avatar color in `Topbar.tsx`**
 
 Find (now reads, after Step 1's replace) inside the `AVATAR_COLORS` array (originally `src/components/Topbar.tsx:25`):
 ```tsx
@@ -197,7 +213,7 @@ const AVATAR_COLORS = [
 ];
 ```
 
-- [ ] **Step 5: Revert the Casino Guru platform badge in `Overview.tsx`**
+- [ ] **Step 6: Revert the Casino Guru platform badge in `Overview.tsx`**
 
 Find (now reads, after Step 1's replace), in the `PLATFORM_BADGE` object (originally `src/pages/Overview.tsx:61`):
 ```tsx
@@ -208,7 +224,7 @@ Change back to:
   cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
 ```
 
-- [ ] **Step 6: Revert both Casino Guru dropdown-option dots in `BrandGroup.tsx`**
+- [ ] **Step 7: Revert both Casino Guru dropdown-option dots in `BrandGroup.tsx`**
 
 `BrandGroup.tsx` has two separate platform-filter dropdown option lists, each with a `cg` entry (originally at `src/pages/BrandGroup.tsx:335` and `:444`). Find both occurrences (now reading, after Step 1's replace):
 ```tsx
@@ -227,7 +243,7 @@ and
   { key: 'cg' as const, label: 'Casino Guru', dot: 'bg-violet-500' },
 ```
 
-- [ ] **Step 7: Verify exactly 5 `violet-` occurrences remain, in the expected files**
+- [ ] **Step 8: Verify exactly 5 `violet-` occurrences remain, in the expected files**
 
 Run: `grep -rn "violet-" src/ | wc -l`
 Expected: `5`
@@ -235,12 +251,17 @@ Expected: `5`
 Run: `grep -rln "violet-" src/`
 Expected: exactly three files listed — `src/components/Topbar.tsx` (2 matches: CG badge + avatar color), `src/pages/Overview.tsx` (1 match: CG badge), `src/pages/BrandGroup.tsx` (2 matches: both CG dropdown dots).
 
-- [ ] **Step 8: Run the build**
+- [ ] **Step 9: Verify the `TimeSeriesChart.tsx` fix and the untouched `WizardOfOdds` color**
+
+Run: `grep -n "#4f46e5\|#2563eb\|#6366f1" src/components/TimeSeriesChart.tsx src/pages/Overview.tsx`
+Expected: `src/components/TimeSeriesChart.tsx` shows `#2563eb` (not `#4f46e5`); `src/pages/Overview.tsx` still shows `#6366f1` for `WizardOfOdds` (unchanged).
+
+- [ ] **Step 10: Run the build**
 
 Run: `npm run build`
 Expected: build succeeds (exit code 0), no TypeScript or CSS errors.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
 git add -A
