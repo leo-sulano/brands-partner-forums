@@ -31,7 +31,7 @@ const ACTION_META: Record<AdminAction, { label: string; icon: React.ReactNode; c
   approve:      { label: 'User approved',       icon: <UserCheck className="size-4 shrink-0" />,  color: 'text-green-500' },
   revoke:       { label: 'Access revoked',       icon: <UserX className="size-4 shrink-0" />,      color: 'text-amber-500' },
   remove:       { label: 'User removed',         icon: <Trash2 className="size-4 shrink-0" />,     color: 'text-rose-500' },
-  make_admin:   { label: 'Promoted to admin',    icon: <ShieldCheck className="size-4 shrink-0" />, color: 'text-violet-500' },
+  make_admin:   { label: 'Promoted to admin',    icon: <ShieldCheck className="size-4 shrink-0" />, color: 'text-blue-500' },
   remove_admin: { label: 'Admin role removed',   icon: <ShieldOff className="size-4 shrink-0" />,  color: 'text-slate-400' },
 };
 
@@ -101,7 +101,7 @@ function ActivityFeed() {
               key={`edit-${edit.id}`}
               className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
             >
-              <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />
+              <Pencil className="mt-0.5 size-4 shrink-0 text-blue-500" />
               <div className="min-w-0 flex-1">
                 <span className="text-sm font-medium text-slate-800">
                   Entry edited{edit.editor ? <span className="font-normal text-slate-500"> by {edit.editor}</span> : null}
@@ -231,7 +231,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
               <div className="flex items-start gap-3">
                 {kind === 'deletes'
                   ? <Trash2 className="mt-0.5 size-4 shrink-0 text-rose-500" />
-                  : <Pencil className="mt-0.5 size-4 shrink-0 text-violet-500" />}
+                  : <Pencil className="mt-0.5 size-4 shrink-0 text-blue-500" />}
                 <div className="min-w-0 flex-1">
                   <span className="text-sm font-medium text-slate-800">
                     {entry.entity_type === 'account' ? 'Account' : 'Row'} {kind === 'deletes' ? 'deleted' : 'edited'}
@@ -240,7 +240,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
                   <p className="mt-0.5 text-xs text-slate-500">{entityLabel(entry)}</p>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : entry.id)}
-                    className="mt-1 text-xs text-violet-600 hover:underline"
+                    className="mt-1 text-xs text-blue-600 hover:underline"
                   >
                     {isExpanded ? 'Hide details' : 'View details'}
                   </button>
@@ -263,13 +263,13 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
                       <span className="flex items-center gap-1">
                         <button
                           onClick={() => handleRestore(entry.id)}
-                          className="rounded bg-violet-600 px-2 py-1 text-xs font-medium text-white hover:bg-violet-700 transition-colors"
+                          className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
                         >
                           Confirm
                         </button>
                         <button
                           onClick={() => setConfirmId(null)}
-                          className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-violet-50 transition-colors"
+                          className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-blue-50 transition-colors"
                         >
                           Cancel
                         </button>
@@ -277,7 +277,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
                     ) : (
                       <button
                         onClick={() => setConfirmId(entry.id)}
-                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-50 transition-colors"
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
                       >
                         <RotateCcw className="size-3.5" />
                         Restore
@@ -300,7 +300,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={safePage === 1}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-blue-50 transition-colors"
             >
               <ChevronLeft className="size-4" /> Prev
             </button>
@@ -308,7 +308,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={safePage === totalPages}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-blue-50 transition-colors"
             >
               Next <ChevronRight className="size-4" />
             </button>
@@ -401,7 +401,7 @@ export default function ActivityLog() {
             onClick={() => setTab(t)}
             className={[
               '-mb-px border-b-2 px-3 py-2 text-sm font-medium capitalize transition-colors',
-              tab === t ? 'border-violet-600 text-violet-700' : 'border-transparent text-slate-500 hover:text-slate-700',
+              tab === t ? 'border-blue-600 text-blue-700' : 'border-transparent text-slate-500 hover:text-slate-700',
             ].join(' ')}
           >
             {t}

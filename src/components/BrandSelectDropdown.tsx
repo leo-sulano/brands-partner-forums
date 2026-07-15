@@ -40,18 +40,18 @@ export default function BrandSelectDropdown({ value, onChange, brands, disabled 
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex w-full items-center justify-between gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 ${
           value
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:bg-violet-50'
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50'
         }`}
       >
         <span className="flex items-center gap-1.5 truncate">
-          {value && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
+          {value && <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />}
           <span className="truncate">{value || '— Select brand —'}</span>
         </span>
         {value ? (
           <span
             onClick={(e) => { e.stopPropagation(); onChange(''); }}
-            className="ml-0.5 shrink-0 text-violet-400 hover:text-violet-600 transition-colors"
+            className="ml-0.5 shrink-0 text-blue-400 hover:text-blue-600 transition-colors"
           >
             <X className="size-3.5" />
           </span>
@@ -83,19 +83,19 @@ export default function BrandSelectDropdown({ value, onChange, brands, disabled 
               <button
                 type="button"
                 onClick={() => { onChange(trimmedSearch); setOpen(false); }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-violet-700 transition-colors hover:bg-violet-50"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs font-medium text-blue-700 transition-colors hover:bg-blue-50"
               >
-                <Plus className="size-3 shrink-0 text-violet-500" />
+                <Plus className="size-3 shrink-0 text-blue-500" />
                 <span className="flex-1 truncate">Add "{trimmedSearch}"</span>
               </button>
             )}
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${!value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
             >
               <span className="flex-1">— Select brand —</span>
-              {!value && <Check className="size-3 text-violet-500" />}
+              {!value && <Check className="size-3 text-blue-500" />}
             </button>
             {visible.length === 0 && !showAddOption && (
               <div className="px-3 py-4 text-center text-xs text-slate-400">No brands match</div>
@@ -105,10 +105,10 @@ export default function BrandSelectDropdown({ value, onChange, brands, disabled 
                 key={brand}
                 type="button"
                 onClick={() => { onChange(brand); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${brand === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${brand === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
               >
                 <span className="flex-1 truncate">{brand}</span>
-                {brand === value && <Check className="size-3 text-violet-500" />}
+                {brand === value && <Check className="size-3 text-blue-500" />}
               </button>
             ))}
           </div>

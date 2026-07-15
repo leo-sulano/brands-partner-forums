@@ -94,7 +94,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+          className="rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
           aria-label={collapsed ? 'Expand score summary' : 'Collapse score summary'}
         >
           <ChevronDown
@@ -166,7 +166,7 @@ function PlatformFilter({
           } ${
             opt.value === value
               ? 'bg-slate-800 text-white'
-              : 'text-slate-600 hover:bg-violet-50'
+              : 'text-slate-600 hover:bg-blue-50'
           }`}
         >
           <img
@@ -211,16 +211,16 @@ function TabFilterDropdown({
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:bg-violet-50'
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
         }`}
       >
-        {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
+        {active && <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />}
         <span className="max-w-[10rem] truncate">{active ? value : 'All brands'}</span>
         {active ? (
           <span
             onClick={(e) => { e.stopPropagation(); onChange(''); }}
-            className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors"
+            className="ml-0.5 text-blue-400 hover:text-blue-600 transition-colors"
             role="button"
             aria-label="Clear brand filter"
           >
@@ -237,12 +237,12 @@ function TabFilterDropdown({
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${
-                !value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${
+                !value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'
               }`}
             >
               <span className="flex-1">All brands</span>
-              {!value && <Check className="size-3 text-violet-500" />}
+              {!value && <Check className="size-3 text-blue-500" />}
             </button>
             {options.length === 0 && (
               <div className="px-3 py-4 text-center text-xs text-slate-400">No brands available</div>
@@ -252,12 +252,12 @@ function TabFilterDropdown({
                 key={opt}
                 type="button"
                 onClick={() => { onChange(opt); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${
-                  opt === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${
+                  opt === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'
                 }`}
               >
                 <span className="flex-1 truncate">{opt}</span>
-                {opt === value && <Check className="size-3 text-violet-500" />}
+                {opt === value && <Check className="size-3 text-blue-500" />}
               </button>
             ))}
           </div>
@@ -308,7 +308,7 @@ function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; ma
               <button
                 type="button"
                 onClick={() => toggle(tab)}
-                className="rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+                className="rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
                 aria-label={isCollapsed ? `Expand ${tab}` : `Collapse ${tab}`}
               >
                 <ChevronDown
@@ -395,14 +395,14 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.map((r) => (
-            <tr key={`${r.tab}|${r.brand}`} className="hover:bg-violet-50/60">
+            <tr key={`${r.tab}|${r.brand}`} className="hover:bg-blue-50/60">
               {showGroup && (
                 <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={r.tab}>{r.tab}</td>
               )}
               <td className="px-3 py-1.5 truncate" title={r.brand}>
                 <Link
                   to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
-                  className="font-medium text-slate-800 hover:text-violet-600 hover:underline"
+                  className="font-medium text-slate-800 hover:text-blue-600 hover:underline"
                 >
                   {r.brand}
                 </Link>
@@ -417,7 +417,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                   {r.counts[s] > 0 ? (
                     <Link
                       to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=${s}`}
-                      className="hover:text-violet-600 hover:underline"
+                      className="hover:text-blue-600 hover:underline"
                     >
                       {r.counts[s].toLocaleString()}
                     </Link>
@@ -430,7 +430,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 {r.unrated > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=unrated`}
-                    className="hover:text-violet-600 hover:underline"
+                    className="hover:text-blue-600 hover:underline"
                   >
                     {r.unrated.toLocaleString()}
                   </Link>
@@ -442,7 +442,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 {r.total > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=any`}
-                    className="hover:text-violet-600 hover:underline"
+                    className="hover:text-blue-600 hover:underline"
                   >
                     {r.total.toLocaleString()}
                   </Link>
@@ -463,7 +463,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                     ? `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&brand=${encodeURIComponent(rows[0].brand)}&rating=any`
                     : `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`
                 }
-                className="font-medium text-slate-800 hover:text-violet-600 hover:underline"
+                className="font-medium text-slate-800 hover:text-blue-600 hover:underline"
               >
                 Total
               </Link>
@@ -478,7 +478,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 {totals.counts[s] > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=${s}`}
-                    className="hover:text-violet-600 hover:underline"
+                    className="hover:text-blue-600 hover:underline"
                   >
                     {totals.counts[s].toLocaleString()}
                   </Link>
@@ -491,7 +491,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               {totals.unrated > 0 ? (
                 <Link
                   to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=unrated`}
-                  className="hover:text-violet-600 hover:underline"
+                  className="hover:text-blue-600 hover:underline"
                 >
                   {totals.unrated.toLocaleString()}
                 </Link>
@@ -503,7 +503,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               {totals.total > 0 ? (
                 <Link
                   to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`}
-                  className="hover:text-violet-600 hover:underline"
+                  className="hover:text-blue-600 hover:underline"
                 >
                   {totals.total.toLocaleString()}
                 </Link>

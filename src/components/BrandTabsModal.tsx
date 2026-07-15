@@ -37,7 +37,7 @@ export default function BrandTabsModal({ onClose }: Props) {
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -51,7 +51,7 @@ export default function BrandTabsModal({ onClose }: Props) {
                 key={tab}
                 to={`/brands/${tabToSlug(tab)}`}
                 onClick={onClose}
-                className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-2.5 hover:bg-violet-50 hover:border-violet-200 transition-colors"
+                className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-2.5 hover:bg-blue-50 hover:border-blue-200 transition-colors"
               >
                 <span className="text-sm font-medium text-slate-700 truncate">{tab}</span>
                 <span className="flex items-center gap-1 shrink-0 ml-2">

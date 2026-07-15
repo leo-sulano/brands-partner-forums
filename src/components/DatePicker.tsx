@@ -64,14 +64,14 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
         onClick={() => setOpen(v => !v)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:bg-violet-50'
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50'
         }`}
       >
         <CalendarDays className="size-3.5 shrink-0" />
         <span className="hidden sm:inline">{active ? isoToDisplay(value) : placeholder}</span>
         {active ? (
-          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
+          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-blue-400 hover:text-blue-600 transition-colors">
             <X className="size-3" />
           </span>
         ) : (
@@ -82,11 +82,11 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
       {open && (
         <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-full z-[200] mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl`}>
           <div className="mb-3 flex items-center justify-between">
-            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
+            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-blue-50 transition-colors">
               <ChevronLeft className="size-4" />
             </button>
             <span className="text-sm font-semibold text-slate-700">{MONTH_NAMES[viewMonth]} {viewYear}</span>
-            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
+            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-blue-50 transition-colors">
               <ChevronRight className="size-4" />
             </button>
           </div>
@@ -109,10 +109,10 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
                   disabled={dis}
                   onClick={() => { onChange(toIso(day)); setOpen(false); }}
                   className={`flex h-8 w-full items-center justify-center rounded-lg text-xs transition-colors ${
-                    sel ? 'bg-violet-600 font-semibold text-white'
+                    sel ? 'bg-blue-600 font-semibold text-white'
                     : dis ? 'cursor-not-allowed text-slate-300'
-                    : tod ? 'bg-violet-200 border border-violet-500 font-medium text-[oklch(0.48_0.03_267.99)] hover:bg-violet-300'
-                    : 'text-slate-700 hover:bg-violet-50'
+                    : tod ? 'bg-blue-200 border border-blue-500 font-medium text-[oklch(0.48_0.03_267.99)] hover:bg-blue-300'
+                    : 'text-slate-700 hover:bg-blue-50'
                   }`}
                 >
                   {day}

@@ -21,7 +21,7 @@ interface FeatureSection {
 
 const ICON_COLOR_CLASSES: Record<IconColor, string> = {
   blue:    'bg-blue-50 text-blue-500',
-  violet:  'bg-violet-50 text-violet-500',
+  violet:  'bg-blue-50 text-blue-500',
   emerald: 'bg-emerald-50 text-emerald-500',
   amber:   'bg-amber-50 text-amber-500',
   rose:    'bg-rose-50 text-rose-500',
@@ -142,7 +142,7 @@ export default function HowItWorks() {
           <ol className="space-y-2">
             {GETTING_STARTED_STEPS.map((step, i) => (
               <li key={step} className="flex gap-3 text-sm text-slate-600">
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-violet-50 text-xs font-semibold text-violet-600">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-600">
                   {i + 1}
                 </span>
                 <span>{step}</span>
@@ -183,7 +183,7 @@ export default function HowItWorks() {
           {FEATURES.map((f) => {
             const clickable = Boolean(f.href) && (!f.adminOnly || isAdmin);
             const opensModal = f.title === 'Brand Tabs';
-            const cardClass = `rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 transition-shadow ${(clickable || opensModal) ? 'hover:shadow-md hover:border-violet-300 cursor-pointer' : ''}`;
+            const cardClass = `rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5 transition-shadow ${(clickable || opensModal) ? 'hover:shadow-md hover:border-blue-300 cursor-pointer' : ''}`;
             const content = (
               <div className="flex items-start gap-3">
                 <div
@@ -195,7 +195,7 @@ export default function HowItWorks() {
                   <div className="flex items-center gap-2">
                     <h2 className="font-semibold text-slate-900">{f.title}</h2>
                     {f.adminOnly && (
-                      <span className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 bg-violet-50 border border-violet-200 rounded px-1.5 py-0.5">
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-blue-600 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5">
                         Admin
                       </span>
                     )}

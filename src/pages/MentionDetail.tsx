@@ -109,7 +109,7 @@ export default function MentionDetail() {
                 'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 mention.status === s
                   ? 'bg-brand-600 text-white cursor-default'
-                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-violet-50',
+                  : 'border border-slate-300 bg-white text-slate-700 hover:bg-blue-50',
               ].join(' ')}
             >
               Mark as {s}

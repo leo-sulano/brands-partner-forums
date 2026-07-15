@@ -38,8 +38,8 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex w-full items-center justify-between gap-1.5 rounded-md border px-3 py-2 text-sm transition-colors disabled:opacity-50 ${
           value
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:bg-violet-50'
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50'
         }`}
       >
         <span className="flex items-center gap-1.5 truncate min-w-0">
@@ -49,7 +49,7 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
         {value ? (
           <span
             onClick={(e) => { e.stopPropagation(); onChange(''); }}
-            className="ml-0.5 shrink-0 text-violet-400 hover:text-violet-600 transition-colors"
+            className="ml-0.5 shrink-0 text-blue-400 hover:text-blue-600 transition-colors"
           >
             <X className="size-3.5" />
           </span>
@@ -63,21 +63,21 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
           <button
             type="button"
             onClick={() => { onChange(''); setOpen(false); }}
-            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-500'}`}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${!value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-500'}`}
           >
             <span className="flex-1">{placeholder}</span>
-            {!value && <Check className="size-3 text-violet-500" />}
+            {!value && <Check className="size-3 text-blue-500" />}
           </button>
           {options.map((opt) => (
             <button
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${opt.value === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${opt.value === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
             >
               {opt.dot && <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />}
               <span className="flex-1">{opt.label}</span>
-              {opt.value === value && <Check className="size-3 text-violet-500" />}
+              {opt.value === value && <Check className="size-3 text-blue-500" />}
             </button>
           ))}
         </div>

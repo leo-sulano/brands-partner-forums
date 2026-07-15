@@ -248,7 +248,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               }
             }}
             placeholder={isLinkCol(h) ? 'https://…' : '—'}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
           />
         )}
       </div>
@@ -268,7 +268,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           </div>
           <button
             onClick={onClose}
-            className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+            className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -389,14 +389,14 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           <button
             onClick={onClose}
             disabled={saving}
-            className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-violet-50 disabled:opacity-50 transition-colors"
+            className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
           >
             Cancel
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+            className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
           >
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
             {saving ? 'Saving…' : 'Save Changes'}

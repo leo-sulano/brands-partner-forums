@@ -30,7 +30,7 @@ export default function MentionsTable({ mentions, emptyLabel = 'No mentions yet.
         </thead>
         <tbody className="divide-y divide-slate-100">
           {mentions.map((m) => (
-            <tr key={m.id} className="hover:bg-violet-50">
+            <tr key={m.id} className="hover:bg-blue-50">
               <td className="px-4 py-3">
                 <Link
                   to={`/mentions/${m.id}`}

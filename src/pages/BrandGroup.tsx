@@ -292,7 +292,7 @@ function FilterDropdown<T extends string>({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-violet-50 hover:border-violet-200 transition-colors"
+        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-blue-50 hover:border-blue-200 transition-colors"
       >
         {selected?.dot && <span className={`size-1.5 shrink-0 rounded-full ${selected.dot}`} />}
         {selected?.label}
@@ -305,11 +305,11 @@ function FilterDropdown<T extends string>({
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${opt.value === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${opt.value === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
             >
               {opt.dot && <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />}
               <span className="flex-1">{opt.label}</span>
-              {opt.value === value && <Check className="size-3 text-violet-500" />}
+              {opt.value === value && <Check className="size-3 text-blue-500" />}
             </button>
           ))}
         </div>
@@ -372,14 +372,14 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
         onClick={() => setOpen((v) => !v)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-violet-200 hover:bg-violet-50'
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
         }`}
       >
-        {active && <span className="size-1.5 shrink-0 rounded-full bg-violet-500" />}
+        {active && <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />}
         <span className="max-w-[9rem] truncate">{active ? value : `All ${noun}s`}</span>
         {active ? (
-          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
+          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-blue-400 hover:text-blue-600 transition-colors">
             <X className="size-3" />
           </span>
         ) : (
@@ -405,10 +405,10 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${!value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${!value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
             >
               <span className="flex-1">{`All ${noun}s`}</span>
-              {!value && <Check className="size-3 text-violet-500" />}
+              {!value && <Check className="size-3 text-blue-500" />}
             </button>
             {visible.length === 0 && (
               <div className="px-3 py-4 text-center text-xs text-slate-400">No {noun}s match</div>
@@ -418,10 +418,10 @@ function BrandFilterDropdown({ value, onChange, brands, noun = 'brand' }: {
                 key={brand}
                 type="button"
                 onClick={() => { onChange(brand); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-violet-50 ${brand === value ? 'font-medium text-violet-700 bg-violet-50/60' : 'text-slate-600'}`}
+                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${brand === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
               >
                 <span className="flex-1 truncate">{brand}</span>
-                {brand === value && <Check className="size-3 text-violet-500" />}
+                {brand === value && <Check className="size-3 text-blue-500" />}
               </button>
             ))}
           </div>
@@ -505,14 +505,14 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
         onClick={() => setOpen(v => !v)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
-            ? 'border-violet-300 bg-violet-50 text-violet-700'
-            : 'border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:bg-violet-50'
+            ? 'border-blue-300 bg-blue-50 text-blue-700'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50'
         }`}
       >
         <CalendarDays className="size-3.5 shrink-0" />
         <span>{active ? isoToDisplay(value) : placeholder}</span>
         {active ? (
-          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-violet-400 hover:text-violet-600 transition-colors">
+          <span onClick={(e) => { e.stopPropagation(); onChange(''); }} className="ml-0.5 text-blue-400 hover:text-blue-600 transition-colors">
             <X className="size-3" />
           </span>
         ) : (
@@ -524,11 +524,11 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
         <div className="absolute left-0 top-full z-[200] mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
           {/* Header */}
           <div className="mb-3 flex items-center justify-between">
-            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
+            <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-blue-50 transition-colors">
               <ChevronLeft className="size-4" />
             </button>
             <span className="text-sm font-semibold text-slate-700">{MONTH_NAMES[viewMonth]} {viewYear}</span>
-            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-violet-50 transition-colors">
+            <button type="button" onClick={nextMonth} className="rounded-md p-1 text-slate-500 hover:bg-blue-50 transition-colors">
               <ChevronRight className="size-4" />
             </button>
           </div>
@@ -553,10 +553,10 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
                   disabled={dis}
                   onClick={() => { onChange(toIso(day)); setOpen(false); }}
                   className={`flex h-8 w-full items-center justify-center rounded-lg text-xs transition-colors ${
-                    sel ? 'bg-violet-600 font-semibold text-white'
+                    sel ? 'bg-blue-600 font-semibold text-white'
                     : dis ? 'cursor-not-allowed text-slate-300'
-                    : tod ? 'border border-violet-300 font-medium text-violet-600 hover:bg-violet-50'
-                    : 'text-slate-700 hover:bg-violet-50'
+                    : tod ? 'border border-blue-300 font-medium text-blue-600 hover:bg-blue-50'
+                    : 'text-slate-700 hover:bg-blue-50'
                   }`}
                 >
                   {day}
@@ -573,8 +573,8 @@ function DatePicker({ value, onChange, placeholder, min, max }: {
 function SortIcon({ col, sortCol, sortDir }: { col: string; sortCol: string | null; sortDir: 'asc' | 'desc' }) {
   if (sortCol !== col) return <ChevronsUpDown className="size-3 text-slate-400 shrink-0" />;
   return sortDir === 'desc'
-    ? <ChevronUp className="size-3 text-violet-600 shrink-0" />
-    : <ChevronDown className="size-3 text-violet-600 shrink-0" />;
+    ? <ChevronUp className="size-3 text-blue-600 shrink-0" />
+    : <ChevronDown className="size-3 text-blue-600 shrink-0" />;
 }
 
 function sortStorageKey(tab: string) {
@@ -1591,7 +1591,7 @@ export default function BrandGroup() {
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors"
           >
             <Plus className="size-4" />
             Add Review Account
@@ -1650,7 +1650,7 @@ export default function BrandGroup() {
                   });
                   setPage(1);
                 }}
-                className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-violet-400 bg-violet-50 ring-1 ring-violet-200' : 'border-slate-200 bg-white hover:border-violet-200 hover:bg-violet-50'}`}
+                className={`rounded-lg border p-4 text-left transition-all shadow-sm ${active ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-200' : 'border-slate-200 bg-white hover:border-blue-200 hover:bg-blue-50'}`}
               >
                 <div className="flex items-center gap-2 mb-3">
                   <img
@@ -1660,7 +1660,7 @@ export default function BrandGroup() {
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
-                  {active && <Check className="size-3 ml-auto text-violet-500" />}
+                  {active && <Check className="size-3 ml-auto text-blue-500" />}
                 </div>
                 {loading ? (
                   <div className="h-6 w-20 animate-pulse rounded bg-slate-200" />
@@ -1696,7 +1696,7 @@ export default function BrandGroup() {
         <div ref={toolbarRef} className="sticky top-0 left-0 z-40 bg-white will-change-transform">
         {selectedIds.size > 0 ? (
           <div className="flex items-center gap-3 px-1 py-2">
-            <span className="text-sm font-medium text-violet-700">
+            <span className="text-sm font-medium text-blue-700">
               ✓ {selectedIds.size} selected
             </span>
             <button
@@ -1708,7 +1708,7 @@ export default function BrandGroup() {
                 setCrossTabBrandProfiles({});
                 setShowDuplicateModal(true);
               }}
-              className="inline-flex items-center gap-1.5 rounded-md bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
             >
               Duplicate
             </button>
@@ -1746,7 +1746,7 @@ export default function BrandGroup() {
             </span>
           )}
           {(brandFilter || ratingFilter != null) && (
-            <div className="flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1 text-xs text-violet-700 whitespace-nowrap">
+            <div className="flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700 whitespace-nowrap">
               <span>
                 Filtered by:
                 {brandFilter ? ` ${brandFilter}` : ''}
@@ -1762,7 +1762,7 @@ export default function BrandGroup() {
                   setSearchParams({});
                   setPage(1);
                 }}
-                className="text-violet-500 hover:text-violet-700 transition-colors"
+                className="text-blue-500 hover:text-blue-700 transition-colors"
                 aria-label="Clear brand/rating filter"
               >
                 <X className="size-3" />
@@ -1841,7 +1841,7 @@ export default function BrandGroup() {
                 </span>
               )}
               {refreshingAfterCheck && (
-                <span className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 whitespace-nowrap">
+                <span className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 whitespace-nowrap">
                   <Loader2 className="size-3 animate-spin" /> Refreshing statuses…
                 </span>
               )}
@@ -1852,7 +1852,7 @@ export default function BrandGroup() {
                       type="button"
                       onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                       disabled={checkingStatus}
-                      className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
                       {checkingStatus ? 'Checking…' : 'Check Status'}
@@ -1861,7 +1861,7 @@ export default function BrandGroup() {
                       type="button"
                       onClick={() => setCheckDropdownOpen((o) => !o)}
                       disabled={checkingStatus}
-                      className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Select platform to check"
                     >
                       <ChevronDown className="size-3.5" />
@@ -1874,7 +1874,7 @@ export default function BrandGroup() {
                           key={p}
                           type="button"
                           onClick={() => handleCheckStatus([p])}
-                          className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-violet-50"
+                          className="w-full text-left px-3 py-1.5 text-sm text-slate-700 hover:bg-blue-50"
                         >
                           Check {p.toUpperCase()}
                         </button>
@@ -1887,7 +1887,7 @@ export default function BrandGroup() {
                   type="button"
                   onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                   disabled={checkingStatus}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-violet-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <RefreshCw className={`size-3.5 ${checkingStatus ? 'animate-spin' : ''}`} />
                   {checkingStatus ? 'Checking…' : 'Check Status'}
@@ -1934,7 +1934,7 @@ export default function BrandGroup() {
                                 return next;
                               });
                             }}
-                            className="rounded border-slate-300 text-violet-600 focus:ring-violet-400 cursor-pointer"
+                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-400 cursor-pointer"
                           />
                         </th>
                       )}
@@ -1985,11 +1985,11 @@ export default function BrandGroup() {
                   return (
                   <tr
                     key={entry.id}
-                    className={`group transition-colors ${isRowSelected ? 'relative z-20 outline outline-2 outline-violet-500 -outline-offset-2' : ''}`}
+                    className={`group transition-colors ${isRowSelected ? 'relative z-20 outline outline-2 outline-blue-500 -outline-offset-2' : ''}`}
                   >
                     {isApproved && (
                       <td
-                        className={`w-8 px-2 py-2 select-none sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
+                        className={`w-8 px-2 py-2 select-none sticky left-0 z-10 group-hover:bg-blue-50 ${isRowSelected ? 'bg-blue-50/60' : 'bg-white'}`}
                         onClick={(e) => e.stopPropagation()}
                         data-drag-id={entry.id}
                         onMouseDown={(e) => {
@@ -2055,7 +2055,7 @@ export default function BrandGroup() {
                               return next;
                             })
                           }
-                          className="rounded border-slate-300 text-violet-600 focus:ring-violet-400 cursor-pointer"
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-400 cursor-pointer"
                         />
                       </td>
                     )}
@@ -2126,7 +2126,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className={`px-[10px] py-2 whitespace-nowrap cursor-pointer hover:bg-violet-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}`}
+                            className={`px-[10px] py-2 whitespace-nowrap cursor-pointer hover:bg-blue-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-blue-50/60' : 'bg-white'}`}
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
@@ -2189,7 +2189,7 @@ export default function BrandGroup() {
                                     if (e.key === 'Enter') { e.currentTarget.blur(); }
                                     if (e.key === 'Escape') setEditingCell(null);
                                   }}
-                                  className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-violet-400 bg-white disabled:opacity-50"
+                                  className="w-full rounded border border-blue-400 px-2 py-1 text-xs text-slate-800 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white disabled:opacity-50"
                                 >
                                   <option value="">— select —</option>
                                   {INLINE_STATUS_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
@@ -2208,7 +2208,7 @@ export default function BrandGroup() {
                                       if (e.key === 'Escape') setEditingCell(null);
                                     }}
                                     placeholder="https://…"
-                                    className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
+                                    className="w-full rounded border border-blue-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
                                   />
                                   {editingCell.value && (
                                     <a
@@ -2237,7 +2237,7 @@ export default function BrandGroup() {
                                     if (e.key === 'Escape') setEditingCell(null);
                                   }}
                                   placeholder={isDateCol(h) ? 'DD/MM/YYYY' : ''}
-                                  className="w-full rounded border border-violet-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 disabled:opacity-50"
+                                  className="w-full rounded border border-blue-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
                                 />
                               )}
                             </td>
@@ -2246,7 +2246,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[10px] py-2 cursor-text hover:bg-violet-50 group"
+                            className="px-[10px] py-2 cursor-text hover:bg-blue-50 group"
                             onClick={() => {
                               const raw = entry.data[h] ?? '';
                               const display = raw ? formatCellValue(raw) : '';
@@ -2259,7 +2259,7 @@ export default function BrandGroup() {
                       }
 
                       return (
-                        <td key={h} className={`px-[10px] py-2 ${(h === 'Account' || h === 'Account Name') ? `whitespace-nowrap sticky left-0 z-10 group-hover:bg-violet-50 ${isRowSelected ? 'bg-violet-50/60' : 'bg-white'}` : ''}`}>
+                        <td key={h} className={`px-[10px] py-2 ${(h === 'Account' || h === 'Account Name') ? `whitespace-nowrap sticky left-0 z-10 group-hover:bg-blue-50 ${isRowSelected ? 'bg-blue-50/60' : 'bg-white'}` : ''}`}>
                           <CellValue
                             header={h}
                             value={
@@ -2293,7 +2293,7 @@ export default function BrandGroup() {
               <select
                 value={pageSize}
                 onChange={(e) => handlePageSize(Number(e.target.value))}
-                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                className="rounded border border-slate-200 bg-white px-1.5 py-0.5 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400"
               >
                 {PAGE_SIZE_OPTIONS.map((n) => (
                   <option key={n} value={n}>{n} / page</option>
@@ -2306,7 +2306,7 @@ export default function BrandGroup() {
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={safePage === 1}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-blue-50 transition-colors"
               >
                 <ChevronLeft className="size-4" /> Prev
               </button>
@@ -2324,13 +2324,13 @@ export default function BrandGroup() {
                 onChange={(e) => setJumpInput(e.target.value)}
                 onKeyDown={handleJump}
                 placeholder="Go"
-                className="w-12 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-violet-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                className="w-12 rounded border border-slate-200 bg-white px-1.5 py-0.5 text-center text-xs text-slate-600 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
 
               <button
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={safePage === totalPages}
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-violet-50 transition-colors"
+                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium disabled:opacity-40 hover:bg-blue-50 transition-colors"
               >
                 Next <ChevronRight className="size-4" />
               </button>
@@ -2451,7 +2451,7 @@ export default function BrandGroup() {
                 <button
                   onClick={() => { if (!duplicating) setShowDuplicateModal(false); }}
                   disabled={duplicating}
-                  className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+                  className="ml-4 shrink-0 rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
                 >
                   <X className="size-4" />
                 </button>
@@ -2468,7 +2468,7 @@ export default function BrandGroup() {
                     value={activeTab}
                     onChange={(e) => handleDuplicateTabChange(e.target.value)}
                     disabled={duplicating}
-                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
                   >
                     {OPERATIONAL_TABS.map((t) => (
                       <option key={t} value={t}>{t}</option>
@@ -2486,7 +2486,7 @@ export default function BrandGroup() {
                     value={duplicateBrand}
                     onChange={(e) => handleDuplicateBrandChange(e.target.value)}
                     disabled={duplicating || loadingCrossTab}
-                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                    className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
                   >
                     <option value="">— Select brand —</option>
                     {availableBrands.map((b) => (
@@ -2506,7 +2506,7 @@ export default function BrandGroup() {
                         onChange={(e) => setDuplicateAgLink(e.target.value)}
                         disabled={duplicating}
                         placeholder="https://…"
-                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
                       />
                     </div>
                     <div>
@@ -2517,7 +2517,7 @@ export default function BrandGroup() {
                         onChange={(e) => setDuplicateCgLink(e.target.value)}
                         disabled={duplicating}
                         placeholder="https://…"
-                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-400/20 disabled:opacity-50"
+                        className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
                       />
                     </div>
                   </div>
@@ -2534,14 +2534,14 @@ export default function BrandGroup() {
                 <button
                   onClick={() => setShowDuplicateModal(false)}
                   disabled={duplicating}
-                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-violet-50 disabled:opacity-50 transition-colors"
+                  className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleDuplicate}
                   disabled={duplicating || loadingCrossTab}
-                  className="inline-flex items-center gap-2 rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
                 >
                   {duplicating && <Loader2 className="size-4 animate-spin" />}
                   {duplicating ? 'Duplicating…' : 'Duplicate'}
@@ -2584,7 +2584,7 @@ export default function BrandGroup() {
               <button
                 onClick={() => { setShowDeleteModal(false); setDeleteConfirmText(''); }}
                 disabled={deleting}
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-violet-50 disabled:opacity-50 transition-colors"
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
               >
                 Cancel
               </button>

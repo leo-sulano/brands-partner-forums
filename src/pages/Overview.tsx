@@ -153,7 +153,7 @@ function KpiBreakdownModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -168,11 +168,11 @@ function KpiBreakdownModal({
                 key={r.tab}
                 to={`/brands/${tabToSlug(r.tab)}`}
                 onClick={onClose}
-                className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-violet-50 transition-colors -mx-3"
+                className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-blue-50 transition-colors -mx-3"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-slate-700 group-hover:text-violet-700 transition-colors truncate">{r.tab}</span>
+                    <span className="text-sm font-medium text-slate-700 group-hover:text-blue-700 transition-colors truncate">{r.tab}</span>
                     <span className={`text-sm font-bold tabular-nums ml-2 shrink-0 ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-100">
@@ -241,7 +241,7 @@ function PlatformBreakdownModal({
           </div>
           <button
             onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-violet-50 hover:text-slate-600 transition-colors"
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
           </button>
@@ -257,7 +257,7 @@ function PlatformBreakdownModal({
                 key={r.tab}
                 to={`/brands/${tabToSlug(r.tab)}?platform=${modal.platformKey}`}
                 onClick={onClose}
-                className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-violet-50"
+                className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50"
               >
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex items-center justify-between">
@@ -268,7 +268,7 @@ function PlatformBreakdownModal({
                         className="size-3.5 shrink-0 rounded-sm"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
-                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-violet-700">{r.tab}</span>
+                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{r.tab}</span>
                     </span>
                     <span className={`ml-2 shrink-0 text-sm font-bold tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
@@ -427,8 +427,8 @@ export default function Overview() {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
-                        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-violet-100">
-                          <TabIcon className="size-3.5 text-violet-500" />
+                        <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100">
+                          <TabIcon className="size-3.5 text-blue-500" />
                         </div>
                         <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
                       </div>
@@ -551,7 +551,7 @@ export default function Overview() {
                         type="button"
                         disabled={total === 0}
                         onClick={() => setPlatformSliceModal({ platform: p.name, platformKey: PLATFORM_KEY[p.name], kind: 'live' })}
-                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-violet-50 disabled:cursor-default"
+                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
                       >
                         <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" />
                         <span className="text-slate-500">Published</span>
@@ -561,7 +561,7 @@ export default function Overview() {
                         type="button"
                         disabled={total === 0}
                         onClick={() => setPlatformSliceModal({ platform: p.name, platformKey: PLATFORM_KEY[p.name], kind: 'removed' })}
-                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-violet-50 disabled:cursor-default"
+                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
                       >
                         <span className="size-2.5 shrink-0 rounded-full bg-rose-400" />
                         <span className="text-slate-500">Removed</span>

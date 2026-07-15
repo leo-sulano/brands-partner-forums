@@ -66,7 +66,7 @@ export default function AdminUsers() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="size-6 animate-spin text-violet-600" />
+        <Loader2 className="size-6 animate-spin text-blue-600" />
       </div>
     );
   }
@@ -99,7 +99,7 @@ export default function AdminUsers() {
               const isSelf = p.id === self?.id;
               const busy = updating === p.id;
               return (
-                <tr key={p.id} className="hover:bg-violet-50/50">
+                <tr key={p.id} className="hover:bg-blue-50/50">
                   <td className="px-4 py-3 text-slate-800 font-medium">
                     {p.email}
                     {isSelf && <span className="ml-2 text-xs text-slate-400">(you)</span>}
@@ -107,7 +107,7 @@ export default function AdminUsers() {
                   <td className="px-4 py-3">
                     <span className={[
                       'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                      p.role === 'admin' ? 'bg-violet-100 text-violet-700' : 'bg-slate-100 text-slate-600',
+                      p.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
                     ].join(' ')}>
                       {p.role}
                     </span>
@@ -150,7 +150,7 @@ export default function AdminUsers() {
                             p.role === 'member' ? (
                               <button
                                 onClick={() => patch(p.id, { role: 'admin' }, p.email)}
-                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-50 transition-colors"
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
                               >
                                 <ShieldCheck className="size-3.5" />
                                 Make Admin
@@ -158,7 +158,7 @@ export default function AdminUsers() {
                             ) : (
                               <button
                                 onClick={() => patch(p.id, { role: 'member' }, p.email)}
-                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-violet-50 transition-colors"
+                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-blue-50 transition-colors"
                               >
                                 <ShieldOff className="size-3.5" />
                                 Remove Admin
@@ -176,7 +176,7 @@ export default function AdminUsers() {
                                 </button>
                                 <button
                                   onClick={() => setConfirmRemove(null)}
-                                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-violet-50 transition-colors"
+                                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-blue-50 transition-colors"
                                 >
                                   Cancel
                                 </button>

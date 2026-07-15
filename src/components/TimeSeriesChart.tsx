@@ -32,7 +32,7 @@ export default function TimeSeriesChart({ data, title = 'Mentions per day' }: Pr
               <Line
                 type="monotone"
                 dataKey="count"
-                stroke="#4f46e5"
+                stroke="#2563eb"
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 4 }}

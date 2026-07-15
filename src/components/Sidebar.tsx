@@ -43,8 +43,8 @@ const linkClass = (isActive: boolean, isCollapsed = false) =>
     'flex items-center rounded-md py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
-      ? 'bg-violet-500/20 text-violet-100'
-      : 'text-slate-300 hover:bg-violet-500/20 hover:text-violet-100',
+      ? 'bg-blue-500/20 text-blue-100'
+      : 'text-slate-300 hover:bg-blue-500/20 hover:text-blue-100',
   ].join(' ');
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
@@ -78,7 +78,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
       {!isCollapsed && (
         <span className="font-semibold tracking-tight whitespace-nowrap">
           <span className="text-white">Brands </span>
-          <span className="text-violet-400">Partner</span>
+          <span className="text-blue-400">Partner</span>
           <span className="text-white"> Forum</span>
         </span>
       )}
@@ -203,7 +203,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         <button
           type="button"
           onClick={onToggleCollapsed}
-          className="p-1.5 rounded-md text-slate-400 hover:bg-violet-500/20 hover:text-violet-100 transition-colors"
+          className="p-1.5 rounded-md text-slate-400 hover:bg-blue-500/20 hover:text-blue-100 transition-colors"
           aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
           <ChevronLeft className={`size-4 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
@@ -255,14 +255,14 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
                 <span className="font-semibold tracking-tight">
                   <span className="text-white">Brands </span>
-                  <span className="text-violet-400">Partner</span>
+                  <span className="text-blue-400">Partner</span>
                   <span className="text-white"> Forum</span>
                 </span>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="p-1.5 rounded-md text-slate-400 hover:bg-violet-500/20 hover:text-violet-100 transition-colors"
+                className="p-1.5 rounded-md text-slate-400 hover:bg-blue-500/20 hover:text-blue-100 transition-colors"
                 aria-label="Close menu"
               >
                 <X className="size-5" />
