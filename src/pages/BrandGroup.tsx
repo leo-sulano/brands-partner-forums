@@ -1940,7 +1940,7 @@ export default function BrandGroup() {
                       )}
                       {visibleHeaders.map((h) => {
                         const isFrozenCol = h === 'Account' || h === 'Account Name';
-                        const isBrandCol = h === 'Brands' || h === 'Brand Name' || h === 'Brand' || h === 'Brand / TP URL PAGE';
+                        const isBrandCol = decodedTab === 'TP Affiliate' && (h === 'Brands' || h === 'Brand Name' || h === 'Brand' || h === 'Brand / TP URL PAGE');
                         return (
                         <th
                           key={h}
