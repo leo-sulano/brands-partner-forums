@@ -2101,18 +2101,17 @@ export default function BrandGroup() {
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   onClick={(e) => e.stopPropagation()}
-                                  title={pageName}
-                                  className="flex max-w-[240px] items-center gap-1 text-sm font-medium text-blue-600 hover:underline"
+                                  className="flex max-w-[240px] items-start gap-1 text-sm font-medium text-blue-600 hover:underline"
                                 >
-                                  <ExternalLink className="size-3 shrink-0" />
-                                  <span className="min-w-0 truncate">{pageName}</span>
+                                  <ExternalLink className="size-3 shrink-0 mt-0.5" />
+                                  <span className="whitespace-normal">{pageName}</span>
                                 </a>
                               </td>
                             );
                           }
                           return (
                             <td key={h} className="px-[10px] py-2">
-                              <span className="block max-w-[240px] truncate text-sm text-slate-600" title={pageName}>{pageName}</span>
+                              <span className="block max-w-[240px] whitespace-normal text-sm text-slate-600">{pageName}</span>
                             </td>
                           );
                         }
