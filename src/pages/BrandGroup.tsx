@@ -49,16 +49,6 @@ function isNoSortCol(header: string) {
   return isLinkCol(header) || noSortCols.has(header);
 }
 
-function colWidthClass(header: string, isMultiPlatform = false, tab?: string): string {
-  if (isMultiPlatform && header !== 'Account') return '';
-  if (isLinkCol(header)) return 'w-24';
-  if (isStatusCol(header)) return 'w-36';
-  const h = header.toLowerCase();
-  if (h === 'agent') return (tab === 'TP Brand Injection' || tab === 'TP Affiliate' || tab === 'GRG - Gulf Recovery Group') ? 'w-20' : 'w-5';
-  if (h.includes('account') || h.includes('brand') || h.includes('name')) return 'w-40';
-  return 'w-32';
-}
-
 function StatusPill({ value }: { value: string }) {
   if (!value || value === '—') return <span className="text-slate-400">—</span>;
   const v = value.toLowerCase().trim();
@@ -1955,7 +1945,7 @@ export default function BrandGroup() {
                           key={h}
                           onClick={() => handleSort(h)}
                           style={{ top: toolbarHeight }}
-                          className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 will-change-transform ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${colWidthClass(h, activePlatforms.length > 1, decodedTab)} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                          className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 will-change-transform ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
                         >
                           <span className="inline-flex items-center gap-1">
                             {getColLabel(h, decodedTab)}
