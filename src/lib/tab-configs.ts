@@ -320,8 +320,11 @@ const TAB_BRAND_SEQUENCE: Record<string, string[]> = {
   ],
   'TP Affiliate': [
     'Aussie Online Pokies',
-    'Top10 Casinos Online Ca',
     'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
+    'Top10 Casinos Online Ca',
+    'NZ Jackpots',
+    'Beste Slot Liste',
+    'Wetten Tipps 24',
   ],
 };
 
