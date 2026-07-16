@@ -221,7 +221,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         onMouseLeave={() => collapsed && setHoverExpanded(false)}
       >
         <aside
-          className={`flex flex-col h-screen bg-[#000080] text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-60'}`}
+          className={`flex flex-col h-screen bg-[#000060] text-slate-100 transition-[width] duration-200 ease-in-out overflow-hidden ${collapsed ? 'w-16' : 'w-60'}`}
         >
           {header(collapsed)}
           {navContent(collapsed)}
@@ -230,7 +230,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         {collapsed && (
           <aside
             inert={!hoverExpanded}
-            className={`fixed inset-y-0 left-0 z-[45] w-60 flex flex-col bg-[#000080] text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
+            className={`fixed inset-y-0 left-0 z-[45] w-60 flex flex-col bg-[#000060] text-slate-100 shadow-xl transition-opacity duration-200 ease-in-out ${
               hoverExpanded ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
@@ -249,7 +249,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             onClick={onClose}
           />
           {/* Panel */}
-          <aside className="relative z-50 flex flex-col w-72 bg-[#000080] text-slate-100 h-full shadow-xl">
+          <aside className="relative z-50 flex flex-col w-72 bg-[#000060] text-slate-100 h-full shadow-xl">
             <div className="px-5 py-5 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
