@@ -46,8 +46,8 @@ const linkClass = (isActive: boolean, isCollapsed = false, rightPad = false) =>
       : (rightPad ? 'gap-3 pl-3 pr-[15px]' : 'gap-3 px-3'),
     isActive
       ? (isCollapsed
-          ? "bg-white text-[#000060] border-l-4 border-blue-400 before:content-[''] before:absolute before:right-0 before:-top-2.5 before:h-2.5 before:w-2.5 before:bg-[radial-gradient(circle_at_top_left,transparent_10px,rgba(255,255,255,1)_10px)] after:content-[''] after:absolute after:right-0 after:-bottom-2.5 after:h-2.5 after:w-2.5 after:bg-[radial-gradient(circle_at_bottom_left,transparent_10px,rgba(255,255,255,1)_10px)]"
-          : "bg-white text-[#000060] border-l-4 border-blue-400 before:content-[''] before:absolute before:right-0 before:-top-[15px] before:h-[15px] before:w-[15px] before:bg-[radial-gradient(circle_at_top_left,transparent_15px,rgba(255,255,255,1)_15px)] after:content-[''] after:absolute after:right-0 after:-bottom-[15px] after:h-[15px] after:w-[15px] after:bg-[radial-gradient(circle_at_bottom_left,transparent_15px,rgba(255,255,255,1)_15px)]")
+          ? "bg-[#f8fafc] text-[#000060] border-l-4 border-blue-400 before:content-[''] before:absolute before:right-0 before:-top-2.5 before:h-2.5 before:w-2.5 before:bg-[radial-gradient(circle_at_top_left,transparent_10px,rgba(248,250,252,1)_10px)] after:content-[''] after:absolute after:right-0 after:-bottom-2.5 after:h-2.5 after:w-2.5 after:bg-[radial-gradient(circle_at_bottom_left,transparent_10px,rgba(248,250,252,1)_10px)]"
+          : "bg-[#f8fafc] text-[#000060] border-l-4 border-blue-400 before:content-[''] before:absolute before:right-0 before:-top-[15px] before:h-[15px] before:w-[15px] before:bg-[radial-gradient(circle_at_top_left,transparent_15px,rgba(248,250,252,1)_15px)] after:content-[''] after:absolute after:right-0 after:-bottom-[15px] after:h-[15px] after:w-[15px] after:bg-[radial-gradient(circle_at_bottom_left,transparent_15px,rgba(248,250,252,1)_15px)]")
       : 'text-white hover:bg-blue-500/20 hover:text-white',
   ].join(' ');
 
