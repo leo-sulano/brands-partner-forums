@@ -17,6 +17,11 @@ export function initials(email: string): string {
   return email.slice(0, 2).toUpperCase();
 }
 
+export function squareCropRect(width: number, height: number): { sx: number; sy: number; size: number } {
+  const size = Math.min(width, height);
+  return { sx: (width - size) / 2, sy: (height - size) / 2, size };
+}
+
 const ACCEPTED_AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
 

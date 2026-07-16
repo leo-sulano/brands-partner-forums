@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { avatarColor, initials, validateAvatarFile } from './avatar';
+import { avatarColor, initials, validateAvatarFile, squareCropRect } from './avatar';
 
 describe('avatarColor', () => {
   it('returns the same class for the same email every time', () => {
@@ -38,5 +38,19 @@ describe('validateAvatarFile', () => {
   it('rejects a file over 2MB', () => {
     const file = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
     expect(validateAvatarFile(file)).toBe('Image must be 2MB or smaller.');
+  });
+});
+
+describe('squareCropRect', () => {
+  it('centers a square crop on a landscape image', () => {
+    expect(squareCropRect(400, 200)).toEqual({ sx: 100, sy: 0, size: 200 });
+  });
+
+  it('centers a square crop on a portrait image', () => {
+    expect(squareCropRect(200, 400)).toEqual({ sx: 0, sy: 100, size: 200 });
+  });
+
+  it('returns the full image for an already-square image', () => {
+    expect(squareCropRect(300, 300)).toEqual({ sx: 0, sy: 0, size: 300 });
   });
 });
