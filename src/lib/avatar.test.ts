@@ -35,9 +35,9 @@ describe('validateAvatarFile', () => {
     expect(validateAvatarFile(file)).toBe('Please choose a PNG, JPEG, or WebP image.');
   });
 
-  it('rejects a file over 2MB', () => {
-    const file = new File([new Uint8Array(2 * 1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
-    expect(validateAvatarFile(file)).toBe('Image must be 2MB or smaller.');
+  it('rejects a file over 15MB', () => {
+    const file = new File([new Uint8Array(15 * 1024 * 1024 + 1)], 'big.png', { type: 'image/png' });
+    expect(validateAvatarFile(file)).toBe('Image must be 15MB or smaller.');
   });
 });
 

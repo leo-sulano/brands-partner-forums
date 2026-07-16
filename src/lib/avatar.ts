@@ -23,14 +23,14 @@ export function squareCropRect(width: number, height: number): { sx: number; sy:
 }
 
 const ACCEPTED_AVATAR_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
-const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const MAX_AVATAR_BYTES = 15 * 1024 * 1024;
 
 export function validateAvatarFile(file: File): string | null {
   if (!ACCEPTED_AVATAR_TYPES.includes(file.type)) {
     return 'Please choose a PNG, JPEG, or WebP image.';
   }
   if (file.size > MAX_AVATAR_BYTES) {
-    return 'Image must be 2MB or smaller.';
+    return 'Image must be 15MB or smaller.';
   }
   return null;
 }
