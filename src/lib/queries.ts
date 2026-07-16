@@ -799,7 +799,7 @@ export async function fetchAdminLogs(limit = 50): Promise<AdminLogEvent[]> {
   return (data ?? []) as AdminLogEvent[];
 }
 
-export async function uploadAvatar(userId: string, file: File): Promise<string> {
+export async function uploadAvatar(userId: string, file: Blob): Promise<string> {
   const path = `${userId}/avatar`;
   const { error: uploadError } = await supabase.storage
     .from('avatars')
