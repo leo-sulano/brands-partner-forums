@@ -72,7 +72,7 @@ export default function AdminUsers() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <div>
       <p className="mb-6 text-sm text-slate-500">
         {profiles.length} account{profiles.length !== 1 ? 's' : ''}
       </p>
