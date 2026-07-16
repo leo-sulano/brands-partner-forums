@@ -202,7 +202,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           {/* Desktop: full button */}
           <button
             onClick={signOut}
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-blue-50 transition-colors"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-[#000060]/30 px-3 py-1.5 text-xs font-medium text-[#000060] hover:bg-[#000060]/5 transition-colors"
           >
             <LogOut className="size-3.5" />
             Sign Out
