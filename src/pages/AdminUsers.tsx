@@ -7,8 +7,16 @@ import { avatarColor, initials, validateAvatarFile } from '../lib/avatar';
 import type { Profile } from '../types/profile';
 
 function ProfileAvatar({ profile }: { profile: Profile }) {
-  if (profile.avatar_url) {
-    return <img src={profile.avatar_url} alt="" className="size-8 rounded-full object-cover" />;
+  const [imgFailed, setImgFailed] = useState(false);
+  if (profile.avatar_url && !imgFailed) {
+    return (
+      <img
+        src={profile.avatar_url}
+        alt=""
+        className="size-8 rounded-full object-cover"
+        onError={() => setImgFailed(true)}
+      />
+    );
   }
   return (
     <div
