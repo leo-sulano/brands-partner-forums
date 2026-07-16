@@ -155,17 +155,17 @@ function PlatformFilter({
   onChange: (v: Platform) => void;
 }) {
   return (
-    <div className="inline-flex rounded-md border border-slate-200 bg-white shadow-sm overflow-hidden">
+    <div className="inline-flex rounded-md overflow-hidden">
       {PLATFORM_OPTS.map((opt, i) => (
         <button
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
           className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors ${
-            i > 0 ? 'border-l border-slate-200' : ''
+            i > 0 && opt.value !== value && PLATFORM_OPTS[i - 1].value !== value ? 'border-l border-slate-200' : ''
           } ${
             opt.value === value
-              ? 'bg-slate-800 text-white'
+              ? 'bg-[#2D5FED] text-white'
               : 'text-slate-600 hover:bg-blue-50'
           }`}
         >

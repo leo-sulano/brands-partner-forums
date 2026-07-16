@@ -38,12 +38,16 @@ const topLinks = [
   { to: '/how-it-works', label: 'How it works', icon: BookOpen, end: true },
 ];
 
-const linkClass = (isActive: boolean, isCollapsed = false) =>
+const linkClass = (isActive: boolean, isCollapsed = false, rightPad = false) =>
   [
-    'flex items-center rounded-md py-2 text-sm transition-colors',
-    isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
+    'relative flex items-center py-2 text-sm transition-colors rounded-l-[10px]',
+    isCollapsed
+      ? (rightPad ? 'justify-center pl-3 pr-[15px]' : 'justify-center px-3')
+      : (rightPad ? 'gap-3 pl-3 pr-[15px]' : 'gap-3 px-3'),
     isActive
-      ? 'bg-blue-500/20 text-white'
+      ? (isCollapsed
+          ? "bg-white text-[#000060] border-l-4 border-blue-400 before:content-[''] before:absolute before:right-0 before:-top-2.5 before:h-2.5 before:w-2.5 before:bg-[radial-gradient(circle_at_top_left,transparent_10px,rgba(255,255,255,1)_10px)] after:content-[''] after:absolute after:right-0 after:-bottom-2.5 after:h-2.5 after:w-2.5 after:bg-[radial-gradient(circle_at_bottom_left,transparent_10px,rgba(255,255,255,1)_10px)]"
+          : "bg-white text-[#000060] border-l-4 border-blue-400 before:content-[''] before:absolute before:right-0 before:-top-[15px] before:h-[15px] before:w-[15px] before:bg-[radial-gradient(circle_at_top_left,transparent_15px,rgba(255,255,255,1)_15px)] after:content-[''] after:absolute after:right-0 after:-bottom-[15px] after:h-[15px] after:w-[15px] after:bg-[radial-gradient(circle_at_bottom_left,transparent_15px,rgba(255,255,255,1)_15px)]")
       : 'text-white hover:bg-blue-500/20 hover:text-white',
   ].join(' ');
 
@@ -87,7 +91,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
   const navContent = (isCollapsed: boolean) => (
     <>
-      <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      <nav className="flex-1 py-3 pl-3 space-y-1 overflow-y-auto">
         {topLinks.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
@@ -125,7 +129,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               to={`/brands/${tabToSlug(tab)}`}
               onClick={() => onClose?.()}
               title={isCollapsed ? tab : undefined}
-              className={({ isActive }) => linkClass(isActive, isCollapsed)}
+              className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
             >
               <Icon className="size-4 shrink-0" />
               {!isCollapsed && <span className="truncate flex-1">{tab}</span>}
