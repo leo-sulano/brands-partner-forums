@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom';
 import { Camera, Loader2, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getProfiles, updateProfile, deleteProfile, insertAdminLog, uploadAvatar, updateOwnAvatar, type AdminAction } from '../lib/queries';
-import { avatarColor, initials, validateAvatarFile } from '../lib/avatar';
+import { avatarColor, initials, validateAvatarFile, compressAvatarImage } from '../lib/avatar';
 import type { Profile } from '../types/profile';
 
 function ProfileAvatar({ profile }: { profile: Profile }) {
@@ -50,7 +50,8 @@ export default function AdminUsers() {
     setUpdating(self.id);
     setError(null);
     try {
-      const avatarUrl = await uploadAvatar(self.id, file);
+      const compressed = await compressAvatarImage(file);
+      const avatarUrl = await uploadAvatar(self.id, compressed);
       await updateOwnAvatar(avatarUrl);
       setProfiles((prev) => prev.map((p) => (p.id === self.id ? { ...p, avatar_url: avatarUrl } : p)));
       await refreshProfile();
