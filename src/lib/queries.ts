@@ -799,6 +799,22 @@ export async function fetchAdminLogs(limit = 50): Promise<AdminLogEvent[]> {
   return (data ?? []) as AdminLogEvent[];
 }
 
+export async function uploadAvatar(userId: string, file: File): Promise<string> {
+  const path = `${userId}/avatar`;
+  const { error: uploadError } = await supabase.storage
+    .from('avatars')
+    .upload(path, file, { upsert: true, contentType: file.type, cacheControl: '0' });
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  return `${data.publicUrl}?t=${Date.now()}`;
+}
+
+export async function updateOwnAvatar(avatarUrl: string): Promise<void> {
+  const { error } = await supabase.rpc('update_own_avatar', { new_avatar_url: avatarUrl });
+  if (error) throw error;
+}
+
 export async function fetchEditLog(limit = 200): Promise<AuditLogEntry[]> {
   const { data, error } = await supabase
     .from('edit_log')
