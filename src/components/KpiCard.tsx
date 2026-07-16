@@ -37,7 +37,7 @@ export default function KpiCard({ label, value, hint, icon, color = 'blue', brea
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{label}</p>
-            <p className={`mt-1 font-bold tabular-nums tracking-tight ${c.value}`} style={{ fontSize: '25px' }}>{value}</p>
+            <p className={`mt-1 font-bold font-mono tabular-nums tracking-tight ${c.value}`} style={{ fontSize: '25px' }}>{value}</p>
             {hint ? <p className="mt-1 text-xs text-slate-400">{hint}</p> : null}
           </div>
           {icon ? (

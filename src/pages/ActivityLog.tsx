@@ -293,7 +293,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
 
       {entries.length > AUDIT_PAGE_SIZE && (
         <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
-          <span className="tabular-nums">
+          <span className="font-mono tabular-nums">
             {(safePage - 1) * AUDIT_PAGE_SIZE + 1}–{Math.min(safePage * AUDIT_PAGE_SIZE, entries.length)} of {entries.length}
           </span>
           <div className="flex items-center gap-1">
@@ -304,7 +304,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
             >
               <ChevronLeft className="size-4" /> Prev
             </button>
-            <span className="px-1 tabular-nums">{safePage} / {totalPages}</span>
+            <span className="px-1 font-mono tabular-nums">{safePage} / {totalPages}</span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={safePage === totalPages}

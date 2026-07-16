@@ -378,7 +378,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
             {stars.map((s) => (
               <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
                 <span className="inline-flex items-center justify-end gap-0.5">
-                  <span className="tabular-nums">{s}</span>
+                  <span className="font-mono tabular-nums">{s}</span>
                   <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
                 </span>
               </th>
@@ -410,7 +410,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               {stars.map((s) => (
                 <td
                   key={s}
-                  className={`px-2 py-1.5 text-right tabular-nums ${
+                  className={`px-2 py-1.5 text-right font-mono tabular-nums ${
                     r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
                   }`}
                 >
@@ -426,7 +426,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                   )}
                 </td>
               ))}
-              <td className={`px-2 py-1.5 text-right tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+              <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
                 {r.unrated > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=unrated`}
@@ -438,7 +438,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                   r.unrated.toLocaleString()
                 )}
               </td>
-              <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-slate-800">
+              <td className="px-2 py-1.5 text-right font-semibold font-mono tabular-nums text-slate-800">
                 {r.total > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=any`}
@@ -471,7 +471,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
             {stars.map((s) => (
               <td
                 key={s}
-                className={`px-2 py-2 text-right tabular-nums ${
+                className={`px-2 py-2 text-right font-mono tabular-nums ${
                   totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
                 }`}
               >
@@ -487,7 +487,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 )}
               </td>
             ))}
-            <td className={`px-2 py-2 text-right tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
+            <td className={`px-2 py-2 text-right font-mono tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
               {totals.unrated > 0 ? (
                 <Link
                   to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=unrated`}
@@ -499,7 +499,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 totals.unrated.toLocaleString()
               )}
             </td>
-            <td className="px-2 py-2 text-right tabular-nums">
+            <td className="px-2 py-2 text-right font-mono tabular-nums">
               {totals.total > 0 ? (
                 <Link
                   to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`}

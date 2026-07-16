@@ -21,7 +21,7 @@ export default function TopList({ title, items, emptyLabel = 'No data.' }: Props
               <li key={item.label}>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-slate-700">{item.label}</span>
-                  <span className="text-slate-500 tabular-nums">{item.count}</span>
+                  <span className="text-slate-500 font-mono tabular-nums">{item.count}</span>
                 </div>
                 <div className="mt-1 h-1.5 rounded-full bg-slate-100">
                   <div

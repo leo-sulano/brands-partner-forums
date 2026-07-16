@@ -2287,7 +2287,7 @@ export default function BrandGroup() {
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 px-4 py-3 text-sm text-slate-600">
             {/* Left: row range + page size */}
             <div className="flex items-center gap-3">
-              <span className="tabular-nums whitespace-nowrap">
+              <span className="font-mono tabular-nums whitespace-nowrap">
                 {sorted.length === 0 ? '0' : `${(safePage - 1) * pageSize + 1}–${Math.min(safePage * pageSize, sorted.length)}`} of {sorted.length}
               </span>
               <select
@@ -2311,7 +2311,7 @@ export default function BrandGroup() {
                 <ChevronLeft className="size-4" /> Prev
               </button>
 
-              <span className="px-1 tabular-nums whitespace-nowrap">
+              <span className="px-1 font-mono tabular-nums whitespace-nowrap">
                 {safePage} / {totalPages}
               </span>
 

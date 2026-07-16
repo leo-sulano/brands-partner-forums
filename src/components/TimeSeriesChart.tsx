@@ -24,10 +24,15 @@ export default function TimeSeriesChart({ data, title = 'Mentions per day' }: Pr
                 tick={{ fontSize: 11, fill: '#64748b' }}
                 tickFormatter={(v: string) => v.slice(5)}
               />
-              <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#64748b' }} width={30} />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fontSize: 11, fill: '#64748b', fontFamily: 'var(--font-mono)' }}
+                width={30}
+              />
               <Tooltip
                 contentStyle={{ fontSize: 12, borderRadius: 6, border: '1px solid #e2e8f0' }}
                 labelStyle={{ color: '#0f172a' }}
+                itemStyle={{ fontFamily: 'var(--font-mono)' }}
               />
               <Line
                 type="monotone"

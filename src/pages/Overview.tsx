@@ -148,7 +148,7 @@ function KpiBreakdownModal({
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">{modal.title}</p>
-            <p className={`mt-0.5 text-2xl font-bold tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+            <p className={`mt-0.5 text-2xl font-bold font-mono tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
             <p className="mt-1 text-xs text-slate-400">{modal.tagline}</p>
           </div>
           <button
@@ -173,7 +173,7 @@ function KpiBreakdownModal({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1.5">
                     <span className="text-sm font-medium text-slate-700 group-hover:text-blue-700 transition-colors truncate">{r.tab}</span>
-                    <span className={`text-sm font-bold tabular-nums ml-2 shrink-0 ${valueColor}`}>{r.count.toLocaleString()}</span>
+                    <span className={`text-sm font-bold font-mono tabular-nums ml-2 shrink-0 ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-100">
                     <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
@@ -236,7 +236,7 @@ function PlatformBreakdownModal({
                 {modal.platform} — {kindLabel}
               </p>
             </div>
-            <p className={`text-2xl font-bold tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+            <p className={`text-2xl font-bold font-mono tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
             <p className="mt-1 text-xs text-slate-400">{kindLabel} reviews by brand tab</p>
           </div>
           <button
@@ -270,7 +270,7 @@ function PlatformBreakdownModal({
                       />
                       <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{r.tab}</span>
                     </span>
-                    <span className={`ml-2 shrink-0 text-sm font-bold tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
+                    <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-100">
                     <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
@@ -540,7 +540,7 @@ export default function Overview() {
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-base font-bold tabular-nums leading-tight" style={{ color }}>{livePct}%</span>
+                        <span className="text-base font-bold font-mono tabular-nums leading-tight" style={{ color }}>{livePct}%</span>
                         <span className="text-[10px] font-medium text-slate-400">published</span>
                       </div>
                     </div>

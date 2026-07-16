@@ -51,7 +51,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">{livePct}%</span>
-              <span className="text-lg font-bold text-emerald-600 tabular-nums">{live.toLocaleString()}</span>
+              <span className="text-lg font-bold text-emerald-600 font-mono tabular-nums">{live.toLocaleString()}</span>
             </div>
           </button>
 
@@ -65,7 +65,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs text-slate-400">{removedPct}%</span>
-              <span className="text-lg font-bold text-rose-600 tabular-nums">{removed.toLocaleString()}</span>
+              <span className="text-lg font-bold text-rose-600 font-mono tabular-nums">{removed.toLocaleString()}</span>
             </div>
           </button>
         </div>
@@ -79,7 +79,7 @@ export default function TotalBreakdownModal({ total, live, removed, onClose, onF
             <span className="size-2.5 rounded-full bg-blue-500 shrink-0" />
             <span className="text-sm font-medium text-slate-700">Total</span>
           </div>
-          <span className="text-lg font-bold text-blue-600 tabular-nums">{total.toLocaleString()}</span>
+          <span className="text-lg font-bold text-blue-600 font-mono tabular-nums">{total.toLocaleString()}</span>
         </button>
 
         <p className="pb-4 text-center text-xs text-slate-400">Click a row to filter the table</p>

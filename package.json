@@ -11,6 +11,8 @@
     "capture:demo": "node scripts/capture-getting-started.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/public-sans": "^5.2.7",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@supabase/supabase-js": "^2.105.4",
     "lucide-react": "^1.14.0",
     "react": "^19.1.0",
