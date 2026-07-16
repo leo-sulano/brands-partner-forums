@@ -22,10 +22,22 @@ const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   wo: 'bg-green-100 text-green-700 border border-green-200',
 };
 
+function PresenceAvatar({ email, avatarUrl, className }: { email: string; avatarUrl: string | null; className: string }) {
+  const [imgFailed, setImgFailed] = useState(false);
+  if (avatarUrl && !imgFailed) {
+    return <img src={avatarUrl} alt="" className={`${className} object-cover`} onError={() => setImgFailed(true)} />;
+  }
+  return (
+    <div className={`${className} ${avatarColor(email)} flex items-center justify-center text-[10px] font-bold text-white select-none`}>
+      {initials(email)}
+    </div>
+  );
+}
+
 export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const { session, signOut } = useAuth();
+  const { session, profile, signOut } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const isOverview = pathname === '/';
@@ -43,6 +55,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const onlineUsers = usePresence(
     session?.user.email ?? null,
     session?.user.id ?? null,
+    profile?.avatar_url ?? null,
   );
 
   const [avatarPopupOpen, setAvatarPopupOpen] = useState(false);
@@ -154,12 +167,8 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 aria-label="Online users"
               >
                 {onlineUsers.map((u) => (
-                  <div
-                    key={u.userId}
-                    title={u.email}
-                    className={`size-7 rounded-full ${avatarColor(u.email)} flex items-center justify-center text-[10px] font-bold text-white ring-2 ring-white select-none`}
-                  >
-                    {initials(u.email)}
+                  <div key={u.userId} title={u.email}>
+                    <PresenceAvatar email={u.email} avatarUrl={u.avatarUrl} className="size-7 rounded-full ring-2 ring-white" />
                   </div>
                 ))}
               </button>
@@ -171,9 +180,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                   </p>
                   {onlineUsers.map((u) => (
                     <div key={u.userId} className="flex items-center gap-2.5 px-3 py-2">
-                      <div className={`size-6 rounded-full ${avatarColor(u.email)} flex items-center justify-center text-[10px] font-bold text-white shrink-0`}>
-                        {initials(u.email)}
-                      </div>
+                      <PresenceAvatar email={u.email} avatarUrl={u.avatarUrl} className="size-6 rounded-full shrink-0" />
                       <span className="text-xs text-slate-700 truncate">{u.email}</span>
                     </div>
                   ))}

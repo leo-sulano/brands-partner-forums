@@ -28,7 +28,7 @@ function ProfileAvatar({ profile }: { profile: Profile }) {
 }
 
 export default function AdminUsers() {
-  const { isAdmin, profile: self, session } = useAuth();
+  const { isAdmin, profile: self, session, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +53,7 @@ export default function AdminUsers() {
       const avatarUrl = await uploadAvatar(self.id, file);
       await updateOwnAvatar(avatarUrl);
       setProfiles((prev) => prev.map((p) => (p.id === self.id ? { ...p, avatar_url: avatarUrl } : p)));
+      await refreshProfile();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Photo upload failed');
     } finally {

@@ -4,9 +4,10 @@ import { supabase } from './supabase';
 export interface PresenceUser {
   email: string;
   userId: string;
+  avatarUrl: string | null;
 }
 
-export function usePresence(email: string | null, userId: string | null): PresenceUser[] {
+export function usePresence(email: string | null, userId: string | null, avatarUrl: string | null): PresenceUser[] {
   const [online, setOnline] = useState<PresenceUser[]>([]);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
@@ -20,20 +21,20 @@ export function usePresence(email: string | null, userId: string | null): Presen
 
     channel
       .on('presence', { event: 'sync' }, () => {
-        const state = channel.presenceState<{ email: string; userId: string }>();
+        const state = channel.presenceState<PresenceUser>();
         const users = Object.values(state).flatMap((presences) => presences);
         setOnline(users);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
-          await channel.track({ email, userId });
+          await channel.track({ email, userId, avatarUrl });
         }
       });
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [email, userId]);
+  }, [email, userId, avatarUrl]);
 
   return online;
 }
