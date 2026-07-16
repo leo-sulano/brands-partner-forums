@@ -43,8 +43,8 @@ const linkClass = (isActive: boolean, isCollapsed = false) =>
     'flex items-center rounded-md py-2 text-sm transition-colors',
     isCollapsed ? 'justify-center px-0' : 'gap-3 px-3',
     isActive
-      ? 'bg-blue-500/20 text-blue-100'
-      : 'text-slate-300 hover:bg-blue-500/20 hover:text-blue-100',
+      ? 'bg-blue-500/20 text-white'
+      : 'text-white hover:bg-blue-500/20 hover:text-white',
   ].join(' ');
 
 function SectionHeader({ label, open, onToggle }: { label: string; open: boolean; onToggle: () => void }) {
