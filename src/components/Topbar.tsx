@@ -5,6 +5,7 @@ import { usePresence } from '../lib/realtime';
 import DatePicker from './DatePicker';
 import { slugToTab } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { avatarColor, initials } from '../lib/avatar';
 import { useState, useRef, useEffect } from 'react';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
@@ -20,25 +21,6 @@ const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   cg: 'bg-violet-100 text-violet-700 border border-violet-200',
   wo: 'bg-green-100 text-green-700 border border-green-200',
 };
-
-const AVATAR_COLORS = [
-  'bg-violet-500',
-  'bg-sky-500',
-  'bg-emerald-500',
-  'bg-amber-500',
-  'bg-rose-500',
-  'bg-indigo-500',
-];
-
-function avatarColor(email: string): string {
-  let hash = 0;
-  for (let i = 0; i < email.length; i++) hash = email.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-function initials(email: string): string {
-  return email.slice(0, 2).toUpperCase();
-}
 
 export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { pathname } = useLocation();
