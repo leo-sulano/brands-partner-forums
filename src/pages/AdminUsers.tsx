@@ -1,9 +1,23 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { Loader2, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Camera, Loader2, ShieldCheck, ShieldOff, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getProfiles, updateProfile, deleteProfile, insertAdminLog, type AdminAction } from '../lib/queries';
+import { getProfiles, updateProfile, deleteProfile, insertAdminLog, uploadAvatar, updateOwnAvatar, type AdminAction } from '../lib/queries';
+import { avatarColor, initials, validateAvatarFile } from '../lib/avatar';
 import type { Profile } from '../types/profile';
+
+function ProfileAvatar({ profile }: { profile: Profile }) {
+  if (profile.avatar_url) {
+    return <img src={profile.avatar_url} alt="" className="size-8 rounded-full object-cover" />;
+  }
+  return (
+    <div
+      className={`flex size-8 items-center justify-center rounded-full text-[10px] font-bold text-white ${avatarColor(profile.email)}`}
+    >
+      {initials(profile.email)}
+    </div>
+  );
+}
 
 export default function AdminUsers() {
   const { isAdmin, profile: self, session } = useAuth();
@@ -12,6 +26,31 @@ export default function AdminUsers() {
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !self) return;
+
+    const validationError = validateAvatarFile(file);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setUpdating(self.id);
+    setError(null);
+    try {
+      const avatarUrl = await uploadAvatar(self.id, file);
+      await updateOwnAvatar(avatarUrl);
+      setProfiles((prev) => prev.map((p) => (p.id === self.id ? { ...p, avatar_url: avatarUrl } : p)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Photo upload failed');
+    } finally {
+      setUpdating(null);
+    }
+  }
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -73,6 +112,13 @@ export default function AdminUsers() {
 
   return (
     <div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={handleAvatarChange}
+      />
       <p className="mb-6 text-sm text-slate-500">
         {profiles.length} account{profiles.length !== 1 ? 's' : ''}
       </p>
@@ -87,6 +133,7 @@ export default function AdminUsers() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Profile</th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Email</th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Role</th>
               <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">Status</th>
@@ -100,6 +147,27 @@ export default function AdminUsers() {
               const busy = updating === p.id;
               return (
                 <tr key={p.id} className="hover:bg-blue-50/50">
+                  <td className="px-4 py-3">
+                    {isSelf ? (
+                      busy ? (
+                        <Loader2 className="size-4 animate-spin text-slate-400" />
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="group relative block size-8 rounded-full"
+                          aria-label="Change your profile photo"
+                        >
+                          <ProfileAvatar profile={p} />
+                          <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
+                            <Camera className="size-3.5 text-white" />
+                          </span>
+                        </button>
+                      )
+                    ) : (
+                      <ProfileAvatar profile={p} />
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-slate-800 font-medium">
                     {p.email}
                     {isSelf && <span className="ml-2 text-xs text-slate-400">(you)</span>}
