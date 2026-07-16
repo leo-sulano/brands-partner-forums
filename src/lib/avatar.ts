@@ -28,7 +28,7 @@ const AVATAR_WEBP_QUALITY = 0.82;
 export async function compressAvatarImage(file: File): Promise<Blob> {
   let bitmap: ImageBitmap;
   try {
-    bitmap = await createImageBitmap(file);
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   } catch {
     throw new Error('Could not process that image.');
   }
