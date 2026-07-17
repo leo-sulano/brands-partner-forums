@@ -42,7 +42,7 @@ const linkClass = (isActive: boolean, isCollapsed = false, rightPad = false) =>
   [
     'relative flex items-center py-2 text-sm transition-colors rounded-l-[10px]',
     isCollapsed
-      ? (rightPad ? 'justify-center pl-3 pr-[15px]' : 'justify-center px-3')
+      ? 'justify-center px-3'
       : (rightPad ? 'gap-3 pl-3 pr-[15px]' : 'gap-3 px-3'),
     isActive
       ? (isCollapsed
@@ -91,7 +91,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
   const navContent = (isCollapsed: boolean) => (
     <>
-      <nav className="flex-1 py-3 pl-3 space-y-1 overflow-y-auto">
+      <nav className={`flex-1 py-3 space-y-1 overflow-y-auto ${isCollapsed ? '' : 'pl-3'}`}>
         {topLinks.map(({ to, label, icon: Icon, end }) => (
           <NavLink
             key={to}
