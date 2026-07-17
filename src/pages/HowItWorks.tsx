@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users,
+  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users, X,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -118,6 +118,17 @@ const FEATURES: FeatureSection[] = [
 export default function HowItWorks() {
   const { isAdmin } = useAuth();
   const [showBrandTabsModal, setShowBrandTabsModal] = useState(false);
+  const [showGifLightbox, setShowGifLightbox] = useState(false);
+
+  useEffect(() => {
+    if (!showGifLightbox) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowGifLightbox(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showGifLightbox]);
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-slate-600 leading-relaxed">{INTRO}</p>
@@ -134,11 +145,17 @@ export default function HowItWorks() {
           Getting Started
         </p>
         <div className="grid gap-5 lg:grid-cols-2 lg:items-center">
-          <img
-            src="/getting-started.gif"
-            alt="Walkthrough: logging in, adding an entry, editing it, and running Check Status"
-            className="w-full rounded-lg border border-slate-200"
-          />
+          <button
+            type="button"
+            onClick={() => setShowGifLightbox(true)}
+            className="cursor-pointer"
+          >
+            <img
+              src="/getting-started.gif"
+              alt="Walkthrough: logging in, adding an entry, editing it, and running Check Status"
+              className="w-full rounded-lg border border-slate-200 transition-opacity hover:opacity-90"
+            />
+          </button>
           <ol className="space-y-2">
             {GETTING_STARTED_STEPS.map((step, i) => (
               <li key={step} className="flex gap-3 text-sm text-slate-600">
@@ -241,6 +258,26 @@ export default function HowItWorks() {
       </div>
 
       {showBrandTabsModal && <BrandTabsModal onClose={() => setShowBrandTabsModal(false)} />}
+
+      {showGifLightbox && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/70" onClick={() => setShowGifLightbox(false)} />
+          <div className="relative">
+            <img
+              src="/getting-started.gif"
+              alt="Walkthrough: logging in, adding an entry, editing it, and running Check Status"
+              className="max-w-4xl max-h-[85vh] w-full rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <button
+              onClick={() => setShowGifLightbox(false)}
+              className="absolute -top-3 -right-3 rounded-lg bg-white p-1.5 text-slate-400 shadow-md hover:bg-blue-50 hover:text-slate-600 transition-colors"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

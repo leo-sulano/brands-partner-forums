@@ -1420,6 +1420,14 @@ Fixed collapsed-rail nav icons rendering off-center in `Sidebar.tsx`. Two compou
 
 ---
 
+## Task 142: Getting Started GIF Click-to-Zoom Lightbox
+
+**Date:** July 17, 2026
+
+Added click-to-zoom on the How It Works page's Getting Started GIF (`HowItWorks.tsx`). Clicking the inline GIF opens a full-screen lightbox (dark backdrop, GIF enlarged and centered, close button), dismissible via backdrop click, the X button, or Escape. Escape-to-close uses the same document-level `keydown` listener pattern as `BrandTabsModal` (the working implementation in this codebase — some other modals have a focus-dependent Escape bug). The GIF file itself still shows the pre-recolor sidebar and will be regenerated separately via `npm run capture:demo`. Spec: `docs/superpowers/specs/2026-07-17-getting-started-lightbox-design.md`.
+
+---
+
 *Last updated: July 17, 2026*
 
 ---
