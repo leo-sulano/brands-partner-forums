@@ -1591,7 +1591,7 @@ export default function BrandGroup() {
           <button
             type="button"
             onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-[#000060] px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#000060]/90 transition-colors"
           >
             <Plus className="size-4" />
             Add Review Account
