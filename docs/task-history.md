@@ -1344,6 +1344,74 @@ When the desktop sidebar is pinned collapsed (via the existing manual toggle), h
 
 ---
 
-*Last updated: July 14, 2026*
+## Task 135: Color Scheme Alignment — Violet to Blue, Sidebar Navy, Typeface
+
+**Date:** July 15–16, 2026
+
+Swapped the dashboard's `violet-*` interactive-accent color for `blue-*` to match the Ranking Reports reference screenshot, then iterated the sidebar and typography further based on a supplied color swatch.
+
+- Mechanical `violet-` → `blue-` replace across 23 files (190 occurrences) plus the `--color-brand-*` tokens in `src/index.css`; Casino Guru's platform badge/dot and the decorative avatar color intentionally kept violet since they're categorical, not accent chrome.
+- Sidebar background iterated `slate-900` → `indigo-950` → `#1E2A6B` (exact reference swatch) → `#000080` (standard navy) → `#000060` (final, darkened) across several same-day passes; nav text/icons set to pure white.
+- Active sidebar tab restyled from a translucent blue fill to a white/`#f8fafc` pill with rounded concave corners and a blue left border; platform filter's active segment recolored to brand blue (`#2D5FED`).
+- Adopted Public Sans (body) + IBM Plex Mono (numeric displays — KPIs, scores, pagination, chart axes) via self-hosted `@fontsource` packages, wired through `--font-sans`/`--font-mono` tokens.
+- Spec: `docs/superpowers/specs/2026-07-15-color-scheme-alignment-design.md`. Plan: `docs/superpowers/plans/2026-07-15-color-scheme-alignment.md` (amended mid-implementation to cover a hardcoded hex accent found during Task 1 review).
+
+---
+
+## Task 136: Admin Users Table Full Width & Sign Out Button Styling
+
+**Date:** July 16, 2026
+
+Two small standalone style fixes: removed the `max-w-4xl` constraint on the Admin Users page so the table fills the page instead of being capped at a fixed width, and restyled the sign-out button to use the sidebar's navy color with a transparent background.
+
+---
+
+## Task 137: Self-Service Profile Photo Upload (Admin Users)
+
+**Date:** July 16, 2026
+
+Users can now upload their own profile photo from the Admin Users table, replacing the initials-only avatar shown throughout the app.
+
+- Added `profiles.avatar_url`, an `avatars` Supabase Storage bucket, and a `update_own_avatar` RPC scoped to the caller's own row.
+- Extracted shared avatar color/initials/validation helpers to `src/lib/avatar.ts`; refactored `Topbar`'s existing avatar rendering to use them instead of its own duplicated logic (no behavior change).
+- Added `avatar_url` to the `Profile` type and `uploadAvatar`/`updateOwnAvatar` to `queries.ts`; wired the upload UI into the Admin Users table.
+- Threaded `avatar_url` through Supabase Presence tracking and added an img-with-fallback avatar to Topbar's online-users stack — previously Presence only tracked email/userId and Topbar always rendered initials, so uploaded photos never appeared there. Also fixed `AuthContext`'s cached profile only refreshing on login, which left `avatar_url` stale in the current session until next sign-in even though the DB and Admin Users table were already correct.
+- Post-hoc security review found `update_own_avatar` scoped the UPDATE to `auth.uid()` but never validated `new_avatar_url` itself — since it renders as `<img src>` to every admin viewing the table, a member could pass an arbitrary URL as a tracking-pixel/IP-disclosure vector. Fixed with a follow-up migration restricting the RPC to null or the caller's own object path in the `avatars` bucket, plus an `onError` fallback to initials so a broken/blocked URL no longer shows a broken-image icon.
+- Spec: `docs/superpowers/specs/2026-07-16-user-profile-photo-design.md`. Plan: `docs/superpowers/plans/2026-07-16-user-profile-photo.md`.
+
+---
+
+## Task 138: Client-Side Avatar WebP Compression
+
+**Date:** July 16, 2026
+
+Uploaded avatar photos are now cropped, resized, and re-encoded as WebP in the browser before upload, following on from Task 137.
+
+- Raised the avatar upload size cap to 15MB ahead of client-side compression (previously capped much lower since the original was uploaded as-is).
+- Added `squareCropRect` and `compressAvatarImage` helpers (`src/lib/avatar.ts`) — crop to square, resize, and encode as WebP via `createImageBitmap`/canvas.
+- Widened `uploadAvatar` to accept any `Blob`, not just a `File`, so the compressed output can be uploaded directly.
+- Wired `AdminUsers.tsx` to compress before calling `uploadAvatar`.
+- Fixed a follow-up bug: `createImageBitmap`'s default `imageOrientation` historically varies by browser, so a portrait phone photo could decode sideways — passing `'from-image'` makes EXIF rotation handling explicit instead of relying on the current browser's default.
+- Spec: `docs/superpowers/specs/2026-07-16-avatar-webp-compression-design.md`. Plan: `docs/superpowers/plans/2026-07-16-avatar-webp-compression.md`.
+
+---
+
+## Task 139: Sidebar Navy Recolor & Add Review Account Button
+
+**Date:** July 17, 2026
+
+Changed the sidebar background from `#000060` to `#17225a` across all three render states (expanded, hover-expanded, mobile drawer) in `Sidebar.tsx`. The displaced `#000060` navy was repurposed as the new background for the "Add Review Account" button in `BrandGroup.tsx`, replacing its previous `blue-600`/`blue-700` styling.
+
+---
+
+## Task 140: Sidebar Width Fix — Mobile Drawer
+
+**Date:** July 17, 2026
+
+Fixed the mobile sidebar drawer width from `w-72` (288px) to `w-60` (240px) in `Sidebar.tsx`, matching the desktop hover-expanded width. Desktop's collapsed rail (`w-16`/64px) and hover-expanded panel (`w-60`/240px) already matched spec and were left unchanged; the existing click-to-pin toggle and localStorage-persisted collapsed state were kept as-is.
+
+---
+
+*Last updated: July 17, 2026*
 
 ---

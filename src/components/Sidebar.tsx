@@ -253,7 +253,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             onClick={onClose}
           />
           {/* Panel */}
-          <aside className="relative z-50 flex flex-col w-72 bg-[#17225a] text-slate-100 h-full shadow-xl">
+          <aside className="relative z-50 flex flex-col w-60 bg-[#17225a] text-slate-100 h-full shadow-xl">
             <div className="px-5 py-5 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2">
                 <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
