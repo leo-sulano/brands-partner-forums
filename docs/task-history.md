@@ -1412,6 +1412,14 @@ Fixed the mobile sidebar drawer width from `w-72` (288px) to `w-60` (240px) in `
 
 ---
 
+## Task 141: Center Collapsed Sidebar Icons
+
+**Date:** July 17, 2026
+
+Fixed collapsed-rail nav icons rendering off-center in `Sidebar.tsx`. Two compounding causes: the `<nav>` wrapper always applied `pl-3` regardless of collapse state, and collapsed brand-tab links kept the expanded-mode `rightPad` padding (`pl-3 pr-[15px]`, meant to make room for platform favicons that are hidden when collapsed). Removed the nav's left padding when collapsed and made all collapsed links use symmetric `justify-center px-3`, so icons center on the true 64px rail width.
+
+---
+
 *Last updated: July 17, 2026*
 
 ---
