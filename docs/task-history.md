@@ -1454,3 +1454,15 @@ Audited tracked files against `.gitignore` and found several that were committed
 *Last updated: July 21, 2026*
 
 ---
+
+## Task 145: Tab-Refocus Dashboard Flash & Pending-Approval Retry Fix
+
+**Date:** July 21, 2026
+
+Fixed two related `AuthContext` bugs causing the dashboard to flash a spinner or "Pending Approval" screen for already-signed-in users, reported as random logout/relogin behavior (sometimes across all open tabs at once).
+
+- **Tab-refocus remount:** Supabase's `GoTrueClient` re-notifies auth subscribers on every tab `visibilitychange`, including via a `SIGNED_IN` event carrying the same session (not just `TOKEN_REFRESHED` as first assumed) when the session isn't near expiry. `AuthContext` was treating every re-notification as a fresh sign-in (`loading=true` + profile refetch), causing `ProtectedRoute` to swap the whole dashboard for a spinner on alt-tab. First pass only special-cased `TOKEN_REFRESHED`; corrected to check whether the session's `user` actually changed, covering all event names. Verified against a live dev server by simulating a visibility change.
+- **Pending Approval flash on transient fetch error:** `fetchProfile` returned `null` on any query error, indistinguishable from a genuinely unapproved/missing profile — so a one-off network blip or Supabase hiccup during sign-in revalidation showed "Pending Approval" for fully approved users. Now retries up to 3 times with backoff before giving up. Added `AuthContext.test.ts` covering the retry behavior.
+- **Outstanding:** a temporary `console.log('[auth-debug]', ...)` line added while diagnosing (commit `26fee4e`) is still present in `AuthContext.tsx:59` and should be removed once the fix is confirmed stable in production.
+
+---
