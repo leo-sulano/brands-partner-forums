@@ -55,8 +55,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       if (!mounted) return;
-      // TEMP DIAGNOSTIC — remove once auto-logout/relogin bug is root-caused.
-      console.log('[auth-debug]', new Date().toISOString(), 'event=', _event, 'userId=', s?.user.id, 'expiresAt=', s?.expires_at);
       setSession(s);
 
       // Tab regaining focus re-notifies with the same user's session as a
