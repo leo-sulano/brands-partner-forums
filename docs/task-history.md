@@ -1428,6 +1428,18 @@ Added click-to-zoom on the How It Works page's Getting Started GIF (`HowItWorks.
 
 ---
 
-*Last updated: July 17, 2026*
+## Task 143: Fix "Pending Approval" Flash on Sign-In
+
+**Date:** July 21, 2026
+
+Fixed a real-account login bug where approved users (confirmed with a genuinely approved admin account) briefly saw the "Pending Approval" screen for ~300-500ms immediately after signing in, before the app self-corrected to the real page.
+
+- **Root cause** (confirmed via console-instrumented Playwright login against a live dev server, not guessed): `AuthContext`'s `onAuthStateChange` handler only sets `loading` to `false` once, during the initial mount's no-session check on the login page. When a user then submits credentials and a `SIGNED_IN` event fires, `setSession(s)` triggers an immediate re-render with `loading` still `false` (unchanged from before) and `profile` still the stale initial `null`, so `ProtectedRoute` evaluates `isApproved=false` and renders "Pending Approval" — until the async `fetchProfile()` call resolves ~300-500ms later with the real (approved) value.
+- **Fix:** `AuthContext.tsx` now calls `setLoading(true)` when a new session arrives, before starting the profile fetch, so `ProtectedRoute` shows its spinner during that window instead of misjudging approval against a stale profile.
+- Surfaced incidentally while regenerating `getting-started.gif` (Task 142) — the Playwright capture script briefly caught the flash as its first post-login frame; investigation confirmed it affects real email/password logins generally, not just the capture script.
+
+---
+
+*Last updated: July 21, 2026*
 
 ---

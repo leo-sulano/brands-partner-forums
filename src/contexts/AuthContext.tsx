@@ -40,6 +40,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
       setSession(s);
       if (s) {
+        // A new session means the previously-fetched profile (if any) is stale
+        // until this resolves — without this, a sign-in on an already-mounted
+        // AuthProvider (loading already false from an earlier no-session check)
+        // renders isApproved=false against the stale profile for the duration
+        // of this fetch, flashing "Pending Approval" even for approved users.
+        setLoading(true);
         fetchProfile(s.user.id).then((p) => {
           if (!mounted) return;
           setProfile(p);
