@@ -35,14 +35,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
+    let currentUserId: string | undefined;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, s) => {
       if (!mounted) return;
       setSession(s);
-      // Tab regaining focus fires TOKEN_REFRESHED for the same user — just
-      // update the session, don't re-show the loading screen and unmount
-      // the whole protected route tree.
-      if (event === 'TOKEN_REFRESHED') return;
+
+      // Tab regaining focus re-notifies with the same user's session as a
+      // routine revalidation (Supabase does this on every visibilitychange,
+      // not only when the token is actually refreshed, and reuses the
+      // 'SIGNED_IN' event name for it — so the event type alone can't tell
+      // a real sign-in from a revalidation). Only re-run the loading/profile
+      // dance when the user actually changed.
+      const sameUser = !!s && s.user.id === currentUserId;
+      currentUserId = s?.user.id;
+      if (sameUser) return;
+
       if (s) {
         // A new session means the previously-fetched profile (if any) is stale
         // until this resolves — without this, a sign-in on an already-mounted
