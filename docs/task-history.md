@@ -1440,6 +1440,17 @@ Fixed a real-account login bug where approved users (confirmed with a genuinely 
 
 ---
 
+## Task 144: Repo Gitignore Audit & Stray File Cleanup
+
+**Date:** July 21, 2026
+
+Audited tracked files against `.gitignore` and found several that were committed before matching ignore rules existed, plus some genuine junk that had never been ignored at all.
+
+- Untracked (kept on disk, already covered by existing `*.tsbuildinfo`/`scripts/*.log` rules that predated these files): `tsconfig.node.tsbuildinfo` and six `scripts/*.log` files.
+- Untracked and deleted from disk: `.playwright-mcp/` debug capture artifacts (5 files, committed 2026-07-16), `.superpowers/brainstorm/3217-1780911490/` scratch session state (3 files, including a `.pid` file), the stray `UsersLeoAppDataLocalTemppms_home.html` (a mis-saved Windows temp-path file), and `src/lib/queries.ts.tmp.24540.e8ca16ed553c` (a leftover editor temp file, previously flagged but not yet cleaned up).
+- Added `.playwright-mcp/`, `.superpowers/`, and `*.tmp.*` rules to `.gitignore`; deduped a repeated `.vercel`/`.env*` pair in the same file.
+- `These are the brands we work on daily.docx` was reviewed and left tracked — it's real content (brand roster), not a build artifact.
+
 *Last updated: July 21, 2026*
 
 ---
