@@ -45,5 +45,11 @@ supabase/functions/**/.env
 
 .vercel
 
-.vercel
-.env*
+# Playwright MCP debug artifacts
+.playwright-mcp/
+
+# Superpowers scratch state (brainstorm sessions, plan state)
+.superpowers/
+
+# Stray temp files
+*.tmp.*
