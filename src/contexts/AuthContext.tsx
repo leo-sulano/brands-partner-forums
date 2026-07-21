@@ -15,17 +15,33 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchProfile(userId: string): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
-  if (error) {
-    console.error('Failed to fetch profile:', error.message);
-    return null;
+const PROFILE_FETCH_ATTEMPTS = 3;
+const PROFILE_FETCH_RETRY_DELAY_MS = 300;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Retries on query error (network blip, transient Supabase failure) so a
+// one-off hiccup doesn't get treated the same as "profile not approved" —
+// `maybeSingle()` already returns error:null for a genuinely missing row,
+// so only real failures land here.
+export async function fetchProfile(userId: string): Promise<Profile | null> {
+  let lastErrorMessage: string | undefined;
+  for (let attempt = 1; attempt <= PROFILE_FETCH_ATTEMPTS; attempt++) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+    if (!error) return data as Profile | null;
+    lastErrorMessage = error.message;
+    if (attempt < PROFILE_FETCH_ATTEMPTS) {
+      await delay(PROFILE_FETCH_RETRY_DELAY_MS * attempt);
+    }
   }
-  return data as Profile | null;
+  console.error('Failed to fetch profile after retries:', lastErrorMessage);
+  return null;
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
