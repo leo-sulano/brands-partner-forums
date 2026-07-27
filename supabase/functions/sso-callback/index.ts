@@ -41,6 +41,8 @@ async function verifyPortalToken(token: string): Promise<string> {
   const { payload } = await jwtVerify(token, JWKS, {
     issuer: PORTAL_ISSUER,
     audience: SSO_AUDIENCE,
+    requiredClaims: ['exp', 'email'],
+    maxTokenAge: '5m',
   });
   // typeof check, not String(...): String(undefined) === "undefined" (truthy)
   // would silently defeat this guard.
@@ -68,32 +70,43 @@ async function findOrCreateUser(email: string) {
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
-  if (req.method !== 'POST') return jsonResponse({ error: 'sso' }, 405);
+  // Handled failures all return HTTP 200: supabase-js's functions.invoke()
+  // throws FunctionsHttpError on any non-2xx response and does not surface
+  // the JSON body as `data` in that case (see
+  // node_modules/@supabase/functions-js/dist/main/FunctionsClient.js). A 200
+  // response with an {error: ...} body is the only way the specific error
+  // code reaches the client.
+  if (req.method !== 'POST') return jsonResponse({ error: 'sso' }, 200);
 
   let body: { token?: string };
   try {
     body = await req.json();
-  } catch {
-    return jsonResponse({ error: 'sso' }, 400);
+  } catch (err) {
+    console.error('[sso-callback] parse-body', err);
+    return jsonResponse({ error: 'sso' }, 200);
   }
-  if (!body.token) return jsonResponse({ error: 'sso' }, 400);
+  if (!body.token) return jsonResponse({ error: 'sso' }, 200);
 
   let email: string;
   try {
     email = await verifyPortalToken(body.token);
-  } catch {
-    return jsonResponse({ error: 'sso' }, 401);
+  } catch (err) {
+    console.error('[sso-callback] jwt-verify', err);
+    return jsonResponse({ error: 'sso' }, 200);
   }
 
   let user;
   try {
     user = await findOrCreateUser(email);
-  } catch {
-    return jsonResponse({ error: 'provision' }, 500);
+  } catch (err) {
+    console.error('[sso-callback] find-or-create-user', err);
+    return jsonResponse({ error: 'provision' }, 200);
   }
 
-  const { error: approveErr } = await admin.from('profiles').upsert({ id: user.id, email, approved: true }, { onConflict: 'id' });
-  if (approveErr) return jsonResponse({ error: 'access' }, 500);
+  const { error: approveErr } = await admin
+    .from('profiles')
+    .upsert({ id: user.id, email: user.email ?? email, approved: true }, { onConflict: 'id' });
+  if (approveErr) return jsonResponse({ error: 'access' }, 200);
 
   try {
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
@@ -113,7 +126,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       access_token: otpData.session.access_token,
       refresh_token: otpData.session.refresh_token,
     });
-  } catch {
-    return jsonResponse({ error: 'session' }, 500);
+  } catch (err) {
+    console.error('[sso-callback] mint-session', err);
+    return jsonResponse({ error: 'session' }, 200);
   }
 });
