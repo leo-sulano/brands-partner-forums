@@ -37,11 +37,11 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-async function verifyPortalToken(token: string): Promise<string> {
+async function verifyPortalToken(token: string): Promise<{ email: string; jti: string; exp: number }> {
   const { payload } = await jwtVerify(token, JWKS, {
     issuer: PORTAL_ISSUER,
     audience: SSO_AUDIENCE,
-    requiredClaims: ['exp', 'email'],
+    requiredClaims: ['exp', 'email', 'jti'],
     maxTokenAge: '5m',
   });
   // typeof check, not String(...): String(undefined) === "undefined" (truthy)
@@ -49,7 +49,12 @@ async function verifyPortalToken(token: string): Promise<string> {
   if (typeof payload.email !== 'string' || payload.email.length === 0) {
     throw new Error('no email claim');
   }
-  return payload.email;
+  if (typeof payload.jti !== 'string' || payload.jti.length === 0) {
+    throw new Error('no jti claim');
+  }
+  // requiredClaims guarantees payload.exp is present at runtime; jose's type
+  // only narrows to number|undefined, hence the assertion.
+  return { email: payload.email, jti: payload.jti, exp: payload.exp as number };
 }
 
 // listUsers is paginated; loop a bounded number of pages rather than assume
@@ -87,12 +92,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (!body.token) return jsonResponse({ error: 'sso' }, 200);
 
-  let email: string;
+  let email: string, jti: string, exp: number;
   try {
-    email = await verifyPortalToken(body.token);
+    ({ email, jti, exp } = await verifyPortalToken(body.token));
   } catch (err) {
     console.error('[sso-callback] jwt-verify', err);
     return jsonResponse({ error: 'sso' }, 200);
+  }
+
+  // Claim the token's jti before doing anything else — a unique-constraint
+  // failure means this exact token was already redeemed.
+  const { error: replayErr } = await admin
+    .from('sso_consumed_tokens')
+    .insert({ jti, expires_at: new Date(exp * 1000).toISOString() });
+  if (replayErr) {
+    console.error('[sso-callback] replay-check', replayErr);
+    return jsonResponse({ error: 'replay' }, 200);
   }
 
   let user;
@@ -103,9 +118,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: 'provision' }, 200);
   }
 
-  const { error: approveErr } = await admin
-    .from('profiles')
-    .upsert({ id: user.id, email: user.email ?? email, approved: true }, { onConflict: 'id' });
+  const { error: approveErr } = await admin.from('profiles').upsert(
+    {
+      id: user.id,
+      email: user.email ?? email,
+      approved: true,
+      sso_provisioned: true,
+      sso_last_verified_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
   if (approveErr) return jsonResponse({ error: 'access' }, 200);
 
   try {

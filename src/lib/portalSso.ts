@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 
 const ERROR_MESSAGES: Record<string, string> = {
   sso: 'Single sign-on failed — the login link may be invalid or expired. Try again from the portal.',
+  replay: 'This sign-on link has already been used. Request a new one from the portal.',
   provision: 'Single sign-on failed — we could not set up your account. Contact an admin.',
   access: 'Single sign-on failed — we could not approve your account. Contact an admin.',
   session: 'Single sign-on failed — we could not start your session. Try again from the portal.',

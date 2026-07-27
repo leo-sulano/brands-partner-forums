@@ -17,11 +17,12 @@ import { mapSsoErrorCode, completePortalLogin } from './portalSso';
 describe('mapSsoErrorCode', () => {
   it('maps known codes to distinct messages', () => {
     const sso = mapSsoErrorCode('sso');
+    const replay = mapSsoErrorCode('replay');
     const provision = mapSsoErrorCode('provision');
     const access = mapSsoErrorCode('access');
     const session = mapSsoErrorCode('session');
-    const all = [sso, provision, access, session];
-    expect(new Set(all).size).toBe(4);
+    const all = [sso, replay, provision, access, session];
+    expect(new Set(all).size).toBe(5);
     all.forEach((m) => expect(m.length).toBeGreaterThan(0));
   });
 
