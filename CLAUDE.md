@@ -69,7 +69,17 @@ Brands Partner Forum/
   `.env.example`) — code is complete and reviewed, but the function has NOT
   been deployed yet and the secrets have NOT been set (needs Supabase CLI
   access this session doesn't have); deploy, set secrets, and the portal
-  owner enabling SSO for this dashboard's card are still pending. Spec:
+  owner enabling SSO for this dashboard's card are still pending. Final
+  review added replay protection (each token's `jti` can only be claimed
+  once, via `sso_consumed_tokens`) and a 7-day bounded revocation window for
+  SSO-provisioned users (`profiles.sso_provisioned`/`sso_last_verified_at`,
+  enforced by a daily `pg_cron` job) — migration
+  `supabase/migrations/20260727150000_add_sso_replay_and_revocation.sql` must
+  be applied via `supabase db push` **before** the function is deployed,
+  since the function's code assumes that table/those columns already exist.
+  An admin's manual re-approval in Admin Users now also clears
+  `sso_provisioned` back to `false`, so an explicit approval isn't silently
+  undone by the next day's cron run. Spec:
   `docs/superpowers/specs/2026-07-27-portal-sso-callback-design.md`. Plan:
   `docs/superpowers/plans/2026-07-27-portal-sso-callback.md`.
 - *2026-07-10:* Brand Name in Add Review Account (and Edit Entry, since it shares the same
