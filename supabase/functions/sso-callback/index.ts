@@ -92,13 +92,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: 'provision' }, 500);
   }
 
-  const { error: approveErr } = await admin.from('profiles').update({ approved: true }).eq('id', user.id);
+  const { error: approveErr } = await admin.from('profiles').upsert({ id: user.id, email, approved: true }, { onConflict: 'id' });
   if (approveErr) return jsonResponse({ error: 'access' }, 500);
 
   try {
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
       type: 'magiclink',
-      email,
+      email: user.email as string,
     });
     if (linkErr || !link?.properties?.hashed_token) throw linkErr ?? new Error('no hashed_token');
 
