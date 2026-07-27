@@ -520,8 +520,238 @@ git commit -m "docs: document SSO secrets and log portal callback feature"
 
 ---
 
+## Addendum Tasks (2026-07-27, post final-review)
+
+Final whole-branch review found two cross-cutting gaps needing new DB objects and Edge Function changes: no replay protection for the SSO token, and no bounded expiry on the "portal always wins" approval policy. See the spec's Addendum section for the full rationale and the two policy decisions (7-day bounded window; self-contained `jti` tracking, no portal API dependency). Tasks 1-5 above are otherwise unchanged and already complete.
+
+### Task 6: DB migration — replay tracking + bounded revocation columns
+
+**Files:**
+- Create: `supabase/migrations/20260727150000_add_sso_replay_and_revocation.sql`
+
+**Interfaces:**
+- Produces: table `sso_consumed_tokens(jti text primary key, consumed_at timestamptz, expires_at timestamptz)`; new columns `profiles.sso_provisioned boolean`, `profiles.sso_last_verified_at timestamptz`. Task 7's Edge Function writes to both.
+
+No test for this task — this repo's existing migrations (e.g. `20260716120000_add_profile_avatar.sql`) have no automated test either; verified by running the migration against the linked project and checking `\d profiles` / `\d sso_consumed_tokens`, which requires the same Supabase CLI project access Task 5's deploy step needed. If that access isn't available in this session, write the file and let the human operator apply it (`supabase db push`) alongside the Task 5 deploy steps — do not attempt `supabase db push` without confirming CLI access first, and report which happened.
+
+- [ ] **Step 1: Write the migration**
+
+```sql
+-- supabase/migrations/20260727150000_add_sso_replay_and_revocation.sql
+-- SSO replay protection (jti tracking) and bounded revocation for
+-- portal-provisioned users. See the Addendum section of
+-- docs/superpowers/specs/2026-07-27-portal-sso-callback-design.md.
+
+create table public.sso_consumed_tokens (
+  jti         text primary key,
+  consumed_at timestamptz not null default now(),
+  expires_at  timestamptz not null
+);
+
+create index sso_consumed_tokens_expires_at_idx on public.sso_consumed_tokens (expires_at);
+
+alter table public.sso_consumed_tokens enable row level security;
+-- No policies defined: only the service-role key (used by the sso-callback
+-- Edge Function) ever touches this table. Under RLS with zero policies,
+-- anon/authenticated roles get no access at all, which is exactly right —
+-- there is no legitimate client-side use of this table.
+
+alter table public.profiles
+  add column sso_provisioned boolean not null default false,
+  add column sso_last_verified_at timestamptz;
+
+-- Bounded revocation: SSO-granted approval lapses after 7 days without a
+-- fresh SSO login. Real-time revocation would need the portal to expose an
+-- assignment-list API or revoke webhook, which does not exist today — this
+-- is the accepted interim fix (see spec Addendum). Only ever touches rows
+-- marked sso_provisioned = true, so manually-approved members are untouched.
+select cron.schedule(
+  'expire-stale-sso-approval-daily',
+  '0 3 * * *',
+  $$
+    update public.profiles
+    set approved = false
+    where sso_provisioned = true
+      and approved = true
+      and sso_last_verified_at < now() - interval '7 days'
+  $$
+);
+
+-- Housekeeping: a consumed-token row is only needed to block replay within
+-- the token's own lifetime, so it's safe to drop shortly after expiry.
+select cron.schedule(
+  'cleanup-expired-sso-tokens-daily',
+  '10 3 * * *',
+  $$
+    delete from public.sso_consumed_tokens where expires_at < now() - interval '1 day'
+  $$
+);
+```
+
+- [ ] **Step 2: Verify the migration is syntactically well-formed**
+
+Run: `supabase db lint --linked` if CLI project access is available, otherwise a careful read-through against `supabase/schema.sql`'s existing `cron.schedule` block (lines 54-68) to confirm the same syntax/extension assumptions (`pg_cron`/`pg_net` already documented there as required, already used by this project for `check-tp-review-status-daily`).
+
+- [ ] **Step 3: Apply the migration, if CLI access allows; otherwise hand off**
+
+If `supabase link` / `supabase db push` works against this project (check first — Task 5 found this session's CLI account lacked access; a later session or the human operator may have it): run `supabase db push` and confirm the new table/columns/cron jobs exist. If access is unavailable, do not attempt it — report DONE_WITH_CONCERNS noting the migration file is written but unapplied, exactly parallel to Task 5's undeployed Edge Function.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/migrations/20260727150000_add_sso_replay_and_revocation.sql
+git commit -m "feat: add sso_consumed_tokens table and bounded SSO revocation columns"
+```
+
+---
+
+### Task 7: Wire replay guard + revocation timestamps into sso-callback, add the `replay` error code
+
+**Files:**
+- Modify: `supabase/functions/sso-callback/index.ts`
+- Modify: `src/lib/portalSso.ts`
+- Modify: `src/lib/portalSso.test.ts`
+
+**Interfaces:**
+- Consumes: `sso_consumed_tokens` table and `profiles.sso_provisioned`/`sso_last_verified_at` columns from Task 6.
+- Produces: a 5th error code `'replay'` flowing through the existing `{error: string}` response shape — no change to the response contract's *shape*, only to the set of values `error` can take. `mapSsoErrorCode` (Task 1, already built) already handles unknown codes via its fallback, so this is purely additive.
+
+- [ ] **Step 1: Update `verifyPortalToken` to require and return `jti`**
+
+In `supabase/functions/sso-callback/index.ts`, replace the current `verifyPortalToken` function:
+
+```typescript
+async function verifyPortalToken(token: string): Promise<{ email: string; jti: string; exp: number }> {
+  const { payload } = await jwtVerify(token, JWKS, {
+    issuer: PORTAL_ISSUER,
+    audience: SSO_AUDIENCE,
+    requiredClaims: ['exp', 'email', 'jti'],
+    maxTokenAge: '5m',
+  });
+  // typeof check, not String(...): String(undefined) === "undefined" (truthy)
+  // would silently defeat this guard.
+  if (typeof payload.email !== 'string' || payload.email.length === 0) {
+    throw new Error('no email claim');
+  }
+  if (typeof payload.jti !== 'string' || payload.jti.length === 0) {
+    throw new Error('no jti claim');
+  }
+  // requiredClaims guarantees payload.exp is present at runtime; jose's type
+  // only narrows to number|undefined, hence the assertion.
+  return { email: payload.email, jti: payload.jti, exp: payload.exp as number };
+}
+```
+
+- [ ] **Step 2: Add a replay guard between verification and provisioning**
+
+In the `Deno.serve` handler, replace:
+
+```typescript
+  let email: string;
+  try {
+    email = await verifyPortalToken(body.token);
+  } catch (err) {
+    console.error('[sso-callback] jwt-verify', err);
+    return jsonResponse({ error: 'sso' }, 200);
+  }
+```
+
+with:
+
+```typescript
+  let email: string, jti: string, exp: number;
+  try {
+    ({ email, jti, exp } = await verifyPortalToken(body.token));
+  } catch (err) {
+    console.error('[sso-callback] jwt-verify', err);
+    return jsonResponse({ error: 'sso' }, 200);
+  }
+
+  // Claim the token's jti before doing anything else — a unique-constraint
+  // failure means this exact token was already redeemed.
+  const { error: replayErr } = await admin
+    .from('sso_consumed_tokens')
+    .insert({ jti, expires_at: new Date(exp * 1000).toISOString() });
+  if (replayErr) {
+    console.error('[sso-callback] replay-check', replayErr);
+    return jsonResponse({ error: 'replay' }, 200);
+  }
+```
+
+- [ ] **Step 3: Set `sso_provisioned`/`sso_last_verified_at` in the profiles upsert**
+
+Replace the current upsert line:
+
+```typescript
+  const { error: approveErr } = await admin
+    .from('profiles')
+    .upsert({ id: user.id, email: user.email ?? email, approved: true }, { onConflict: 'id' });
+```
+
+with:
+
+```typescript
+  const { error: approveErr } = await admin.from('profiles').upsert(
+    {
+      id: user.id,
+      email: user.email ?? email,
+      approved: true,
+      sso_provisioned: true,
+      sso_last_verified_at: new Date().toISOString(),
+    },
+    { onConflict: 'id' },
+  );
+```
+
+- [ ] **Step 4: Add the `replay` error message**
+
+In `src/lib/portalSso.ts`, add a `replay` entry to `ERROR_MESSAGES`:
+
+```typescript
+const ERROR_MESSAGES: Record<string, string> = {
+  sso: 'Single sign-on failed — the login link may be invalid or expired. Try again from the portal.',
+  replay: 'This sign-on link has already been used. Request a new one from the portal.',
+  provision: 'Single sign-on failed — we could not set up your account. Contact an admin.',
+  access: 'Single sign-on failed — we could not approve your account. Contact an admin.',
+  session: 'Single sign-on failed — we could not start your session. Try again from the portal.',
+};
+```
+
+- [ ] **Step 5: Extend the existing `mapSsoErrorCode` test to cover `replay`**
+
+In `src/lib/portalSso.test.ts`, the existing test `'maps known codes to distinct messages'` currently checks `sso`/`provision`/`access`/`session`. Update it to include `replay`:
+
+```typescript
+  it('maps known codes to distinct messages', () => {
+    const sso = mapSsoErrorCode('sso');
+    const replay = mapSsoErrorCode('replay');
+    const provision = mapSsoErrorCode('provision');
+    const access = mapSsoErrorCode('access');
+    const session = mapSsoErrorCode('session');
+    const all = [sso, replay, provision, access, session];
+    expect(new Set(all).size).toBe(5);
+    all.forEach((m) => expect(m.length).toBeGreaterThan(0));
+  });
+```
+
+- [ ] **Step 6: Run tests, deno check, and build**
+
+Run: `npm test -- src/lib/portalSso.test.ts` — expect all tests (including the updated one) to pass.
+Run: `deno check supabase/functions/sso-callback/index.ts` — expect no errors (network access needed to resolve `esm.sh` type imports, same as prior tasks).
+Run: `npm run build` — expect success.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add supabase/functions/sso-callback/index.ts src/lib/portalSso.ts src/lib/portalSso.test.ts
+git commit -m "feat: add jti replay guard and sso revocation timestamps to sso-callback"
+```
+
+---
+
 ## Self-Review Notes
 
-- **Spec coverage:** Flow steps 1-6 → Tasks 1/2/4. Error-code table → `ERROR_MESSAGES` (Task 1) and the function's `jsonResponse({error: ...})` calls (Task 4). Files list → all five files created/modified across Tasks 1-5. "Why not verify client-side" → honored by keeping `jose` out of `package.json`/frontend entirely. Testing/verification section → Task 5 Steps 3-4.
+- **Spec coverage:** Flow steps 1-6 → Tasks 1/2/4. Error-code table → `ERROR_MESSAGES` (Task 1) and the function's `jsonResponse({error: ...})` calls (Task 4). Files list → all five files created/modified across Tasks 1-5. "Why not verify client-side" → honored by keeping `jose` out of `package.json`/frontend entirely. Testing/verification section → Task 5 Steps 3-4. Addendum (replay + bounded revocation) → Tasks 6-7.
 - **Placeholder scan:** none found — every step has literal code/commands/expected output.
-- **Type consistency:** `PortalLoginResult`, `mapSsoErrorCode`, `completePortalLogin` signatures match between Task 1's implementation and Task 2's usage. The Edge Function's response shape (`{access_token, refresh_token}` / `{error}`) matches `SsoCallbackResponse` in Task 1 exactly.
+- **Type consistency:** `PortalLoginResult`, `mapSsoErrorCode`, `completePortalLogin` signatures match between Task 1's implementation and Task 2's usage. The Edge Function's response shape (`{access_token, refresh_token}` / `{error}`) matches `SsoCallbackResponse` in Task 1 exactly, and Task 7's new `'replay'` value is just an additional string in that same `error?: string` field — no shape change.
+- **Cross-task consistency (Tasks 6-7):** Task 7's `insert({ jti, expires_at: ... })` assumes Task 6's `sso_consumed_tokens` table exists with exactly those column names; Task 7's `upsert({..., sso_provisioned, sso_last_verified_at})` assumes Task 6's exact column names on `profiles`. Both verified matching above.
