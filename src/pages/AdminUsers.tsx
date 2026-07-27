@@ -94,7 +94,7 @@ export default function AdminUsers() {
     }
   }
 
-  async function patch(id: string, changes: Partial<Pick<Profile, 'approved' | 'role'>>, targetEmail: string) {
+  async function patch(id: string, changes: Partial<Pick<Profile, 'approved' | 'role' | 'sso_provisioned'>>, targetEmail: string) {
     setUpdating(id);
     setError(null);
     try {
@@ -217,7 +217,7 @@ export default function AdminUsers() {
                             </button>
                           ) : (
                             <button
-                              onClick={() => patch(p.id, { approved: true }, p.email)}
+                              onClick={() => patch(p.id, { approved: true, sso_provisioned: false }, p.email)}
                               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 transition-colors"
                             >
                               <UserCheck className="size-3.5" />

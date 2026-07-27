@@ -727,7 +727,7 @@ export async function getProfiles(): Promise<Profile[]> {
 
 export async function updateProfile(
   id: string,
-  patch: Partial<Pick<Profile, 'approved' | 'role'>>,
+  patch: Partial<Pick<Profile, 'approved' | 'role' | 'sso_provisioned'>>,
 ): Promise<void> {
   const { data: existing, error: selErr } = await supabase
     .from('profiles')
