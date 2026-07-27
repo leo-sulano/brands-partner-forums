@@ -8,6 +8,8 @@ export default function PortalCallback() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
+
     const token = searchParams.get('token');
     if (!token) {
       navigate('/login', { replace: true });
@@ -15,6 +17,8 @@ export default function PortalCallback() {
     }
 
     completePortalLogin(token).then((result) => {
+      if (cancelled) return;
+
       if (result.ok) {
         navigate('/', { replace: true });
       } else {
@@ -22,6 +26,10 @@ export default function PortalCallback() {
         navigate('/login', { replace: true });
       }
     });
+
+    return () => {
+      cancelled = true;
+    };
     // Runs once per mount for the token in the URL at load time; intentionally
     // not re-run on searchParams/navigate identity changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
