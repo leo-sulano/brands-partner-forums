@@ -8,6 +8,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 const Login         = lazy(() => import('./pages/Login'));
 const Signup        = lazy(() => import('./pages/Signup'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
+const PortalCallback = lazy(() => import('./pages/PortalCallback'));
 const Overview    = lazy(() => import('./pages/Overview'));
 const MentionDetail = lazy(() => import('./pages/MentionDetail'));
 const BrandGroup  = lazy(() => import('./pages/BrandGroup'));
@@ -68,6 +69,7 @@ export default function App() {
         <Route path="/login" element={<Suspense fallback={null}><Login /></Suspense>} />
         <Route path="/signup" element={<Suspense fallback={null}><Signup /></Suspense>} />
         <Route path="/reset-password" element={<Suspense fallback={null}><ResetPassword /></Suspense>} />
+        <Route path="/auth/portal-callback" element={<Suspense fallback={null}><PortalCallback /></Suspense>} />
         <Route element={<AppLayout />}>
           <Route element={<ProtectedRoute />}>
             <Route path="/" element={<Overview />} />
