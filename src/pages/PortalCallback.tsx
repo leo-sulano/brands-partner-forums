@@ -16,16 +16,26 @@ export default function PortalCallback() {
       return;
     }
 
-    completePortalLogin(token).then((result) => {
-      if (cancelled) return;
+    completePortalLogin(token)
+      .then((result) => {
+        if (cancelled) return;
 
-      if (result.ok) {
-        navigate('/', { replace: true });
-      } else {
-        sessionStorage.setItem(AUTH_ERROR_STORAGE_KEY, result.message);
+        if (result.ok) {
+          navigate('/', { replace: true });
+        } else {
+          try {
+            sessionStorage.setItem(AUTH_ERROR_STORAGE_KEY, result.message);
+          } catch {
+            // Storage can throw (e.g. Safari private browsing, quota
+            // exceeded) — the redirect below must still happen.
+          }
+          navigate('/login', { replace: true });
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
         navigate('/login', { replace: true });
-      }
-    });
+      });
 
     return () => {
       cancelled = true;
