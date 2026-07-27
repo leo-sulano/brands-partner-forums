@@ -81,7 +81,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // node_modules/@supabase/functions-js/dist/main/FunctionsClient.js). A 200
   // response with an {error: ...} body is the only way the specific error
   // code reaches the client.
-  if (req.method !== 'POST') return jsonResponse({ error: 'sso' }, 200);
+  if (req.method !== 'POST') {
+    console.error('[sso-callback] method-not-allowed', req.method);
+    return jsonResponse({ error: 'sso' }, 200);
+  }
 
   let body: { token?: string };
   try {
@@ -90,11 +93,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     console.error('[sso-callback] parse-body', err);
     return jsonResponse({ error: 'sso' }, 200);
   }
-  if (!body.token) return jsonResponse({ error: 'sso' }, 200);
+  if (!body.token) {
+    console.error('[sso-callback] missing-token');
+    return jsonResponse({ error: 'sso' }, 200);
+  }
 
   let email: string, jti: string, exp: number;
   try {
     ({ email, jti, exp } = await verifyPortalToken(body.token));
+    if (!Number.isFinite(exp)) throw new Error('invalid exp claim');
   } catch (err) {
     console.error('[sso-callback] jwt-verify', err);
     return jsonResponse({ error: 'sso' }, 200);
@@ -106,8 +113,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .from('sso_consumed_tokens')
     .insert({ jti, expires_at: new Date(exp * 1000).toISOString() });
   if (replayErr) {
-    console.error('[sso-callback] replay-check', replayErr);
-    return jsonResponse({ error: 'replay' }, 200);
+    if (replayErr.code === '23505') {
+      console.error('[sso-callback] replay-check', replayErr);
+      return jsonResponse({ error: 'replay' }, 200);
+    }
+    console.error('[sso-callback] replay-check-unexpected', replayErr);
+    return jsonResponse({ error: 'provision' }, 200);
   }
 
   let user;
@@ -128,7 +139,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     },
     { onConflict: 'id' },
   );
-  if (approveErr) return jsonResponse({ error: 'access' }, 200);
+  if (approveErr) {
+    console.error('[sso-callback] approve-profile', approveErr);
+    return jsonResponse({ error: 'access' }, 200);
+  }
 
   try {
     const { data: link, error: linkErr } = await admin.auth.admin.generateLink({
