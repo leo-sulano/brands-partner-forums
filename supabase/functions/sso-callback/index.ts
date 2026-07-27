@@ -101,7 +101,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let email: string, jti: string, exp: number;
   try {
     ({ email, jti, exp } = await verifyPortalToken(body.token));
-    if (!Number.isFinite(exp)) throw new Error('invalid exp claim');
+    // Number.isFinite alone lets through a technically-finite but
+    // out-of-range exp (JS Date only spans ~±8.64e15ms); validate the
+    // Date it actually produces so `expires_at` below can't throw.
+    if (!Number.isFinite(exp) || Number.isNaN(new Date(exp * 1000).getTime())) {
+      throw new Error('invalid exp claim');
+    }
   } catch (err) {
     console.error('[sso-callback] jwt-verify', err);
     return jsonResponse({ error: 'sso' }, 200);
