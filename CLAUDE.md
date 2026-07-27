@@ -56,6 +56,22 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-27:* Added cross-dashboard SSO — a new public route
+  (`/auth/portal-callback`) and Edge Function (`sso-callback`) let a user who
+  logs into the central SSO portal land here already authenticated. The
+  function verifies the portal's signed JWT (JWKS + issuer + audience +
+  expiry), finds-or-creates the user by email, force-approves their
+  `profiles` row (the portal is treated as the access authority — a valid
+  token only exists because a portal admin assigned this dashboard to that
+  user), and mints a session the frontend adopts via
+  `supabase.auth.setSession(...)`. Requires three new Edge Function secrets
+  (`PORTAL_JWKS_URL`, `PORTAL_ISSUER`, `SSO_AUDIENCE`, documented in
+  `.env.example`) — code is complete and reviewed, but the function has NOT
+  been deployed yet and the secrets have NOT been set (needs Supabase CLI
+  access this session doesn't have); deploy, set secrets, and the portal
+  owner enabling SSO for this dashboard's card are still pending. Spec:
+  `docs/superpowers/specs/2026-07-27-portal-sso-callback-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-27-portal-sso-callback.md`.
 - *2026-07-10:* Brand Name in Add Review Account (and Edit Entry, since it shares the same
   `BrandSelectDropdown` component) is now creatable — typing a name with no case-insensitive
   match in the existing list shows a `+ Add "<text>"` row that sets it as a free-typed brand,
