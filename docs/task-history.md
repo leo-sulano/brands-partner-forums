@@ -1485,3 +1485,15 @@ Built a new public route (`/auth/portal-callback`) and Edge Function (`sso-callb
 - **Outstanding:** code is complete and reviewed, but the function has NOT been deployed, its three secrets (`PORTAL_JWKS_URL`, `PORTAL_ISSUER`, `SSO_AUDIENCE`) have NOT been set, the migration has NOT been pushed, and the portal owner still needs to enable SSO for this dashboard's card.
 
 ---
+
+## Task 147: Carry Status Filter From Platform Breakdown Modal to Brand Page
+
+**Date:** July 28, 2026
+
+Clicking a brand row in the Trustpilot/AG/CG/WO Published or Removed breakdown modal on Overview only passed the platform through the URL, landing on the brand page with all statuses mixed instead of pre-filtered to the one the user drilled into.
+
+- `Overview.tsx`'s `PlatformBreakdownModal` now appends `&status=${modal.kind}` alongside the existing `platform` query param when linking to a brand tab.
+- `BrandGroup.tsx` reads `status` from the URL on both initial mount and the existing same-tab re-sync effect (the one that already re-derives platform/brand/rating on query-string changes), validating it against the same status-filter value set used by the dropdown before applying it.
+- Spec: `docs/superpowers/specs/2026-07-28-platform-breakdown-status-filter-design.md`.
+
+---
