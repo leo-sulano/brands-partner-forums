@@ -446,9 +446,9 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th
               scope="col"
               className="px-2 py-2 text-right font-medium"
-              title="Live ÷ (Live + Removed) across all history on this platform — not affected by the date range"
+              title="Success Rate: Live ÷ (Live + Removed) across all history on this platform — not affected by the date range"
             >
-              Success Rate
+              SR (%)
             </th>
           </tr>
         </thead>
