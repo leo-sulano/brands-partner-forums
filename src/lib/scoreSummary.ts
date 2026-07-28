@@ -258,6 +258,65 @@ export function computeScoreSummary(
   return { brands: summaries, excludedRows };
 }
 
+export interface SuccessRate {
+  live: number;
+  removed: number;
+  rate: number | null; // null when live + removed === 0 (no decided outcome yet)
+}
+
+// Mirrors isLiveStatus/isRemovedStatus in src/lib/queries.ts (duplicated here
+// rather than imported since that module is Supabase-coupled and this one is
+// a pure data transform — keep these two definitions in sync if either changes).
+function isLiveStatus(s: string): boolean {
+  if (s.includes('not pub') || s.includes('refused')) return false;
+  return s.includes('published') || s.includes('live');
+}
+function isRemovedStatus(s: string): boolean {
+  return s.includes('remove') || s.includes('refus') || s.includes('reject');
+}
+
+// Per-brand Success Rate for Score Summary: live / (live + removed) across
+// ALL entries for that brand on the selected platform, not just the
+// currently-Published ones computeScoreSummary counts. Deliberately has no
+// date-range parameter — a Removed/Refused row frequently has no post-date
+// recorded at all, so applying the page's date filter here would silently
+// exclude it from the denominator and skew the rate upward.
+export function computeSuccessRates(
+  entries: Entry[],
+  platform: Platform,
+): Map<string, SuccessRate> {
+  const statusKeys = PLATFORM_STATUS_KEYS[platform];
+  const buckets = new Map<string, { live: number; removed: number }>();
+
+  for (const e of entries) {
+    const d = e.data ?? {};
+
+    const brand = (pick(d, BRAND_KEYS) ?? '').trim();
+    if (!brand) continue;
+
+    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
+    if (!status) continue;
+
+    const tab = e.tab ?? '';
+    const key = `${tab} ${brand}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { live: 0, removed: 0 };
+      buckets.set(key, bucket);
+    }
+
+    if (isLiveStatus(status)) bucket.live += 1;
+    else if (isRemovedStatus(status)) bucket.removed += 1;
+  }
+
+  const result = new Map<string, SuccessRate>();
+  for (const [key, { live, removed }] of buckets) {
+    const total = live + removed;
+    result.set(key, { live, removed, rate: total === 0 ? null : (live / total) * 100 });
+  }
+  return result;
+}
+
 export type PresetKey = 'today' | 'this-week' | 'this-month' | 'last-7' | 'last-30' | 'all';
 
 export function resolvePreset(key: PresetKey, now: Date = new Date()): DateRange {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, parseScore, ratingLabel } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, parseScore, ratingLabel } from './scoreSummary';
 import type { Entry } from '../types/entry';
 
 function makeEntry(id: string, tab: string, data: Record<string, string | null>): Entry {
@@ -129,5 +129,55 @@ describe('computeScoreSummary', () => {
     const result = computeScoreSummary(entries, noRange, [], 'cg');
     const [brand] = result.brands;
     expect(brand.unrated).toBe(1);
+  });
+});
+
+describe('computeSuccessRates', () => {
+  it('computes live/removed/rate per brand for the selected platform', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published' }),
+      makeEntry('3', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
+      makeEntry('4', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Pending' }),
+    ];
+    const result = computeSuccessRates(entries, 'tp');
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 2, removed: 1, rate: (2 / 3) * 100 });
+  });
+
+  it('excludes pending/done/on-pause rows from the denominator entirely', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Pending' }),
+      makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Done' }),
+      makeEntry('3', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'On Pause' }),
+    ];
+    const result = computeSuccessRates(entries, 'tp');
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 0, rate: null });
+  });
+
+  it('ignores rows with no brand or no status', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: '', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com' }),
+    ];
+    const result = computeSuccessRates(entries, 'tp');
+    expect(result.size).toBe(0);
+  });
+
+  it('has no date-range parameter and counts a Removed row with no post-date', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
+    ];
+    const result = computeSuccessRates(entries, 'tp');
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
+  });
+
+  it('keys results by tab and brand independently', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'Trybet', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
+    ];
+    const result = computeSuccessRates(entries, 'tp');
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
+    expect(result.get('Trybet ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 });
