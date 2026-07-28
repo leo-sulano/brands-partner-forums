@@ -1497,3 +1497,16 @@ Clicking a brand row in the Trustpilot/AG/CG/WO Published or Removed breakdown m
 - Spec: `docs/superpowers/specs/2026-07-28-platform-breakdown-status-filter-design.md`.
 
 ---
+
+## Task 148: Tab Display Rename (FTP/BITP) + Per-Brand Success Rate in Score Summary
+
+**Date:** July 28, 2026
+
+Two changes: rename how two operational tabs display, and add a per-brand success metric to Score Summary.
+
+- Added `tabDisplayName()` in `src/lib/tabs.ts` so "TP Affiliate" and "TP Brand Injection" render as "FTP" and "BITP" everywhere in the UI (Sidebar, Topbar, Overview, Score Summary, Brand Tabs modal, Add/Edit entry modals, Activity Log, and the Duplicate-rows tab picker). Display-only: the DB `tab` column value, URL slugs, `OPERATIONAL_TABS`, and the EC2 Python status-checker scripts are untouched.
+- Added `computeSuccessRates()`/`computeTabSuccessRates()` in `src/lib/scoreSummary.ts` and a new "Success Rate" column in `ScoreSummaryPanel.tsx` showing `live / (live + removed)` per brand and per tab-group total (e.g. `82% (14/17)`), color-tinted, intentionally independent of the page's date-range filter (a Removed/Refused row often has no post-date recorded) — a tooltip on the column header explains this.
+- Whole-branch review before merge caught and fixed two real gaps: three render sites the original file survey missed (`BrandGroup.tsx`'s duplicate-rows tab picker, `ActivityLog.tsx`'s feed and audit labels), and a bias bug where a tab's group-total success rate excluded brands with zero Published reviews — a brand that was 100% Removed previously made the tab look better than it actually was. Both fixed, with a new test reproducing the bias case.
+- Spec: `docs/superpowers/specs/2026-07-28-tab-display-rename-and-success-rate-design.md`. Plan: `docs/superpowers/plans/2026-07-28-tab-display-rename-and-success-rate.md`.
+
+---
