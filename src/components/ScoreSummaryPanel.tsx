@@ -4,12 +4,14 @@ import { Check, ChevronDown, Star, X } from 'lucide-react';
 import DatePicker from './DatePicker';
 import {
   computeScoreSummary,
+  computeSuccessRates,
   isoToDate,
   summarizeCounts,
   PLATFORM_MAX_SCORE,
   type BrandSummary,
   type Platform,
   type Star as StarRating,
+  type SuccessRate,
 } from '../lib/scoreSummary';
 import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { Entry } from '../types/entry';
@@ -30,6 +32,18 @@ function starColor(value: number, maxScore: number): string {
 
 function starsFor(maxScore: number): StarRating[] {
   return Array.from({ length: maxScore }, (_, i) => maxScore - i);
+}
+
+function successRateColor(rate: number | null): string {
+  if (rate == null) return 'text-slate-300';
+  if (rate >= 80) return 'text-emerald-600';
+  if (rate >= 50) return 'text-amber-600';
+  return 'text-rose-600';
+}
+
+function formatSuccessRate(sr: SuccessRate | undefined): string {
+  if (!sr || sr.rate == null) return '—';
+  return `${Math.round(sr.rate)}% (${sr.live}/${sr.live + sr.removed})`;
 }
 
 const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
@@ -62,6 +76,11 @@ export default function ScoreSummaryPanel({ entries }: Props) {
   const result = useMemo(
     () => computeScoreSummary(entries, range, [], platform),
     [entries, range, platform],
+  );
+
+  const successRates = useMemo(
+    () => computeSuccessRates(entries, platform),
+    [entries, platform],
   );
 
   const maxScore = PLATFORM_MAX_SCORE[platform];
@@ -133,7 +152,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
                 : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} />
+            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} successRates={successRates} />
           )}
 
           {result.excludedRows > 0 && (
@@ -267,7 +286,7 @@ function TabFilterDropdown({
   );
 }
 
-function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; maxScore: number; platform: Platform }) {
+function GroupedSummary({ rows, maxScore, platform, successRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate> }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
@@ -316,7 +335,7 @@ function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; ma
                 />
               </button>
             </header>
-            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} />}
+            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} successRates={successRates} />}
           </section>
         );
       })}
@@ -358,14 +377,24 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
       ))}
       <col className="w-20" />
       <col className="w-20" />
+      <col className="w-28" />
     </colgroup>
   );
 }
 
-function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxScore: number; platform: Platform }) {
+function SummaryTable({ rows, maxScore, platform, successRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate> }) {
   const stars = starsFor(maxScore);
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   const totals = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
+  const groupSuccess = useMemo(() => {
+    let live = 0, removed = 0;
+    for (const r of rows) {
+      const sr = successRates.get(`${r.tab} ${r.brand}`);
+      if (sr) { live += sr.live; removed += sr.removed; }
+    }
+    const total = live + removed;
+    return { live, removed, rate: total === 0 ? null : (live / total) * 100 };
+  }, [rows, successRates]);
 
   return (
     <div className="overflow-x-auto">
@@ -391,6 +420,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               Unrtd
             </th>
             <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
+            <th scope="col" className="px-2 py-2 text-right font-medium">Success Rate</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -449,6 +479,9 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
                 ) : (
                   r.total.toLocaleString()
                 )}
+              </td>
+              <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${successRateColor((successRates.get(`${r.tab} ${r.brand}`))?.rate ?? null)}`}>
+                {formatSuccessRate(successRates.get(`${r.tab} ${r.brand}`))}
               </td>
             </tr>
           ))}
@@ -510,6 +543,9 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
               ) : (
                 totals.total.toLocaleString()
               )}
+            </td>
+            <td className={`px-2 py-2 text-right font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}>
+              {formatSuccessRate(groupSuccess)}
             </td>
           </tr>
         </tfoot>
