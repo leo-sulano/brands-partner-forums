@@ -613,9 +613,12 @@ export default function BrandGroup() {
 
   const [search, setSearch] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>('all');
   const [showTotalModal, setShowTotalModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const STATUS_FILTER_VALUES = ['live', 'removed', 'done', 'on-pause', 'pending', 'not-done'] as const;
+  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>(
+    (STATUS_FILTER_VALUES.includes(searchParams.get('status') as typeof STATUS_FILTER_VALUES[number]) ? searchParams.get('status') as typeof STATUS_FILTER_VALUES[number] : 'all')
+  );
   const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg' | 'wo'>(
     (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
   );
@@ -911,13 +914,15 @@ export default function BrandGroup() {
     return () => { canceled = true; };
   }, [decodedTab, reloadSeq]);
 
-  // Re-sync platform/brand/rating from the URL whenever the query string changes on an
+  // Re-sync platform/status/brand/rating from the URL whenever the query string changes on an
   // already-mounted tab — e.g. clicking from one Score Summary star-count link to another
   // for the same brand-group tab. The effect above only re-derives these on an actual tab
   // change; without this, such same-tab navigations would silently keep the old filters.
   useEffect(() => {
     const p = searchParams.get('platform');
     setPlatformFilter(['tp', 'ag', 'cg', 'wo'].includes(p ?? '') ? (p as 'tp' | 'ag' | 'cg' | 'wo') : 'all');
+    const s = searchParams.get('status');
+    setStatusFilter(STATUS_FILTER_VALUES.includes(s as typeof STATUS_FILTER_VALUES[number]) ? (s as typeof STATUS_FILTER_VALUES[number]) : 'all');
     setBrandFilter(searchParams.get('brand') ?? '');
     const raw = searchParams.get('rating');
     if (raw === 'unrated') {

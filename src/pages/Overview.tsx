@@ -255,7 +255,7 @@ function PlatformBreakdownModal({
             return (
               <Link
                 key={r.tab}
-                to={`/brands/${tabToSlug(r.tab)}?platform=${modal.platformKey}`}
+                to={`/brands/${tabToSlug(r.tab)}?platform=${modal.platformKey}&status=${modal.kind}`}
                 onClick={onClose}
                 className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50"
               >
