@@ -11,6 +11,7 @@ import {
 } from '../lib/queries';
 import type { AuditLogEntry } from '../types/audit-log';
 import Toast, { type ToastKind } from '../components/Toast';
+import { tabDisplayName } from '../lib/tabs';
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -107,7 +108,7 @@ function ActivityFeed() {
                   Entry edited{edit.editor ? <span className="font-normal text-slate-500"> by {edit.editor}</span> : null}
                 </span>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {edit.tab} · {edit.account ?? '—'}
+                  {tabDisplayName(edit.tab)} · {edit.account ?? '—'}
                 </p>
               </div>
               <span className="shrink-0 text-xs text-slate-400">{relativeTime(edit.updated_at)}</span>
@@ -147,7 +148,8 @@ function entityLabel(entry: AuditLogEntry): string {
   const before = entry.before_data as { data?: Record<string, string | null> };
   const data = before.data ?? {};
   const name = data['Account Name'] ?? data['Account'] ?? data['Brand Name'] ?? data['Brand'];
-  return [entry.tab, name].filter(Boolean).join(' · ') || 'Unknown row';
+  const tab = entry.tab ? tabDisplayName(entry.tab) : entry.tab;
+  return [tab, name].filter(Boolean).join(' · ') || 'Unknown row';
 }
 
 function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {

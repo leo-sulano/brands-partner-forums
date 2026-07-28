@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, parseScore, ratingLabel } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel } from './scoreSummary';
 import type { Entry } from '../types/entry';
 
 function makeEntry(id: string, tab: string, data: Record<string, string | null>): Entry {
@@ -179,5 +179,52 @@ describe('computeSuccessRates', () => {
     const result = computeSuccessRates(entries, 'tp');
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
     expect(result.get('Trybet ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
+  });
+});
+
+describe('computeTabSuccessRates', () => {
+  it('aggregates by tab only, so a brand with zero Published entries still counts toward the tab total', () => {
+    // Brand A: 10 Published (live). Brand B: 20 Removed, 0 Published — Brand B
+    // would never produce a BrandSummary row (computeScoreSummary requires at
+    // least one Published entry), so a naive sum over BrandSummary rows would
+    // miss its 20 Removed entirely and show the tab at 100% instead of 33%.
+    const entries: Entry[] = [
+      ...Array.from({ length: 10 }, (_, i) =>
+        makeEntry(`a${i}`, 'Hanan', { Brands: 'BrandA.com', 'TP Review Status': 'Published' }),
+      ),
+      ...Array.from({ length: 20 }, (_, i) =>
+        makeEntry(`b${i}`, 'Hanan', { Brands: 'BrandB.com', 'TP Review Status': 'Removed' }),
+      ),
+    ];
+    const result = computeTabSuccessRates(entries, 'tp');
+    expect(result.get('Hanan')).toEqual({ live: 10, removed: 20, rate: (10 / 30) * 100 });
+  });
+
+  it('counts entries with no brand field at all, unlike computeSuccessRates', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
+      makeEntry('2', 'Hanan', { 'TP Review Status': 'Removed' }),
+    ];
+    const result = computeTabSuccessRates(entries, 'tp');
+    expect(result.get('Hanan')).toEqual({ live: 1, removed: 1, rate: 50 });
+  });
+
+  it('excludes rows with no decided status from the denominator', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { 'TP Review Status': 'Pending' }),
+      makeEntry('2', 'Hanan', {}),
+    ];
+    const result = computeTabSuccessRates(entries, 'tp');
+    expect(result.get('Hanan')).toEqual({ live: 0, removed: 0, rate: null });
+  });
+
+  it('keys results by tab independently', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
+      makeEntry('2', 'Trybet', { 'TP Review Status': 'Removed' }),
+    ];
+    const result = computeTabSuccessRates(entries, 'tp');
+    expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
+    expect(result.get('Trybet')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 });

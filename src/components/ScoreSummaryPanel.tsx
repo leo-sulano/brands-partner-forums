@@ -5,6 +5,7 @@ import DatePicker from './DatePicker';
 import {
   computeScoreSummary,
   computeSuccessRates,
+  computeTabSuccessRates,
   isoToDate,
   summarizeCounts,
   PLATFORM_MAX_SCORE,
@@ -34,16 +35,30 @@ function starsFor(maxScore: number): StarRating[] {
   return Array.from({ length: maxScore }, (_, i) => maxScore - i);
 }
 
+// Displayed percentage shown to the user: floors instead of rounds, except
+// when the rate is exactly 100, so a sub-100 rate (e.g. 199 live / 1 removed
+// = 99.5%) never displays as "100%" — which would misleadingly read as
+// flawless.
+function successRatePct(rate: number | null): number | null {
+  if (rate == null) return null;
+  return rate === 100 ? 100 : Math.floor(rate);
+}
+
+// Color tier is based on the same displayed/rounded percentage as the text
+// (via successRatePct), not the raw unrounded rate — otherwise a rate like
+// 79.6% could display as "80%" while tinted amber (since 79.6 < 80), a
+// visible mismatch between the number shown and its color.
 function successRateColor(rate: number | null): string {
-  if (rate == null) return 'text-slate-300';
-  if (rate >= 80) return 'text-emerald-600';
-  if (rate >= 50) return 'text-amber-600';
+  const pct = successRatePct(rate);
+  if (pct == null) return 'text-slate-300';
+  if (pct >= 80) return 'text-emerald-600';
+  if (pct >= 50) return 'text-amber-600';
   return 'text-rose-600';
 }
 
 function formatSuccessRate(sr: SuccessRate | undefined): string {
   if (!sr || sr.rate == null) return '—';
-  return `${Math.round(sr.rate)}% (${sr.live}/${sr.live + sr.removed})`;
+  return `${successRatePct(sr.rate)}% (${sr.live}/${sr.live + sr.removed})`;
 }
 
 const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
@@ -80,6 +95,11 @@ export default function ScoreSummaryPanel({ entries }: Props) {
 
   const successRates = useMemo(
     () => computeSuccessRates(entries, platform),
+    [entries, platform],
+  );
+
+  const tabSuccessRates = useMemo(
+    () => computeTabSuccessRates(entries, platform),
     [entries, platform],
   );
 
@@ -152,7 +172,7 @@ export default function ScoreSummaryPanel({ entries }: Props) {
                 : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} successRates={successRates} />
+            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} />
           )}
 
           {result.excludedRows > 0 && (
@@ -286,7 +306,7 @@ function TabFilterDropdown({
   );
 }
 
-function GroupedSummary({ rows, maxScore, platform, successRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate> }) {
+function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate> }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
@@ -335,7 +355,7 @@ function GroupedSummary({ rows, maxScore, platform, successRates }: { rows: Bran
                 />
               </button>
             </header>
-            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} successRates={successRates} />}
+            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} />}
           </section>
         );
       })}
@@ -382,19 +402,15 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
   );
 }
 
-function SummaryTable({ rows, maxScore, platform, successRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate> }) {
+function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate> }) {
   const stars = starsFor(maxScore);
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   const totals = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
-  const groupSuccess = useMemo(() => {
-    let live = 0, removed = 0;
-    for (const r of rows) {
-      const sr = successRates.get(`${r.tab} ${r.brand}`);
-      if (sr) { live += sr.live; removed += sr.removed; }
-    }
-    const total = live + removed;
-    return { live, removed, rate: total === 0 ? null : (live / total) * 100 };
-  }, [rows, successRates]);
+  // All rows in a single SummaryTable share one tab (GroupedSummary groups by
+  // r.tab before rendering each table), so a direct lookup by rows[0].tab is
+  // the whole tab's rate — not a sum over only the brands that happen to have
+  // a row (which would exclude brands with 0 Published entries).
+  const groupSuccess = tabSuccessRates.get(rows[0]?.tab ?? '') ?? { live: 0, removed: 0, rate: null };
 
   return (
     <div className="overflow-x-auto">
@@ -420,7 +436,13 @@ function SummaryTable({ rows, maxScore, platform, successRates }: { rows: BrandS
               Unrtd
             </th>
             <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
-            <th scope="col" className="px-2 py-2 text-right font-medium">Success Rate</th>
+            <th
+              scope="col"
+              className="px-2 py-2 text-right font-medium"
+              title="Live ÷ (Live + Removed) across all history on this platform — not affected by the date range"
+            >
+              Success Rate
+            </th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">

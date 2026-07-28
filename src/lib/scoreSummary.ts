@@ -317,6 +317,43 @@ export function computeSuccessRates(
   return result;
 }
 
+// Per-tab Success Rate: live / (live + removed) across ALL entries for that
+// tab on the selected platform, regardless of brand. Unlike computeSuccessRates,
+// this does NOT require a brand field — a brand with zero Published entries
+// (and therefore no BrandSummary row) would otherwise be silently dropped from
+// a naive per-brand aggregation, biasing a tab-level total upward. Used for the
+// Score Summary group Total row's Success Rate so it reflects the whole tab.
+export function computeTabSuccessRates(
+  entries: Entry[],
+  platform: Platform,
+): Map<string, SuccessRate> {
+  const statusKeys = PLATFORM_STATUS_KEYS[platform];
+  const buckets = new Map<string, { live: number; removed: number }>();
+
+  for (const e of entries) {
+    const d = e.data ?? {};
+    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
+    if (!status) continue;
+
+    const tab = e.tab ?? '';
+    let bucket = buckets.get(tab);
+    if (!bucket) {
+      bucket = { live: 0, removed: 0 };
+      buckets.set(tab, bucket);
+    }
+
+    if (isLiveStatus(status)) bucket.live += 1;
+    else if (isRemovedStatus(status)) bucket.removed += 1;
+  }
+
+  const result = new Map<string, SuccessRate>();
+  for (const [key, { live, removed }] of buckets) {
+    const total = live + removed;
+    result.set(key, { live, removed, rate: total === 0 ? null : (live / total) * 100 });
+  }
+  return result;
+}
+
 export type PresetKey = 'today' | 'this-week' | 'this-month' | 'last-7' | 'last-30' | 'all';
 
 export function resolvePreset(key: PresetKey, now: Date = new Date()): DateRange {
