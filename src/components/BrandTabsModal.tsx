@@ -2,7 +2,7 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 
 interface Props {
@@ -53,7 +53,7 @@ export default function BrandTabsModal({ onClose }: Props) {
                 onClick={onClose}
                 className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-2.5 hover:bg-blue-50 hover:border-blue-200 transition-colors"
               >
-                <span className="text-sm font-medium text-slate-700 truncate">{tab}</span>
+                <span className="text-sm font-medium text-slate-700 truncate">{tabDisplayName(tab)}</span>
                 <span className="flex items-center gap-1 shrink-0 ml-2">
                   {platforms.map((p) => (
                     <img

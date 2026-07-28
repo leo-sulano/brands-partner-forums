@@ -3,7 +3,7 @@ import { LogOut, LogIn, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
 import DatePicker from './DatePicker';
-import { slugToTab } from '../lib/tabs';
+import { slugToTab, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { avatarColor, initials } from '../lib/avatar';
 import { useState, useRef, useEffect } from 'react';
@@ -96,7 +96,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   else if (pathname.startsWith('/brands/')) {
     const slug = pathname.slice('/brands/'.length);
     brandTab = slugToTab(slug) ?? decodeURIComponent(slug);
-    title = brandTab;
+    title = tabDisplayName(brandTab);
   }
 
   const platforms = brandTab ? getTabPlatforms(brandTab) : [];

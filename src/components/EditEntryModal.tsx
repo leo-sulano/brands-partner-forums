@@ -5,7 +5,7 @@ import SelectDropdown from './SelectDropdown';
 import { getColLabel, getCountryForAccount, getBrandAgUrl, getBrandCgUrl, getBrandLinkCol, resolveBrandLink } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
-import { OPERATIONAL_TABS } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 
 const STATUS_OPTS = [
@@ -25,7 +25,7 @@ const YES_NO_OPTS = [
   { value: 'No',  label: 'No' },
 ];
 
-const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: t }));
+const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
 
 const ACCOUNT_FIELD_PRIORITY = ['Account', 'Country', 'Proxy Used', 'Email', 'Password', 'Account Name', 'Account Surname', 'Agent'];
 

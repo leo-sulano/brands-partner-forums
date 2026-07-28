@@ -11,7 +11,7 @@ import {
   type Platform,
   type Star as StarRating,
 } from '../lib/scoreSummary';
-import { tabToSlug } from '../lib/tabs';
+import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 
 interface Props {
@@ -216,7 +216,7 @@ function TabFilterDropdown({
         }`}
       >
         {active && <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />}
-        <span className="max-w-[10rem] truncate">{active ? value : 'All brands'}</span>
+        <span className="max-w-[10rem] truncate">{active ? tabDisplayName(value) : 'All brands'}</span>
         {active ? (
           <span
             onClick={(e) => { e.stopPropagation(); onChange(''); }}
@@ -256,7 +256,7 @@ function TabFilterDropdown({
                   opt === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'
                 }`}
               >
-                <span className="flex-1 truncate">{opt}</span>
+                <span className="flex-1 truncate">{tabDisplayName(opt)}</span>
                 {opt === value && <Check className="size-3 text-blue-500" />}
               </button>
             ))}
@@ -300,7 +300,7 @@ function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; ma
           <section key={tab} className="rounded-md border border-slate-200">
             <header className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-3 py-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-slate-700">{tab || '(no tab)'}</h3>
+                <h3 className="text-sm font-semibold text-slate-700">{tab ? tabDisplayName(tab) : '(no tab)'}</h3>
                 <span className="text-xs text-slate-400">
                   {brands.length} brand{brands.length !== 1 ? 's' : ''} · {groupTotal.toLocaleString()} review{groupTotal !== 1 ? 's' : ''}
                 </span>
@@ -309,7 +309,7 @@ function GroupedSummary({ rows, maxScore, platform }: { rows: BrandSummary[]; ma
                 type="button"
                 onClick={() => toggle(tab)}
                 className="rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
-                aria-label={isCollapsed ? `Expand ${tab}` : `Collapse ${tab}`}
+                aria-label={isCollapsed ? `Expand ${tabDisplayName(tab)}` : `Collapse ${tabDisplayName(tab)}`}
               >
                 <ChevronDown
                   className={`size-4 transition-transform duration-150 ${isCollapsed ? '-rotate-90' : ''}`}
@@ -397,7 +397,7 @@ function SummaryTable({ rows, maxScore, platform }: { rows: BrandSummary[]; maxS
           {rows.map((r) => (
             <tr key={`${r.tab}|${r.brand}`} className="hover:bg-blue-50/60">
               {showGroup && (
-                <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={r.tab}>{r.tab}</td>
+                <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={tabDisplayName(r.tab)}>{tabDisplayName(r.tab)}</td>
               )}
               <td className="px-3 py-1.5 truncate" title={r.brand}>
                 <Link

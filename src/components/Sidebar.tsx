@@ -6,7 +6,7 @@ import {
   Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
   type LucideIcon,
 } from 'lucide-react';
-import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -128,11 +128,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               key={tab}
               to={`/brands/${tabToSlug(tab)}`}
               onClick={() => onClose?.()}
-              title={isCollapsed ? tab : undefined}
+              title={isCollapsed ? tabDisplayName(tab) : undefined}
               className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
             >
               <Icon className="size-4 shrink-0" />
-              {!isCollapsed && <span className="truncate flex-1">{tab}</span>}
+              {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
               {!isCollapsed && (
                 <span className="flex items-center gap-0.5 shrink-0">
                   {platforms.map((p) => (

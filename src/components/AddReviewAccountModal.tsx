@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Plus, Loader2, Eye, EyeOff } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
-import { OPERATIONAL_TABS } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
 import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount, getBrandNameCol, getBrandLinkCol, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
@@ -24,7 +24,7 @@ const YES_NO_OPTS = [
   { value: 'No',  label: 'No' },
 ];
 
-const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: t }));
+const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
 
 type FieldDef = {
   key: string;

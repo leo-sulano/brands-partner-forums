@@ -8,7 +8,7 @@ import {
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis } from '../lib/queries';
-import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
 
 
@@ -172,7 +172,7 @@ function KpiBreakdownModal({
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-sm font-medium text-slate-700 group-hover:text-blue-700 transition-colors truncate">{r.tab}</span>
+                    <span className="text-sm font-medium text-slate-700 group-hover:text-blue-700 transition-colors truncate">{tabDisplayName(r.tab)}</span>
                     <span className={`text-sm font-bold font-mono tabular-nums ml-2 shrink-0 ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-slate-100">
@@ -268,7 +268,7 @@ function PlatformBreakdownModal({
                         className="size-3.5 shrink-0 rounded-sm"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
-                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{r.tab}</span>
+                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{tabDisplayName(r.tab)}</span>
                     </span>
                     <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
                   </div>
@@ -430,7 +430,7 @@ export default function Overview() {
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100">
                           <TabIcon className="size-3.5 text-blue-500" />
                         </div>
-                        <p className="truncate text-sm font-semibold text-slate-800">{tab}</p>
+                        <p className="truncate text-sm font-semibold text-slate-800">{tabDisplayName(tab)}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-1.5">
                         {kpis.activePlatforms.map((p) => (
