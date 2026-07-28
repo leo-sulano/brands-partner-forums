@@ -56,9 +56,16 @@ function successRateColor(rate: number | null): string {
   return 'text-rose-600';
 }
 
+// Cell shows only the percentage; the live/removed breakdown behind it is
+// revealed via the title attribute (successRateTitle) on hover instead.
 function formatSuccessRate(sr: SuccessRate | undefined): string {
   if (!sr || sr.rate == null) return '—';
-  return `${successRatePct(sr.rate)}% (${sr.live}/${sr.live + sr.removed})`;
+  return `${successRatePct(sr.rate)}%`;
+}
+
+function successRateTitle(sr: SuccessRate | undefined): string {
+  if (!sr || sr.rate == null) return 'No live or removed history yet';
+  return `${successRatePct(sr.rate)}% = ${sr.live} live ÷ (${sr.live} live + ${sr.removed} removed)`;
 }
 
 const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
@@ -502,7 +509,10 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                   r.total.toLocaleString()
                 )}
               </td>
-              <td className={`px-2 py-1.5 text-right font-mono tabular-nums ${successRateColor((successRates.get(`${r.tab} ${r.brand}`))?.rate ?? null)}`}>
+              <td
+                className={`px-2 py-1.5 text-right font-mono tabular-nums ${successRateColor((successRates.get(`${r.tab} ${r.brand}`))?.rate ?? null)}`}
+                title={successRateTitle(successRates.get(`${r.tab} ${r.brand}`))}
+              >
                 {formatSuccessRate(successRates.get(`${r.tab} ${r.brand}`))}
               </td>
             </tr>
@@ -566,7 +576,10 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 totals.total.toLocaleString()
               )}
             </td>
-            <td className={`px-2 py-2 text-right font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}>
+            <td
+              className={`px-2 py-2 text-right font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}
+              title={successRateTitle(groupSuccess)}
+            >
               {formatSuccessRate(groupSuccess)}
             </td>
           </tr>
