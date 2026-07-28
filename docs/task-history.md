@@ -1466,3 +1466,22 @@ Fixed two related `AuthContext` bugs causing the dashboard to flash a spinner or
 - **Outstanding:** a temporary `console.log('[auth-debug]', ...)` line added while diagnosing (commit `26fee4e`) is still present in `AuthContext.tsx:59` and should be removed once the fix is confirmed stable in production.
 
 ---
+
+## Task 146: Cross-Dashboard Portal SSO Callback
+
+**Date:** July 27, 2026
+
+Built a new public route (`/auth/portal-callback`) and Edge Function (`sso-callback`) so a user who logs into the central SSO portal can land here already authenticated, then hardened it across two review rounds.
+
+- **Core flow:** `sso-callback` verifies the portal's signed JWT (JWKS + issuer + audience + expiry), finds-or-creates the user by email, force-approves their `profiles` row (the portal is treated as the access authority — a valid token only exists because a portal admin assigned this dashboard to that user), and mints a session the frontend adopts via `supabase.auth.setSession(...)`. New `PortalCallback` page component drives the exchange.
+- **StrictMode fixes:** guarded `PortalCallback` against double-invocation (duplicate network call) and handled a previously-unhandled rejected `completePortalLogin` promise.
+- **Contract/validation fixes:** repaired the SSO error-code contract and required token `exp` to be present.
+- **Replay protection:** added `sso_consumed_tokens` table — each token's `jti` can only be claimed once.
+- **Bounded revocation:** added `profiles.sso_provisioned`/`sso_last_verified_at`, enforced by a daily `pg_cron` job giving SSO-provisioned users a 7-day verification window before re-check.
+- **Admin interaction fix:** an admin's manual re-approval in Admin Users now also clears `sso_provisioned` back to `false`, so an explicit approval isn't silently undone by the next day's cron run.
+- **Unrelated crash fix surfaced during review:** closed the expiry Date-range crash path fully, not just the NaN/Infinity case.
+- Migration `supabase/migrations/20260727150000_add_sso_replay_and_revocation.sql` adds the replay/revocation schema and must be applied via `supabase db push` **before** the function is deployed, since the function's code assumes that table/those columns already exist.
+- Spec: `docs/superpowers/specs/2026-07-27-portal-sso-callback-design.md`. Plan: `docs/superpowers/plans/2026-07-27-portal-sso-callback.md`.
+- **Outstanding:** code is complete and reviewed, but the function has NOT been deployed, its three secrets (`PORTAL_JWKS_URL`, `PORTAL_ISSUER`, `SSO_AUDIENCE`) have NOT been set, the migration has NOT been pushed, and the portal owner still needs to enable SSO for this dashboard's card.
+
+---
