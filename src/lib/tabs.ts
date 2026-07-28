@@ -44,3 +44,16 @@ const SKIP_HEADERS = new Set(['id', 'last_sync_tag', '']);
 export function isEditableHeader(header: string): boolean {
   return !SKIP_HEADERS.has(header.trim());
 }
+
+// Display-only rename: what a user reads on screen for these two tabs. The
+// canonical identifier itself (DB `tab` column, URL slug, OPERATIONAL_TABS
+// entry, tab-configs.ts keys) stays the original string everywhere else —
+// this is purely a rendering lookup.
+const TAB_DISPLAY_NAMES: Partial<Record<OperationalTab, string>> = {
+  'TP Affiliate': 'FTP',
+  'TP Brand Injection': 'BITP',
+};
+
+export function tabDisplayName(tab: string): string {
+  return TAB_DISPLAY_NAMES[tab as OperationalTab] ?? tab;
+}
