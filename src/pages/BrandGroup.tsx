@@ -10,7 +10,9 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, type StatusCheckScope } from '../lib/queries';
+import TpRemovedBadge from '../components/TpRemovedBadge';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedTpBrands, type StatusCheckScope } from '../lib/queries';
+import { tpRemovedKey, buildRemovedTpBrandSet } from '../lib/removedTpBrands';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
@@ -680,6 +682,7 @@ export default function BrandGroup() {
   const [countryFilter, setCountryFilter] = useState('');
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
+  const [removedTpBrandRows, setRemovedTpBrandRows] = useState<{ tab: string; brand: string }[]>([]);
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -766,6 +769,14 @@ export default function BrandGroup() {
   useEffect(() => {
     setLastChecked(localStorage.getItem(`lastStatusCheck_${decodedTab}`) ?? null);
   }, [decodedTab]);
+
+  useEffect(() => {
+    let canceled = false;
+    fetchRemovedTpBrands()
+      .then((rows) => { if (!canceled) setRemovedTpBrandRows(rows); })
+      .catch(() => { /* badge is decorative — a failed fetch just means no badges render */ });
+    return () => { canceled = true; };
+  }, [reloadSeq]);
 
   useEffect(() => {
     function handleOutside(e: MouseEvent) {
@@ -1027,6 +1038,11 @@ export default function BrandGroup() {
       })
     : headers
   ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
+
+  const removedTpBrandSet = useMemo(() => buildRemovedTpBrandSet(removedTpBrandRows), [removedTpBrandRows]);
+  function isTpRemoved(brandName: string | null | undefined): boolean {
+    return !!brandName && removedTpBrandSet.has(tpRemovedKey(decodedTab, brandName));
+  }
 
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
   const uniqueBrands = brandCol
@@ -2132,6 +2148,7 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
+                              {isTpRemoved(brandName) && <TpRemovedBadge />}
                             </td>
                           );
                         }
@@ -2139,6 +2156,7 @@ export default function BrandGroup() {
                           return (
                             <td key={h} className="px-[10px] py-2">
                               <span className="text-slate-600 text-sm">{brandName}</span>
+                              {isTpRemoved(brandName) && <TpRemovedBadge />}
                             </td>
                           );
                         }
@@ -2163,12 +2181,14 @@ export default function BrandGroup() {
                                   <ExternalLink className="size-3 shrink-0" />
                                   {pageName}
                                 </a>
+                                {isTpRemoved(pageName) && <TpRemovedBadge />}
                               </td>
                             );
                           }
                           return (
                             <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                               <span className="text-slate-600 text-sm">{pageName}</span>
+                              {isTpRemoved(pageName) && <TpRemovedBadge />}
                             </td>
                           );
                         }
@@ -2205,12 +2225,14 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
+                              {isTpRemoved(brandName) && <TpRemovedBadge />}
                             </td>
                           );
                         }
                         return (
                           <td key={h} className="px-[10px] py-2">
                             <CellValue header={h} value={brandName} rowData={entry.data} tab={decodedTab} />
+                            {isTpRemoved(brandName) && <TpRemovedBadge />}
                           </td>
                         );
                       }
