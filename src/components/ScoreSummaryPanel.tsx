@@ -433,7 +433,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th colSpan={stars.length + 2} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
               Star Rating
             </th>
-            <th colSpan={4} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
+            <th colSpan={4} className="border-l-2 border-blue-200 px-2 py-1 text-center font-medium text-slate-400">
               Success Rate
             </th>
           </tr>
@@ -458,7 +458,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
             <th
               scope="col"
-              className="border-l border-slate-200 px-2 py-2 text-right font-medium"
+              className="border-l-2 border-blue-200 px-2 py-2 text-right font-medium"
               title="Reviews still live on the platform"
             >
               Published
@@ -545,7 +545,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                   r.total.toLocaleString()
                 )}
               </td>
-              <td className="border-l border-slate-200 px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
+              <td className="border-l-2 border-blue-200 px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
                 {(sr?.live ?? 0).toLocaleString()}
               </td>
               <td className="px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
@@ -622,7 +622,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 totals.total.toLocaleString()
               )}
             </td>
-            <td className="border-l border-slate-200 px-2 py-2 text-right font-mono tabular-nums">
+            <td className="border-l-2 border-blue-200 px-2 py-2 text-right font-mono tabular-nums">
               {groupSuccess.live.toLocaleString()}
             </td>
             <td className="px-2 py-2 text-right font-mono tabular-nums">
