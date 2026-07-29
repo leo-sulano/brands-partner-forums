@@ -226,6 +226,44 @@ const PLATFORM_OWN_COLS: Record<'tp' | 'ag' | 'cg', Set<string>> = {
   cg: new Set(['Casino Guru review added', 'CG Review Status', 'CG Review Link', 'CG User']),
 };
 
+// Which logical group a column belongs to — identity columns (Account, Brand,
+// etc.) vs. each platform's own columns. Drives the equal-spacing gaps between
+// groups in the table header/body (see withGroupSpacers/countGroupSpacers).
+function colGroup(h: string): 'tp' | 'ag' | 'cg' | 'identity' {
+  if (PLATFORM_OWN_COLS.tp.has(h)) return 'tp';
+  if (PLATFORM_OWN_COLS.ag.has(h)) return 'ag';
+  if (PLATFORM_OWN_COLS.cg.has(h)) return 'cg';
+  return 'identity';
+}
+
+// Inserts a spacer element (built by spacerFactory) between consecutive
+// `headers` entries whenever their column group changes — e.g. once after the
+// identity columns end, then again between each platform's own columns.
+function withGroupSpacers<T>(headers: string[], cells: T[], spacerFactory: (key: string) => T): T[] {
+  const out: T[] = [];
+  let prevGroup: string | null = null;
+  headers.forEach((h, i) => {
+    const g = colGroup(h);
+    if (prevGroup !== null && g !== prevGroup) out.push(spacerFactory(`spacer-${i}`));
+    out.push(cells[i]);
+    prevGroup = g;
+  });
+  return out;
+}
+
+// Number of spacer cells withGroupSpacers would insert for this header list —
+// used to keep colSpan totals (empty-state row) in sync.
+function countGroupSpacers(headers: string[]): number {
+  let count = 0;
+  let prevGroup: string | null = null;
+  for (const h of headers) {
+    const g = colGroup(h);
+    if (prevGroup !== null && g !== prevGroup) count++;
+    prevGroup = g;
+  }
+  return count;
+}
+
 // All known Trust Pilot status column variants across tabs.
 const TP_STATUS_VARIANTS = new Set([
   'TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status',
@@ -1943,22 +1981,32 @@ export default function BrandGroup() {
                           />
                         </th>
                       )}
-                      {visibleHeaders.map((h) => {
-                        const isFrozenCol = h === 'Account' || h === 'Account Name';
-                        return (
-                        <th
-                          key={h}
-                          onClick={() => handleSort(h)}
-                          style={{ top: toolbarHeight }}
-                          className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 will-change-transform ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
-                        >
-                          <span className="inline-flex items-center gap-1">
-                            {getColLabel(h, decodedTab)}
-                            {!isNoSortCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
-                          </span>
-                        </th>
-                        );
-                      })}
+                      {withGroupSpacers(
+                        visibleHeaders,
+                        visibleHeaders.map((h) => {
+                          const isFrozenCol = h === 'Account' || h === 'Account Name';
+                          return (
+                          <th
+                            key={h}
+                            onClick={() => handleSort(h)}
+                            style={{ top: toolbarHeight }}
+                            className={`px-[10px] py-3 font-medium text-slate-600 whitespace-nowrap select-none sticky bg-slate-50 will-change-transform ${isFrozenCol ? `z-30 ${isApproved ? 'left-8' : 'left-0'}` : 'z-[25]'} ${!isNoSortCol(h) ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                          >
+                            <span className="inline-flex items-center gap-1">
+                              {getColLabel(h, decodedTab)}
+                              {!isNoSortCol(h) && <SortIcon col={h} sortCol={sortCol} sortDir={sortDir} />}
+                            </span>
+                          </th>
+                          );
+                        }),
+                        (key) => (
+                          <th
+                            key={key}
+                            style={{ top: toolbarHeight }}
+                            className="w-3 p-0 sticky bg-slate-50 will-change-transform z-[25]"
+                          />
+                        ),
+                      )}
                       {/* Filler column: absorbs leftover table width so a wide
                           container doesn't stretch the widest real column
                           (e.g. Brand) with a disproportionate gap. */}
@@ -1980,7 +2028,7 @@ export default function BrandGroup() {
                 ))
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={(isApproved ? visibleHeaders.length + 2 : visibleHeaders.length + 1) || 5} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={(isApproved ? visibleHeaders.length + 2 : visibleHeaders.length + 1) + countGroupSpacers(visibleHeaders) || 5} className="px-4 py-8 text-center text-slate-400">
                     {search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Check Status page.'}
                   </td>
                 </tr>
@@ -2064,7 +2112,7 @@ export default function BrandGroup() {
                         />
                       </td>
                     )}
-                    {visibleHeaders.map((h) => {
+                    {withGroupSpacers(visibleHeaders, visibleHeaders.map((h) => {
                       // Brand / TP URL PAGE: brand name linked to the brand's TP review page (__href),
                       // falls back to plain text if the hyperlink URL hasn't been synced yet.
                       if (h === 'Brand / TP URL PAGE') {
@@ -2277,7 +2325,7 @@ export default function BrandGroup() {
                           />
                         </td>
                       );
-                    })}
+                    }), (key) => <td key={key} className="w-3 p-0" />)}
                     <td />
                   </tr>
                   );

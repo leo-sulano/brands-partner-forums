@@ -1527,3 +1527,15 @@ Restructured the Score Summary table header into two labeled groups — "Star Ra
 - Verified with `npm run build` and a logged-in Playwright pass against the dev server.
 
 ---
+
+## Task 150: Equal-Spacing Column Groups in Brand Tab Tables
+
+**Date:** July 29, 2026
+
+Extended the Score Summary equal-spacing idea (Task 149) to `BrandGroup.tsx`'s per-entry tables, which have a fundamentally different, dynamic-column architecture (headers come from `tab_schemas`/`TAB_COLUMN_CONFIGS` per tab, not a fixed list) — so it needed its own approach rather than reusing Score Summary's code.
+
+- Added `colGroup()`, which classifies each column header as `'identity'` or a platform (`tp`/`ag`/`cg`) by reusing the existing `PLATFORM_OWN_COLS` map (already used elsewhere to hide non-selected platforms' columns), and two generic helpers — `withGroupSpacers()` (inserts a spacer element wherever consecutive headers' group changes) and `countGroupSpacers()` (keeps the empty-state row's `colSpan` in sync).
+- Wrapped the existing `visibleHeaders.map(...)` calls in both the `<thead>` and each `<tbody>` row with `withGroupSpacers()` — the large per-column conditional rendering logic in the body row was left completely untouched; only the array it produces gets spacers spliced in afterward, to avoid risking a regression in that complex block.
+- Result: identity columns (Account, Country, Brands, etc.) get a gap before the first platform's columns, and each platform group (TP/AG/CG) gets an equal gap before the next, matching Score Summary's plain/uncolored spacer style. Verified via DOM inspection (not just a screenshot) on a 3-platform tab (Rooster Partners — 3 spacers, header/body both 22 columns, perfectly aligned) and a single-platform tab (Trybet — 1 spacer, 11/11 aligned).
+
+---
