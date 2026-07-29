@@ -10,13 +10,13 @@ import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
-import TpRemovedBadge from '../components/TpRemovedBadge';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedTpBrands, setBrandTpRemoved, type StatusCheckScope } from '../lib/queries';
-import { tpRemovedKey, buildRemovedTpBrandSet } from '../lib/removedTpBrands';
+import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, type StatusCheckScope } from '../lib/queries';
+import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -682,7 +682,7 @@ export default function BrandGroup() {
   const [countryFilter, setCountryFilter] = useState('');
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
-  const [removedTpBrandRows, setRemovedTpBrandRows] = useState<{ tab: string; brand: string }[]>([]);
+  const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -772,8 +772,8 @@ export default function BrandGroup() {
 
   useEffect(() => {
     let canceled = false;
-    fetchRemovedTpBrands()
-      .then((rows) => { if (!canceled) setRemovedTpBrandRows(rows); })
+    fetchRemovedPlatformBrands()
+      .then((rows) => { if (!canceled) setRemovedPlatformBrandRows(rows); })
       .catch(() => { /* badge is decorative — a failed fetch just means no badges render */ });
     return () => { canceled = true; };
   }, [reloadSeq]);
@@ -1039,9 +1039,15 @@ export default function BrandGroup() {
     : headers
   ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
 
-  const removedTpBrandSet = useMemo(() => buildRemovedTpBrandSet(removedTpBrandRows), [removedTpBrandRows]);
-  function isTpRemoved(brandName: string | null | undefined): boolean {
-    return !!brandName && removedTpBrandSet.has(tpRemovedKey(decodedTab, brandName));
+  const removedPlatformBrandSet = useMemo(() => buildRemovedPlatformBrandSet(removedPlatformBrandRows), [removedPlatformBrandRows]);
+  function isPlatformRemoved(brandName: string | null | undefined, platform: Platform): boolean {
+    return !!brandName && removedPlatformBrandSet.has(platformRemovedKey(decodedTab, brandName, platform));
+  }
+  // Every platform actually active on this tab (getTabPlatforms) that's
+  // currently flagged for this brand — drives one badge per flagged platform.
+  function removedPlatformsFor(brandName: string | null | undefined): Platform[] {
+    if (!brandName) return [];
+    return getTabPlatforms(decodedTab).filter((p) => isPlatformRemoved(brandName, p));
   }
 
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
@@ -1373,10 +1379,10 @@ export default function BrandGroup() {
       if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
       for (const e of kpiBase) {
-        // A brand whose TP page has been delisted entirely shouldn't count toward
-        // the Trust Pilot card's Live/Removed totals — matches the TP-only exclusion
-        // already applied in Score Summary.
-        if (key === 'tp' && brandCol && isTpRemoved(e.data[brandCol])) continue;
+        // A brand whose page on THIS platform has been delisted entirely
+        // shouldn't count toward this card's Live/Removed totals — independent
+        // per platform, matching the same exclusion applied in Score Summary.
+        if (brandCol && isPlatformRemoved(e.data[brandCol], key)) continue;
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
         else if (isRemoved(v)) removed++;
@@ -1417,12 +1423,16 @@ export default function BrandGroup() {
       const removed = selectedPlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
       return { total: live + removed, live, removed };
     }
+    // Local `activePlatforms` above only ever tracks tp/ag/cg (it never
+    // includes 'wo') and is empty for the Wizard of Odds tab specifically —
+    // so this branch also covers WO-only tabs, not just TP-only ones. Use the
+    // shared getTabPlatforms(tab) helper (which correctly returns ['wo'] for
+    // Wizard of Odds) to know which single platform this loop is implicitly
+    // counting, instead of assuming 'tp'.
+    const soloPlatform: Platform = getTabPlatforms(decodedTab)[0] ?? 'tp';
     let live = 0, removed = 0;
     for (const e of kpiBase) {
-      // Single-platform tabs are TP-only (getTabPlatforms always includes 'tp'), so
-      // this loop is implicitly counting Trust Pilot status — same TP-removed
-      // exclusion as the multi-platform countPlatform('tp') branch above.
-      if (brandCol && isTpRemoved(e.data[brandCol])) continue;
+      if (brandCol && isPlatformRemoved(e.data[brandCol], soloPlatform)) continue;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
       if (statuses.some(isLive)) live++;
       else if (statuses.some(isRemoved)) removed++;
@@ -2164,7 +2174,7 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
-                              {isTpRemoved(brandName) && <TpRemovedBadge />}
+                              {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                             </td>
                           );
                         }
@@ -2172,7 +2182,7 @@ export default function BrandGroup() {
                           return (
                             <td key={h} className="px-[10px] py-2">
                               <span className="text-slate-600 text-sm">{brandName}</span>
-                              {isTpRemoved(brandName) && <TpRemovedBadge />}
+                              {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                             </td>
                           );
                         }
@@ -2197,14 +2207,14 @@ export default function BrandGroup() {
                                   <ExternalLink className="size-3 shrink-0" />
                                   {pageName}
                                 </a>
-                                {isTpRemoved(pageName) && <TpRemovedBadge />}
+                                {removedPlatformsFor(pageName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                               </td>
                             );
                           }
                           return (
                             <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                               <span className="text-slate-600 text-sm">{pageName}</span>
-                              {isTpRemoved(pageName) && <TpRemovedBadge />}
+                              {removedPlatformsFor(pageName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                             </td>
                           );
                         }
@@ -2241,14 +2251,14 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
-                              {isTpRemoved(brandName) && <TpRemovedBadge />}
+                              {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                             </td>
                           );
                         }
                         return (
                           <td key={h} className="px-[10px] py-2">
                             <CellValue header={h} value={brandName} rowData={entry.data} tab={decodedTab} />
-                            {isTpRemoved(brandName) && <TpRemovedBadge />}
+                            {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                           </td>
                         );
                       }
