@@ -9,8 +9,12 @@
 
 export type Platform = 'tp' | 'ag' | 'cg' | 'wo';
 
+export function normalizeBrandKey(brand: string): string {
+  return brand.trim().toLowerCase();
+}
+
 export function platformRemovedKey(tab: string, brand: string, platform: Platform): string {
-  return `${tab}::${brand.trim().toLowerCase()}::${platform}`;
+  return `${tab}::${normalizeBrandKey(brand)}::${platform}`;
 }
 
 export function buildRemovedPlatformBrandSet(

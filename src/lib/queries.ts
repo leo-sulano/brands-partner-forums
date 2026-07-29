@@ -1,7 +1,7 @@
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
 import { getTabColumns, getBrandNameCol } from './tab-configs';
-import { platformRemovedKey, type Platform } from './removedPlatformBrands';
+import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
@@ -392,6 +392,11 @@ export async function fetchTabKpis(
     if (cg && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
     if (wo && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
 
+    // Unlike the tp/ag/cg/wo-specific counters above, the tab-level aggregate
+    // counters below deliberately do NOT apply per-platform exclusion — the
+    // aggregate isn't platform-specific, so there's no single "the platform"
+    // to exclude against, and a flagged brand's *other* platform data should
+    // still count toward the tab's overall totals.
     const agg = tp || ag || cg || wo || generic;
     if (agg) {
       const statuses = [tp, ag, cg, wo, generic].filter(Boolean);
@@ -603,7 +608,7 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
 // stored brand value that differs only in case/whitespace from the one
 // passed in here still matches the existing row instead of silently no-oping.
 export async function setBrandPlatformRemoved(tab: string, brand: string, platform: Platform, removed: boolean): Promise<void> {
-  const brandKey = brand.trim().toLowerCase();
+  const brandKey = normalizeBrandKey(brand);
   if (removed) {
     const { error } = await supabase
       .from('removed_platform_brands')

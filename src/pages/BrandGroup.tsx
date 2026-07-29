@@ -2513,7 +2513,13 @@ export default function BrandGroup() {
               if (brandName) {
                 const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
                 const nowRemoved = new Set(removedPlatforms);
-                for (const p of getTabPlatforms(targetTab)) {
+                // Diff over decodedTab's platforms (the tab the checkboxes were
+                // actually rendered for), not targetTab's — a brand-tab-move
+                // changing which platforms apply mid-save is an edge case this
+                // doesn't attempt to reconcile further (matches the existing
+                // brand-rename-during-save limitation documented near
+                // setBrandPlatformRemoved in src/lib/queries.ts).
+                for (const p of getTabPlatforms(decodedTab)) {
                   if (wasRemoved.has(p) !== nowRemoved.has(p)) {
                     await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
                   }
