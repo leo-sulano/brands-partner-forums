@@ -355,17 +355,17 @@ function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRate
         const groupTotal = brands.reduce((s, b) => s + b.total, 0);
         return (
           <section key={tab} className="rounded-md border border-slate-200">
-            <header className="flex items-center justify-between border-b border-slate-100 bg-slate-50/60 px-3 py-2">
+            <header className="flex items-center justify-between border-b border-slate-100 bg-[#17225a] px-3 py-2">
               <div className="flex items-center gap-2">
-                <h3 className="text-sm font-semibold text-slate-700">{tab ? tabDisplayName(tab) : '(no tab)'}</h3>
-                <span className="text-xs text-slate-400">
+                <h3 className="text-sm font-semibold text-white">{tab ? tabDisplayName(tab) : '(no tab)'}</h3>
+                <span className="text-xs text-slate-300">
                   {brands.length} brand{brands.length !== 1 ? 's' : ''} · {groupTotal.toLocaleString()} review{groupTotal !== 1 ? 's' : ''}
                 </span>
               </div>
               <button
                 type="button"
                 onClick={() => toggle(tab)}
-                className="rounded-md p-1 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
+                className="rounded-md p-1 text-slate-300 hover:bg-white/10 hover:text-white transition-colors"
                 aria-label={isCollapsed ? `Expand ${tabDisplayName(tab)}` : `Collapse ${tabDisplayName(tab)}`}
               >
                 <ChevronDown
@@ -585,8 +585,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
         </tbody>
         <tfoot className="border-t-2 border-slate-200 bg-slate-50/80">
           <tr className="font-semibold text-slate-800">
-            {showGroup && <td className="px-3 py-2" />}
-            <td className="px-3 py-2 text-left">
+            {showGroup && <td className="bg-[#17225a]/30 px-3 py-2" />}
+            <td className="bg-[#17225a]/30 px-3 py-2 text-left">
               <Link
                 to={
                   rows.length === 1
