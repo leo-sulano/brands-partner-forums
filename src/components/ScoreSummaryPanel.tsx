@@ -441,8 +441,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
         <SummaryColgroup showGroup={showGroup} maxScore={maxScore} />
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr className="border-b border-slate-200">
-            {showGroup && <th className="px-3 py-1" />}
-            <th className="px-3 py-1" />
+            {showGroup && <th className="bg-[#17225a] px-3 py-1 text-left font-medium text-slate-100">Group</th>}
+            <th className="bg-[#17225a] px-3 py-1 text-left font-medium text-slate-100">Brand</th>
             <th />
             <th colSpan={stars.length + 2} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
               Star Rating
@@ -453,8 +453,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             </th>
           </tr>
           <tr>
-            {showGroup && <th scope="col" className="bg-[#17225a] px-3 py-2 text-left font-medium text-slate-100">Group</th>}
-            <th scope="col" className="bg-[#17225a] px-3 py-2 text-left font-medium text-slate-100">Brand</th>
+            {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium" />}
+            <th scope="col" className="px-3 py-2 text-left font-medium" />
             <th />
             {stars.map((s) => (
               <th key={s} scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>
