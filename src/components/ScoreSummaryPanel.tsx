@@ -31,6 +31,10 @@ function starColor(value: number, maxScore: number): string {
   return STAR_TIER_COLOR[tier - 1];
 }
 
+// Column-group background tints for the Score Summary table.
+const STAR_RATING_BG = 'bg-[#d2e6f9]';
+const SUCCESS_RATE_BG = 'bg-[#c3c6c9]';
+
 function starsFor(maxScore: number): StarRating[] {
   return Array.from({ length: maxScore }, (_, i) => maxScore - i);
 }
@@ -433,11 +437,11 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             {showGroup && <th className="px-3 py-1" />}
             <th className="px-3 py-1" />
             <th />
-            <th colSpan={stars.length + 2} className="px-2 py-1 text-center font-medium text-slate-400">
+            <th colSpan={stars.length + 2} className={`${STAR_RATING_BG} px-2 py-1 text-center font-medium text-slate-500`}>
               Star Rating
             </th>
             <th />
-            <th colSpan={4} className="px-2 py-1 text-center font-medium text-slate-400">
+            <th colSpan={4} className={`${SUCCESS_RATE_BG} px-2 py-1 text-center font-medium text-slate-600`}>
               Success Rate
             </th>
           </tr>
@@ -446,7 +450,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th scope="col" className="px-3 py-2 text-left font-medium">Brand</th>
             <th />
             {stars.map((s) => (
-              <th key={s} scope="col" className="px-2 py-2 text-left font-medium">
+              <th key={s} scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>
                 <span className="inline-flex items-center justify-start gap-0.5">
                   <span className="font-mono tabular-nums">{s}</span>
                   <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
@@ -455,37 +459,37 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             ))}
             <th
               scope="col"
-              className="px-2 py-2 text-left font-medium"
+              className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}
               title="Published reviews with no Score added value yet"
             >
               Unrtd
             </th>
-            <th scope="col" className="px-2 py-2 text-left font-medium">Total</th>
+            <th scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>Total</th>
             <th />
             <th
               scope="col"
-              className="px-2 py-2 text-left font-medium"
+              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
               title="Reviews still live on the platform"
             >
               Published
             </th>
             <th
               scope="col"
-              className="px-2 py-2 text-left font-medium"
+              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
               title="Reviews removed from the platform"
             >
               Removed
             </th>
             <th
               scope="col"
-              className="px-2 py-2 text-left font-medium"
+              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
               title="Published + Removed — reviews with a decided outcome, across all history on this platform"
             >
               Total
             </th>
             <th
               scope="col"
-              className="px-2 py-2 text-left font-medium"
+              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
               title="Success Rate: Live ÷ (Live + Removed) across all history on this platform — not affected by the date range"
             >
               SR (%)
@@ -512,8 +516,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
               {stars.map((s) => (
                 <td
                   key={s}
-                  className={`px-2 py-1.5 text-left font-mono tabular-nums ${
-                    r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
+                  className={`${STAR_RATING_BG} px-2 py-1.5 text-left font-mono tabular-nums ${
+                    r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
                   }`}
                 >
                   {r.counts[s] > 0 ? (
@@ -528,7 +532,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                   )}
                 </td>
               ))}
-              <td className={`px-2 py-1.5 text-left font-mono tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+              <td className={`${STAR_RATING_BG} px-2 py-1.5 text-left font-mono tabular-nums ${r.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
                 {r.unrated > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=unrated`}
@@ -540,7 +544,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                   r.unrated.toLocaleString()
                 )}
               </td>
-              <td className="px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800">
+              <td className={`${STAR_RATING_BG} px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800`}>
                 {r.total > 0 ? (
                   <Link
                     to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=any`}
@@ -553,17 +557,17 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 )}
               </td>
               <td />
-              <td className="px-2 py-1.5 text-left font-mono tabular-nums text-slate-600">
+              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums text-slate-700`}>
                 {(sr?.live ?? 0).toLocaleString()}
               </td>
-              <td className="px-2 py-1.5 text-left font-mono tabular-nums text-slate-600">
+              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums text-slate-700`}>
                 {(sr?.removed ?? 0).toLocaleString()}
               </td>
-              <td className="px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800">
+              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800`}>
                 {((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()}
               </td>
               <td
-                className={`px-2 py-1.5 text-left font-mono tabular-nums ${successRateColor(sr?.rate ?? null)}`}
+                className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums ${successRateColor(sr?.rate ?? null)}`}
                 title={successRateTitle(sr)}
               >
                 {formatSuccessRate(sr)}
@@ -591,8 +595,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             {stars.map((s) => (
               <td
                 key={s}
-                className={`px-2 py-2 text-left font-mono tabular-nums ${
-                  totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
+                className={`${STAR_RATING_BG} px-2 py-2 text-left font-mono tabular-nums ${
+                  totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-500'
                 }`}
               >
                 {totals.counts[s] > 0 ? (
@@ -607,7 +611,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 )}
               </td>
             ))}
-            <td className={`px-2 py-2 text-left font-mono tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
+            <td className={`${STAR_RATING_BG} px-2 py-2 text-left font-mono tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-500'}`}>
               {totals.unrated > 0 ? (
                 <Link
                   to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=unrated`}
@@ -619,7 +623,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 totals.unrated.toLocaleString()
               )}
             </td>
-            <td className="px-2 py-2 text-left font-mono tabular-nums">
+            <td className={`${STAR_RATING_BG} px-2 py-2 text-left font-mono tabular-nums`}>
               {totals.total > 0 ? (
                 <Link
                   to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`}
@@ -632,17 +636,17 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
               )}
             </td>
             <td />
-            <td className="px-2 py-2 text-left font-mono tabular-nums">
+            <td className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-mono tabular-nums`}>
               {groupSuccess.live.toLocaleString()}
             </td>
-            <td className="px-2 py-2 text-left font-mono tabular-nums">
+            <td className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-mono tabular-nums`}>
               {groupSuccess.removed.toLocaleString()}
             </td>
-            <td className="px-2 py-2 text-left font-mono tabular-nums">
+            <td className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-mono tabular-nums`}>
               {(groupSuccess.live + groupSuccess.removed).toLocaleString()}
             </td>
             <td
-              className={`px-2 py-2 text-left font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}
+              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}
               title={successRateTitle(groupSuccess)}
             >
               {formatSuccessRate(groupSuccess)}

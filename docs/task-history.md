@@ -1525,6 +1525,7 @@ Restructured the Score Summary table header into two labeled groups — "Star Ra
 - Follow-up same day: replaced that border with a dedicated narrow spacer column (`w-3`, light blue background) between the Star Rating and Success Rate groups — an earlier attempt to add breathing room via extra cell padding shrank the fixed-width Published/Removed columns enough to visually collide; a real column avoids stealing space from existing cells.
 - Follow-up same day: dropped the spacer column's background color (plain gap, no color) and added a matching `w-3` spacer column between Brand and Star Rating (replacing the old thin border on the first star column), so all three groups — Brand, Star Rating, Success Rate — now have equal, uncolored spacing.
 - Follow-up same day: switched all numeric columns (5★–1★, Unrtd, Total, Published, Removed, Total, SR (%)) from right-aligned to left-aligned, in both header labels and row/footer values.
+- Follow-up same day: gave the Star Rating group a `#d2e6f9` background and the Success Rate group a `#c3c6c9` background (both via Tailwind arbitrary-value classes), across the group-label row, column-label row, body rows, and totals row; bumped a few near-white/near-gray text tints (e.g. zero-value cells) up a shade for contrast against the new backgrounds.
 - Verified with `npm run build` and a logged-in Playwright pass against the dev server.
 
 ---
