@@ -2,11 +2,12 @@ import { useState } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
-import { getColLabel, getCountryForAccount, getBrandAgUrl, getBrandCgUrl, getBrandLinkCol, resolveBrandLink } from '../lib/tab-configs';
+import { getColLabel, getCountryForAccount, getBrandAgUrl, getBrandCgUrl, getBrandLinkCol, resolveBrandLink, getTabPlatforms } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
+import { PLATFORM_LABEL, type Platform } from '../lib/scoreSummary';
 
 const STATUS_OPTS = [
   { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
@@ -92,12 +93,12 @@ interface Props {
   entry: Entry;
   headers: string[];
   onClose: () => void;
-  onSave: (fields: Record<string, string | null>, newTab?: string, tpRemoved?: boolean) => Promise<void>;
+  onSave: (fields: Record<string, string | null>, newTab?: string, removedPlatforms?: Platform[]) => Promise<void>;
   currentTab?: string;
   availableBrands?: string[];
   brandCol?: string | null;
   brandProfiles?: Record<string, Record<string, string>>;
-  initialTpRemoved?: boolean;
+  initialRemovedPlatforms?: Platform[];
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -105,8 +106,9 @@ const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) =>
   { col: 'CG Review Link', fallback: getBrandCgUrl },
 ];
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialTpRemoved }: Props) {
-  const [tpRemoved, setTpRemoved] = useState(initialTpRemoved ?? false);
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms }: Props) {
+  const [removedPlatforms, setRemovedPlatforms] = useState<Set<Platform>>(new Set(initialRemovedPlatforms ?? []));
+  const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const h of headers) {
@@ -133,7 +135,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
       const out: Record<string, string | null> = {};
       for (const h of headers) out[h] = fields[h] || null;
       const tabChanged = selectedTab && selectedTab !== currentTab ? selectedTab : undefined;
-      await onSave(out, tabChanged, tpRemoved);
+      await onSave(out, tabChanged, [...removedPlatforms]);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -324,18 +326,26 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                   />
                 </div>
               )}
-              {brandCol && availableBrands && availableBrands.length > 0 && (
-                <div className="flex items-end pb-2">
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
-                    <input
-                      type="checkbox"
-                      checked={tpRemoved}
-                      disabled={saving}
-                      onChange={(e) => setTpRemoved(e.target.checked)}
-                      className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
-                    />
-                    TP page removed
-                  </label>
+              {brandCol && availableBrands && availableBrands.length > 0 && tabPlatforms.length > 0 && (
+                <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 pb-1 sm:col-span-6">
+                  {tabPlatforms.map((p) => (
+                    <label key={p} className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={removedPlatforms.has(p)}
+                        disabled={saving}
+                        onChange={(e) =>
+                          setRemovedPlatforms((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(p); else next.delete(p);
+                            return next;
+                          })
+                        }
+                        className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
+                      />
+                      {PLATFORM_LABEL[p]} page removed
+                    </label>
+                  ))}
                 </div>
               )}
             </div>
