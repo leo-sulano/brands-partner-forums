@@ -1618,6 +1618,14 @@ export default function BrandGroup() {
     }
   }
 
+  // The Edit Entry modal's initial checkbox state for the entry currently
+  // being edited. Computed once per render (not inside onSave's closure) so
+  // onSave can compare the saved value against it and only call
+  // setBrandTpRemoved when the checkbox actually changed — otherwise every
+  // routine save of an already-flagged brand's row would re-fire the toggle,
+  // silently overwriting removed_by/removed_at for no reason.
+  const initialTpRemovedForEditEntry = editEntry && brandCol ? isTpRemoved(editEntry.data[brandCol]) : false;
+
   if (error) {
     return (
       <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
@@ -2463,7 +2471,7 @@ export default function BrandGroup() {
           availableBrands={uniqueBrands}
           brandCol={brandCol}
           brandProfiles={brandProfiles}
-          initialTpRemoved={brandCol ? isTpRemoved(editEntry.data[brandCol]) : false}
+          initialTpRemoved={initialTpRemovedForEditEntry}
           onClose={() => setEditEntry(null)}
           onSave={async (fields, newTab, tpRemoved) => {
             if (newTab && newTab !== editEntry.tab) {
@@ -2473,7 +2481,10 @@ export default function BrandGroup() {
             setEntries((prev) =>
               prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
-            if (brandCol && tpRemoved !== undefined) {
+            // Only write the flag when the checkbox actually changed — not on
+            // every save of an already-flagged brand's row (see the comment
+            // on initialTpRemovedForEditEntry above).
+            if (brandCol && tpRemoved !== undefined && tpRemoved !== initialTpRemovedForEditEntry) {
               const targetTab = newTab ?? editEntry.tab;
               const brandName = fields[brandCol] ?? editEntry.data[brandCol];
               if (brandName) await setBrandTpRemoved(targetTab, brandName, tpRemoved);
