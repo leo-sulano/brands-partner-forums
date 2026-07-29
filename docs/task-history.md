@@ -1556,3 +1556,19 @@ The Brand (and Group, when shown) header cell in Score Summary's column-label ro
 - Follow-up: a screenshot afterward showed the actual bug — "Brand" ended up on the column-label row while "Star Rating"/"Success Rate" stayed on the group-title row above it, splitting the three titles across two rows instead of one. Moved "Brand" (and "Group", when shown) up into the group-title row alongside them, and cleared the now-empty cells below in the column-label row. Verified by re-reading the JSX (column counts still match `SummaryColgroup` exactly) and `tsc -b`; Playwright stayed unresponsive (heavy Chrome process contention on the machine) so this one also shipped without a fresh screenshot.
 
 ---
+
+## Task 152: Generalize the TP-Removed Brand Flag to All 4 Platforms
+
+**Date:** July 29, 2026
+
+Generalized the TP-only "page removed" flag to independently cover all 4 review platforms (TrustPilot, AskGamblers, CasinoGuru, Wizard of Odds), superseding the TP-only flag added earlier the same day.
+
+- `removed_tp_brands` renamed to `removed_platform_brands` and given a `platform` column (`'tp' | 'ag' | 'cg' | 'wo'`, check-constrained), original 14 rows backfilled to `platform='tp'`, uniqueness widened to `(tab, brand_key, platform)` so the same brand can carry independent flags per platform.
+- The bare-circle `TpRemovedBadge` became a labeled `PlatformRemovedBadge` (red pill reading TP/AG/CG/WO) — `BrandGroup.tsx` renders one badge per platform actually flagged for a brand, side by side.
+- The Edit Entry modal's single "TP page removed" checkbox became one checkbox per platform active on the current tab (1 on TP-only/WO-only tabs, 3 on Hanan/Rooster Partners/Revolution Casino/SilverPlay), each diffed and written independently via `setBrandPlatformRemoved` so toggling one platform never touches another's row.
+- `scoreSummary.ts`'s three compute functions now exclude brands per-platform (no more TP-only special case); fixed a latent bug along the way where the Wizard of Odds tab's KPI card was checked against a TP-specific flag instead of WO's own.
+- Shared `tpRemovedKey`/`buildRemovedTpBrandSet` helpers became `platformRemovedKey`/`buildRemovedPlatformBrandSet` in `src/lib/removedPlatformBrands.ts` (also now the canonical home of the `Platform` type).
+- Whole-branch final review before merge caught one Important bug (`BrandGroup.tsx`'s `onSave` diffed against the post-move tab's platforms instead of the tab the checkboxes were actually rendered for, so a brand-tab-move plus a checkbox toggle in the same save could silently drop the toggle) and several Minors (extracted a shared `normalizeBrandKey` to stop brand-key normalization drifting between `removedPlatformBrands.ts` and `queries.ts`, a doc-citation fix, and a clarifying comment on `fetchTabKpis`'s aggregate counters intentionally not applying per-platform exclusion) — all fixed same day.
+- Spec: `docs/superpowers/specs/2026-07-29-multi-platform-removed-brands-design.md`. Plan: `docs/superpowers/plans/2026-07-29-multi-platform-removed-brands.md`.
+
+---

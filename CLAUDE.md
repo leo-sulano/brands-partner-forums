@@ -89,7 +89,7 @@ Brands Partner Forum/
   the walkthrough were undone afterward — confirmed via a direct table query that
   `removed_platform_brands` ends at exactly the original 14 rows, all `platform='tp'`.
   Spec: `docs/superpowers/specs/2026-07-29-multi-platform-removed-brands-design.md`. Plan:
-  `.superpowers/sdd/2026-07-29-multi-platform-removed-brands/`.
+  `docs/superpowers/plans/2026-07-29-multi-platform-removed-brands.md`.
 - *2026-07-29 (superseded by the entry above):* Added a TP-removed brand flag — Trustpilot can delist a brand's review
   page entirely, independent of any single review's status, and the dashboard now tracks
   that fact per (tab, brand) in a new `removed_tp_brands` table (seeded with 14 known
