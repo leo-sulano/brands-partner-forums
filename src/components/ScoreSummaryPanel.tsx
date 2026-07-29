@@ -22,6 +22,12 @@ interface Props {
   removedTpBrands?: Set<string>;
 }
 
+// Module-level constant so an omitted `removedTpBrands` prop doesn't create a
+// fresh Set identity on every render — a new inline `new Set()` default would
+// defeat the useMemos below that depend on it, recomputing on every render
+// even when nothing actually changed.
+const EMPTY_REMOVED_TP_BRANDS: Set<string> = new Set();
+
 // 5 color tiers regardless of scale — a 1-10 score buckets 2 values per tier
 // (9-10 emerald, 7-8 green, ...) so AG's wider table still reads as the same
 // green-to-red gradient as TP/CG's 5-column one.
@@ -87,7 +93,7 @@ const PLATFORM_DATE_LABEL: Record<Platform, string> = {
   wo: 'Wizard of Odds date',
 };
 
-export default function ScoreSummaryPanel({ entries, removedTpBrands = new Set() }: Props) {
+export default function ScoreSummaryPanel({ entries, removedTpBrands = EMPTY_REMOVED_TP_BRANDS }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [fromIso, setFromIso] = useState('');
   const [toIso, setToIso] = useState('');

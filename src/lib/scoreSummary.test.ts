@@ -274,4 +274,24 @@ describe('computeTabSuccessRates — removedTpBrands exclusion', () => {
     const result = computeTabSuccessRates(entries, 'tp', removed);
     expect(result.get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
+
+  it('still counts a brandless entry even when removedTpBrands is non-empty', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
+    ];
+    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'SomeOtherBrand' }]);
+    const result = computeTabSuccessRates(entries, 'tp', removed);
+    expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
+  });
+});
+
+describe('computeScoreSummary — removedTpBrands case/whitespace normalization', () => {
+  it('excludes a flagged brand even when the entry brand value has different casing/whitespace', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: '  PRIBET.COM  ', 'TP Review Status': 'Published' }),
+    ];
+    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'Pribet.com' }]);
+    const result = computeScoreSummary(entries, { from: null, to: null }, [], 'tp', removed);
+    expect(result.brands).toHaveLength(0);
+  });
 });
