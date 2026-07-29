@@ -1,11 +1,13 @@
 import { useEffect, useState } from 'react';
 import ScoreSummaryPanel from '../components/ScoreSummaryPanel';
-import { fetchAllEntries } from '../lib/queries';
+import { fetchAllEntries, fetchRemovedTpBrands } from '../lib/queries';
+import { buildRemovedTpBrandSet } from '../lib/removedTpBrands';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 
 export default function ScoreSummary() {
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [removedTpBrands, setRemovedTpBrands] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -13,8 +15,12 @@ export default function ScoreSummary() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchAllEntries(OPERATIONAL_TABS)
-      .then((data) => { if (!cancelled) setEntries(data); })
+    Promise.all([fetchAllEntries(OPERATIONAL_TABS), fetchRemovedTpBrands()])
+      .then(([entryRows, removedRows]) => {
+        if (cancelled) return;
+        setEntries(entryRows);
+        setRemovedTpBrands(buildRemovedTpBrandSet(removedRows));
+      })
       .catch((err) => {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Failed to load');
@@ -43,7 +49,7 @@ export default function ScoreSummary() {
 
   return (
     <div className="space-y-4">
-      <ScoreSummaryPanel entries={entries} />
+      <ScoreSummaryPanel entries={entries} removedTpBrands={removedTpBrands} />
     </div>
   );
 }

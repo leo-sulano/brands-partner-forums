@@ -19,6 +19,7 @@ import type { Entry } from '../types/entry';
 
 interface Props {
   entries: Entry[];
+  removedTpBrands?: Set<string>;
 }
 
 // 5 color tiers regardless of scale — a 1-10 score buckets 2 values per tier
@@ -86,7 +87,7 @@ const PLATFORM_DATE_LABEL: Record<Platform, string> = {
   wo: 'Wizard of Odds date',
 };
 
-export default function ScoreSummaryPanel({ entries }: Props) {
+export default function ScoreSummaryPanel({ entries, removedTpBrands = new Set() }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [fromIso, setFromIso] = useState('');
   const [toIso, setToIso] = useState('');
@@ -100,18 +101,18 @@ export default function ScoreSummaryPanel({ entries }: Props) {
   );
 
   const result = useMemo(
-    () => computeScoreSummary(entries, range, [], platform),
-    [entries, range, platform],
+    () => computeScoreSummary(entries, range, [], platform, removedTpBrands),
+    [entries, range, platform, removedTpBrands],
   );
 
   const successRates = useMemo(
-    () => computeSuccessRates(entries, platform),
-    [entries, platform],
+    () => computeSuccessRates(entries, platform, removedTpBrands),
+    [entries, platform, removedTpBrands],
   );
 
   const tabSuccessRates = useMemo(
-    () => computeTabSuccessRates(entries, platform),
-    [entries, platform],
+    () => computeTabSuccessRates(entries, platform, removedTpBrands),
+    [entries, platform, removedTpBrands],
   );
 
   const maxScore = PLATFORM_MAX_SCORE[platform];
