@@ -430,7 +430,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
           <tr className="border-b border-slate-200">
             {showGroup && <th className="px-3 py-1" />}
             <th className="px-3 py-1" />
-            <th colSpan={stars.length + 2} className="px-2 py-1 text-center font-medium text-slate-400">
+            <th colSpan={stars.length + 2} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
               Star Rating
             </th>
             <th colSpan={4} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
@@ -440,8 +440,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
           <tr>
             {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium">Group</th>}
             <th scope="col" className="px-3 py-2 text-left font-medium">Brand</th>
-            {stars.map((s) => (
-              <th key={s} scope="col" className="px-2 py-2 text-right font-medium">
+            {stars.map((s, i) => (
+              <th key={s} scope="col" className={`px-2 py-2 text-right font-medium ${i === 0 ? 'border-l border-slate-200' : ''}`}>
                 <span className="inline-flex items-center justify-end gap-0.5">
                   <span className="font-mono tabular-nums">{s}</span>
                   <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
@@ -502,10 +502,10 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                   {r.brand}
                 </Link>
               </td>
-              {stars.map((s) => (
+              {stars.map((s, i) => (
                 <td
                   key={s}
-                  className={`px-2 py-1.5 text-right font-mono tabular-nums ${
+                  className={`px-2 py-1.5 text-right font-mono tabular-nums ${i === 0 ? 'border-l border-slate-200' : ''} ${
                     r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
                   }`}
                 >
@@ -579,10 +579,10 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 Total
               </Link>
             </td>
-            {stars.map((s) => (
+            {stars.map((s, i) => (
               <td
                 key={s}
-                className={`px-2 py-2 text-right font-mono tabular-nums ${
+                className={`px-2 py-2 text-right font-mono tabular-nums ${i === 0 ? 'border-l border-slate-200' : ''} ${
                   totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
                 }`}
               >
