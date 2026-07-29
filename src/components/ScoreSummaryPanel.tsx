@@ -406,6 +406,7 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
       <col className="w-20" />
       <col className="w-20" />
       <col className="w-20" />
+      <col className="w-20" />
       <col className="w-28" />
     </colgroup>
   );
@@ -432,7 +433,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th colSpan={stars.length + 2} className="px-2 py-1 text-center font-medium text-slate-400">
               Star Rating
             </th>
-            <th colSpan={3} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
+            <th colSpan={4} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
               Success Rate
             </th>
           </tr>
@@ -472,6 +473,13 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th
               scope="col"
               className="px-2 py-2 text-right font-medium"
+              title="Published + Removed — reviews with a decided outcome, across all history on this platform"
+            >
+              Total
+            </th>
+            <th
+              scope="col"
+              className="px-2 py-2 text-right font-medium"
               title="Success Rate: Live ÷ (Live + Removed) across all history on this platform — not affected by the date range"
             >
               SR (%)
@@ -479,7 +487,9 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {rows.map((r) => (
+          {rows.map((r) => {
+            const sr = successRates.get(`${r.tab} ${r.brand}`);
+            return (
             <tr key={`${r.tab}|${r.brand}`} className="hover:bg-blue-50/60">
               {showGroup && (
                 <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={tabDisplayName(r.tab)}>{tabDisplayName(r.tab)}</td>
@@ -536,19 +546,23 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 )}
               </td>
               <td className="border-l border-slate-200 px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
-                {(successRates.get(`${r.tab} ${r.brand}`)?.live ?? 0).toLocaleString()}
+                {(sr?.live ?? 0).toLocaleString()}
               </td>
               <td className="px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
-                {(successRates.get(`${r.tab} ${r.brand}`)?.removed ?? 0).toLocaleString()}
+                {(sr?.removed ?? 0).toLocaleString()}
+              </td>
+              <td className="px-2 py-1.5 text-right font-semibold font-mono tabular-nums text-slate-800">
+                {((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()}
               </td>
               <td
-                className={`px-2 py-1.5 text-right font-mono tabular-nums ${successRateColor((successRates.get(`${r.tab} ${r.brand}`))?.rate ?? null)}`}
-                title={successRateTitle(successRates.get(`${r.tab} ${r.brand}`))}
+                className={`px-2 py-1.5 text-right font-mono tabular-nums ${successRateColor(sr?.rate ?? null)}`}
+                title={successRateTitle(sr)}
               >
-                {formatSuccessRate(successRates.get(`${r.tab} ${r.brand}`))}
+                {formatSuccessRate(sr)}
               </td>
             </tr>
-          ))}
+            );
+          })}
         </tbody>
         <tfoot className="border-t-2 border-slate-200 bg-slate-50/80">
           <tr className="font-semibold text-slate-800">
@@ -613,6 +627,9 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             </td>
             <td className="px-2 py-2 text-right font-mono tabular-nums">
               {groupSuccess.removed.toLocaleString()}
+            </td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">
+              {(groupSuccess.live + groupSuccess.removed).toLocaleString()}
             </td>
             <td
               className={`px-2 py-2 text-right font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}

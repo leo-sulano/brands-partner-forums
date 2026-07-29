@@ -1519,6 +1519,7 @@ Restructured the Score Summary table header into two labeled groups — "Star Ra
 
 - `ScoreSummaryPanel.tsx`'s `SummaryTable` now renders a second header row with `colSpan` group labels above the existing column-label row, plus a `border-l` divider carried down through the header, body, and totals-footer cells so the visual separation lines up in every row.
 - Added `Published` and `Removed` columns (sourced from the existing `successRates`/`tabSuccessRates` maps' `live`/`removed` fields) directly before `SR (%)`, both per-brand and in the per-tab totals row.
+- Follow-up same day: added a `Total` column (Published + Removed) between `Removed` and `SR (%)` in the Success Rate group, both per-brand and in the per-tab totals row.
 - Verified with `npm run build` and a logged-in Playwright pass against the dev server.
 
 ---
