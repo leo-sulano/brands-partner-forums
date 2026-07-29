@@ -56,6 +56,27 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-29:* Added a TP-removed brand flag — Trustpilot can delist a brand's review
+  page entirely, independent of any single review's status, and the dashboard now tracks
+  that fact per (tab, brand) in a new `removed_tp_brands` table (seeded with 14 known
+  cases: 6 in "TP Brand Injection", 5 in "TP Affiliate", 3 in "Hanan"). A red circle-X
+  `TpRemovedBadge` renders next to the brand name in every `BrandGroup.tsx` brand cell for
+  a flagged brand, and Score Summary's three compute functions (`scoreSummary.ts`) exclude
+  flagged brands from brand lists, star counts, and Success Rate — but only in the
+  TrustPilot platform view; AG/CG/WO still show the brand's data normally, since a TP page
+  being taken down says nothing about the brand's standing on other platforms. Toggled from
+  a "TP page removed" checkbox in the Edit Entry modal, wired through `setBrandTpRemoved` in
+  `src/lib/queries.ts` (upsert to flag, delete to clear). Matching between the table's
+  brand values and imported entries' brand values is case-insensitive/trimmed via the
+  shared `tpRemovedKey`/`buildRemovedTpBrandSet` helpers in `src/lib/removedTpBrands.ts` —
+  every reader goes through that one helper, which matters because several real imported
+  brand values carry a trailing space (e.g. `"Online Casino Deutschland "`) that the seed
+  data does not. Full test suite (76 tests, including new `removedTpBrands.test.ts` and
+  `scoreSummary.test.ts` additions) and build both pass. Live-verified end to end,
+  including the checkbox→badge round trip: toggling "TP page removed" off for a seeded
+  brand (Prive Casino) made its badge disappear from all 25 of its rows and made it
+  reappear in the TrustPilot Score Summary; toggling back on reversed both. Spec:
+  `docs/superpowers/specs/2026-07-29-tp-removed-brands-design.md`.
 - *2026-07-27:* Added cross-dashboard SSO — a new public route
   (`/auth/portal-callback`) and Edge Function (`sso-callback`) let a user who
   logs into the central SSO portal land here already authenticated. The
