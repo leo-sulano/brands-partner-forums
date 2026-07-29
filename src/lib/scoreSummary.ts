@@ -1,4 +1,5 @@
 import type { Entry } from '../types/entry';
+import { tpRemovedKey } from './removedTpBrands';
 
 export type Star = number;
 export type RatingLabel = 'Excellent' | 'Great' | 'Average' | 'Poor' | 'Bad';
@@ -165,6 +166,7 @@ export function computeScoreSummary(
   range: DateRange,
   pinnedFirst: string[] = [],
   platform: Platform = 'tp',
+  removedTpBrands: Set<string> = new Set(),
 ): ScoreSummaryResult {
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;
@@ -197,8 +199,12 @@ export function computeScoreSummary(
     const brand = (pick(d, BRAND_KEYS) ?? '').trim();
     if (!brand) continue;
 
+    const tab = e.tab ?? '';
+
     const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
     if (status !== 'published') continue;
+
+    if (platform === 'tp' && removedTpBrands.has(tpRemovedKey(tab, brand))) continue;
 
     const date = parsePostDate(pick(d, dateKeys));
 
@@ -211,7 +217,6 @@ export function computeScoreSummary(
       if (toBound && date > toBound) continue;
     }
 
-    const tab = e.tab ?? '';
     const key = `${tab} ${brand}`;
     let bucket = buckets.get(key);
     if (!bucket) {
@@ -284,6 +289,7 @@ function isRemovedStatus(s: string): boolean {
 export function computeSuccessRates(
   entries: Entry[],
   platform: Platform,
+  removedTpBrands: Set<string> = new Set(),
 ): Map<string, SuccessRate> {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const buckets = new Map<string, { live: number; removed: number }>();
@@ -298,6 +304,8 @@ export function computeSuccessRates(
     if (!status) continue;
 
     const tab = e.tab ?? '';
+    if (platform === 'tp' && removedTpBrands.has(tpRemovedKey(tab, brand))) continue;
+
     const key = `${tab} ${brand}`;
     let bucket = buckets.get(key);
     if (!bucket) {
@@ -326,6 +334,7 @@ export function computeSuccessRates(
 export function computeTabSuccessRates(
   entries: Entry[],
   platform: Platform,
+  removedTpBrands: Set<string> = new Set(),
 ): Map<string, SuccessRate> {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const buckets = new Map<string, { live: number; removed: number }>();
@@ -336,6 +345,9 @@ export function computeTabSuccessRates(
     if (!status) continue;
 
     const tab = e.tab ?? '';
+    const brand = (pick(d, BRAND_KEYS) ?? '').trim();
+    if (platform === 'tp' && brand && removedTpBrands.has(tpRemovedKey(tab, brand))) continue;
+
     let bucket = buckets.get(tab);
     if (!bucket) {
       bucket = { live: 0, removed: 0 };
