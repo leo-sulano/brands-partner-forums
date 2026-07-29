@@ -1527,6 +1527,7 @@ Restructured the Score Summary table header into two labeled groups — "Star Ra
 - Follow-up same day: switched all numeric columns (5★–1★, Unrtd, Total, Published, Removed, Total, SR (%)) from right-aligned to left-aligned, in both header labels and row/footer values.
 - Follow-up same day: gave the Star Rating group a `#d2e6f9` background and the Success Rate group a `#c3c6c9` background (both via Tailwind arbitrary-value classes), across the group-label row, column-label row, body rows, and totals row; bumped a few near-white/near-gray text tints (e.g. zero-value cells) up a shade for contrast against the new backgrounds.
 - Follow-up same day: lightened both backgrounds — Star Rating to `#e9f3fc`, Success Rate to `#e2e4e6`.
+- Follow-up same day: recolored just the group-label row (the one with "STAR RATING"/"SUCCESS RATE") to the sidebar's dark navy (`#17225a`, `text-slate-100`) so the table header visually ties to the app chrome — the column-label row below (5★, Unrtd, Published, etc.) keeps its light blue/gray tints. Also darkened the Published/Removed/Total(success) body-row numbers from `text-slate-700`/`text-slate-800` to `text-slate-900` for better contrast against the `#e2e4e6` background.
 - Verified with `npm run build` and a logged-in Playwright pass against the dev server.
 
 ---

@@ -444,11 +444,11 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             {showGroup && <th className="px-3 py-1" />}
             <th className="px-3 py-1" />
             <th />
-            <th colSpan={stars.length + 2} className={`${STAR_RATING_BG} px-2 py-1 text-center font-medium text-slate-500`}>
+            <th colSpan={stars.length + 2} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
               Star Rating
             </th>
             <th />
-            <th colSpan={4} className={`${SUCCESS_RATE_BG} px-2 py-1 text-center font-medium text-slate-600`}>
+            <th colSpan={4} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
               Success Rate
             </th>
           </tr>
@@ -564,13 +564,13 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 )}
               </td>
               <td />
-              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums text-slate-700`}>
+              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums text-slate-900`}>
                 {(sr?.live ?? 0).toLocaleString()}
               </td>
-              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums text-slate-700`}>
+              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-mono tabular-nums text-slate-900`}>
                 {(sr?.removed ?? 0).toLocaleString()}
               </td>
-              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800`}>
+              <td className={`${SUCCESS_RATE_BG} px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-900`}>
                 {((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()}
               </td>
               <td
