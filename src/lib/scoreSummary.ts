@@ -1,12 +1,39 @@
 import type { Entry } from '../types/entry';
-import { tpRemovedKey } from './removedTpBrands';
+import { platformRemovedKey } from './removedPlatformBrands';
+import type { Platform } from './removedPlatformBrands';
+
+// Re-exported (not just imported) so every existing `import type { Platform }
+// from '../lib/scoreSummary'` across the codebase (BrandGroup.tsx,
+// ScoreSummaryPanel.tsx, EditEntryModal.tsx) keeps working unchanged, even
+// though the canonical definition now lives in removedPlatformBrands.ts.
+// NOTE: `export type { Platform } from './removedPlatformBrands'` alone would
+// NOT work here — a re-export statement forwards the binding to external
+// importers but does not introduce a local `Platform` identifier usable
+// elsewhere in *this* file (e.g. `Record<Platform, number>` below would fail
+// to compile). The separate `import type` above is what makes `Platform`
+// usable locally; the `export type { Platform };` after it is what re-exports
+// that same local binding.
+export type { Platform };
 
 export type Star = number;
 export type RatingLabel = 'Excellent' | 'Great' | 'Average' | 'Poor' | 'Bad';
-export type Platform = 'tp' | 'ag' | 'cg' | 'wo';
 
 // TrustPilot and CasinoGuru score reviews 1-5; AskGamblers scores 1-10.
 export const PLATFORM_MAX_SCORE: Record<Platform, number> = { tp: 5, ag: 10, cg: 5, wo: 5 };
+
+export const PLATFORM_LABEL: Record<Platform, string> = {
+  tp: 'TrustPilot',
+  ag: 'AskGamblers',
+  cg: 'CasinoGuru',
+  wo: 'Wizard of Odds',
+};
+
+export const PLATFORM_SHORT_LABEL: Record<Platform, string> = {
+  tp: 'TP',
+  ag: 'AG',
+  cg: 'CG',
+  wo: 'WO',
+};
 
 export interface BrandSummary {
   tab: string;
@@ -166,7 +193,7 @@ export function computeScoreSummary(
   range: DateRange,
   pinnedFirst: string[] = [],
   platform: Platform = 'tp',
-  removedTpBrands: Set<string> = new Set(),
+  removedPlatformBrands: Set<string> = new Set(),
 ): ScoreSummaryResult {
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;
@@ -204,7 +231,7 @@ export function computeScoreSummary(
     const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
     if (status !== 'published') continue;
 
-    if (platform === 'tp' && removedTpBrands.has(tpRemovedKey(tab, brand))) continue;
+    if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
 
     const date = parsePostDate(pick(d, dateKeys));
 
@@ -289,7 +316,7 @@ function isRemovedStatus(s: string): boolean {
 export function computeSuccessRates(
   entries: Entry[],
   platform: Platform,
-  removedTpBrands: Set<string> = new Set(),
+  removedPlatformBrands: Set<string> = new Set(),
 ): Map<string, SuccessRate> {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const buckets = new Map<string, { live: number; removed: number }>();
@@ -304,7 +331,7 @@ export function computeSuccessRates(
     if (!status) continue;
 
     const tab = e.tab ?? '';
-    if (platform === 'tp' && removedTpBrands.has(tpRemovedKey(tab, brand))) continue;
+    if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
 
     const key = `${tab} ${brand}`;
     let bucket = buckets.get(key);
@@ -334,7 +361,7 @@ export function computeSuccessRates(
 export function computeTabSuccessRates(
   entries: Entry[],
   platform: Platform,
-  removedTpBrands: Set<string> = new Set(),
+  removedPlatformBrands: Set<string> = new Set(),
 ): Map<string, SuccessRate> {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const buckets = new Map<string, { live: number; removed: number }>();
@@ -346,7 +373,7 @@ export function computeTabSuccessRates(
 
     const tab = e.tab ?? '';
     const brand = (pick(d, BRAND_KEYS) ?? '').trim();
-    if (platform === 'tp' && brand && removedTpBrands.has(tpRemovedKey(tab, brand))) continue;
+    if (brand && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
 
     let bucket = buckets.get(tab);
     if (!bucket) {

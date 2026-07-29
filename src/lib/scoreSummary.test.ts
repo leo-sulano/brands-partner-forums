@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel } from './scoreSummary';
-import { buildRemovedTpBrandSet } from './removedTpBrands';
+import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
 function makeEntry(id: string, tab: string, data: Record<string, string | null>): Entry {
@@ -230,67 +230,80 @@ describe('computeTabSuccessRates', () => {
   });
 });
 
-describe('computeScoreSummary — removedTpBrands exclusion', () => {
+describe('computeScoreSummary — removedPlatformBrands exclusion', () => {
   const noRange = { from: null, to: null };
 
-  it('excludes a flagged brand entirely from the tp platform view', () => {
+  it('excludes a flagged brand entirely from the matching platform view', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'TP Review Status': 'Published', 'TP Score added': '5' }),
       makeEntry('2', 'Hanan', { Brands: 'WinMega.com', 'TP Review Status': 'Published', 'TP Score added': '4' }),
     ];
-    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'Pribet.com' }]);
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
     const result = computeScoreSummary(entries, noRange, [], 'tp', removed);
     expect(result.brands.map((b) => b.brand)).toEqual(['WinMega.com']);
   });
 
-  it('does not exclude a flagged brand from a non-tp platform view', () => {
+  it('does not exclude a brand flagged on a different platform', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'AG Review Status': 'Published', 'AG Score added': '9' }),
     ];
-    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'Pribet.com' }]);
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
     const result = computeScoreSummary(entries, noRange, [], 'ag', removed);
     expect(result.brands).toHaveLength(1);
   });
+
+  it('excludes the same brand independently per platform when flagged on both', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'TP Review Status': 'Published', 'TP Score added': '5' }),
+      makeEntry('2', 'Hanan', { Brands: 'Pribet.com', 'AG Review Status': 'Published', 'AG Score added': '9' }),
+    ];
+    const removed = buildRemovedPlatformBrandSet([
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' },
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'ag' },
+    ]);
+    expect(computeScoreSummary(entries, noRange, [], 'tp', removed).brands).toHaveLength(0);
+    expect(computeScoreSummary(entries, noRange, [], 'ag', removed).brands).toHaveLength(0);
+  });
 });
 
-describe('computeSuccessRates — removedTpBrands exclusion', () => {
-  it('excludes a flagged brand from the tp per-brand success rate map', () => {
+describe('computeSuccessRates — removedPlatformBrands exclusion', () => {
+  it('excludes a flagged brand from the matching platform per-brand success rate map', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'TP Review Status': 'Published' }),
     ];
-    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'Pribet.com' }]);
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
     const result = computeSuccessRates(entries, 'tp', removed);
     expect(result.has('Hanan Pribet.com')).toBe(false);
   });
 });
 
-describe('computeTabSuccessRates — removedTpBrands exclusion', () => {
-  it('excludes a flagged brand from the tp tab-level success rate total', () => {
+describe('computeTabSuccessRates — removedPlatformBrands exclusion', () => {
+  it('excludes a flagged brand from the matching platform tab-level success rate total', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'TP Review Status': 'Published' }),
       makeEntry('2', 'Hanan', { Brands: 'WinMega.com', 'TP Review Status': 'Removed' }),
     ];
-    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'Pribet.com' }]);
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
     const result = computeTabSuccessRates(entries, 'tp', removed);
     expect(result.get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 
-  it('still counts a brandless entry even when removedTpBrands is non-empty', () => {
+  it('still counts a brandless entry even when removedPlatformBrands is non-empty', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
     ];
-    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'SomeOtherBrand' }]);
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'SomeOtherBrand', platform: 'tp' }]);
     const result = computeTabSuccessRates(entries, 'tp', removed);
     expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
   });
 });
 
-describe('computeScoreSummary — removedTpBrands case/whitespace normalization', () => {
+describe('computeScoreSummary — removedPlatformBrands case/whitespace normalization', () => {
   it('excludes a flagged brand even when the entry brand value has different casing/whitespace', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: '  PRIBET.COM  ', 'TP Review Status': 'Published' }),
     ];
-    const removed = buildRemovedTpBrandSet([{ tab: 'Hanan', brand: 'Pribet.com' }]);
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
     const result = computeScoreSummary(entries, { from: null, to: null }, [], 'tp', removed);
     expect(result.brands).toHaveLength(0);
   });
