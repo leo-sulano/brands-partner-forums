@@ -1522,6 +1522,7 @@ Restructured the Score Summary table header into two labeled groups — "Star Ra
 - Follow-up same day: added a `Total` column (Published + Removed) between `Removed` and `SR (%)` in the Success Rate group, both per-brand and in the per-tab totals row.
 - Follow-up same day: added a matching `border-l` divider before the first star column, so Brand, Star Rating, and Success Rate now have equal visual separation instead of only the Star Rating/Success Rate boundary being divided.
 - Follow-up same day: recolored the Star Rating/Success Rate divider to a light tint of the dashboard's brand blue (`border-blue-200`, `border-l-2`) instead of neutral gray, so it reads as a deliberate section indicator; the Brand/Star Rating divider stays neutral gray.
+- Follow-up same day: replaced that border with a dedicated narrow spacer column (`w-3`, light blue background) between the Star Rating and Success Rate groups — an earlier attempt to add breathing room via extra cell padding shrank the fixed-width Published/Removed columns enough to visually collide; a real column avoids stealing space from existing cells.
 - Verified with `npm run build` and a logged-in Playwright pass against the dev server.
 
 ---
