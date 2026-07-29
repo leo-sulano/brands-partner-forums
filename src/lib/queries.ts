@@ -204,6 +204,14 @@ export async function fetchAvailableTabs(): Promise<string[]> {
   return (data ?? []).map((row) => row.tab as string);
 }
 
+export async function fetchRemovedTpBrands(): Promise<{ tab: string; brand: string }[]> {
+  const { data, error } = await supabase
+    .from('removed_tp_brands')
+    .select('tab, brand');
+  if (error) throw error;
+  return (data ?? []) as { tab: string; brand: string }[];
+}
+
 export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   const { data, error } = await supabase
     .from('entries')
@@ -561,6 +569,22 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
   if (error) throw error;
   invalidateTabCache(oldTab);
   invalidateTabCache(newTab);
+}
+
+export async function setBrandTpRemoved(tab: string, brand: string, removed: boolean): Promise<void> {
+  if (removed) {
+    const { error } = await supabase
+      .from('removed_tp_brands')
+      .upsert({ tab, brand, removed_by: await currentUserEmail() }, { onConflict: 'tab,brand' });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('removed_tp_brands')
+      .delete()
+      .eq('tab', tab)
+      .eq('brand', brand);
+    if (error) throw error;
+  }
 }
 
 // ---------------------------------------------------------------------------
