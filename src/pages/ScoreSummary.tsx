@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import ScoreSummaryPanel from '../components/ScoreSummaryPanel';
-import { fetchAllEntries, fetchRemovedTpBrands } from '../lib/queries';
-import { buildRemovedTpBrandSet } from '../lib/removedTpBrands';
+import { fetchAllEntries, fetchRemovedPlatformBrands } from '../lib/queries';
+import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 
 export default function ScoreSummary() {
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [removedTpBrands, setRemovedTpBrands] = useState<Set<string>>(new Set());
+  const [removedPlatformBrands, setRemovedPlatformBrands] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -15,11 +15,11 @@ export default function ScoreSummary() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([fetchAllEntries(OPERATIONAL_TABS), fetchRemovedTpBrands()])
+    Promise.all([fetchAllEntries(OPERATIONAL_TABS), fetchRemovedPlatformBrands()])
       .then(([entryRows, removedRows]) => {
         if (cancelled) return;
         setEntries(entryRows);
-        setRemovedTpBrands(buildRemovedTpBrandSet(removedRows));
+        setRemovedPlatformBrands(buildRemovedPlatformBrandSet(removedRows));
       })
       .catch((err) => {
         if (cancelled) return;
@@ -49,7 +49,7 @@ export default function ScoreSummary() {
 
   return (
     <div className="space-y-4">
-      <ScoreSummaryPanel entries={entries} removedTpBrands={removedTpBrands} />
+      <ScoreSummaryPanel entries={entries} removedPlatformBrands={removedPlatformBrands} />
     </div>
   );
 }
