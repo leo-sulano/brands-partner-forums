@@ -1,6 +1,7 @@
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
-import { getTabColumns } from './tab-configs';
+import { getTabColumns, getBrandNameCol } from './tab-configs';
+import { tpRemovedKey } from './removedTpBrands';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
@@ -330,11 +331,18 @@ function isPendingStatus(s: string) { return s.includes('pending') || s === 'not
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
-export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: string): Promise<TabKpis> {
+export async function fetchTabKpis(
+  tab: string,
+  dateFrom?: string,
+  dateTo?: string,
+  removedTpBrands: Set<string> = new Set(),
+): Promise<TabKpis> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
+
+  const brandCol = getBrandNameCol(tab);
 
   const entries = (dateFrom || dateTo)
     ? allEntries.filter(e => inDateRange(e.data, dateFrom ?? '', dateTo ?? ''))
@@ -370,7 +378,13 @@ export async function fetchTabKpis(tab: string, dateFrom?: string, dateTo?: stri
     const wo = woCol ? (d[woCol] ?? '').toLowerCase() : '';
     const generic = (!tp && !ag && !cg && !wo && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
 
-    if (tp) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
+    // A brand whose TP page has been delisted entirely shouldn't count toward the
+    // Trust Pilot platform total — matches the same TP-only exclusion applied in
+    // Score Summary and BrandGroup's platform KPI cards.
+    const brand = (d[brandCol] ?? '').trim();
+    const tpBrandFlagged = brand !== '' && removedTpBrands.has(tpRemovedKey(tab, brand));
+
+    if (tp && !tpBrandFlagged) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
     if (ag) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
     if (cg) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
     if (wo) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }

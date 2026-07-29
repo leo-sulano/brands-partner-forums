@@ -1373,6 +1373,10 @@ export default function BrandGroup() {
       if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
       for (const e of kpiBase) {
+        // A brand whose TP page has been delisted entirely shouldn't count toward
+        // the Trust Pilot card's Live/Removed totals — matches the TP-only exclusion
+        // already applied in Score Summary.
+        if (key === 'tp' && brandCol && isTpRemoved(e.data[brandCol])) continue;
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
         else if (isRemoved(v)) removed++;
@@ -1415,6 +1419,10 @@ export default function BrandGroup() {
     }
     let live = 0, removed = 0;
     for (const e of kpiBase) {
+      // Single-platform tabs are TP-only (getTabPlatforms always includes 'tp'), so
+      // this loop is implicitly counting Trust Pilot status — same TP-removed
+      // exclusion as the multi-platform countPlatform('tp') branch above.
+      if (brandCol && isTpRemoved(e.data[brandCol])) continue;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
       if (statuses.some(isLive)) live++;
       else if (statuses.some(isRemoved)) removed++;

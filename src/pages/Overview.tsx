@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
-import { fetchTabKpis } from '../lib/queries';
+import { fetchTabKpis, fetchRemovedTpBrands } from '../lib/queries';
+import { buildRemovedTpBrandSet } from '../lib/removedTpBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -300,9 +301,12 @@ export default function Overview() {
   const loadData = useCallback(async () => {
     setState(s => ({ ...s, loading: true }));
     try {
+      const removedTpBrands = await fetchRemovedTpBrands()
+        .then(buildRemovedTpBrandSet)
+        .catch(() => new Set<string>());
       const tabResults = await Promise.all(
         OPERATIONAL_TABS.map((tab) =>
-          fetchTabKpis(tab, dateFrom || undefined, dateTo || undefined)
+          fetchTabKpis(tab, dateFrom || undefined, dateTo || undefined, removedTpBrands)
             .then((kpis): TabSummary => ({ tab, kpis }))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
         )
