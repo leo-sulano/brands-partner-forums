@@ -92,11 +92,12 @@ interface Props {
   entry: Entry;
   headers: string[];
   onClose: () => void;
-  onSave: (fields: Record<string, string | null>, newTab?: string) => Promise<void>;
+  onSave: (fields: Record<string, string | null>, newTab?: string, tpRemoved?: boolean) => Promise<void>;
   currentTab?: string;
   availableBrands?: string[];
   brandCol?: string | null;
   brandProfiles?: Record<string, Record<string, string>>;
+  initialTpRemoved?: boolean;
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -104,7 +105,8 @@ const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) =>
   { col: 'CG Review Link', fallback: getBrandCgUrl },
 ];
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialTpRemoved }: Props) {
+  const [tpRemoved, setTpRemoved] = useState(initialTpRemoved ?? false);
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const h of headers) {
@@ -131,7 +133,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
       const out: Record<string, string | null> = {};
       for (const h of headers) out[h] = fields[h] || null;
       const tabChanged = selectedTab && selectedTab !== currentTab ? selectedTab : undefined;
-      await onSave(out, tabChanged);
+      await onSave(out, tabChanged, tpRemoved);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -320,6 +322,20 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     brands={availableBrands}
                     disabled={saving}
                   />
+                </div>
+              )}
+              {brandCol && availableBrands && availableBrands.length > 0 && (
+                <div className="flex items-end pb-2">
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                    <input
+                      type="checkbox"
+                      checked={tpRemoved}
+                      disabled={saving}
+                      onChange={(e) => setTpRemoved(e.target.checked)}
+                      className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
+                    />
+                    TP page removed
+                  </label>
                 </div>
               )}
             </div>
