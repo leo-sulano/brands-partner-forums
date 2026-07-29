@@ -1510,3 +1510,15 @@ Two changes: rename how two operational tabs display, and add a per-brand succes
 - Spec: `docs/superpowers/specs/2026-07-28-tab-display-rename-and-success-rate-design.md`. Plan: `docs/superpowers/plans/2026-07-28-tab-display-rename-and-success-rate.md`.
 
 ---
+
+## Task 149: Group Score Summary Columns Into Star Rating / Success Rate
+
+**Date:** July 29, 2026
+
+Restructured the Score Summary table header into two labeled groups — "Star Rating" (the existing 5★–1★, Unrtd, and Total columns) and "Success Rate" — separated by a vertical divider, and exposed the live/removed breakdown that Success Rate previously only revealed on hover as two real columns.
+
+- `ScoreSummaryPanel.tsx`'s `SummaryTable` now renders a second header row with `colSpan` group labels above the existing column-label row, plus a `border-l` divider carried down through the header, body, and totals-footer cells so the visual separation lines up in every row.
+- Added `Published` and `Removed` columns (sourced from the existing `successRates`/`tabSuccessRates` maps' `live`/`removed` fields) directly before `SR (%)`, both per-brand and in the per-tab totals row.
+- Verified with `npm run build` and a logged-in Playwright pass against the dev server.
+
+---

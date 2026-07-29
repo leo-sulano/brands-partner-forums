@@ -404,6 +404,8 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
       ))}
       <col className="w-20" />
       <col className="w-20" />
+      <col className="w-20" />
+      <col className="w-20" />
       <col className="w-28" />
     </colgroup>
   );
@@ -424,6 +426,16 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
       <table className="w-full table-fixed text-sm">
         <SummaryColgroup showGroup={showGroup} maxScore={maxScore} />
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+          <tr className="border-b border-slate-200">
+            {showGroup && <th className="px-3 py-1" />}
+            <th className="px-3 py-1" />
+            <th colSpan={stars.length + 2} className="px-2 py-1 text-center font-medium text-slate-400">
+              Star Rating
+            </th>
+            <th colSpan={3} className="border-l border-slate-200 px-2 py-1 text-center font-medium text-slate-400">
+              Success Rate
+            </th>
+          </tr>
           <tr>
             {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium">Group</th>}
             <th scope="col" className="px-3 py-2 text-left font-medium">Brand</th>
@@ -443,6 +455,20 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
               Unrtd
             </th>
             <th scope="col" className="px-2 py-2 text-right font-medium">Total</th>
+            <th
+              scope="col"
+              className="border-l border-slate-200 px-2 py-2 text-right font-medium"
+              title="Reviews still live on the platform"
+            >
+              Published
+            </th>
+            <th
+              scope="col"
+              className="px-2 py-2 text-right font-medium"
+              title="Reviews removed from the platform"
+            >
+              Removed
+            </th>
             <th
               scope="col"
               className="px-2 py-2 text-right font-medium"
@@ -508,6 +534,12 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
                 ) : (
                   r.total.toLocaleString()
                 )}
+              </td>
+              <td className="border-l border-slate-200 px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
+                {(successRates.get(`${r.tab} ${r.brand}`)?.live ?? 0).toLocaleString()}
+              </td>
+              <td className="px-2 py-1.5 text-right font-mono tabular-nums text-slate-600">
+                {(successRates.get(`${r.tab} ${r.brand}`)?.removed ?? 0).toLocaleString()}
               </td>
               <td
                 className={`px-2 py-1.5 text-right font-mono tabular-nums ${successRateColor((successRates.get(`${r.tab} ${r.brand}`))?.rate ?? null)}`}
@@ -575,6 +607,12 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
               ) : (
                 totals.total.toLocaleString()
               )}
+            </td>
+            <td className="border-l border-slate-200 px-2 py-2 text-right font-mono tabular-nums">
+              {groupSuccess.live.toLocaleString()}
+            </td>
+            <td className="px-2 py-2 text-right font-mono tabular-nums">
+              {groupSuccess.removed.toLocaleString()}
             </td>
             <td
               className={`px-2 py-2 text-right font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}
