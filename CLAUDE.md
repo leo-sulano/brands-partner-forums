@@ -56,7 +56,41 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-07-29:* Added a TP-removed brand flag — Trustpilot can delist a brand's review
+- *2026-07-29:* Generalized the TP-only "page removed" flag (below) to independently cover
+  all 4 review platforms — TrustPilot, AskGamblers, CasinoGuru, and Wizard of Odds —
+  superseding that entry. `removed_tp_brands` was renamed to `removed_platform_brands` and
+  given a `platform` column (`'tp' | 'ag' | 'cg' | 'wo'`, check-constrained), with the
+  original 14 rows backfilled to `platform='tp'` and uniqueness widened to
+  `(tab, brand_key, platform)` so the same brand can carry independent flags per platform.
+  The old bare-circle `TpRemovedBadge` became a labeled `PlatformRemovedBadge` (a red pill
+  reading TP/AG/CG/WO) — `BrandGroup.tsx` now renders one badge per platform actually
+  flagged for that brand, side by side. The Edit Entry modal's single "TP page removed"
+  checkbox became one checkbox per platform active on the current tab, labeled e.g.
+  "AskGamblers page removed" (1 checkbox on TP-only/WO-only tabs, 3 on Hanan/Rooster
+  Partners/Revolution Casino/SilverPlay), each diffed and written independently on save via
+  `setBrandPlatformRemoved` so toggling one platform never touches another's row.
+  `scoreSummary.ts`'s three compute functions exclude brands per-platform (no more TP-only
+  special case), and along the way this fixed a latent bug where the Wizard of Odds tab's
+  KPI card was checked against a TP-specific flag instead of WO's own. The shared
+  `tpRemovedKey`/`buildRemovedTpBrandSet` helpers became `platformRemovedKey`/
+  `buildRemovedPlatformBrandSet` in `src/lib/removedPlatformBrands.ts` (also now the
+  canonical home of the `Platform` type, re-exported by `scoreSummary.ts` for existing
+  importers). Full test suite (81 tests, including `removedPlatformBrands.test.ts` and
+  updated `scoreSummary.test.ts`) and build both pass. Live-verified end to end via a
+  throwaway headless Playwright run (the shared browser was in use by a concurrent
+  session): all 14 originally-seeded brands still show their TP badge and stay excluded
+  from Score Summary's TrustPilot view; flagging a fresh Hanan brand (ZodiacBet.com)
+  AG-only showed exactly one AG badge and excluded it from the AskGamblers view while
+  TrustPilot/CasinoGuru stayed untouched; additionally flagging it TP-removed showed both
+  badges with both exclusions applying independently and CG still untouched; flagging a
+  Wizard of Odds brand (Lucky7even) showed a WO badge (not TP), excluded it from that tab's
+  own KPI view, and its Edit Entry checkbox read "Wizard of Odds page removed"; unchecking
+  AG while TP stayed checked cleared only the AG badge/exclusion. All flags added during
+  the walkthrough were undone afterward — confirmed via a direct table query that
+  `removed_platform_brands` ends at exactly the original 14 rows, all `platform='tp'`.
+  Spec: `docs/superpowers/specs/2026-07-29-multi-platform-removed-brands-design.md`. Plan:
+  `.superpowers/sdd/2026-07-29-multi-platform-removed-brands/`.
+- *2026-07-29 (superseded by the entry above):* Added a TP-removed brand flag — Trustpilot can delist a brand's review
   page entirely, independent of any single review's status, and the dashboard now tracks
   that fact per (tab, brand) in a new `removed_tp_brands` table (seeded with 14 known
   cases: 6 in "TP Brand Injection", 5 in "TP Affiliate", 3 in "Hanan"). A red circle-X
