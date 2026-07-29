@@ -11,7 +11,7 @@ import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import TpRemovedBadge from '../components/TpRemovedBadge';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedTpBrands, type StatusCheckScope } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedTpBrands, setBrandTpRemoved, type StatusCheckScope } from '../lib/queries';
 import { tpRemovedKey, buildRemovedTpBrandSet } from '../lib/removedTpBrands';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
@@ -2463,8 +2463,9 @@ export default function BrandGroup() {
           availableBrands={uniqueBrands}
           brandCol={brandCol}
           brandProfiles={brandProfiles}
+          initialTpRemoved={brandCol ? isTpRemoved(editEntry.data[brandCol]) : false}
           onClose={() => setEditEntry(null)}
-          onSave={async (fields, newTab) => {
+          onSave={async (fields, newTab, tpRemoved) => {
             if (newTab && newTab !== editEntry.tab) {
               await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
             }
@@ -2472,6 +2473,11 @@ export default function BrandGroup() {
             setEntries((prev) =>
               prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
+            if (brandCol && tpRemoved !== undefined) {
+              const targetTab = newTab ?? editEntry.tab;
+              const brandName = fields[brandCol] ?? editEntry.data[brandCol];
+              if (brandName) await setBrandTpRemoved(targetTab, brandName, tpRemoved);
+            }
             reloadRef.current();
           }}
         />
