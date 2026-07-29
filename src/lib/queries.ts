@@ -571,18 +571,33 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
   invalidateTabCache(newTab);
 }
 
+// Toggle-off is a hard DELETE and toggle-on is a fresh INSERT/upsert — so
+// removed_by/removed_at always reflect the most recent (re-)flagging, not the
+// original flagger/time; re-enabling loses that history. Accepted tradeoff of
+// the "row existence = flagged" model (see the migration's header comment),
+// not a bug. Also: if a brand is renamed on the same Edit Entry save that also
+// toggles the flag, the flag is written against the *new* name — the old
+// name's flag row (if any) is left untouched. Accepted, documented limitation;
+// no rename-detection logic is planned for it.
+//
+// Matching is done via the generated `brand_key` column (lower+trim of
+// `brand`, see the 20260729140000 migration), not the raw `brand` value —
+// this mirrors tpRemovedKey in src/lib/removedTpBrands.ts so a stored brand
+// value that differs only in case/whitespace from the one passed in here
+// still matches the existing row instead of silently no-oping.
 export async function setBrandTpRemoved(tab: string, brand: string, removed: boolean): Promise<void> {
+  const brandKey = brand.trim().toLowerCase();
   if (removed) {
     const { error } = await supabase
       .from('removed_tp_brands')
-      .upsert({ tab, brand, removed_by: await currentUserEmail() }, { onConflict: 'tab,brand' });
+      .upsert({ tab, brand, removed_by: await currentUserEmail() }, { onConflict: 'tab,brand_key' });
     if (error) throw error;
   } else {
     const { error } = await supabase
       .from('removed_tp_brands')
       .delete()
       .eq('tab', tab)
-      .eq('brand', brand);
+      .eq('brand_key', brandKey);
     if (error) throw error;
   }
 }
