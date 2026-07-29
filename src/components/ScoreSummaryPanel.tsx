@@ -32,8 +32,8 @@ function starColor(value: number, maxScore: number): string {
 }
 
 // Column-group background tints for the Score Summary table.
-const STAR_RATING_BG = 'bg-[#d2e6f9]';
-const SUCCESS_RATE_BG = 'bg-[#c3c6c9]';
+const STAR_RATING_BG = 'bg-[#e9f3fc]';
+const SUCCESS_RATE_BG = 'bg-[#e2e4e6]';
 
 function starsFor(maxScore: number): StarRating[] {
   return Array.from({ length: maxScore }, (_, i) => maxScore - i);
