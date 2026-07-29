@@ -1545,3 +1545,13 @@ Extended the Score Summary equal-spacing idea (Task 149) to `BrandGroup.tsx`'s p
 - Result: identity columns (Account, Country, Brands, etc.) get a gap before the first platform's columns, and each platform group (TP/AG/CG) gets an equal gap before the next, matching Score Summary's plain/uncolored spacer style. Verified via DOM inspection (not just a screenshot) on a 3-platform tab (Rooster Partners — 3 spacers, header/body both 22 columns, perfectly aligned) and a single-platform tab (Trybet — 1 spacer, 11/11 aligned).
 
 ---
+
+## Task 151: Navy Brand/Group Header Cell in Score Summary
+
+**Date:** July 29, 2026
+
+The Brand (and Group, when shown) header cell in Score Summary's column-label row was still plain/white, breaking the navy visual spine formed by the tab-group header bar and the "STAR RATING"/"SUCCESS RATE" row directly above it. Gave it the same `bg-[#17225a]`/`text-slate-100` pair already used on those rows so the left edge of the header reads as one continuous navy block down to the column-label row.
+
+- Type-checked clean (`tsc -b`); live visual verification was blocked by an unresponsive Playwright browser session at the time, so this landed on code-pattern confidence (identical color pair already verified working elsewhere in this file) rather than a fresh screenshot.
+
+---

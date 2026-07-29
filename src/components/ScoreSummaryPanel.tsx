@@ -453,8 +453,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             </th>
           </tr>
           <tr>
-            {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium">Group</th>}
-            <th scope="col" className="px-3 py-2 text-left font-medium">Brand</th>
+            {showGroup && <th scope="col" className="bg-[#17225a] px-3 py-2 text-left font-medium text-slate-100">Group</th>}
+            <th scope="col" className="bg-[#17225a] px-3 py-2 text-left font-medium text-slate-100">Brand</th>
             <th />
             {stars.map((s) => (
               <th key={s} scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>
