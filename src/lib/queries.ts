@@ -1,7 +1,7 @@
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
 import { getTabColumns, getBrandNameCol } from './tab-configs';
-import { tpRemovedKey } from './removedTpBrands';
+import { platformRemovedKey, type Platform } from './removedPlatformBrands';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
@@ -205,12 +205,12 @@ export async function fetchAvailableTabs(): Promise<string[]> {
   return (data ?? []).map((row) => row.tab as string);
 }
 
-export async function fetchRemovedTpBrands(): Promise<{ tab: string; brand: string }[]> {
+export async function fetchRemovedPlatformBrands(): Promise<{ tab: string; brand: string; platform: Platform }[]> {
   const { data, error } = await supabase
-    .from('removed_tp_brands')
-    .select('tab, brand');
+    .from('removed_platform_brands')
+    .select('tab, brand, platform');
   if (error) throw error;
-  return (data ?? []) as { tab: string; brand: string }[];
+  return (data ?? []) as { tab: string; brand: string; platform: Platform }[];
 }
 
 export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
@@ -335,7 +335,7 @@ export async function fetchTabKpis(
   tab: string,
   dateFrom?: string,
   dateTo?: string,
-  removedTpBrands: Set<string> = new Set(),
+  removedPlatformBrands: Set<string> = new Set(),
 ): Promise<TabKpis> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
@@ -378,16 +378,19 @@ export async function fetchTabKpis(
     const wo = woCol ? (d[woCol] ?? '').toLowerCase() : '';
     const generic = (!tp && !ag && !cg && !wo && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
 
-    // A brand whose TP page has been delisted entirely shouldn't count toward the
-    // Trust Pilot platform total — matches the same TP-only exclusion applied in
-    // Score Summary and BrandGroup's platform KPI cards.
+    // A brand whose page on a given platform has been delisted entirely
+    // shouldn't count toward that platform's Live/Removed total — matches the
+    // same exclusion applied in Score Summary and BrandGroup's platform KPI
+    // cards, independently per platform (a TP-removed brand can still count
+    // normally toward AG/CG/WO, and vice versa).
     const brand = (d[brandCol] ?? '').trim();
-    const tpBrandFlagged = brand !== '' && removedTpBrands.has(tpRemovedKey(tab, brand));
+    const isPlatformFlagged = (platform: Platform) =>
+      brand !== '' && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform));
 
-    if (tp && !tpBrandFlagged) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
-    if (ag) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
-    if (cg) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
-    if (wo) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
+    if (tp && !isPlatformFlagged('tp')) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
+    if (ag && !isPlatformFlagged('ag')) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
+    if (cg && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
+    if (wo && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
 
     const agg = tp || ag || cg || wo || generic;
     if (agg) {
@@ -596,22 +599,23 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
 //
 // Matching is done via the generated `brand_key` column (lower+trim of
 // `brand`, see the 20260729140000 migration), not the raw `brand` value —
-// this mirrors tpRemovedKey in src/lib/removedTpBrands.ts so a stored brand
-// value that differs only in case/whitespace from the one passed in here
-// still matches the existing row instead of silently no-oping.
-export async function setBrandTpRemoved(tab: string, brand: string, removed: boolean): Promise<void> {
+// this mirrors platformRemovedKey in src/lib/removedPlatformBrands.ts so a
+// stored brand value that differs only in case/whitespace from the one
+// passed in here still matches the existing row instead of silently no-oping.
+export async function setBrandPlatformRemoved(tab: string, brand: string, platform: Platform, removed: boolean): Promise<void> {
   const brandKey = brand.trim().toLowerCase();
   if (removed) {
     const { error } = await supabase
-      .from('removed_tp_brands')
-      .upsert({ tab, brand, removed_by: await currentUserEmail() }, { onConflict: 'tab,brand_key' });
+      .from('removed_platform_brands')
+      .upsert({ tab, brand, platform, removed_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
     if (error) throw error;
   } else {
     const { error } = await supabase
-      .from('removed_tp_brands')
+      .from('removed_platform_brands')
       .delete()
       .eq('tab', tab)
-      .eq('brand_key', brandKey);
+      .eq('brand_key', brandKey)
+      .eq('platform', platform);
     if (error) throw error;
   }
 }
