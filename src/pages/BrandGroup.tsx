@@ -1636,13 +1636,15 @@ export default function BrandGroup() {
     }
   }
 
-  // The Edit Entry modal's initial checkbox state for the entry currently
-  // being edited. Computed once per render (not inside onSave's closure) so
-  // onSave can compare the saved value against it and only call
-  // setBrandTpRemoved when the checkbox actually changed — otherwise every
-  // routine save of an already-flagged brand's row would re-fire the toggle,
-  // silently overwriting removed_by/removed_at for no reason.
-  const initialTpRemovedForEditEntry = editEntry && brandCol ? isTpRemoved(editEntry.data[brandCol]) : false;
+  // The Edit Entry modal's initial per-platform checkbox state for the entry
+  // currently being edited. Computed once per render (not inside onSave's
+  // closure) so onSave can diff the saved set against it and only call
+  // setBrandPlatformRemoved for platforms whose checkbox actually changed —
+  // otherwise every routine save of an already-flagged brand's row would
+  // re-fire every toggle, silently overwriting removed_by/removed_at for no
+  // reason.
+  const initialRemovedPlatformsForEditEntry: Platform[] =
+    editEntry && brandCol ? removedPlatformsFor(editEntry.data[brandCol]) : [];
 
   if (error) {
     return (
@@ -2489,9 +2491,9 @@ export default function BrandGroup() {
           availableBrands={uniqueBrands}
           brandCol={brandCol}
           brandProfiles={brandProfiles}
-          initialTpRemoved={initialTpRemovedForEditEntry}
+          initialRemovedPlatforms={initialRemovedPlatformsForEditEntry}
           onClose={() => setEditEntry(null)}
-          onSave={async (fields, newTab, tpRemoved) => {
+          onSave={async (fields, newTab, removedPlatforms) => {
             if (newTab && newTab !== editEntry.tab) {
               await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
             }
@@ -2499,13 +2501,24 @@ export default function BrandGroup() {
             setEntries((prev) =>
               prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
-            // Only write the flag when the checkbox actually changed — not on
-            // every save of an already-flagged brand's row (see the comment
-            // on initialTpRemovedForEditEntry above).
-            if (brandCol && tpRemoved !== undefined && tpRemoved !== initialTpRemovedForEditEntry) {
+            // Only write a platform's flag when that platform's checkbox
+            // actually changed — not on every save of an already-flagged
+            // brand's row (see the comment on
+            // initialRemovedPlatformsForEditEntry above). Diffed
+            // independently per platform so toggling one platform never
+            // touches another's flag/removed_by/removed_at.
+            if (brandCol && removedPlatforms !== undefined) {
               const targetTab = newTab ?? editEntry.tab;
               const brandName = fields[brandCol] ?? editEntry.data[brandCol];
-              if (brandName) await setBrandTpRemoved(targetTab, brandName, tpRemoved);
+              if (brandName) {
+                const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
+                const nowRemoved = new Set(removedPlatforms);
+                for (const p of getTabPlatforms(targetTab)) {
+                  if (wasRemoved.has(p) !== nowRemoved.has(p)) {
+                    await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
+                  }
+                }
+              }
             }
             reloadRef.current();
           }}
