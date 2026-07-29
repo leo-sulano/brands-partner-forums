@@ -1572,3 +1572,16 @@ Generalized the TP-only "page removed" flag to independently cover all 4 review 
 - Spec: `docs/superpowers/specs/2026-07-29-multi-platform-removed-brands-design.md`. Plan: `docs/superpowers/plans/2026-07-29-multi-platform-removed-brands.md`.
 
 ---
+
+## Task 153: Score Summary — Equal-Width Sections, Full-Row Total Tint, Group Spacing
+
+**Date:** July 30, 2026
+
+Three follow-up refinements to the Score Summary table (building on Tasks 149–151):
+
+- `SummaryColgroup` switched from fixed pixel column widths (Tailwind `w-16`/`w-20`/`w-28`) to computed percentage widths via inline `<col style>`, so Brand, the Star Rating group, and the Success Rate group each resolve to an exact equal third of the table (verified by hand: `Brand + spacer + StarRating + spacer + SuccessRate` sums to exactly 100%, both with and without the optional `Group` column). Star Rating's third splits evenly across its columns (stars + Unrtd + Total, whose count varies 5→10 by platform); Success Rate's third splits evenly across its fixed 4 columns.
+- The per-tab "Total" row's `bg-[#17225a]/30` tint moved from just the Brand/Group label cell onto the `<tr>` itself, so the color now spans the full row through to `SR (%)` instead of stopping partway.
+- Each per-tab group `<section>` (e.g. "GRG - Gulf Recovery Group") now gets `mt-[30px]` above it when expanded vs `mt-[10px]` when collapsed (previously a uniform `space-y-3` regardless of state), skipping the first section to match the prior no-margin-before-first behavior.
+- Verified via `tsc -b` (clean) and hand-checked arithmetic; live screenshot verification was blocked both times — Playwright's browser session was unresponsive for an extended stretch, and the underlying machine appeared to be under heavy load (even a plain `tasklist` command hung) likely from a concurrent session's work landing around the same time (Task 152).
+
+---

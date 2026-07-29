@@ -349,12 +349,15 @@ function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRate
   }
 
   return (
-    <div className="space-y-3">
-      {groups.map(({ tab, brands }) => {
+    <div>
+      {groups.map(({ tab, brands }, i) => {
         const isCollapsed = collapsed.has(tab);
         const groupTotal = brands.reduce((s, b) => s + b.total, 0);
         return (
-          <section key={tab} className="rounded-md border border-slate-200">
+          <section
+            key={tab}
+            className={`rounded-md border border-slate-200 ${i === 0 ? '' : isCollapsed ? 'mt-[10px]' : 'mt-[30px]'}`}
+          >
             <header className="flex items-center justify-between border-b border-slate-100 bg-[#17225a] px-3 py-2">
               <div className="flex items-center gap-2">
                 <h3 className="text-sm font-semibold text-white">{tab ? tabDisplayName(tab) : '(no tab)'}</h3>
@@ -402,25 +405,34 @@ function computeColumnTotals(rows: BrandSummary[], maxScore: number): ColumnTota
   return { counts, unrated, total };
 }
 
-// Shared fixed column widths so every group table (and the grand total) lines
-// up vertically. Brand column flexes; numeric/rating columns are fixed. The
-// number of star columns varies by platform (5 for TP/CG, 10 for AG).
+// Shared column widths so every group table (and the grand total) lines up
+// vertically, with Brand, the Star Rating group, and the Success Rate group
+// each taking an equal third of the table — Star Rating's share is split
+// evenly across its columns (stars + Unrtd + Total), whose count varies by
+// platform (5 for TP/CG, 10 for AG), and Success Rate's share is split evenly
+// across its 4 columns (Published, Removed, Total, SR %).
 function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean; maxScore: number }) {
+  const SPACER_PCT = 1;
+  const GROUP_PCT = showGroup ? 12 : 0;
+  const thirdPct = (100 - GROUP_PCT - SPACER_PCT * 2) / 3;
+  const starColPct = thirdPct / (maxScore + 2);
+  const successColPct = thirdPct / 4;
+
   return (
     <colgroup>
-      {showGroup && <col className="w-32" />}
-      <col />
-      <col className="w-3" />
+      {showGroup && <col style={{ width: `${GROUP_PCT}%` }} />}
+      <col style={{ width: `${thirdPct}%` }} />
+      <col style={{ width: `${SPACER_PCT}%` }} />
       {Array.from({ length: maxScore }, (_, i) => (
-        <col key={i} className="w-16" />
+        <col key={i} style={{ width: `${starColPct}%` }} />
       ))}
-      <col className="w-20" />
-      <col className="w-20" />
-      <col className="w-3" />
-      <col className="w-20" />
-      <col className="w-20" />
-      <col className="w-20" />
-      <col className="w-28" />
+      <col style={{ width: `${starColPct}%` }} />
+      <col style={{ width: `${starColPct}%` }} />
+      <col style={{ width: `${SPACER_PCT}%` }} />
+      <col style={{ width: `${successColPct}%` }} />
+      <col style={{ width: `${successColPct}%` }} />
+      <col style={{ width: `${successColPct}%` }} />
+      <col style={{ width: `${successColPct}%` }} />
     </colgroup>
   );
 }
@@ -583,10 +595,10 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             );
           })}
         </tbody>
-        <tfoot className="border-t-2 border-slate-200 bg-slate-50/80">
-          <tr className="font-semibold text-slate-800">
-            {showGroup && <td className="bg-[#17225a]/30 px-3 py-2" />}
-            <td className="bg-[#17225a]/30 px-3 py-2 text-left">
+        <tfoot className="border-t-2 border-slate-200">
+          <tr className="bg-[#17225a]/30 font-semibold text-slate-800">
+            {showGroup && <td className="px-3 py-2" />}
+            <td className="px-3 py-2 text-left">
               <Link
                 to={
                   rows.length === 1
