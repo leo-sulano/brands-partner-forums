@@ -1621,3 +1621,15 @@ User reported BITP's brand tab (date range 01/07-30/07/2026) showed Total 136 / 
 - Live-verified with a throwaway headless Playwright run: BITP with the exact reported date range now shows Success Rate 62 Published / 74 Removed / 136 Total / 45% SR, matching the brand tab exactly; omitting the range still shows the original all-time 242/324/566/42%, confirming the default behavior is unchanged.
 
 ---
+
+## Task 157: Fix Duplicate Online-Presence Avatars on Multi-Tab Sessions
+
+**Date:** July 30, 2026
+
+Fixed the Topbar's online-user presence avatars (Task 25) showing a duplicate avatar for the same account when that account had more than one browser tab/window open. Supabase Realtime presence keys state by connection, not by account, so a single user tracked from N open tabs produced N metas under the same key — `usePresence` was flattening all of them into the displayed list instead of collapsing them.
+
+- Added `dedupePresenceState` to `src/lib/realtime.ts`, which keeps only the first meta per key before setting state, so each distinct account renders exactly one avatar regardless of how many tabs/windows it's connected from.
+- Added `src/lib/realtime.test.ts` (4 tests) covering single-window, multi-tab same-account, multi-account, and empty-state cases.
+- Full suite (194 tests) and build both pass.
+
+---
