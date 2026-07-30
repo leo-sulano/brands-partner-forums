@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users, X,
+  LayoutDashboard, Handshake, BarChart3, Bot, ScrollText, Users, X, CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -100,6 +100,18 @@ const FEATURES: FeatureSection[] = [
       'Edited or deleted entries can be restored from here',
     ],
     href: '/log',
+  },
+  {
+    title: 'Schedule Planner',
+    icon: CalendarDays,
+    iconColor: 'emerald',
+    blurb: 'A per-tab weekly grid for marking which weekdays each brand\'s outreach/posting work is active.',
+    bullets: [
+      'Toggle Mon–Fri per brand between active and paused, a recurring pattern rather than a one-off calendar entry',
+      'Frozen Brand column plus a search filter for finding a brand quickly on tabs with many rows',
+      'Week navigation is cosmetic, for reviewing the pattern, the schedule itself isn\'t tied to a specific week',
+    ],
+    href: '/schedule-planner',
   },
   {
     title: 'Admin Users',

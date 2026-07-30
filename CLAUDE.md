@@ -26,7 +26,7 @@ Brands Partner Forum/
 - **Data flow:** Supabase is the sole data store — entries are created and edited directly in the dashboard via `supabase-js`. No external sync (the Google Sheet integration was fully disconnected 2026-07-07).
 - **Auth:** email+password login via Supabase Auth, gated by admin-approval (`profiles.approved`). `AuthContext` holds session/profile; `ProtectedRoute` wraps every app route except `/login`, `/signup`, `/reset-password`. Vercel password protection also guards the deploy on top of this.
 - **Data access:** all Supabase queries live in `src/lib/queries.ts`. Pages and components import from there, never call `supabase.from(...)` directly.
-- **Routing:** React Router v7 declarative routes — `/`, `/mentions/:id`, `/brands/:tab`, `/sync`, `/log`, `/score-summary`, `/ask-ai`, `/admin/users`, plus public `/login`, `/signup`, `/reset-password`.
+- **Routing:** React Router v7 declarative routes — `/`, `/mentions/:id`, `/brands/:tab`, `/sync`, `/log`, `/score-summary`, `/ask-ai`, `/schedule-planner`, `/admin/users`, plus public `/login`, `/signup`, `/reset-password`.
 - **Styling:** Tailwind v4 utility classes. No global CSS beyond `index.css` (resets, base tokens).
 - **Charts:** Recharts only. Keep chart components in `src/components/` and pass plain data props.
 
