@@ -56,6 +56,57 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-31:* Schedule Planner moved from one recurring Mon-Fri template per (tab, brand)
+  to real per-calendar-week tracking, and its 9 months of real history (Oct 2025 – present)
+  from `csv/Scheduled_Planner.xlsx` was imported — superseding the "week nav is purely
+  cosmetic" design from the day before. `brand_schedule` gained a `week_start date not null`
+  column (the Monday of that week), widening uniqueness to `(tab, brand_key, week_start)`;
+  the 43 rows already in the table (all written during the week of 2026-07-27) were
+  backfilled to that week before the column went `NOT NULL`. `scheduleFor`/`withDayStatus`
+  (`src/lib/scheduleBrands.ts`) and `fetchBrandSchedule`/`setBrandScheduleDay`
+  (`src/lib/queries.ts`) all now take a `weekStart` parameter, matching on it alongside
+  `tab`/`brand_key`; `SchedulePlanner.tsx`'s prev/next/Today buttons now trigger a real
+  refetch instead of only changing the displayed date labels, and every week (past or
+  future) is independently editable with no read-only-history rule. Historical import:
+  parsed all 42 dated sheets in the source spreadsheet (excluding one undated legacy
+  template whose brand set — "Medier Brands", Midasluck, Bit Coin — matches none of today's
+  11 tabs), deriving each sheet's `week_start` from its name (verified: 41 of 42 land
+  exactly 7 days apart on a Monday matching the name; one, `"9-12 Dec"`, is a one-day typo
+  in the source file, corrected to the computed `2025-12-08`). Matching brand names to tabs
+  required resolving each brand independently (not by whole spreadsheet group) after
+  discovering two older sheets (`19Jan-23Jan`, `26Jan-30Jan`) genuinely combined the
+  Revolution Casino and Trybet groups under one shared header row — a real historical
+  layout, not a data error — which a whole-group approach mismatched; per-brand resolution
+  with anchor-tab disambiguation (for the 4 names — Fortuneplay, Lucky7even, Rocketspin,
+  Rollero — shared verbatim between Rooster Partners and Wizard of Odds) fixed it. Wrote
+  1119 rows across all 42 weeks via bulk upsert; skip list (brands with no match to any of
+  today's 11 tabs, same rule as the original single-week migration) stayed stable at
+  "Trusted Casino UK", "Trusted Casino CA", "Betway", "Bit Coin", "BlissBursts", and the
+  8-brand "Medier Brands" set. Post-import verification: table holds 1133 rows across 43
+  distinct weeks; every row's brand-key resolves against a real, currently-tracked brand in
+  its tab (checked across all 11 tabs) except one now-deleted test-residue row. During
+  implementation, a real timezone bug was caught and fixed before it could ship: the
+  straightforward `date.toISOString().slice(0, 10)` conversion rolls the calendar date back
+  one day in any timezone ahead of UTC (converts to UTC before slicing) — which would have
+  made every already-migrated row permanently invisible for any user/session in a UTC+
+  timezone (this dev environment is UTC+8) — fixed to build the ISO string from local
+  `getFullYear`/`getMonth`/`getDate()` instead, matching the page's existing
+  `mondayOf`/`formatWeekdayDate` helpers (already local-time); `toISODate` was moved to
+  `src/lib/scheduleBrands.ts` and given a `TZ=Asia/Manila` regression test that fails
+  against the naive UTC-based version, so it can't silently regress. The final whole-branch
+  review also caught that the week-navigation refetch was re-downloading a tab's entire
+  (sometimes 2000+ row) entries table on every Prev/Next/Today click when only the schedule
+  data depends on the week — fixed by splitting into two effects (`[tab]` for
+  entries/brands, `[tab, weekStartISO]` for schedule data only) and holding the week as a
+  memoized ISO string instead of a `Date`, which also fixed a "Today" no-op still
+  triggering a reload. Full test suite (110 tests) and build both pass. One known,
+  deliberately-deferred issue: the schedule-only effect doesn't clear the error banner on a
+  successful fetch after a prior failure, so a transient network error during week
+  navigation leaves the banner visible until a tab switch — low-impact (no data loss), a
+  one-line fix (`setError(null)` at the top of that effect), left for a follow-up rather
+  than reopening the review loop. Spec:
+  `docs/superpowers/specs/2026-07-31-schedule-planner-per-week-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-31-schedule-planner-per-week.md`.
 - *2026-07-30:* Added a "Success Rate" figure directly to brand tab summary cards
   (`BrandGroup.tsx`), reusing the same `live / (live + removed) × 100` formula and
   floor-to-whole-percent rounding Score Summary already uses (Task 148/156) — computed
