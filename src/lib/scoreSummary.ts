@@ -188,6 +188,30 @@ function endOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
 
+// Date-range gate for computeSuccessRates/computeTabSuccessRates. Deliberately
+// INCLUDES a row when it has no date at all (missing key, or unparseable
+// value) rather than excluding it — mirrors BrandGroup.tsx's applyDateFilter
+// (the brand tab's own KPI cards), which is why a Removed/Refused row with no
+// recorded post-date still counts toward the denominator in any date range,
+// instead of silently vanishing and skewing the rate upward. This is what
+// lets Success Rate be date-filtered without reintroducing the exact problem
+// that originally justified making it all-time.
+function passesDateFilter(
+  data: Record<string, string | null>,
+  dateKeys: readonly string[],
+  fromBound: Date | null,
+  toBound: Date | null,
+): boolean {
+  if (!fromBound && !toBound) return true;
+  const raw = pick(data, dateKeys);
+  if (raw == null) return true;
+  const date = parsePostDate(raw);
+  if (date == null) return true;
+  if (fromBound && date < fromBound) return false;
+  if (toBound && date > toBound) return false;
+  return true;
+}
+
 export function computeScoreSummary(
   entries: Entry[],
   range: DateRange,
@@ -228,10 +252,24 @@ export function computeScoreSummary(
 
     const tab = e.tab ?? '';
 
-    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
-    if (status !== 'published') continue;
-
     if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
+
+    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
+    if (!status) continue;
+
+    // Bucket presence is keyed off ANY resolvable status (matching
+    // computeSuccessRates' gate), not just Published — otherwise a brand
+    // that's entirely Removed/Refused never gets a row at all, silently
+    // hiding its all-time Success Rate too (which ScoreSummaryPanel looks up
+    // by this same tab+brand key, independent of the Published filter below).
+    const key = `${tab} ${brand}`;
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      bucket = { tab, brand, counts: emptyCounts(), unrated: 0 };
+      buckets.set(key, bucket);
+    }
+
+    if (status !== 'published') continue;
 
     const date = parsePostDate(pick(d, dateKeys));
 
@@ -242,13 +280,6 @@ export function computeScoreSummary(
       }
       if (fromBound && date < fromBound) continue;
       if (toBound && date > toBound) continue;
-    }
-
-    const key = `${tab} ${brand}`;
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = { tab, brand, counts: emptyCounts(), unrated: 0 };
-      buckets.set(key, bucket);
     }
 
     const score = scoreKeys.length > 0 ? parseScore(pick(d, scoreKeys), maxScore) : null;
@@ -308,17 +339,23 @@ function isRemovedStatus(s: string): boolean {
 }
 
 // Per-brand Success Rate for Score Summary: live / (live + removed) across
-// ALL entries for that brand on the selected platform, not just the
-// currently-Published ones computeScoreSummary counts. Deliberately has no
-// date-range parameter — a Removed/Refused row frequently has no post-date
-// recorded at all, so applying the page's date filter here would silently
-// exclude it from the denominator and skew the rate upward.
+// entries for that brand on the selected platform, not just the
+// currently-Published ones computeScoreSummary counts. When `range` is set,
+// matches BrandGroup.tsx's brand-tab KPI cards exactly: a row with no
+// recorded post-date always counts regardless of the range (see
+// passesDateFilter) — this is what avoids skewing the rate by dropping
+// undated Removed/Refused rows, so date-filtering here is safe. `range`
+// defaults to all-time (no filtering) when omitted.
 export function computeSuccessRates(
   entries: Entry[],
   platform: Platform,
   removedPlatformBrands: Set<string> = new Set(),
+  range: DateRange = { from: null, to: null },
 ): Map<string, SuccessRate> {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
+  const dateKeys = PLATFORM_DATE_KEYS[platform];
+  const fromBound = range.from ? startOfDay(range.from) : null;
+  const toBound = range.to ? endOfDay(range.to) : null;
   const buckets = new Map<string, { live: number; removed: number }>();
 
   for (const e of entries) {
@@ -332,6 +369,8 @@ export function computeSuccessRates(
 
     const tab = e.tab ?? '';
     if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
+
+    if (!passesDateFilter(d, dateKeys, fromBound, toBound)) continue;
 
     const key = `${tab} ${brand}`;
     let bucket = buckets.get(key);
@@ -352,18 +391,24 @@ export function computeSuccessRates(
   return result;
 }
 
-// Per-tab Success Rate: live / (live + removed) across ALL entries for that
+// Per-tab Success Rate: live / (live + removed) across entries for that
 // tab on the selected platform, regardless of brand. Unlike computeSuccessRates,
 // this does NOT require a brand field — a brand with zero Published entries
 // (and therefore no BrandSummary row) would otherwise be silently dropped from
 // a naive per-brand aggregation, biasing a tab-level total upward. Used for the
 // Score Summary group Total row's Success Rate so it reflects the whole tab.
+// `range` (see computeSuccessRates) defaults to all-time when omitted, and
+// otherwise matches BrandGroup.tsx's brand-tab KPI cards via passesDateFilter.
 export function computeTabSuccessRates(
   entries: Entry[],
   platform: Platform,
   removedPlatformBrands: Set<string> = new Set(),
+  range: DateRange = { from: null, to: null },
 ): Map<string, SuccessRate> {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
+  const dateKeys = PLATFORM_DATE_KEYS[platform];
+  const fromBound = range.from ? startOfDay(range.from) : null;
+  const toBound = range.to ? endOfDay(range.to) : null;
   const buckets = new Map<string, { live: number; removed: number }>();
 
   for (const e of entries) {
@@ -374,6 +419,8 @@ export function computeTabSuccessRates(
     const tab = e.tab ?? '';
     const brand = (pick(d, BRAND_KEYS) ?? '').trim();
     if (brand && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
+
+    if (!passesDateFilter(d, dateKeys, fromBound, toBound)) continue;
 
     let bucket = buckets.get(tab);
     if (!bucket) {

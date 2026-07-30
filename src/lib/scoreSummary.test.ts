@@ -131,6 +131,30 @@ describe('computeScoreSummary', () => {
     const [brand] = result.brands;
     expect(brand.unrated).toBe(1);
   });
+
+  it('still gives a brand a row (all-zero star counts) when it has a resolvable status but no Published entries', () => {
+    // Regression: a brand entirely Removed used to get no BrandSummary row at
+    // all, which silently hid its Success Rate in ScoreSummaryPanel too (that
+    // lookup keys off this same tab+brand set) even though Success Rate is
+    // computed independently and all-time.
+    const entries: Entry[] = [
+      makeEntry('1', 'GRG - Gulf Recovery Group', { Brands: 'Gulf Recovery Group', 'TP Review Status': 'Removed' }),
+    ];
+    const result = computeScoreSummary(entries, noRange, [], 'tp');
+    expect(result.brands).toHaveLength(1);
+    const [brand] = result.brands;
+    expect(brand.brand).toBe('Gulf Recovery Group');
+    expect(brand.total).toBe(0);
+    expect(brand.average).toBeNull();
+  });
+
+  it('gives no row at all when status is blank, unlike a Removed/Refused status', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com' }),
+    ];
+    const result = computeScoreSummary(entries, noRange, [], 'tp');
+    expect(result.brands).toHaveLength(0);
+  });
 });
 
 describe('computeSuccessRates', () => {
@@ -164,12 +188,31 @@ describe('computeSuccessRates', () => {
     expect(result.size).toBe(0);
   });
 
-  it('has no date-range parameter and counts a Removed row with no post-date', () => {
+  it('is all-time by default (no range argument) and counts a Removed row with no post-date', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
     ];
     const result = computeSuccessRates(entries, 'tp');
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
+  });
+
+  it('when a range is given, still counts a Removed row with no post-date at all (undated rows always included)', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
+    ];
+    const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 30) };
+    const result = computeSuccessRates(entries, 'tp', new Set(), range);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
+  });
+
+  it('when a range is given, excludes a row whose post-date falls outside it', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published', 'Trust Pilot': '15/07/2026' }),
+      makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed', 'Trust Pilot': '05/08/2026' }),
+    ];
+    const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
+    const result = computeSuccessRates(entries, 'tp', new Set(), range);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
   });
 
   it('keys results by tab and brand independently', () => {
@@ -183,12 +226,34 @@ describe('computeSuccessRates', () => {
   });
 });
 
+describe('computeTabSuccessRates — date range (matches BrandGroup.tsx brand-tab KPI cards)', () => {
+  it('is all-time by default and, when a range is given, still counts undated rows regardless', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
+    ];
+    const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
+    expect(computeTabSuccessRates(entries, 'tp').get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
+    expect(computeTabSuccessRates(entries, 'tp', new Set(), range).get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
+  });
+
+  it('excludes a dated row outside the selected range', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published', 'Trust Pilot': '15/07/2026' }),
+      makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed', 'Trust Pilot': '05/08/2026' }),
+    ];
+    const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
+    const result = computeTabSuccessRates(entries, 'tp', new Set(), range);
+    expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
+  });
+});
+
 describe('computeTabSuccessRates', () => {
   it('aggregates by tab only, so a brand with zero Published entries still counts toward the tab total', () => {
-    // Brand A: 10 Published (live). Brand B: 20 Removed, 0 Published — Brand B
-    // would never produce a BrandSummary row (computeScoreSummary requires at
-    // least one Published entry), so a naive sum over BrandSummary rows would
-    // miss its 20 Removed entirely and show the tab at 100% instead of 33%.
+    // Brand A: 10 Published (live). Brand B: 20 Removed, 0 Published. Even
+    // though computeScoreSummary now gives Brand B its own (all-zero-star)
+    // BrandSummary row too, this test still guards computeTabSuccessRates'
+    // independent tab-level aggregation — a naive sum over BrandSummary rows
+    // would miss its 20 Removed entirely and show the tab at 100% instead of 33%.
     const entries: Entry[] = [
       ...Array.from({ length: 10 }, (_, i) =>
         makeEntry(`a${i}`, 'Hanan', { Brands: 'BrandA.com', 'TP Review Status': 'Published' }),

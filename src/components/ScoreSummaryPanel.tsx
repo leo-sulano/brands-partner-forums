@@ -133,13 +133,13 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
   );
 
   const successRates = useMemo(
-    () => computeSuccessRates(entries, platform, removedPlatformBrands),
-    [entries, platform, removedPlatformBrands],
+    () => computeSuccessRates(entries, platform, removedPlatformBrands, range),
+    [entries, platform, removedPlatformBrands, range],
   );
 
   const tabSuccessRates = useMemo(
-    () => computeTabSuccessRates(entries, platform, removedPlatformBrands),
-    [entries, platform, removedPlatformBrands],
+    () => computeTabSuccessRates(entries, platform, removedPlatformBrands, range),
+    [entries, platform, removedPlatformBrands, range],
   );
 
   const maxScore = PLATFORM_MAX_SCORE[platform];
@@ -211,7 +211,7 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
                 : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} />
+            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} dateRangeActive={range.from != null || range.to != null} />
           )}
 
           {result.excludedRows > 0 && (
@@ -345,7 +345,7 @@ function TabFilterDropdown({
   );
 }
 
-function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate> }) {
+function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRates, dateRangeActive }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate>; dateRangeActive: boolean }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
@@ -397,7 +397,7 @@ function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRate
                 />
               </button>
             </header>
-            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} />}
+            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} dateRangeActive={dateRangeActive} />}
           </section>
         );
       })}
@@ -458,7 +458,7 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
   );
 }
 
-function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate> }) {
+function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates, dateRangeActive }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate>; dateRangeActive: boolean }) {
   const stars = starsFor(maxScore);
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   const totals = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
@@ -484,9 +484,11 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th
               colSpan={4}
               className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100"
-              title="Live ÷ (Live + Removed) across all history on this platform — not affected by the date range above"
+              title={dateRangeActive
+                ? 'Live ÷ (Live + Removed) within the selected date range — a row with no recorded date always counts, matching the brand tab’s own KPI cards'
+                : 'Live ÷ (Live + Removed) across all history on this platform — no date range selected'}
             >
-              Success Rate <span className="font-normal text-slate-300">(all-time)</span>
+              Success Rate <span className="font-normal text-slate-300">{dateRangeActive ? '(in range)' : '(all-time)'}</span>
             </th>
           </tr>
           <tr>
@@ -527,14 +529,18 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             <th
               scope="col"
               className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
-              title="Published + Removed — reviews with a decided outcome, across all history on this platform"
+              title={dateRangeActive
+                ? 'Published + Removed — reviews with a decided outcome, within the selected date range'
+                : 'Published + Removed — reviews with a decided outcome, across all history on this platform'}
             >
               Total
             </th>
             <th
               scope="col"
               className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
-              title="Success Rate: Live ÷ (Live + Removed) across all history on this platform — not affected by the date range"
+              title={dateRangeActive
+                ? 'Success Rate: Live ÷ (Live + Removed) within the selected date range'
+                : 'Success Rate: Live ÷ (Live + Removed) across all history on this platform'}
             >
               SR (%)
             </th>

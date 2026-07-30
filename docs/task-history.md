@@ -1595,3 +1595,29 @@ Three follow-up refinements to the Score Summary table (building on Tasks 149–
 - Verified via `tsc -b` (clean) only — Playwright's browser session was still unresponsive at the time (see Task 153's note); this is a single Tailwind class swap on one wrapper `div`, low risk.
 
 ---
+
+## Task 155: Fix Score Summary Hiding Brands With Zero Published Reviews
+
+**Date:** July 30, 2026
+
+User reported "GRG - Gulf Recovery Group" had account data (visible on its brand tab) but showed nothing on Score Summary ("No published reviews... in this range"). Root cause: `computeScoreSummary` in `src/lib/scoreSummary.ts` only created a brand's `BrandSummary` row when it had at least one entry with `Review Status = Published` — so a brand whose only entries were e.g. Removed produced zero rows, hiding not just the (correctly empty) Star Rating columns but also its **Success Rate** columns, even though Success Rate is computed independently by `computeSuccessRates`/`computeTabSuccessRates` and is explicitly all-time/Published-filter-independent (per Task 151's confirmed design).
+
+- Moved bucket creation in `computeScoreSummary` to trigger on any resolvable status (mirrors `computeSuccessRates`' `if (!status) continue` gate) instead of requiring `status === 'published'` — the Published-only gate still applies to whether an entry contributes to the star counts, just not to whether the row exists at all. A brand now gets a row (all-zero star columns) whenever it has at least one entry with a non-empty status on that platform; blank-status-only brands still produce no row.
+- Added 2 regression tests to `scoreSummary.test.ts` covering the fixed case (a Removed-only brand now gets a zero-star row) and the still-correct edge case (a brand with no status at all still gets no row). Full suite (83 tests) and build pass.
+- Live-verified with a throwaway headless Playwright run reproducing the exact reported scenario (GRG, TrustPilot platform, date range 28/07/2026-28/07/2026): the row now renders with 0/0/0/0/0/0 star counts plus its real all-time Success Rate (5 Published, 8 Removed, 13 total, 38% SR), replacing the empty-state message.
+
+---
+
+## Task 156: Score Summary Success Rate Now Date-Filters to Match the Brand Tab
+
+**Date:** July 30, 2026
+
+User reported BITP's brand tab (date range 01/07-30/07/2026) showed Total 136 / Live 62 / Removed 74, but Score Summary's Success Rate for the same tab/platform/range showed unrelated all-time numbers (242/324/566) — the two pages should agree for the same filter selection. This reverses a design decision from earlier the same day (Task 151) that deliberately kept Success Rate all-time, because that decision's premise — that date-filtering would have to exclude undated Removed/Refused rows and skew the rate upward — turned out to be avoidable.
+
+- Confirmed with the user before reversing, per standing guidance not to silently re-flip a decision the original author already explicitly weighed.
+- `BrandGroup.tsx`'s own KPI cards already solve the "undated row" problem differently: a row with no parseable date is always included regardless of the selected range, never excluded (`applyDateFilter`). Ported that exact semantics into a new `passesDateFilter` helper in `src/lib/scoreSummary.ts`, and gave `computeSuccessRates`/`computeTabSuccessRates` an optional 4th `range` parameter (defaults to all-time when omitted, so existing callers are unaffected).
+- `ScoreSummaryPanel.tsx` now threads its active date range into both functions, and the Success Rate group header + column tooltips switch between "(in range)" and "(all-time)" wording depending on whether a date is selected.
+- 4 new tests added to `scoreSummary.test.ts`; full suite (87 tests) and build pass.
+- Live-verified with a throwaway headless Playwright run: BITP with the exact reported date range now shows Success Rate 62 Published / 74 Removed / 136 Total / 45% SR, matching the brand tab exactly; omitting the range still shows the original all-time 242/324/566/42%, confirming the default behavior is unchanged.
+
+---
