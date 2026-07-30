@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, ChevronDown, Star, X } from 'lucide-react';
 import DatePicker from './DatePicker';
 import {
@@ -93,12 +93,33 @@ const PLATFORM_DATE_LABEL: Record<Platform, string> = {
   wo: 'Wizard of Odds date',
 };
 
+const PLATFORM_VALUES = new Set<string>(['tp', 'ag', 'cg', 'wo']);
+
 export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMPTY_REMOVED_PLATFORM_BRANDS }: Props) {
   const [collapsed, setCollapsed] = useState(false);
-  const [fromIso, setFromIso] = useState('');
-  const [toIso, setToIso] = useState('');
-  const [tabFilter, setTabFilter] = useState('');
-  const [platform, setPlatform] = useState<Platform>('tp');
+
+  // Platform/tab/date filters live in the URL (not local state) so the exact
+  // selection is shareable/bookmarkable — matches the pattern already used by
+  // BrandGroup's platform/status/brand/rating params and Topbar's from/to.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const platformParam = searchParams.get('platform');
+  const platform: Platform = PLATFORM_VALUES.has(platformParam ?? '') ? (platformParam as Platform) : 'tp';
+  const fromIso = searchParams.get('from') ?? '';
+  const toIso = searchParams.get('to') ?? '';
+  const tabFilter = searchParams.get('tab') ?? '';
+
+  function setParam(key: string, value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value);
+      else next.delete(key);
+      return next;
+    }, { replace: true });
+  }
+  const setPlatform = (v: Platform) => setParam('platform', v === 'tp' ? '' : v);
+  const setFromIso = (v: string) => setParam('from', v);
+  const setToIso = (v: string) => setParam('to', v);
+  const setTabFilter = (v: string) => setParam('tab', v);
 
   // Range is driven entirely by the From/To date pickers. Both empty = all time.
   const range = useMemo(
@@ -581,13 +602,40 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
               </td>
               <td />
               <td className="px-2 py-1.5 text-left font-mono tabular-nums text-slate-700">
-                {(sr?.live ?? 0).toLocaleString()}
+                {(sr?.live ?? 0) > 0 ? (
+                  <Link
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&status=live`}
+                    className="hover:text-blue-600 hover:underline"
+                  >
+                    {(sr?.live ?? 0).toLocaleString()}
+                  </Link>
+                ) : (
+                  (sr?.live ?? 0).toLocaleString()
+                )}
               </td>
               <td className="px-2 py-1.5 text-left font-mono tabular-nums text-slate-700">
-                {(sr?.removed ?? 0).toLocaleString()}
+                {(sr?.removed ?? 0) > 0 ? (
+                  <Link
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&status=removed`}
+                    className="hover:text-blue-600 hover:underline"
+                  >
+                    {(sr?.removed ?? 0).toLocaleString()}
+                  </Link>
+                ) : (
+                  (sr?.removed ?? 0).toLocaleString()
+                )}
               </td>
               <td className="px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800">
-                {((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()}
+                {((sr?.live ?? 0) + (sr?.removed ?? 0)) > 0 ? (
+                  <Link
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
+                    className="hover:text-blue-600 hover:underline"
+                  >
+                    {((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()}
+                  </Link>
+                ) : (
+                  ((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()
+                )}
               </td>
               <td
                 className={`px-2 py-1.5 text-left font-mono tabular-nums ${successRateColor(sr?.rate ?? null)}`}
@@ -660,13 +708,40 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
             </td>
             <td />
             <td className="px-2 py-2 text-left font-mono tabular-nums">
-              {groupSuccess.live.toLocaleString()}
+              {groupSuccess.live > 0 ? (
+                <Link
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&status=live`}
+                  className="hover:text-blue-600 hover:underline"
+                >
+                  {groupSuccess.live.toLocaleString()}
+                </Link>
+              ) : (
+                groupSuccess.live.toLocaleString()
+              )}
             </td>
             <td className="px-2 py-2 text-left font-mono tabular-nums">
-              {groupSuccess.removed.toLocaleString()}
+              {groupSuccess.removed > 0 ? (
+                <Link
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&status=removed`}
+                  className="hover:text-blue-600 hover:underline"
+                >
+                  {groupSuccess.removed.toLocaleString()}
+                </Link>
+              ) : (
+                groupSuccess.removed.toLocaleString()
+              )}
             </td>
             <td className="px-2 py-2 text-left font-mono tabular-nums">
-              {(groupSuccess.live + groupSuccess.removed).toLocaleString()}
+              {(groupSuccess.live + groupSuccess.removed) > 0 ? (
+                <Link
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}`}
+                  className="hover:text-blue-600 hover:underline"
+                >
+                  {(groupSuccess.live + groupSuccess.removed).toLocaleString()}
+                </Link>
+              ) : (
+                (groupSuccess.live + groupSuccess.removed).toLocaleString()
+              )}
             </td>
             <td
               className={`px-2 py-2 text-left font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}
