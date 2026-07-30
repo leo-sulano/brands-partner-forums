@@ -2,8 +2,10 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule } from '../lib/queries';
-import { WEEKDAYS, scheduleFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule, setBrandScheduleDay } from '../lib/queries';
+import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { useAuth } from '../contexts/AuthContext';
+import Toast, { type ToastKind } from '../components/Toast';
 
 const WEEKDAY_LABELS: Record<Weekday, string> = {
   monday: 'Mon',
@@ -57,6 +59,8 @@ export default function SchedulePlanner() {
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+  const { isApproved } = useAuth();
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
@@ -122,6 +126,20 @@ export default function SchedulePlanner() {
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
   }, [brands, search]);
+
+  async function handleCellClick(brand: string, day: Weekday) {
+    if (!isApproved) return;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand)?.[day] ?? null;
+    const next = nextStatus(currentStatus);
+
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, day, next));
+    try {
+      await setBrandScheduleDay(tab, brand, day, next);
+    } catch (err) {
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, day, currentStatus));
+      setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -230,7 +248,11 @@ export default function SchedulePlanner() {
                       {WEEKDAYS.map((day) => {
                         const status: DayStatus = row ? row[day] : null;
                         return (
-                          <td key={day} className="px-3 py-2 text-center">
+                          <td
+                            key={day}
+                            onClick={() => handleCellClick(brand, day)}
+                            className={`px-3 py-2 text-center ${isApproved ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                          >
                             {status === 'active' && (
                               <span className="text-emerald-600 font-semibold">✓</span>
                             )}
@@ -250,6 +272,7 @@ export default function SchedulePlanner() {
           </table>
         </div>
       </div>
+      {toast && <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} />}
     </div>
   );
 }
