@@ -1759,12 +1759,12 @@ export default function BrandGroup() {
                   {!loading && (
                     <span
                       title={`Success rate — ${displayKpis[key].live} live ÷ (${displayKpis[key].live} live + ${displayKpis[key].removed} removed)`}
-                      className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5"
+                      className="ml-auto text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5"
                     >
-                      {platformSuccessDisplay}
+                      Success Rate {platformSuccessDisplay}
                     </span>
                   )}
-                  {active && <Check className="size-3 ml-auto text-blue-500" />}
+                  {active && <Check className="size-3 text-blue-500" />}
                 </div>
                 {loading ? (
                   <div className="h-6 w-20 animate-pulse rounded bg-slate-200" />
