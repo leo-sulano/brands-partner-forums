@@ -1759,9 +1759,10 @@ export default function BrandGroup() {
                   {!loading && (
                     <span
                       title={`Success rate — ${displayKpis[key].live} live ÷ (${displayKpis[key].live} live + ${displayKpis[key].removed} removed)`}
-                      className="ml-auto text-sm font-semibold text-slate-600 bg-slate-100 rounded-full px-2.5 py-1"
+                      className="ml-auto flex items-baseline gap-1 bg-slate-100 rounded-full px-2.5 py-1"
                     >
-                      Success Rate {platformSuccessDisplay}
+                      <span className="text-xs font-medium text-slate-500">Success Rate</span>
+                      <span className="text-base font-bold text-slate-700">{platformSuccessDisplay}</span>
                     </span>
                   )}
                   {active && <Check className="size-3 text-blue-500" />}
