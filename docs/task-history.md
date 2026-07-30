@@ -1585,3 +1585,13 @@ Three follow-up refinements to the Score Summary table (building on Tasks 149–
 - Verified via `tsc -b` (clean) and hand-checked arithmetic; live screenshot verification was blocked both times — Playwright's browser session was unresponsive for an extended stretch, and the underlying machine appeared to be under heavy load (even a plain `tasklist` command hung) likely from a concurrent session's work landing around the same time (Task 152).
 
 ---
+
+## Task 154: Bottom-Rounded Border on Brand Tab Table Card
+
+**Date:** July 30, 2026
+
+`BrandGroup.tsx`'s toolbar+table card wrapper rounded all four corners (`rounded-lg`); changed to round only the bottom two (`rounded-b-lg`) so the top stays square against the sticky toolbar, and made the existing border explicitly `border-solid` per the request's wording.
+
+- Verified via `tsc -b` (clean) only — Playwright's browser session was still unresponsive at the time (see Task 153's note); this is a single Tailwind class swap on one wrapper `div`, low risk.
+
+---
