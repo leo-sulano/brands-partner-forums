@@ -2,6 +2,7 @@ import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, C
 import { inDateRange } from './dateUtils';
 import { getTabColumns, getBrandNameCol } from './tab-configs';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands';
+import type { BrandScheduleRow, Weekday, DayStatus } from './scheduleBrands';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
@@ -623,6 +624,34 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
       .eq('platform', platform);
     if (error) throw error;
   }
+}
+
+export async function fetchBrandSchedule(tab: string): Promise<BrandScheduleRow[]> {
+  const { data, error } = await supabase
+    .from('brand_schedule')
+    .select('tab, brand_key, monday, tuesday, wednesday, thursday, friday')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as BrandScheduleRow[];
+}
+
+// Upserts on (tab, brand_key) — only the one `day` column (plus updated_at)
+// is included in the payload, so PostgREST's generated
+// `ON CONFLICT ... DO UPDATE SET` only touches that column, leaving the
+// other four weekdays on the row exactly as they were.
+export async function setBrandScheduleDay(
+  tab: string,
+  brand: string,
+  day: Weekday,
+  status: DayStatus,
+): Promise<void> {
+  const { error } = await supabase
+    .from('brand_schedule')
+    .upsert(
+      { tab, brand, [day]: status, updated_at: new Date().toISOString() },
+      { onConflict: 'tab,brand_key' },
+    );
+  if (error) throw error;
 }
 
 // ---------------------------------------------------------------------------
