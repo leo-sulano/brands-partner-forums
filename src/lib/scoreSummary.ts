@@ -440,6 +440,25 @@ export function computeTabSuccessRates(
   return result;
 }
 
+// Success Rate for a single already-computed live/removed pair — used by
+// BrandGroup.tsx's summary cards, which derive live/removed from page state
+// (displayTotals/displayKpis) rather than raw entries, unlike
+// computeSuccessRates/computeTabSuccessRates above which do their own entry
+// iteration and date filtering.
+export function rateFromCounts(live: number, removed: number): number | null {
+  const total = live + removed;
+  return total === 0 ? null : (live / total) * 100;
+}
+
+// Whole-number percent for display: floored, except a rate of exactly 100
+// stays 100. Mirrors successRatePct in ScoreSummaryPanel.tsx so the same
+// underlying rate renders as the same integer on both pages (kept in sync
+// manually — verify before assuming still aligned if either changes).
+export function successRatePct(rate: number | null): number | null {
+  if (rate == null) return null;
+  return rate === 100 ? 100 : Math.floor(rate);
+}
+
 export type PresetKey = 'today' | 'this-week' | 'this-month' | 'last-7' | 'last-30' | 'all';
 
 export function resolvePreset(key: PresetKey, now: Date = new Date()): DateRange {
