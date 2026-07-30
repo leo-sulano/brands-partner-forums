@@ -7,6 +7,7 @@ export type DayStatus = 'active' | 'paused' | null;
 export interface BrandScheduleRow {
   tab: string;
   brand_key: string;
+  week_start: string;
   monday: DayStatus;
   tuesday: DayStatus;
   wednesday: DayStatus;
@@ -14,9 +15,14 @@ export interface BrandScheduleRow {
   friday: DayStatus;
 }
 
-export function scheduleFor(rows: BrandScheduleRow[], tab: string, brand: string): BrandScheduleRow | undefined {
+export function scheduleFor(
+  rows: BrandScheduleRow[],
+  tab: string,
+  brand: string,
+  weekStart: string,
+): BrandScheduleRow | undefined {
   const key = normalizeBrandKey(brand);
-  return rows.find((r) => r.tab === tab && r.brand_key === key);
+  return rows.find((r) => r.tab === tab && r.brand_key === key && r.week_start === weekStart);
 }
 
 export function nextStatus(current: DayStatus): DayStatus {
@@ -25,22 +31,25 @@ export function nextStatus(current: DayStatus): DayStatus {
   return null;
 }
 
-// Returns a new array with the (tab, brand)'s `day` column set to `status`,
-// creating a blank row first if none exists yet. Pure — callers use this for
-// both the optimistic local update and its rollback on save failure.
+// Returns a new array with the (tab, brand, weekStart)'s `day` column set to
+// `status`, creating a blank row first if none exists yet for that week.
+// Pure — callers use this for both the optimistic local update and its
+// rollback on save failure.
 export function withDayStatus(
   rows: BrandScheduleRow[],
   tab: string,
   brand: string,
+  weekStart: string,
   day: Weekday,
   status: DayStatus,
 ): BrandScheduleRow[] {
   const key = normalizeBrandKey(brand);
-  const idx = rows.findIndex((r) => r.tab === tab && r.brand_key === key);
+  const idx = rows.findIndex((r) => r.tab === tab && r.brand_key === key && r.week_start === weekStart);
   if (idx === -1) {
     const blank: BrandScheduleRow = {
       tab,
       brand_key: key,
+      week_start: weekStart,
       monday: null,
       tuesday: null,
       wednesday: null,
