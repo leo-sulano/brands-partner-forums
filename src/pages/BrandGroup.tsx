@@ -6,6 +6,7 @@ import {
   Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2, Star,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
+import SuccessRateBadge from '../components/SuccessRateBadge';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
@@ -16,7 +17,7 @@ import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removed
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, formatRatePct, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -1440,8 +1441,6 @@ export default function BrandGroup() {
     return { total: live + removed, live, removed };
   })();
 
-  const successRateDisplay = formatRatePct(displayTotals.live, displayTotals.removed);
-
   // First visible date column — used as implicit default sort when no column is active.
   const implicitDateCol = headers.find((h) => isDateCol(h)) ?? null;
 
@@ -1714,7 +1713,7 @@ export default function BrandGroup() {
           />
           <KpiCard
             label="Success Rate"
-            value={loading ? '…' : successRateDisplay}
+            value={loading ? '…' : <SuccessRateBadge live={displayTotals.live} removed={displayTotals.removed} />}
             hint="Live ÷ (Live + Removed)"
             color="violet"
           />
@@ -1730,7 +1729,6 @@ export default function BrandGroup() {
         <div className={`grid grid-cols-1 gap-3 ${cols} mt-[10px]`}>
           {visibleCards.map(({ key, label }) => {
             const active = platformFilter === key;
-            const platformSuccessDisplay = formatRatePct(displayKpis[key].live, displayKpis[key].removed);
             return (
               <button
                 key={key}
@@ -1759,10 +1757,10 @@ export default function BrandGroup() {
                   {!loading && (
                     <span
                       title={`Success rate — ${displayKpis[key].live} live ÷ (${displayKpis[key].live} live + ${displayKpis[key].removed} removed)`}
-                      className="ml-auto flex items-baseline gap-1 bg-slate-100 rounded-full px-2.5 py-1"
+                      className="ml-auto flex items-center gap-2"
                     >
                       <span className="text-xs font-medium text-slate-500">Success Rate</span>
-                      <span className="text-base font-bold text-slate-700">{platformSuccessDisplay}</span>
+                      <SuccessRateBadge live={displayKpis[key].live} removed={displayKpis[key].removed} />
                     </span>
                   )}
                   {active && <Check className="size-3 text-blue-500" />}
