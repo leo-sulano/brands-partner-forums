@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel, rateFromCounts, successRatePct } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct } from './scoreSummary';
 import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
@@ -324,6 +324,24 @@ describe('successRatePct', () => {
 
   it('returns null for a null rate', () => {
     expect(successRatePct(null)).toBeNull();
+  });
+
+  it('returns 0 for a rate of exactly 0 (distinct from null)', () => {
+    expect(successRatePct(0)).toBe(0);
+  });
+});
+
+describe('formatRatePct', () => {
+  it('formats a rate as a whole-number percent string', () => {
+    expect(formatRatePct(2, 1)).toBe('66%');
+  });
+
+  it('returns an em dash when there are no decided outcomes', () => {
+    expect(formatRatePct(0, 0)).toBe('—');
+  });
+
+  it('formats a rate of exactly 100 without a flooring error', () => {
+    expect(formatRatePct(5, 0)).toBe('100%');
   });
 });
 

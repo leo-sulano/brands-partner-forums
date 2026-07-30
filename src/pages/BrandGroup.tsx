@@ -16,7 +16,7 @@ import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removed
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, rateFromCounts, successRatePct, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, formatRatePct, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -1440,10 +1440,7 @@ export default function BrandGroup() {
     return { total: live + removed, live, removed };
   })();
 
-  const successRateDisplay = (() => {
-    const pct = successRatePct(rateFromCounts(displayTotals.live, displayTotals.removed));
-    return pct == null ? '—' : `${pct}%`;
-  })();
+  const successRateDisplay = formatRatePct(displayTotals.live, displayTotals.removed);
 
   // First visible date column — used as implicit default sort when no column is active.
   const implicitDateCol = headers.find((h) => isDateCol(h)) ?? null;
@@ -1733,10 +1730,7 @@ export default function BrandGroup() {
         <div className={`grid grid-cols-1 gap-3 ${cols} mt-[10px]`}>
           {visibleCards.map(({ key, label }) => {
             const active = platformFilter === key;
-            const platformSuccessDisplay = (() => {
-              const pct = successRatePct(rateFromCounts(displayKpis[key].live, displayKpis[key].removed));
-              return pct == null ? '—' : `${pct}%`;
-            })();
+            const platformSuccessDisplay = formatRatePct(displayKpis[key].live, displayKpis[key].removed);
             return (
               <button
                 key={key}
@@ -1763,7 +1757,10 @@ export default function BrandGroup() {
                   />
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
                   {!loading && (
-                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5">
+                    <span
+                      title={`Success rate — ${displayKpis[key].live} live ÷ (${displayKpis[key].live} live + ${displayKpis[key].removed} removed)`}
+                      className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5"
+                    >
                       {platformSuccessDisplay}
                     </span>
                   )}

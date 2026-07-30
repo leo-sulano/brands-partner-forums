@@ -459,6 +459,15 @@ export function successRatePct(rate: number | null): number | null {
   return rate === 100 ? 100 : Math.floor(rate);
 }
 
+// Convenience wrapper combining rateFromCounts + successRatePct into the exact
+// display string BrandGroup.tsx's summary cards show — single source of truth
+// for the '—'/'N%' decision so both the single-platform card and the
+// multi-platform badge can never drift from each other.
+export function formatRatePct(live: number, removed: number): string {
+  const pct = successRatePct(rateFromCounts(live, removed));
+  return pct == null ? '—' : `${pct}%`;
+}
+
 export type PresetKey = 'today' | 'this-week' | 'this-month' | 'last-7' | 'last-30' | 'all';
 
 export function resolvePreset(key: PresetKey, now: Date = new Date()): DateRange {
