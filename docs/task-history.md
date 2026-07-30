@@ -1633,3 +1633,19 @@ Fixed the Topbar's online-user presence avatars (Task 25) showing a duplicate av
 - Full suite (194 tests) and build both pass.
 
 ---
+
+## Task 158: Success Rate Card on Brand Tab Summary Cards
+
+**Date:** July 30, 2026
+
+Brand tab pages (`BrandGroup.tsx`) previously showed Total/Live/Removed (single-platform tabs like BITP) or per-platform Live/Removed cards (3-platform tabs like Rooster Partners), with no Success Rate figure — unlike Score Summary, which already computes one (Task 148/156). Added Success Rate directly to the brand tab cards themselves, reusing the same formula and the counts the page already computes (so it's automatically consistent with the active date range and platform-removed exclusions, no new filtering logic needed).
+
+- Added `rateFromCounts(live, removed)` and `successRatePct(rate)` to `src/lib/scoreSummary.ts` — the latter floors to a whole percent (exactly 100 stays 100), mirroring `ScoreSummaryPanel.tsx`'s existing rounding rule exactly, so the same underlying rate always renders as the same integer on both pages. A later cleanup pass (below) added a third helper, `formatRatePct(live, removed)`, combining both into the exact `'—'`/`'N%'` display string so BrandGroup's two call sites can't drift from each other.
+- Single-platform tabs (BITP, Wizard of Odds, etc.): the existing 3-card Total/Live/Removed row became a 4-card row (`sm:grid-cols-4`), with a new violet-accented "Success Rate" `KpiCard` — non-clickable, since there's no row filter for a percentage. Added a `violet` color variant to `src/components/KpiCard.tsx` for it.
+- Three-platform tabs (Rooster Partners, Revolution Casino, SilverPlay, Hanan): each platform's existing Live/Removed card gained a small percentage badge next to its label (with a `title` tooltip spelling out the live/removed counts, added in review), computed from that specific platform's own counts — not a combined total across platforms.
+- Built via subagent-driven development: 4 independent tasks (helpers+tests, KpiCard variant, single-platform card, multi-platform badge), each individually spec+quality reviewed clean, then a final whole-branch review confirmed the formula is genuinely identical on both UI elements, both are non-interactive, and nothing leaked into Score Summary/`queries.ts`/Supabase. One fix round followed: added the badge's accessibility tooltip and extracted the shared `formatRatePct` helper to remove the two-copy display-string duplication the review flagged.
+- 98 tests in the affected files, full project suite (406 tests) and build both pass.
+- Manual browser verification (exact visual placement/wrapping at narrow widths, hover state on the new non-clickable card) was **not** performed — none of the implementer or reviewer subagents had Supabase login credentials available in their environment. Worth a quick live look, particularly the 4-up card row around ~640-820px viewport widths.
+- Spec: `docs/superpowers/specs/2026-07-30-brand-tab-success-rate-card-design.md`. Plan: `docs/superpowers/plans/2026-07-30-brand-tab-success-rate-card.md`.
+
+---

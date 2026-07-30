@@ -56,6 +56,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-30:* Added a "Success Rate" figure directly to brand tab summary cards
+  (`BrandGroup.tsx`), reusing the same `live / (live + removed) × 100` formula and
+  floor-to-whole-percent rounding Score Summary already uses (Task 148/156) — computed
+  from counts the page already has, so it automatically respects the active date range and
+  platform-removed exclusions with no new filtering logic. Single-platform tabs (e.g.
+  BITP) gained a 4th card in the existing Total/Live/Removed row, violet-accented via a new
+  `KpiCard` color variant, non-clickable. Three-platform tabs (Rooster Partners, Revolution
+  Casino, SilverPlay, Hanan) gained a small percentage badge (with an explanatory `title`
+  tooltip) on each platform's existing Live/Removed card, computed from that platform's own
+  counts. New `rateFromCounts`/`successRatePct`/`formatRatePct` helpers added to
+  `src/lib/scoreSummary.ts` (the last one deliberately shared by both new UI call sites so
+  they can't drift from each other — added in a post-implementation review fix, along with
+  the badge's tooltip). Built via 4 independently-reviewed subagent tasks plus one final
+  whole-branch review; 406-test full suite and build both pass. Manual browser verification
+  (exact card-row wrapping at narrow widths, hover affordance on the new non-clickable card)
+  was not performed — no implementer/reviewer subagent had Supabase login credentials in its
+  environment; worth a quick live look, especially the 4-up row around 640-820px wide.
+  Spec: `docs/superpowers/specs/2026-07-30-brand-tab-success-rate-card-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-30-brand-tab-success-rate-card.md`.
 - *2026-07-29:* Generalized the TP-only "page removed" flag (below) to independently cover
   all 4 review platforms — TrustPilot, AskGamblers, CasinoGuru, and Wizard of Odds —
   superseding that entry. `removed_tp_brands` was renamed to `removed_platform_brands` and
