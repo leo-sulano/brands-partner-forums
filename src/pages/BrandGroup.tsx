@@ -16,7 +16,7 @@ import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removed
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, rateFromCounts, successRatePct, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -1440,6 +1440,11 @@ export default function BrandGroup() {
     return { total: live + removed, live, removed };
   })();
 
+  const successRateDisplay = (() => {
+    const pct = successRatePct(rateFromCounts(displayTotals.live, displayTotals.removed));
+    return pct == null ? '—' : `${pct}%`;
+  })();
+
   // First visible date column — used as implicit default sort when no column is active.
   const implicitDateCol = headers.find((h) => isDateCol(h)) ?? null;
 
@@ -1687,7 +1692,7 @@ export default function BrandGroup() {
       </div>
 
       {activePlatforms.length <= 1 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 mt-[10px]">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mt-[10px]">
           <KpiCard
             label="Total"
             value={loading ? '…' : displayTotals.total.toLocaleString()}
@@ -1709,6 +1714,12 @@ export default function BrandGroup() {
             color="rose"
             onClick={() => { setStatusFilter(statusFilter === 'removed' ? 'all' : 'removed'); setPage(1); }}
             active={statusFilter === 'removed'}
+          />
+          <KpiCard
+            label="Success Rate"
+            value={loading ? '…' : successRateDisplay}
+            hint="Live ÷ (Live + Removed)"
+            color="violet"
           />
         </div>
       )}
