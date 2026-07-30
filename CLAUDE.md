@@ -56,6 +56,42 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-07-30:* Added a Schedule Planner — a per-tab weekly grid for tracking which weekdays
+  a brand's outreach/posting is active vs. paused, independent of any specific calendar
+  week. New `brand_schedule` table (migration
+  `supabase/migrations/20260730120000_add_brand_schedule.sql`) holds one recurring Mon-Fri
+  row per (tab, brand): five nullable day columns constrained to `'active' | 'paused'`
+  (NULL = unset/blank), a generated `brand_key` (lower+trim, same normalization pattern as
+  `removed_platform_brands`) for case/whitespace-insensitive matching, and all four RLS
+  policies (anyone can read, approved users can insert/update/delete). New page
+  `src/pages/SchedulePlanner.tsx`, routed at `/schedule-planner` and linked from the
+  sidebar's "Admin" section next to Score Summary and Log — like those two, it is **not**
+  admin-only, just gated by the same `ProtectedRoute` every approved user passes through.
+  It shows a brand-tab dropdown, a search box that filters rows by brand name, cosmetic
+  previous/next-week/Today navigation (changes only the displayed date labels, never any
+  cell's saved status, since the schedule isn't tied to a real week), and a table with a
+  frozen Brand column and frozen weekday header (`sticky left-0`/`sticky top-<toolbar
+  height>`) so both stay visible while scrolling the grid in either direction. Clicking a
+  day cell cycles it blank → ✓ (active) → Pause → blank and persists immediately via new
+  `fetchBrandSchedule`/`setBrandScheduleDay` functions in `src/lib/queries.ts`, with the
+  cycle/lookup logic (`nextStatus`, `scheduleFor`, `withDayStatus`) factored into
+  `src/lib/scheduleBrands.ts` and unit-tested (`scheduleBrands.test.ts`, 8 tests). Full test
+  suite (99 tests) and build both pass. Live-verified in this session as the already-signed-in
+  admin user (leo@optinetsolutions.com): the sidebar link, page load, and tab dropdown all
+  work; selecting Rooster Partners rendered its 11 distinct brands as rows; typing "rocket"
+  in search narrowed the table to just Rocketspin and clearing it restored all 11; clicking a
+  cell cycled blank→✓→Pause→blank as designed, and setting a cell to ✓ then reloading the
+  page confirmed it persisted; Next week/Today changed only the date labels (Jul 27–31 →
+  Aug 3–7 → back) while the ✓ cell stayed put; switching to Revolution Casino, setting a
+  cell there, and switching back to Rooster Partners confirmed each tab's grid loads and
+  saves independently; narrowing the viewport confirmed the Brand column and weekday header
+  stay pinned during both horizontal and vertical scroll. Did **not** independently verify
+  the non-admin-approved-user case live (no second test account was available this
+  session) — confirmed instead by reading `Sidebar.tsx` (the Schedule Planner link renders
+  outside the `isAdmin &&` block that gates only "Users") and `SchedulePlanner.tsx` (no
+  `isAdmin` check anywhere in the file; editing is gated on `isApproved` only). Spec:
+  `docs/superpowers/specs/2026-07-30-schedule-planner-design.md`. Plan:
+  `docs/superpowers/plans/2026-07-30-schedule-planner.md`.
 - *2026-07-29:* Generalized the TP-only "page removed" flag (below) to independently cover
   all 4 review platforms — TrustPilot, AskGamblers, CasinoGuru, and Wizard of Odds —
   superseding that entry. `removed_tp_brands` was renamed to `removed_platform_brands` and
