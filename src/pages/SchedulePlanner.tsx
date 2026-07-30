@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule } from '../lib/queries';
@@ -31,6 +31,12 @@ function formatWeekdayDate(monday: Date, index: number): string {
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
 export default function SchedulePlanner() {
   const [tab, setTab] = useState<string>(() => {
     try {
@@ -46,7 +52,7 @@ export default function SchedulePlanner() {
       return '';
     }
   });
-  const [weekStart] = useState<Date>(() => mondayOf(new Date()));
+  const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
   const [brands, setBrands] = useState<string[]>([]);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -149,9 +155,34 @@ export default function SchedulePlanner() {
                 />
               </div>
 
-              <span className="ml-auto text-sm text-slate-600 whitespace-nowrap">
-                Week of {formatWeekdayDate(weekStart, 0)} – {formatWeekdayDate(weekStart, 4)}
-              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWeekStart((d) => addDays(d, -7))}
+                  className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
+                  aria-label="Previous week"
+                >
+                  <ChevronLeft className="size-4" />
+                </button>
+                <span className="text-sm text-slate-600 whitespace-nowrap">
+                  Week of {formatWeekdayDate(weekStart, 0)} – {formatWeekdayDate(weekStart, 4)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setWeekStart((d) => addDays(d, 7))}
+                  className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
+                  aria-label="Next week"
+                >
+                  <ChevronRight className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWeekStart(mondayOf(new Date()))}
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  Today
+                </button>
+              </div>
             </div>
           </div>
 
