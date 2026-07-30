@@ -348,11 +348,12 @@ export function getTabSequenceCol(tab: string): string | null {
 // page titles — treated as one combined brand for row filtering and KPI
 // counts, while the Brand filter dropdown still lists each name separately.
 // Each inner array is one merged group.
-const TAB_BRAND_GROUPS: Record<string, string[][]> = {
-  'TP Affiliate': [
-    ['Top10 Casinos Review Ca 2026', 'Best Online Casino in Canada 2026 | Top Rated Online Casinos'],
-  ],
-};
+//
+// 'TP Affiliate' previously merged 'Top10 Casinos Review Ca 2026' with
+// 'Best Online Casino in Canada 2026 | Top Rated Online Casinos'; the former
+// was renamed to the latter across all entries on 2026-07-31, leaving one
+// brand name and no group to merge.
+const TAB_BRAND_GROUPS: Record<string, string[][]> = {};
 
 // Returns the full group `brand` belongs to for `tab` (trimmed comparison,
 // so trailing/leading whitespace in the sheet data doesn't break the match),

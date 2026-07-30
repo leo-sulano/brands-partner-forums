@@ -76,32 +76,8 @@ describe('getCountryForAccount', () => {
 });
 
 describe('getBrandGroup', () => {
-  it('returns the full group when brand matches the first member', () => {
-    expect(getBrandGroup('TP Affiliate', 'Top10 Casinos Review Ca 2026')).toEqual([
-      'Top10 Casinos Review Ca 2026',
-      'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
-    ]);
-  });
-
-  it('returns the same group when brand matches the other member', () => {
-    expect(getBrandGroup('TP Affiliate', 'Best Online Casino in Canada 2026 | Top Rated Online Casinos')).toEqual([
-      'Top10 Casinos Review Ca 2026',
-      'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
-    ]);
-  });
-
-  it('trims whitespace on the incoming brand value before matching', () => {
-    expect(getBrandGroup('TP Affiliate', '  Top10 Casinos Review Ca 2026 ')).toEqual([
-      'Top10 Casinos Review Ca 2026',
-      'Best Online Casino in Canada 2026 | Top Rated Online Casinos',
-    ]);
-  });
-
-  it('returns null for a brand on TP Affiliate that has no group', () => {
-    expect(getBrandGroup('TP Affiliate', 'Aussie Online Pokies')).toBeNull();
-  });
-
   it('returns null for a tab with no configured groups at all', () => {
-    expect(getBrandGroup('Rooster Partners', 'Top10 Casinos Review Ca 2026')).toBeNull();
+    expect(getBrandGroup('TP Affiliate', 'Aussie Online Pokies')).toBeNull();
+    expect(getBrandGroup('Rooster Partners', 'Best Online Casino in Canada 2026 | Top Rated Online Casinos')).toBeNull();
   });
 });
