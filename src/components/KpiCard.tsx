@@ -10,7 +10,7 @@ interface Props {
   value: ReactNode;
   hint?: string;
   icon?: ReactNode;
-  color?: 'blue' | 'emerald' | 'rose';
+  color?: 'blue' | 'emerald' | 'rose' | 'violet';
   breakdown?: BreakdownItem[];
   onClick?: () => void;
   active?: boolean;
@@ -20,6 +20,7 @@ const colorMap = {
   blue:    { bar: 'bg-blue-500',    icon: 'bg-blue-50 text-blue-500',    value: 'text-blue-600'    },
   emerald: { bar: 'bg-emerald-500', icon: 'bg-emerald-50 text-emerald-500', value: 'text-emerald-600' },
   rose:    { bar: 'bg-rose-500',    icon: 'bg-rose-50 text-rose-500',    value: 'text-rose-600'    },
+  violet:  { bar: 'bg-violet-500',  icon: 'bg-violet-50 text-violet-500', value: 'text-violet-600'  },
 };
 
 export default function KpiCard({ label, value, hint, icon, color = 'blue', breakdown, onClick, active }: Props) {
