@@ -39,6 +39,22 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
+// NOTE: deliberately NOT `date.toISOString().slice(0, 10)` — that converts to
+// UTC first, which silently rolls the date back a day for any browser whose
+// local timezone is ahead of UTC (e.g. UTC+8 Manila: a local midnight Monday
+// becomes 16:00 the previous day in UTC). Building the string from local
+// getFullYear/getMonth/getDate keeps this in agreement with mondayOf/
+// formatWeekdayDate above, which are local-time throughout — otherwise the
+// visible "Week of ..." label and the week_start actually fetched/written
+// disagree by a day for those users, and every previously-saved row becomes
+// invisible.
+function toISODate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export default function SchedulePlanner() {
   const [tab, setTab] = useState<string>(() => {
     try {
@@ -98,7 +114,7 @@ export default function SchedulePlanner() {
         const [rawEntries, headers, rows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
-          fetchBrandSchedule(tab),
+          fetchBrandSchedule(tab, toISODate(weekStart)),
         ]);
         if (canceled) return;
         const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
@@ -119,7 +135,7 @@ export default function SchedulePlanner() {
     return () => {
       canceled = true;
     };
-  }, [tab]);
+  }, [tab, weekStart]);
 
   const filteredBrands = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -129,14 +145,15 @@ export default function SchedulePlanner() {
 
   async function handleCellClick(brand: string, day: Weekday) {
     if (!isApproved) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand)?.[day] ?? null;
+    const weekStartISO = toISODate(weekStart);
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO)?.[day] ?? null;
     const next = nextStatus(currentStatus);
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, day, next));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, day, next));
     try {
-      await setBrandScheduleDay(tab, brand, day, next);
+      await setBrandScheduleDay(tab, brand, weekStartISO, day, next);
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, day, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, day, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     }
   }
@@ -239,7 +256,7 @@ export default function SchedulePlanner() {
                 </tr>
               ) : (
                 filteredBrands.map((brand) => {
-                  const row = scheduleFor(scheduleRows, tab, brand);
+                  const row = scheduleFor(scheduleRows, tab, brand, toISODate(weekStart));
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">

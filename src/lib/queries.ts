@@ -626,30 +626,32 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
   }
 }
 
-export async function fetchBrandSchedule(tab: string): Promise<BrandScheduleRow[]> {
+export async function fetchBrandSchedule(tab: string, weekStart: string): Promise<BrandScheduleRow[]> {
   const { data, error } = await supabase
     .from('brand_schedule')
-    .select('tab, brand_key, monday, tuesday, wednesday, thursday, friday')
-    .eq('tab', tab);
+    .select('tab, brand_key, week_start, monday, tuesday, wednesday, thursday, friday')
+    .eq('tab', tab)
+    .eq('week_start', weekStart);
   if (error) throw error;
   return (data ?? []) as BrandScheduleRow[];
 }
 
-// Upserts on (tab, brand_key) — only the one `day` column (plus updated_at)
-// is included in the payload, so PostgREST's generated
+// Upserts on (tab, brand_key, week_start) — only the one `day` column (plus
+// updated_at) is included in the payload, so PostgREST's generated
 // `ON CONFLICT ... DO UPDATE SET` only touches that column, leaving the
-// other four weekdays on the row exactly as they were.
+// other four weekdays on that week's row exactly as they were.
 export async function setBrandScheduleDay(
   tab: string,
   brand: string,
+  weekStart: string,
   day: Weekday,
   status: DayStatus,
 ): Promise<void> {
   const { error } = await supabase
     .from('brand_schedule')
     .upsert(
-      { tab, brand, [day]: status, updated_at: new Date().toISOString() },
-      { onConflict: 'tab,brand_key' },
+      { tab, brand, week_start: weekStart, [day]: status, updated_at: new Date().toISOString() },
+      { onConflict: 'tab,brand_key,week_start' },
     );
   if (error) throw error;
 }
