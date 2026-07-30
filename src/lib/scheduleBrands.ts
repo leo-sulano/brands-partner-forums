@@ -1,5 +1,21 @@
 import { normalizeBrandKey } from './removedPlatformBrands';
 
+// NOTE: deliberately NOT `date.toISOString().slice(0, 10)` — that converts to
+// UTC first, which silently rolls the date back a day for any browser whose
+// local timezone is ahead of UTC (e.g. UTC+8 Manila: a local midnight Monday
+// becomes 16:00 the previous day in UTC). Building the string from local
+// getFullYear/getMonth/getDate keeps this in agreement with mondayOf/
+// formatWeekdayDate in SchedulePlanner.tsx, which are local-time throughout —
+// otherwise the visible "Week of ..." label and the week_start actually
+// fetched/written disagree by a day for those users, and every previously-
+// saved row becomes invisible.
+export function toISODate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
 export const WEEKDAYS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 export type DayStatus = 'active' | 'paused' | null;

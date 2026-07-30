@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { scheduleFor, nextStatus, withDayStatus, type BrandScheduleRow } from './scheduleBrands';
+import { scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow } from './scheduleBrands';
+
+// No @types/node in this project (browser-only lib set in tsconfig.app.json)
+// — declare just enough of the real Node `process` global, which vitest runs
+// under, to read/write TZ for the timezone regression test below.
+declare const process: { env: { TZ?: string } };
 
 const row: BrandScheduleRow = {
   tab: 'Hanan',
@@ -11,6 +16,32 @@ const row: BrandScheduleRow = {
   thursday: null,
   friday: null,
 };
+
+describe('toISODate', () => {
+  it('formats a locally-constructed Date as YYYY-MM-DD', () => {
+    const d = new Date(2026, 6, 27); // 0-indexed month: July 27, 2026, local midnight
+    expect(toISODate(d)).toBe('2026-07-27');
+  });
+
+  it('does not roll the date back a day for timezones ahead of UTC (regression test for the toISOString().slice(0,10) bug)', () => {
+    const originalTZ = process.env.TZ;
+    process.env.TZ = 'Asia/Manila'; // UTC+8, no DST
+    try {
+      // Local midnight Monday in Manila is 16:00 the *previous* day in UTC —
+      // toISOString().slice(0, 10) would incorrectly return '2026-07-26'.
+      const d = new Date(2026, 6, 27, 0, 0, 0);
+      expect(toISODate(d)).toBe('2026-07-27');
+      // Sanity-check that this environment actually exercises the bug this
+      // guards against — if this assertion ever fails, the TZ override above
+      // stopped taking effect and the assertion above is no longer proving
+      // anything.
+      expect(d.toISOString().slice(0, 10)).toBe('2026-07-26');
+    } finally {
+      if (originalTZ === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTZ;
+    }
+  });
+});
 
 describe('scheduleFor', () => {
   it('matches regardless of brand casing or surrounding whitespace', () => {

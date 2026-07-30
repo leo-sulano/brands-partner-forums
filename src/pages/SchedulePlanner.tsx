@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule, setBrandScheduleDay } from '../lib/queries';
-import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 
@@ -39,22 +39,6 @@ function addDays(date: Date, days: number): Date {
   return d;
 }
 
-// NOTE: deliberately NOT `date.toISOString().slice(0, 10)` — that converts to
-// UTC first, which silently rolls the date back a day for any browser whose
-// local timezone is ahead of UTC (e.g. UTC+8 Manila: a local midnight Monday
-// becomes 16:00 the previous day in UTC). Building the string from local
-// getFullYear/getMonth/getDate keeps this in agreement with mondayOf/
-// formatWeekdayDate above, which are local-time throughout — otherwise the
-// visible "Week of ..." label and the week_start actually fetched/written
-// disagree by a day for those users, and every previously-saved row becomes
-// invisible.
-function toISODate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
 export default function SchedulePlanner() {
   const [tab, setTab] = useState<string>(() => {
     try {
@@ -71,9 +55,12 @@ export default function SchedulePlanner() {
     }
   });
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
+  const weekStartISO = useMemo(() => toISODate(weekStart), [weekStart]);
   const [brands, setBrands] = useState<string[]>([]);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [brandsLoading, setBrandsLoading] = useState(true);
+  const [scheduleLoading, setScheduleLoading] = useState(true);
+  const loading = brandsLoading || scheduleLoading;
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const { isApproved } = useAuth();
@@ -105,16 +92,19 @@ export default function SchedulePlanner() {
     }
   }, [search]);
 
+  // Brand list depends only on the tab (raw entries + headers), never on the
+  // displayed week — re-fetching this on every Prev/Next/Today click would
+  // re-download every entry for the tab (2429 heavy-JSONB rows for Rooster
+  // Partners) just to recompute an unchanged brand list.
   useEffect(() => {
     let canceled = false;
-    setLoading(true);
+    setBrandsLoading(true);
     setError(null);
     (async () => {
       try {
-        const [rawEntries, headers, rows] = await Promise.all([
+        const [rawEntries, headers] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
-          fetchBrandSchedule(tab, toISODate(weekStart)),
         ]);
         if (canceled) return;
         const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
@@ -125,17 +115,37 @@ export default function SchedulePlanner() {
         )].sort();
         if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
         setBrands(uniqueBrands);
-        setScheduleRows(rows);
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
-        if (!canceled) setLoading(false);
+        if (!canceled) setBrandsLoading(false);
       }
     })();
     return () => {
       canceled = true;
     };
-  }, [tab, weekStart]);
+  }, [tab]);
+
+  // Schedule rows depend on both tab and week — this is the only fetch that
+  // should re-run on Prev/Next/Today navigation.
+  useEffect(() => {
+    let canceled = false;
+    setScheduleLoading(true);
+    (async () => {
+      try {
+        const rows = await fetchBrandSchedule(tab, weekStartISO);
+        if (canceled) return;
+        setScheduleRows(rows);
+      } catch (err) {
+        if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
+      } finally {
+        if (!canceled) setScheduleLoading(false);
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [tab, weekStartISO]);
 
   const filteredBrands = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -145,7 +155,6 @@ export default function SchedulePlanner() {
 
   async function handleCellClick(brand: string, day: Weekday) {
     if (!isApproved) return;
-    const weekStartISO = toISODate(weekStart);
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO)?.[day] ?? null;
     const next = nextStatus(currentStatus);
 
@@ -256,7 +265,7 @@ export default function SchedulePlanner() {
                 </tr>
               ) : (
                 filteredBrands.map((brand) => {
-                  const row = scheduleFor(scheduleRows, tab, brand, toISODate(weekStart));
+                  const row = scheduleFor(scheduleRows, tab, brand, weekStartISO);
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
