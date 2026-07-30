@@ -1733,6 +1733,10 @@ export default function BrandGroup() {
         <div className={`grid grid-cols-1 gap-3 ${cols} mt-[10px]`}>
           {visibleCards.map(({ key, label }) => {
             const active = platformFilter === key;
+            const platformSuccessDisplay = (() => {
+              const pct = successRatePct(rateFromCounts(displayKpis[key].live, displayKpis[key].removed));
+              return pct == null ? '—' : `${pct}%`;
+            })();
             return (
               <button
                 key={key}
@@ -1758,6 +1762,11 @@ export default function BrandGroup() {
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
+                  {!loading && (
+                    <span className="text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5">
+                      {platformSuccessDisplay}
+                    </span>
+                  )}
                   {active && <Check className="size-3 ml-auto text-blue-500" />}
                 </div>
                 {loading ? (
