@@ -15,6 +15,7 @@ const BrandGroup  = lazy(() => import('./pages/BrandGroup'));
 const AdminUsers  = lazy(() => import('./pages/AdminUsers'));
 const ActivityLog = lazy(() => import('./pages/ActivityLog'));
 const ScoreSummary = lazy(() => import('./pages/ScoreSummary'));
+const SchedulePlanner = lazy(() => import('./pages/SchedulePlanner'));
 const AskAI        = lazy(() => import('./pages/AskAI'));
 const HowItWorks    = lazy(() => import('./pages/HowItWorks'));
 
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="/how-it-works" element={<HowItWorks />} />
             <Route path="/log" element={<ActivityLog />} />
             <Route path="/score-summary" element={<ScoreSummary />} />
+            <Route path="/schedule-planner" element={<SchedulePlanner />} />
             <Route path="/admin/users" element={<AdminUsers />} />
           </Route>
         </Route>

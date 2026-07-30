@@ -3,7 +3,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
+  Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy, CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
@@ -185,6 +185,15 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 >
                   <ScrollText className="size-4" />
                   {!isCollapsed && 'Log'}
+                </NavLink>
+                <NavLink
+                  to="/schedule-planner"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Schedule Planner' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
+                  <CalendarDays className="size-4" />
+                  {!isCollapsed && 'Schedule Planner'}
                 </NavLink>
                 {isAdmin && (
                   <NavLink
