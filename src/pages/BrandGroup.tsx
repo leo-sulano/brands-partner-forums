@@ -1759,7 +1759,7 @@ export default function BrandGroup() {
                   {!loading && (
                     <span
                       title={`Success rate — ${displayKpis[key].live} live ÷ (${displayKpis[key].live} live + ${displayKpis[key].removed} removed)`}
-                      className="ml-auto text-[11px] font-semibold text-slate-500 bg-slate-100 rounded-full px-1.5 py-0.5"
+                      className="ml-auto text-sm font-semibold text-slate-600 bg-slate-100 rounded-full px-2.5 py-1"
                     >
                       Success Rate {platformSuccessDisplay}
                     </span>
