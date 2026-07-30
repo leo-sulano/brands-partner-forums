@@ -7,6 +7,15 @@ export interface PresenceUser {
   avatarUrl: string | null;
 }
 
+// A single account tracked from multiple open windows/tabs gets one presence
+// "meta" per connection, all under the same key (the user's id). Keep only
+// one meta per key so the same account never renders more than one avatar.
+export function dedupePresenceState<T>(state: Record<string, T[]>): T[] {
+  return Object.values(state)
+    .map((presences) => presences[0])
+    .filter((p): p is T => p !== undefined);
+}
+
 export function usePresence(email: string | null, userId: string | null, avatarUrl: string | null): PresenceUser[] {
   const [online, setOnline] = useState<PresenceUser[]>([]);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -22,8 +31,7 @@ export function usePresence(email: string | null, userId: string | null, avatarU
     channel
       .on('presence', { event: 'sync' }, () => {
         const state = channel.presenceState<PresenceUser>();
-        const users = Object.values(state).flatMap((presences) => presences);
-        setOnline(users);
+        setOnline(dedupePresenceState(state));
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
