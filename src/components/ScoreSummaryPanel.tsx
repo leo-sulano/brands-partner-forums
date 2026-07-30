@@ -460,8 +460,12 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates 
               Star Rating
             </th>
             <th />
-            <th colSpan={4} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
-              Success Rate
+            <th
+              colSpan={4}
+              className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100"
+              title="Live ÷ (Live + Removed) across all history on this platform — not affected by the date range above"
+            >
+              Success Rate <span className="font-normal text-slate-300">(all-time)</span>
             </th>
           </tr>
           <tr>
