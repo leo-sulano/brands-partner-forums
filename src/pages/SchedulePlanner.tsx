@@ -251,7 +251,7 @@ export default function SchedulePlanner() {
                           <td
                             key={day}
                             onClick={() => handleCellClick(brand, day)}
-                            className={`px-3 py-2 text-center ${isApproved ? 'cursor-pointer hover:bg-slate-50' : ''}`}
+                            className={`px-3 py-2 text-left ${isApproved ? 'cursor-pointer hover:bg-slate-50' : ''}`}
                           >
                             {status === 'active' && (
                               <span className="text-emerald-600 font-semibold">✓</span>
