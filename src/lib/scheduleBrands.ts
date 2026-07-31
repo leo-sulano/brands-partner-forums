@@ -1,4 +1,5 @@
 import { normalizeBrandKey } from './removedPlatformBrands';
+import type { Platform } from './removedPlatformBrands';
 
 // NOTE: deliberately NOT `date.toISOString().slice(0, 10)` — that converts to
 // UTC first, which silently rolls the date back a day for any browser whose
@@ -24,6 +25,22 @@ export interface BrandScheduleRow {
   tab: string;
   brand_key: string;
   week_start: string;
+  platform: Platform | null;
+  monday: DayStatus;
+  tuesday: DayStatus;
+  wednesday: DayStatus;
+  thursday: DayStatus;
+  friday: DayStatus;
+}
+
+// A write payload uses the raw `brand` name (brand_key is DB-generated) and
+// always carries a real platform — legacy platform-less rows are never
+// written by new code.
+export interface BrandScheduleUpsertRow {
+  tab: string;
+  brand: string;
+  week_start: string;
+  platform: Platform;
   monday: DayStatus;
   tuesday: DayStatus;
   wednesday: DayStatus;
@@ -36,9 +53,12 @@ export function scheduleFor(
   tab: string,
   brand: string,
   weekStart: string,
+  platform: Platform | null = null,
 ): BrandScheduleRow | undefined {
   const key = normalizeBrandKey(brand);
-  return rows.find((r) => r.tab === tab && r.brand_key === key && r.week_start === weekStart);
+  return rows.find(
+    (r) => r.tab === tab && r.brand_key === key && r.week_start === weekStart && r.platform === platform,
+  );
 }
 
 export function nextStatus(current: DayStatus): DayStatus {
@@ -47,25 +67,25 @@ export function nextStatus(current: DayStatus): DayStatus {
   return null;
 }
 
-// Returns a new array with the (tab, brand, weekStart)'s `day` column set to
-// `status`, creating a blank row first if none exists yet for that week.
-// Pure — callers use this for both the optimistic local update and its
-// rollback on save failure.
 export function withDayStatus(
   rows: BrandScheduleRow[],
   tab: string,
   brand: string,
   weekStart: string,
+  platform: Platform | null,
   day: Weekday,
   status: DayStatus,
 ): BrandScheduleRow[] {
   const key = normalizeBrandKey(brand);
-  const idx = rows.findIndex((r) => r.tab === tab && r.brand_key === key && r.week_start === weekStart);
+  const idx = rows.findIndex(
+    (r) => r.tab === tab && r.brand_key === key && r.week_start === weekStart && r.platform === platform,
+  );
   if (idx === -1) {
     const blank: BrandScheduleRow = {
       tab,
       brand_key: key,
       week_start: weekStart,
+      platform,
       monday: null,
       tuesday: null,
       wednesday: null,
