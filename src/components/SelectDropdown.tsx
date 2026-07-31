@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, X, Check } from 'lucide-react';
 
 export interface SelectOption {
@@ -18,14 +19,37 @@ interface Props {
 export default function SelectDropdown({ value, onChange, options, placeholder = '—', disabled }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuRect, setMenuRect] = useState<{ top: number; left: number; width: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
+  }, [open]);
+
+  // The menu is portaled to document.body (see below) so it can float above
+  // any scroll container instead of being clipped by one — that means its
+  // position has to be computed from the button's viewport rect rather than
+  // relying on CSS `absolute` positioning within the normal DOM flow.
+  useEffect(() => {
+    if (!open) return;
+    function updatePosition() {
+      const rect = ref.current?.getBoundingClientRect();
+      if (rect) setMenuRect({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
   }, [open]);
 
   const selected = options.find((o) => o.value === value);
@@ -58,8 +82,12 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
         )}
       </button>
 
-      {open && (
-        <div className="absolute left-0 top-full z-[200] mt-1 w-full min-w-[10rem] rounded-lg border border-slate-200 bg-white py-1 shadow-xl">
+      {open && menuRect && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[200] rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
+          style={{ top: menuRect.top, left: menuRect.left, width: Math.max(menuRect.width, 160) }}
+        >
           <button
             type="button"
             onClick={() => { onChange(''); setOpen(false); }}
@@ -80,7 +108,8 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
               {opt.value === value && <Check className="size-3 text-blue-500" />}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
