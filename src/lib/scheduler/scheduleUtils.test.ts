@@ -86,4 +86,9 @@ describe('unscheduledPlatforms', () => {
   it('excludes a platform that is scheduler-paused for the week regardless of day status', () => {
     expect(unscheduledPlatforms(['tp'], 'monday', {}, { tp: { reason: 'x' } })).toEqual([]);
   });
+
+  it('excludes a platform with a manually-paused status for that day', () => {
+    const rowsByPlatform = { tp: rowWith('tp', { monday: 'paused' }) };
+    expect(unscheduledPlatforms(['tp'], 'monday', rowsByPlatform, {})).toEqual([]);
+  });
 });

@@ -1718,3 +1718,17 @@ Sidebar tab links carry no query string, and agent/proxy/country/search/date fil
 - Housekeeping: added `csv/` to `.gitignore` (source data already imported into the DB); reverted an unrelated `BrandGroup.tsx` WIP that had been accidentally staged and committed to main from an earlier stash-pop conflict resolution (the WIP itself is preserved locally as uncommitted changes, not lost).
 
 ---
+
+## Task 164: Schedule Planner — Hide Unscheduled Chips, Labeled Chips, Manual Add Modal
+
+**Date:** August 1, 2026
+
+Day cells previously rendered a chip for every active platform unconditionally (including a dashed "unset" placeholder), and existing chips showed only the platform's favicon with no label.
+
+- `ScheduleCell` (`src/lib/scheduler/calendarRenderer.tsx`) now renders a chip only for platforms actually scheduled that day or scheduler-paused for the week — an unset platform+day renders nothing. Existing chips show favicon + label together instead of icon-only.
+- A new hover-revealed "+" button (also keyboard-focus and touch/no-hover accessible, a final-review fix) opens a new `AddPlatformModal` (`src/components/AddPlatformModal.tsx`) listing only the platforms not yet scheduled for that day, each addable as Active or Paused via the existing `setBrandScheduleDay` write path, wired through a new `handleSetDayStatus` handler in `SchedulePlanner.tsx`.
+- A shared `unscheduledPlatforms` predicate (`src/lib/scheduler/scheduleUtils.ts`) is used by both `ScheduleCell` and the modal so they can't disagree about what's addable. Supersedes the "every active platform renders a placeholder chip in every cell" design from Task 161 (Intelligent Schedule Planner).
+- Final-review fixes: the "+" button gained `focus-visible`/`hover:none` reveal states for keyboard and touch users; `handleSetDayStatus` gained the same `isFutureWeek` write guard `handleCellClick` already has; `AddPlatformModal`'s backdrop dropped to `z-40` so a `Toast` raised while it's open isn't painted over; `computeCellData` now reads the tab's active platforms from the same `activePlatforms` const the rest of the page uses instead of re-deriving it from `tabCtx`; added a missing `unscheduledPlatforms` test case for a manually-paused day.
+- Spec: `docs/superpowers/specs/2026-07-31-schedule-planner-cell-display-design.md`. Plan: `docs/superpowers/plans/2026-07-31-schedule-planner-cell-display.md`.
+
+---

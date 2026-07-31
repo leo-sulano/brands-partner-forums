@@ -21,7 +21,7 @@ export default function AddPlatformModal({ brand, dayLabel, platforms, onSetStat
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between px-5 pt-5 pb-4">

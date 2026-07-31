@@ -72,7 +72,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
           onClick={onAddPlatform}
           title="Add a platform for this day"
           aria-label={`Add a platform for ${brand} on ${day}`}
-          className="inline-flex size-4 items-center justify-center rounded border border-dashed border-slate-300 text-slate-400 opacity-0 transition-opacity group-hover/cell:opacity-100 hover:border-slate-400 hover:text-slate-600"
+          className="inline-flex size-4 items-center justify-center rounded border border-dashed border-slate-300 text-slate-400 opacity-0 transition-opacity group-hover/cell:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400 [@media(hover:none)]:opacity-100 hover:border-slate-400 hover:text-slate-600"
         >
           +
         </button>

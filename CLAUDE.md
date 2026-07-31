@@ -56,6 +56,21 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-08-01:* Schedule Planner day cells no longer render a chip for every active platform
+  unconditionally — `ScheduleCell` (`src/lib/scheduler/calendarRenderer.tsx`) now shows a chip
+  only for platforms actually scheduled that day or scheduler-paused for the week, and existing
+  chips show icon+label together instead of icon-only. A new hover-revealed "+" button (also
+  reachable via keyboard focus and visible on touch/no-hover devices, a final-review fix) opens
+  a new `AddPlatformModal` (`src/components/AddPlatformModal.tsx`) listing only the platforms
+  not yet scheduled for that day, addable as Active or Paused via the existing
+  `setBrandScheduleDay` path. A shared `unscheduledPlatforms` predicate
+  (`src/lib/scheduler/scheduleUtils.ts`) is used by both the cell and the modal so they can't
+  disagree about what's addable. Supersedes the "every active platform renders a placeholder
+  chip in every cell" design from the Intelligent Schedule Planner entry below. Final review also
+  added the `isFutureWeek` write guard to the new `handleSetDayStatus` handler (matching
+  `handleCellClick`'s existing guard) and fixed the modal's backdrop z-index so an error `Toast`
+  isn't painted over while it's open. Task 164, spec
+  `docs/superpowers/specs/2026-07-31-schedule-planner-cell-display-design.md`.
 - *2026-07-31:* Turned Schedule Planner into an Intelligent Schedule Planner: platform-aware
   (TP/AG/CG/WO) auto-generation, auto-pause/resume, and Success Rate/pause UI on top of the
   per-week grid shipped earlier the same day. New `src/lib/scheduler/` module —

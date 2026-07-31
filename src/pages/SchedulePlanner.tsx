@@ -277,7 +277,7 @@ export default function SchedulePlanner() {
     const brandKey = normalizeBrandKey(brand);
     const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
     const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
-    for (const platform of tabCtx?.activePlatforms ?? []) {
+    for (const platform of activePlatforms) {
       const r = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
       if (r) rowsByPlatform[platform] = r;
       const p = pauses.find(
@@ -303,7 +303,7 @@ export default function SchedulePlanner() {
   }
 
   async function handleSetDayStatus(brand: string, platform: Platform, day: Weekday, status: 'active' | 'paused') {
-    if (!isApproved) return;
+    if (!isApproved || isFutureWeek) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, status));
