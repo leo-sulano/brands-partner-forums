@@ -223,9 +223,10 @@ engine.
 
 ### `calendarRenderer.tsx` — presentational only
 
-`ScheduleCell` (badges + click → popover), `PausedPlatformIndicator` (the "⛔ paused" row
-segment + tooltip), `SuccessRateBadge`. Extracted out of `SchedulePlanner.tsx`'s inline JSX; the
-page keeps its data-fetching/orchestration role, these become its render helpers.
+`ScheduleCell` (badges + click-to-toggle, native hover/long-press tooltip for status detail),
+`PausedPlatformIndicator` (the "⛔ paused" row segment + tooltip), `SuccessRateBadge`. Extracted
+out of `SchedulePlanner.tsx`'s inline JSX; the page keeps its data-fetching/orchestration role,
+these become its render helpers.
 
 `scheduleBrands.ts` is untouched apart from one addition: `nextStatus`/`withDayStatus` need a
 `platform` parameter threaded through (matching the `weekStart` precedent from the prior spec)
@@ -247,9 +248,17 @@ since a manual click now targets a specific `(brand, platform, day)`, not just `
 
 - Day cell: replaces ✓/Pause pill with small platform-code badges (TP/AG/CG/WO), deduplicated —
   3 TP posts on Monday still render one TP badge.
-- Click on a cell opens a popover scoped to that cell: that brand's platform(s) scheduled that
-  day with status (e.g. "Trustpilot — Scheduled"). Not a tab-wide, cross-brand day summary — the
-  grid's grain stays one row per brand.
+- Each platform badge in a cell shows its status (e.g. "Trustpilot: Scheduled") via a native
+  browser tooltip on hover (long-press on touch devices), not a click-triggered popover. Clicking
+  a badge directly toggles that platform's status for that day — the same interaction it always
+  had (see Manual override below) — rather than requiring a popover-open step first. This was a
+  deliberate revision made during implementation, not a simplification of the original popover
+  design: an earlier fix had made every cell's chip directly clickable so no cell — including one
+  the scheduler hasn't generated data for yet — is ever a dead click target, and gating that
+  behind a click-to-open popover would have reintroduced exactly that bug (the natural
+  implementation would skip rendering/opening the popover for empty-data cells). Keeping one
+  interaction per chip (click = toggle, hover/long-press = detail) preserves that guarantee. Not
+  a tab-wide, cross-brand day summary either way — the grid's grain stays one row per brand.
 - Pause display: since rows stay per-brand (covering all that brand's platforms), a paused
   platform doesn't gray the whole row. Only that platform's badge is replaced, across all 5 days
   of that row, with a muted "⛔ Paused" indicator; hovering shows the reason and "Resumes Week of
@@ -286,6 +295,18 @@ someone actually opens the page for that tab/week — acceptable since Schedule 
 regularly, and explicitly chosen over a `pg_cron` Edge Function to avoid new infrastructure and
 error-monitoring surface.
 
+Both functions additionally only ever fire when the currently-viewed week IS the real current
+week (`isCurrentWeek` in `SchedulePlanner.tsx`, i.e. its Monday equals today's Monday) — they
+write to the database using TODAY's `entries` status data, which is only valid for the week that
+is actually "now". Browsing to a past or a future week never triggers generation or pause
+recalculation; both just render whatever already exists in `brand_schedule` for that week, as a
+plain read. (A future week is additionally read-only for manual edits too — see Out of scope.)
+This corrects an earlier version of this section that implied any viewed week — including a
+future one — would auto-generate on first visit; that would have been wrong on two counts: it
+would schedule a future week off of today's data, and it could incorrectly clear an active pause
+via the `paused_week_start < weekStart` resume check before that pause's week had actually
+arrived.
+
 ## Known gap to verify during implementation
 
 `scoreSummary.ts`'s `PLATFORM_DATE_KEYS.wo` is `['Wizard of Odds']` — a single hardcoded header
@@ -305,10 +326,11 @@ way).
    the page yet).
 2. **Wire generation into the page** — `schedulerService` built and called from
    `SchedulePlanner.tsx`'s existing effect; cells render with a minimal platform-badge treatment
-   so generated data is visible and verifiable, but popover/pause-indicator/Success-Rate polish
-   isn't built yet.
-3. **Full UI** — `calendarRenderer.tsx` pieces: popover, pause indicator with tooltip, Success
-   Rate column, final badge styling.
+   so generated data is visible and verifiable, but the status-tooltip/pause-indicator/Success-Rate
+   polish isn't built yet.
+3. **Full UI** — `calendarRenderer.tsx` pieces: per-badge status tooltip (see UI changes above —
+   this superseded the originally-planned click-triggered popover during implementation), pause
+   indicator with tooltip, Success Rate column, final badge styling.
 4. **Completion carryover** — enabled last, since it needs at least one fully platform-generated
    week's data to compute "last week's completion" against; turning it on earlier would carry
    over against legacy (`platform = null`) weeks, which have no meaningful per-platform
@@ -318,8 +340,16 @@ way).
 
 - No change to the 1,133 legacy (`platform = null`) rows — not migrated, not deleted, not
   regenerated, rendered read-only in today's old checkmark style if a legacy week is viewed.
-- No day-summary / cross-brand popover (the mockup's "Trustpilot: WinMega, Lucky7even,
-  FortunePlay" grouping) — per-cell popover only, matching the existing per-brand-row grid.
+- No popover of any kind — neither the mockup's day-summary / cross-brand popover ("Trustpilot:
+  WinMega, Lucky7even, FortunePlay" grouping) nor a per-cell one. Status detail is a native
+  hover/long-press tooltip on each platform badge instead (see UI changes above); clicking a
+  badge toggles it directly, matching the existing per-brand-row grid's grain.
+- A future week (strictly after the current week) is read-only in the UI: no click handler on
+  any cell, same treatment as a legacy (`platform = null`) week — it still renders whatever
+  platform badges already exist (including none, if untouched). This closes a gap where a stray
+  manual click on a future week could create a platform-tagged row that permanently blocks that
+  week's real generation once it becomes current, since `ensureWeekGenerated`'s no-op guard can't
+  tell a real generation apart from one manually-created row.
 - No `pg_cron` / server-side automation — lazy on-page-load generation only.
 - No change to how "active platforms per tab" is determined — reuses the existing per-tab header
   inference as-is, not a new per-brand platform-applicability table.
