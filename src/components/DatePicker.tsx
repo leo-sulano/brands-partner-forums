@@ -12,9 +12,10 @@ interface Props {
   min?: string;
   max?: string;
   align?: 'left' | 'right';
+  triggerTextClassName?: string;
 }
 
-export default function DatePicker({ value, onChange, placeholder, min, max, align = 'right' }: Props) {
+export default function DatePicker({ value, onChange, placeholder, min, max, align = 'right', triggerTextClassName = 'text-xs' }: Props) {
   const today = new Date();
   const [open, setOpen] = useState(false);
   const [viewYear, setViewYear] = useState(() => value ? +value.slice(0, 4) : today.getFullYear());
@@ -62,7 +63,7 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 ${triggerTextClassName} font-medium shadow-sm transition-colors ${
           active
             ? 'border-blue-300 bg-blue-50 text-blue-700'
             : 'border-slate-200 bg-white text-slate-500 hover:border-blue-200 hover:bg-blue-50'

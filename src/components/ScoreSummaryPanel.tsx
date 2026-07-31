@@ -192,13 +192,15 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
               placeholder="From date"
               max={toIso || undefined}
               align="left"
+              triggerTextClassName="text-sm"
             />
-            <span className="text-xs text-slate-400">→</span>
+            <span className="text-sm text-slate-400">→</span>
             <DatePicker
               value={toIso}
               onChange={setToIso}
               placeholder="To date"
               min={fromIso || undefined}
+              triggerTextClassName="text-sm"
             />
             <div className="h-4 w-px bg-slate-200 mx-1" />
             <TabFilterDropdown value={tabFilter} onChange={setTabFilter} options={tabOptions} />
@@ -239,7 +241,7 @@ function PlatformFilter({
           key={opt.value}
           type="button"
           onClick={() => onChange(opt.value)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium transition-colors ${
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium transition-colors ${
             i > 0 && opt.value !== value && PLATFORM_OPTS[i - 1].value !== value ? 'border-l border-slate-200' : ''
           } ${
             opt.value === value
@@ -287,7 +289,7 @@ function TabFilterDropdown({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
+        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium shadow-sm transition-colors ${
           active
             ? 'border-blue-300 bg-blue-50 text-blue-700'
             : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
