@@ -2,11 +2,15 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule, setBrandScheduleDay } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule, setBrandScheduleDay, resolveActivePlatforms } from '../lib/queries';
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import type { Platform } from '../lib/removedPlatformBrands';
+import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
+import { PLATFORM_BADGE } from '../lib/scheduler/scheduleUtils';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 import SelectDropdown from '../components/SelectDropdown';
+import type { Entry } from '../types/entry';
 
 const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
 
@@ -60,6 +64,8 @@ export default function SchedulePlanner() {
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
   const weekStartISO = useMemo(() => toISODate(weekStart), [weekStart]);
   const [brands, setBrands] = useState<string[]>([]);
+  const [activePlatforms, setActivePlatforms] = useState<Platform[]>([]);
+  const [entries, setEntries] = useState<Entry[]>([]);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
@@ -118,6 +124,10 @@ export default function SchedulePlanner() {
         )].sort();
         if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
         setBrands(uniqueBrands);
+        const platforms = await resolveActivePlatforms(tab);
+        if (canceled) return;
+        setActivePlatforms(platforms);
+        setEntries(rawEntries);
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -131,11 +141,28 @@ export default function SchedulePlanner() {
 
   // Schedule rows depend on both tab and week — this is the only fetch that
   // should re-run on Prev/Next/Today navigation.
+  //
+  // Scheduler invocation (recalculatePauses/ensureWeekGenerated) is gated on
+  // isCurrentWeek in addition to the brief's isApproved/brands/activePlatforms
+  // conditions: both functions write to the database using TODAY's entry
+  // status data, which is only valid for the week that is actually "now".
+  // Browsing to a past or future week must never trigger real writes based on
+  // today's data — those weeks just render whatever already exists, exactly
+  // like a plain read. Manual cell-click editing is unaffected and still
+  // works for every week.
   useEffect(() => {
     let canceled = false;
     setScheduleLoading(true);
     (async () => {
       try {
+        const isCurrentWeek = weekStartISO === toISODate(mondayOf(new Date()));
+        if (isCurrentWeek && isApproved && brands.length > 0 && activePlatforms.length > 0) {
+          const ctx: TabContext = { brands, activePlatforms, entries };
+          const resumed = await recalculatePauses(tab, weekStartISO, ctx);
+          if (canceled) return;
+          await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
+          if (canceled) return;
+        }
         const rows = await fetchBrandSchedule(tab, weekStartISO);
         if (canceled) return;
         setScheduleRows(rows);
@@ -148,7 +175,7 @@ export default function SchedulePlanner() {
     return () => {
       canceled = true;
     };
-  }, [tab, weekStartISO]);
+  }, [tab, weekStartISO, brands, activePlatforms, entries, isApproved]);
 
   const filteredBrands = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -156,19 +183,24 @@ export default function SchedulePlanner() {
     return brands.filter((b) => b.toLowerCase().includes(q));
   }, [brands, search]);
 
-  async function handleCellClick(brand: string, day: Weekday) {
+  async function handleCellClick(brand: string, platform: Platform, day: Weekday) {
     if (!isApproved) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO)?.[day] ?? null;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
     const next = nextStatus(currentStatus);
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, day, next));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, next));
     try {
-      await setBrandScheduleDay(tab, brand, weekStartISO, day, next);
+      await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, next);
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, day, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     }
   }
+
+  const isLegacyWeek = useMemo(
+    () => scheduleRows.length > 0 && scheduleRows.every((r) => r.platform == null),
+    [scheduleRows],
+  );
 
   return (
     <div className="space-y-4">
@@ -267,31 +299,44 @@ export default function SchedulePlanner() {
                 </tr>
               ) : (
                 filteredBrands.map((brand) => {
-                  const row = scheduleFor(scheduleRows, tab, brand, weekStartISO);
+                  const legacyRow = isLegacyWeek ? scheduleFor(scheduleRows, tab, brand, weekStartISO) : undefined;
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
                         {brand}
                       </td>
-                      {WEEKDAYS.map((day) => {
-                        const status: DayStatus = row ? row[day] : null;
-                        return (
-                          <td
-                            key={day}
-                            onClick={() => handleCellClick(brand, day)}
-                            className={`px-3 py-2 text-left ${isApproved ? 'cursor-pointer hover:bg-slate-50' : ''}`}
-                          >
-                            {status === 'active' && (
-                              <span className="text-emerald-600 font-semibold">✓</span>
-                            )}
-                            {status === 'paused' && (
-                              <span className="inline-block rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">
-                                Pause
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
+                      {WEEKDAYS.map((day) => (
+                        <td key={day} className="px-3 py-2 text-left align-top">
+                          {isLegacyWeek ? (
+                            <div
+                              onClick={() => handleCellClick(brand, 'tp', day)}
+                              className={isApproved ? 'cursor-pointer' : ''}
+                            >
+                              {legacyRow?.[day] === 'active' && <span className="text-emerald-600 font-semibold">✓</span>}
+                              {legacyRow?.[day] === 'paused' && (
+                                <span className="inline-block rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">Pause</span>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {activePlatforms.map((platform) => {
+                                const row = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
+                                if (row?.[day] == null) return null;
+                                const badge = PLATFORM_BADGE[platform];
+                                return (
+                                  <span
+                                    key={platform}
+                                    onClick={() => handleCellClick(brand, platform, day)}
+                                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${badge.className} ${isApproved ? 'cursor-pointer' : ''} ${row[day] === 'paused' ? 'opacity-40' : ''}`}
+                                  >
+                                    {badge.label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </td>
+                      ))}
                     </tr>
                   );
                 })
