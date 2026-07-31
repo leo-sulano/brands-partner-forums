@@ -53,8 +53,21 @@ function recentStatusesFor(entries: Entry[], brandKey: string, platform: Platfor
 // isn't already paused; resumes (deletes) any pause whose week has passed.
 // Returns the combos that resumed on this call, for the caller to pass into
 // ensureWeekGenerated as `resumedThisWeek`.
+//
+// A new pause is only ever inserted for a week that hasn't been generated
+// yet (mirroring ensureWeekGenerated's own no-op check). Once a week's
+// schedule is already written, inserting a pause for that same week can
+// never actually affect it — the pause would just sit in the table inert,
+// and its mere existence would corrupt the *next* week's resume logic (it
+// would look like a real pause that "expired" and get reported as resumed
+// even though it never took effect). The resume/delete path stays
+// unconditional: deleting an expired pause is always safe and idempotent.
 export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext): Promise<PinnedCombo[]> {
-  const pauses = await fetchActiveBrandPlatformPauses(tab);
+  const [pauses, existingRows] = await Promise.all([
+    fetchActiveBrandPlatformPauses(tab),
+    fetchBrandSchedule(tab, weekStart),
+  ]);
+  const weekAlreadyGenerated = existingRows.some((r) => r.platform != null);
   const resumed: PinnedCombo[] = [];
 
   for (const brand of ctx.brands) {
@@ -68,6 +81,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         }
         continue;
       }
+      if (weekAlreadyGenerated) continue;
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
       if (bothRemoved) {

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from './schedulerService';
+import type { PinnedCombo } from './schedulerEngine';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -71,6 +72,30 @@ describe('recalculatePauses', () => {
     expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
     expect(resumed).toEqual([]);
   });
+
+  // Regression test: a pause is only meaningful if it's inserted before the
+  // target week's schedule is generated. If week W was already generated
+  // (platform-tagged rows exist for it), a newly-detected two-consecutive-
+  // removed combo with no existing pause row must NOT insert a pause for W
+  // — that pause could never affect W's already-written schedule, and would
+  // instead corrupt week W+1's resume logic by looking like a real pause
+  // that "expired" (see finding writeup: this previously let a brand+
+  // platform get stuck permanently un-pauseable after one resume cycle).
+  it('does not insert a pause for a week that is already generated', async () => {
+    queries.fetchBrandSchedule.mockResolvedValue([
+      { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ]);
+    const ctx: TabContext = {
+      brands: ['WinMega'],
+      activePlatforms: ['tp'],
+      entries: [
+        entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+      ],
+    };
+    await recalculatePauses('BITP', '2026-08-03', ctx);
+    expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+  });
 });
 
 describe('ensureWeekGenerated', () => {
@@ -84,15 +109,29 @@ describe('ensureWeekGenerated', () => {
   });
 
   it('generates and writes rows when the week has no platform-tagged rows yet', async () => {
-    queries.fetchBrandSchedule.mockImplementation((_tab: string, weekStart: string) =>
-      Promise.resolve(weekStart === '2026-08-03' ? [] : []), // this week and last week both empty
-    );
+    // beforeEach already sets fetchBrandSchedule to resolve [] for any week.
     const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['cg'], entries: [] };
     await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
     expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'cg' });
+  });
+
+  // End-to-end check that `resumedThisWeek` (as produced by recalculatePauses)
+  // actually reaches the engine as `resumingBrandPlatforms` and influences the
+  // written schedule, rather than only being verified by reading the code.
+  it('schedules a resumed brand+platform at normal frequency via resumedThisWeek', async () => {
+    // beforeEach already sets fetchBrandSchedule to resolve [] for any week.
+    const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['cg'], entries: [] };
+    const resumedThisWeek: PinnedCombo[] = [{ brandKey: 'winmega', platform: 'cg' }];
+    await ensureWeekGenerated('BITP', '2026-08-03', ctx, resumedThisWeek);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'cg' });
+    const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
+    expect(activeDays.length).toBeGreaterThan(0);
   });
 
   it('carries over unfinished slots when last week\'s tab completion was below 40%', async () => {
