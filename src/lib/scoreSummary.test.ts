@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus } from './scoreSummary';
 import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
@@ -244,6 +244,25 @@ describe('computeTabSuccessRates — date range (matches BrandGroup.tsx brand-ta
     const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
     const result = computeTabSuccessRates(entries, 'tp', new Set(), range);
     expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
+  });
+});
+
+describe('exported platform helpers (scheduler module reuse)', () => {
+  it('exposes status/date keys for all four platforms', () => {
+    expect(PLATFORM_STATUS_KEYS.tp).toContain('TP Review Status');
+    expect(PLATFORM_DATE_KEYS.wo).toEqual(['Wizard of Odds']);
+  });
+
+  it('pick returns the first non-empty value across the given keys', () => {
+    expect(pick({ a: null, b: 'x' }, ['a', 'b'])).toBe('x');
+    expect(pick({ a: null }, ['a'])).toBeNull();
+  });
+
+  it('isRemovedStatus matches removed, refused, and rejected', () => {
+    expect(isRemovedStatus('removed')).toBe(true);
+    expect(isRemovedStatus('refused')).toBe(true);
+    expect(isRemovedStatus('rejected')).toBe(true);
+    expect(isRemovedStatus('published')).toBe(false);
   });
 });
 

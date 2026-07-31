@@ -61,14 +61,14 @@ export interface DateRange {
 // here — it would bucket one row per account, which isn't a useful summary.
 const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'] as const;
 
-const PLATFORM_STATUS_KEYS: Record<Platform, readonly string[]> = {
+export const PLATFORM_STATUS_KEYS: Record<Platform, readonly string[]> = {
   tp: ['TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status'],
   ag: ['AG Review Status'],
   cg: ['CG Review Status'],
   wo: ['WoO Review Status'],
 };
 
-const PLATFORM_DATE_KEYS: Record<Platform, readonly string[]> = {
+export const PLATFORM_DATE_KEYS: Record<Platform, readonly string[]> = {
   tp: ['Trust Pilot'],
   ag: ['Ask Gambler review added'],
   cg: ['Casino Guru review added'],
@@ -82,7 +82,7 @@ const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
   wo: ['Wizard of OddsScore added'],
 };
 
-function pick(data: Record<string, string | null>, keys: readonly string[]): string | null {
+export function pick(data: Record<string, string | null>, keys: readonly string[]): string | null {
   for (const k of keys) {
     const v = data[k];
     if (v != null && v !== '') return v;
@@ -334,7 +334,7 @@ function isLiveStatus(s: string): boolean {
   if (s.includes('not pub') || s.includes('refused')) return false;
   return s.includes('published') || s.includes('live');
 }
-function isRemovedStatus(s: string): boolean {
+export function isRemovedStatus(s: string): boolean {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
 
