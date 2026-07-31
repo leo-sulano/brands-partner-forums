@@ -99,4 +99,39 @@ describe('generateWeekSchedule', () => {
     // some overlap is unavoidable (8 > 5), but no day should exceed 2.
     expect(Math.max(...byDay.values())).toBeLessThanOrEqual(2);
   });
+
+  it('gives a resuming brand+platform exactly its normal postsPerWeek slots (no extras)', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['ag'],
+      resumingBrandPlatforms: [{ brandKey: 'winmega', platform: 'ag' }],
+    };
+    // AG has 2 posts/week; resuming should give exactly 2, not extra.
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'ag')).toHaveLength(2);
+  });
+
+  it('skips a brand+platform that is both resuming AND paused (paused takes precedence)', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['ag'],
+      resumingBrandPlatforms: [{ brandKey: 'winmega', platform: 'ag' }],
+      pausedBrandPlatforms: [{ brandKey: 'winmega', platform: 'ag' }],
+    };
+    // Paused should win over resuming, so 0 slots.
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'ag')).toHaveLength(0);
+  });
+
+  it('handles carryover overflow (count: 10) by capping at 5 slots max per weekday with no duplicates', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['cg'],
+      carryover: [{ brand: 'WinMega', brandKey: 'winmega', platform: 'cg', count: 10 }],
+    };
+    // CG has 1 post/week + 10 carryover = 11 requested slots, but only 5 weekdays exist.
+    // Should place at most 5 slots (one per day) with no duplicates.
+    const slots = slotsFor(generateWeekSchedule(input), 'WinMega', 'cg');
+    expect(slots.length).toBeLessThanOrEqual(5);
+    const days = slots.map((s) => s.day);
+    expect(new Set(days).size).toBe(days.length); // no duplicate days
+  });
 });

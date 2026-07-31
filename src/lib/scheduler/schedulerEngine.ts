@@ -72,18 +72,20 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
   const slots: ScheduledSlot[] = [];
   const brandKeys = input.brands.map((brand) => ({ brand, brandKey: normalizeBrandKey(brand) }));
 
+  // Build carryover lookup map from valid combos only (those in brands × activePlatforms).
+  // This prevents carryover from introducing rows for brand/platform combos the tab doesn't track.
+  const carryoverMap = new Map<string, number>();
+  for (const item of input.carryover) {
+    if (brandKeys.some((bk) => bk.brandKey === item.brandKey) && input.activePlatforms.includes(item.platform)) {
+      const key = `${item.brandKey}::${item.platform}`;
+      carryoverMap.set(key, (carryoverMap.get(key) ?? 0) + item.count);
+    }
+  }
+
   function assign(brand: string, brandKey: string, platform: Platform, numSlots: number) {
     if (numSlots <= 0) return;
     const days = selectDays(PLATFORM_RULES[platform], numSlots, dayCounts);
     for (const day of days) slots.push({ brand, brandKey, platform, day });
-  }
-
-  // Priority 1: carryover — extra slots on top of the platform's normal
-  // weekly frequency, assigned first so they get first pick of open days.
-  for (const item of input.carryover) {
-    if (hasCombo(input.pinnedBrandPlatforms, item.brandKey, item.platform)) continue;
-    if (hasCombo(input.pausedBrandPlatforms, item.brandKey, item.platform)) continue;
-    assign(item.brand, item.brandKey, item.platform, item.count);
   }
 
   // Priority 2: platforms resuming from pause, at their normal frequency.
@@ -91,19 +93,23 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
     for (const platform of input.activePlatforms) {
       if (!hasCombo(input.resumingBrandPlatforms, brandKey, platform)) continue;
       if (hasCombo(input.pinnedBrandPlatforms, brandKey, platform)) continue;
+      if (hasCombo(input.pausedBrandPlatforms, brandKey, platform)) continue;
       assign(brand, brandKey, platform, PLATFORM_RULES[platform].postsPerWeek);
     }
   }
 
-  // Priority 3 + 4: everyone else at normal frequency. This is also "fill
+  // Priority 3: everyone else at normal frequency + carryover (if any). This is also "fill
   // remaining slots" — every active, non-paused, non-pinned, non-resuming
-  // combination passes through here exactly once.
+  // combination passes through here exactly once, with carryover baked into the frequency.
   for (const { brand, brandKey } of brandKeys) {
     for (const platform of input.activePlatforms) {
       if (hasCombo(input.pinnedBrandPlatforms, brandKey, platform)) continue;
       if (hasCombo(input.pausedBrandPlatforms, brandKey, platform)) continue;
       if (hasCombo(input.resumingBrandPlatforms, brandKey, platform)) continue;
-      assign(brand, brandKey, platform, PLATFORM_RULES[platform].postsPerWeek);
+      // Look up carryover for this combo (0 if none), add to normal frequency, assign once.
+      const key = `${brandKey}::${platform}`;
+      const carryoverExtra = carryoverMap.get(key) ?? 0;
+      assign(brand, brandKey, platform, PLATFORM_RULES[platform].postsPerWeek + carryoverExtra);
     }
   }
 
