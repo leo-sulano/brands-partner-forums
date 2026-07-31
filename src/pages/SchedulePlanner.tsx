@@ -195,7 +195,7 @@ export default function SchedulePlanner() {
             const rates = computeSuccessRates(entries, platform);
             for (const brand of brands) {
               const existing = rateMap.get(brand);
-              const r = rates.get(`${tab} ${brand}`)?.rate ?? null;
+              const r = rates.get(`${tab} ${brand.trim()}`)?.rate ?? null;
               // A brand's Success Rate column combines all its active
               // platforms — keep whichever platform's rate is worse (more
               // urgent to notice), matching the color-coded severity intent.
@@ -355,7 +355,17 @@ export default function SchedulePlanner() {
                     // schedule rows this week by design (the engine skips
                     // assigning any days to a paused combo), so `r` would be
                     // undefined for exactly the case this needs to detect.
-                    const p = pauses.find((x) => x.brand_key === brandKey && x.platform === platform);
+                    // Also scoped to the currently viewed week via
+                    // paused_week_start: a pause row only governs the week it
+                    // was created for (matching schedulerService.ts's own
+                    // `paused_week_start === weekStart` check) — without this,
+                    // a pause created for one week would make that platform's
+                    // chip non-interactive on every other week, including
+                    // legacy history and future weeks it has nothing to do
+                    // with.
+                    const p = pauses.find(
+                      (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === weekStartISO,
+                    );
                     if (p) pausesByPlatform[platform] = p;
                   }
                   const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
