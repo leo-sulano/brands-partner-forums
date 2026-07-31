@@ -1,4 +1,0 @@
-> tsc -b && vite build
-src/pages/SchedulePlanner.tsx(164,31): error TS2554: Expected 7 arguments, but got 6.
-src/pages/SchedulePlanner.tsx(166,13): error TS2554: Expected 6 arguments, but got 5.
-src/pages/SchedulePlanner.tsx(168,33): error TS2554: Expected 7 arguments, but got 6.
