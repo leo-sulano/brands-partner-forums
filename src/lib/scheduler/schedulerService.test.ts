@@ -121,9 +121,32 @@ describe('ensureWeekGenerated', () => {
   // End-to-end check that `resumedThisWeek` (as produced by recalculatePauses)
   // actually reaches the engine as `resumingBrandPlatforms` and influences the
   // written schedule, rather than only being verified by reading the code.
-  it('schedules a resumed brand+platform at normal frequency via resumedThisWeek', async () => {
-    // beforeEach already sets fetchBrandSchedule to resolve [] for any week.
-    const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['cg'], entries: [] };
+  //
+  // A single-brand/single-platform/no-carryover scenario can't discriminate this:
+  // schedulerEngine's Priority 2 (resuming) and Priority 3 (everyone else) both call
+  // assign(..., PLATFORM_RULES[platform].postsPerWeek) when there's nothing else in
+  // play, so the same output would result even if `resumedThisWeek` were silently
+  // dropped. To force a real difference, this combo is ALSO given carryover from last
+  // week (below the 40% completion threshold): Priority 3's fallback loop adds
+  // carryoverExtra on top of postsPerWeek, but Priority 2's resuming branch does not
+  // (see schedulerEngine.ts — only the Priority 3 loop reads carryoverMap). So a
+  // correctly-wired resumedThisWeek yields exactly postsPerWeek (1) active day here;
+  // if `resumingBrandPlatforms: resumedThisWeek` were replaced with `[]`, the combo
+  // would fall through to Priority 3 and pick up the extra carried-over slot, landing
+  // on 2 active days instead.
+  it('does not add carryover to a resumed brand+platform, proving resumedThisWeek reaches the engine', async () => {
+    queries.fetchBrandSchedule.mockImplementation((_tab: string, weekStart: string) => {
+      if (weekStart === '2026-08-03') return Promise.resolve([]); // this week: nothing yet
+      // last week: 1 CG slot scheduled for WinMega, not completed -> carryover of 1
+      return Promise.resolve([
+        { tab: 'BITP', brand_key: 'winmega', week_start: '2026-07-27', platform: 'cg', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ]);
+    });
+    const ctx: TabContext = {
+      brands: ['WinMega'],
+      activePlatforms: ['cg'],
+      entries: [entry({ Brands: 'WinMega', 'CG Review Status': 'pending' })], // not done -> carryover applies
+    };
     const resumedThisWeek: PinnedCombo[] = [{ brandKey: 'winmega', platform: 'cg' }];
     await ensureWeekGenerated('BITP', '2026-08-03', ctx, resumedThisWeek);
     expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
@@ -131,7 +154,7 @@ describe('ensureWeekGenerated', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'cg' });
     const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
-    expect(activeDays.length).toBeGreaterThan(0);
+    expect(activeDays).toHaveLength(1); // postsPerWeek only, no carryover — proves the resuming branch (not the fallback) handled this combo
   });
 
   it('carries over unfinished slots when last week\'s tab completion was below 40%', async () => {
