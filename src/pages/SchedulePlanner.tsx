@@ -6,6 +6,9 @@ import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule, setBrandSche
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
+import SelectDropdown from '../components/SelectDropdown';
+
+const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
 
 const WEEKDAY_LABELS: Record<Weekday, string> = {
   monday: 'Mon',
@@ -178,15 +181,14 @@ export default function SchedulePlanner() {
         <div className="overflow-auto flex-1 min-h-0">
           <div ref={toolbarRef} className="sticky top-0 left-0 z-40 bg-white will-change-transform border-b border-slate-100">
             <div className="flex flex-wrap items-center gap-3 px-3 py-2">
-              <select
-                value={tab}
-                onChange={(e) => setTab(e.target.value)}
-                className="rounded-md border border-slate-200 px-2 py-1.5 text-sm text-slate-700"
-              >
-                {OPERATIONAL_TABS.map((t) => (
-                  <option key={t} value={t}>{tabDisplayName(t)}</option>
-                ))}
-              </select>
+              <div className="w-56 shrink-0">
+                <SelectDropdown
+                  value={tab}
+                  onChange={setTab}
+                  options={TAB_OPTS}
+                  placeholder="— select tab —"
+                />
+              </div>
 
               <div className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 flex-1 min-w-[160px] max-w-xs">
                 <Search className="size-4 text-slate-400 shrink-0" />
