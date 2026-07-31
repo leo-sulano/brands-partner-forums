@@ -157,7 +157,17 @@ describe('ensureWeekGenerated', () => {
     expect(activeDays).toHaveLength(1); // postsPerWeek only, no carryover — proves the resuming branch (not the fallback) handled this combo
   });
 
-  it('carries over unfinished slots when last week\'s tab completion was below 40%', async () => {
+  // Completion carryover is deliberately disabled for this initial ship
+  // (CARRYOVER_RULES.completionThreshold = 0 in schedulerRules.ts — see the
+  // comment there): buildCarryover's `ratio >= completionThreshold` early
+  // return can never be skipped when the threshold is 0, since a completion
+  // ratio is never negative. This test used to assert the opposite (that a
+  // below-40%-complete prior week added a carried-over slot); it's flipped
+  // here to lock in the current, intentionally-inert behavior so a future
+  // change to CARRYOVER_RULES doesn't silently reactivate carryover with its
+  // known-broken unbounded-compounding formula. See the final-review fix
+  // report for full context.
+  it('does not carry over unfinished slots now that completion carryover is disabled (completionThreshold = 0)', async () => {
     queries.fetchBrandSchedule.mockImplementation((_tab: string, weekStart: string) => {
       if (weekStart === '2026-08-03') return Promise.resolve([]); // this week: nothing yet
       // last week: 1 CG slot scheduled for WinMega, not completed
@@ -172,9 +182,9 @@ describe('ensureWeekGenerated', () => {
     };
     await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
-    // 1 normal CG post + 1 carried-over CG post = 2 active days this week.
+    // Carryover disabled -> only the normal CG post, no carried-over slot.
     const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
-    expect(activeDays).toHaveLength(2);
+    expect(activeDays).toHaveLength(1);
   });
 
   it('does not carry over when last week had no platform-tagged rows (legacy-only week)', async () => {
