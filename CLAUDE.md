@@ -56,7 +56,54 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-07-31:* Schedule Planner moved from one recurring Mon-Fri template per (tab, brand)
+- *2026-07-31:* Turned Schedule Planner into an Intelligent Schedule Planner: platform-aware
+  (TP/AG/CG/WO) auto-generation, auto-pause/resume, and Success Rate/pause UI on top of the
+  per-week grid shipped earlier the same day. New `src/lib/scheduler/` module —
+  `schedulerRules.ts` (configurable per-platform posting frequency: TP 2/wk preferring
+  Mon+Thu or Tue+Fri, AG 2/wk, CG 1/wk, WO 3/wk preferring Mon/Wed/Fri; pause/carryover
+  thresholds), pure `schedulerEngine.ts` (`generateWeekSchedule`, priority-ordered
+  carryover→resuming→normal assignment with day-load balancing), I/O `schedulerService.ts`
+  (`recalculatePauses`/`ensureWeekGenerated`, mocking Supabase in tests), shared
+  `scheduleUtils.ts`, presentational `calendarRenderer.tsx`. `brand_schedule` gained a
+  nullable `platform` column (migration `20260801090000`, applied live via the Supabase SQL
+  Editor — no DB credential was available in this session, so the user ran the SQL directly
+  and the migration file was written after, to match); the 1,133 pre-existing rows keep
+  `platform = null` and render read-only in the old checkmark style, never migrated or
+  edited. New `brand_platform_pause` table (same 4-policy RLS shape as `brand_schedule`)
+  tracks one row per active pause, inserted when a brand+platform's two most recent posts
+  are both Removed/Refused-classified (reusing `scoreSummary.ts`'s existing status/date
+  helpers, now exported for reuse) and deleted a week later on resume. Generation/pause-recalc
+  run lazily from the page's existing effect, gated to the actual current week only — browsing
+  to a past or future week never triggers a write; future weeks are read-only in the UI for
+  the same reason (a manual edit there would permanently block that week's own eventual
+  auto-generation). Day cells now show one small colored badge per platform (TP/AG/CG/WO)
+  instead of a bare checkmark, with a hover/long-press tooltip for status detail (the
+  design's originally-specified click-to-open popover was dropped in favor of keeping every
+  cell — including never-scheduled ones — independently clickable, a deliberate,
+  user-approved deviation); a paused platform's badge is dimmed and non-interactive for the
+  week it governs, with a separate "⛔ Paused" indicator. New Success Rate column reuses
+  `computeSuccessRates` from `scoreSummary.ts`, color-coded green/yellow/red.
+  Completion-based carryover (the "<40% last week → carry unfinished work forward" rule) is
+  implemented but **deliberately disabled** (`CARRYOVER_RULES.completionThreshold = 0` in
+  `schedulerRules.ts`) — the formula as specified (last week's *total* slot count, uncapped,
+  against an all-time exact-match "done" status) compounds unbounded and would saturate any
+  underperforming brand to all 5 weekdays within about 5 weeks; needs a real redesign
+  (time-scoped completion, capped/remainder-based count) validated against real
+  platform-generated week data before re-enabling. Built via 12 subagent-driven-development
+  tasks with per-task review; the review loop caught and fixed 3 genuine plan-level design
+  bugs before they shipped — a duplicate-day collision in the engine that silently nullified
+  carryover, a pause-reinsertion bug that permanently defeated re-pausing after one resume
+  cycle, and a tab-switch race where the scheduler could write a newly-selected tab's week
+  using the *previous* tab's brand list, permanently blocking that tab's real schedule from
+  ever generating (caught only by the final whole-branch review, since it only appears when
+  both page effects are considered together). One known follow-up, never resolvable in this
+  session (no Supabase DB credential available): confirm the live `WoO Review Status`/
+  `Wizard of Odds` header names on a WO-tracking tab against `scoreSummary.ts`'s
+  `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS` (exact-match, not case-insensitive) before
+  trusting WO pause detection's post-recency ordering. Full test suite (395 tests) and build
+  both pass. Spec: `docs/superpowers/specs/2026-07-31-intelligent-schedule-planner-design.md`.
+  Plan: `docs/superpowers/plans/2026-07-31-intelligent-schedule-planner.md`.
+- *2026-07-31 (earlier):* Schedule Planner moved from one recurring Mon-Fri template per (tab, brand)
   to real per-calendar-week tracking, and its 9 months of real history (Oct 2025 – present)
   from `csv/Scheduled_Planner.xlsx` was imported — superseding the "week nav is purely
   cosmetic" design from the day before. `brand_schedule` gained a `week_start date not null`
@@ -281,6 +328,15 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- Intelligent Schedule Planner's completion-based carryover is implemented but disabled
+  (`CARRYOVER_RULES.completionThreshold = 0` in `src/lib/scheduler/schedulerRules.ts`) — the
+  formula as originally specified compounds unbounded (see 2026-07-31 entry above). Needs a
+  redesign (time-scoped completion, capped/remainder-based carryover count) validated
+  against at least one real platform-generated week before re-enabling.
+- Confirm the live `WoO Review Status`/`Wizard of Odds` header names on a Wizard of Odds
+  brand tab against `scoreSummary.ts`'s `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS`
+  (`pick()` does an exact string match, not case-insensitive) — never verified live, no
+  Supabase DB credential was available in the session that shipped WO pause detection.
 - Recharts pinned to v2; revisit if a major upgrade is available at install time.
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.
