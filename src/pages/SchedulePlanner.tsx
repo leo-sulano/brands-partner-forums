@@ -294,6 +294,7 @@ export default function SchedulePlanner() {
           <div ref={toolbarRef} className="sticky top-0 left-0 z-40 bg-white will-change-transform border-b border-slate-100">
             <div className="flex flex-wrap items-center gap-3 px-3 py-2">
               <div className="w-56 shrink-0">
+                <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Tabs</label>
                 <SelectDropdown
                   value={tab}
                   onChange={setTab}

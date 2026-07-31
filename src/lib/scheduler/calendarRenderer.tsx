@@ -1,5 +1,5 @@
 import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
-import type { Platform } from '../removedPlatformBrands';
+import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE } from './scheduleUtils';
 
@@ -87,9 +87,14 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             key={platform}
             onClick={clickable ? () => onToggle(platform) : undefined}
             title={`${PLATFORM_FULL_LABEL[platform]}: ${isPaused ? 'Paused (scheduler)' : statusLabel(status)}`}
-            className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${stateClassName} ${clickable ? 'cursor-pointer' : ''}`}
+            className={`inline-flex items-center rounded px-1 py-0.5 ${stateClassName} ${clickable ? 'cursor-pointer' : ''}`}
           >
-            {badge.label}
+            <img
+              src={PLATFORM_FAVICON[platform]}
+              alt={badge.label}
+              className="size-3 rounded-sm"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
           </span>
         );
       })}
@@ -115,7 +120,14 @@ export function PausedPlatformIndicator({ platform, pause }: PausedPlatformIndic
       className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500"
       title={`Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`}
     >
-      ⛔ {PLATFORM_BADGE[platform].label} Paused
+      ⛔
+      <img
+        src={PLATFORM_FAVICON[platform]}
+        alt={PLATFORM_BADGE[platform].label}
+        className="size-3 rounded-sm"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+      Paused
     </span>
   );
 }

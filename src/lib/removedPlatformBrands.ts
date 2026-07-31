@@ -9,6 +9,17 @@
 
 export type Platform = 'tp' | 'ag' | 'cg' | 'wo';
 
+// Shared favicon source for all four platforms — the single definition every
+// icon-bearing UI (Score Summary's platform filter, the Brand Tabs modal, the
+// Schedule Planner grid) imports from, so the icons can't drift out of sync
+// with each other.
+export const PLATFORM_FAVICON: Record<Platform, string> = {
+  tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32',
+  ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32',
+  cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=32',
+  wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=32',
+};
+
 export function normalizeBrandKey(brand: string): string {
   return brand.trim().toLowerCase();
 }

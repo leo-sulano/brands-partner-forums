@@ -4,17 +4,11 @@ import { X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { PLATFORM_FAVICON } from '../lib/removedPlatformBrands';
 
 interface Props {
   onClose: () => void;
 }
-
-const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
-  tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
-  ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
-  cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
-  wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=64',
-};
 
 export default function BrandTabsModal({ onClose }: Props) {
   useEffect(() => {

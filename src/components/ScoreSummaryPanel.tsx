@@ -14,6 +14,7 @@ import {
   type Star as StarRating,
   type SuccessRate,
 } from '../lib/scoreSummary';
+import { PLATFORM_FAVICON } from '../lib/removedPlatformBrands';
 import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 
@@ -80,10 +81,10 @@ function successRateTitle(sr: SuccessRate | undefined): string {
 }
 
 const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
-  { value: 'tp', label: 'TrustPilot',  icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=32' },
-  { value: 'ag', label: 'AskGamblers', icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=32' },
-  { value: 'cg', label: 'CasinoGuru',  icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=32' },
-  { value: 'wo', label: 'Wizard of Odds', icon: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=32' },
+  { value: 'tp', label: 'TrustPilot', icon: PLATFORM_FAVICON.tp },
+  { value: 'ag', label: 'AskGamblers', icon: PLATFORM_FAVICON.ag },
+  { value: 'cg', label: 'CasinoGuru', icon: PLATFORM_FAVICON.cg },
+  { value: 'wo', label: 'Wizard of Odds', icon: PLATFORM_FAVICON.wo },
 ];
 
 const PLATFORM_DATE_LABEL: Record<Platform, string> = {
