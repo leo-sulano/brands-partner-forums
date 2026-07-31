@@ -15,6 +15,8 @@ import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type Brand
 import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator, SuccessRateBadge } from '../lib/scheduler/calendarRenderer';
+import { unscheduledPlatforms } from '../lib/scheduler/scheduleUtils';
+import AddPlatformModal from '../components/AddPlatformModal';
 import { computeSuccessRates } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
@@ -99,6 +101,7 @@ export default function SchedulePlanner() {
   const loading = brandsLoading || scheduleLoading;
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+  const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; day: Weekday } | null>(null);
   const { isApproved } = useAuth();
 
   const toolbarRef = useRef<HTMLDivElement>(null);
@@ -267,6 +270,24 @@ export default function SchedulePlanner() {
     return brands.filter((b) => b.toLowerCase().includes(q));
   }, [tabCtx, search]);
 
+  function computeCellData(brand: string): {
+    rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
+    pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+  } {
+    const brandKey = normalizeBrandKey(brand);
+    const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
+    const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
+    for (const platform of tabCtx?.activePlatforms ?? []) {
+      const r = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
+      if (r) rowsByPlatform[platform] = r;
+      const p = pauses.find(
+        (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === weekStartISO,
+      );
+      if (p) pausesByPlatform[platform] = p;
+    }
+    return { rowsByPlatform, pausesByPlatform };
+  }
+
   async function handleCellClick(brand: string, platform: Platform, day: Weekday) {
     if (!isApproved) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
@@ -275,6 +296,19 @@ export default function SchedulePlanner() {
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, next));
     try {
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, next);
+    } catch (err) {
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
+      setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
+    }
+  }
+
+  async function handleSetDayStatus(brand: string, platform: Platform, day: Weekday, status: 'active' | 'paused') {
+    if (!isApproved) return;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
+
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, status));
+    try {
+      await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, status);
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
@@ -299,6 +333,17 @@ export default function SchedulePlanner() {
     [weekStartISO],
   );
   const activePlatforms = tabCtx?.activePlatforms ?? [];
+
+  const addPlatformModalData = addPlatformTarget
+    ? (() => {
+        const { rowsByPlatform, pausesByPlatform } = computeCellData(addPlatformTarget.brand);
+        const dayIndex = WEEKDAYS.indexOf(addPlatformTarget.day);
+        return {
+          platforms: unscheduledPlatforms(activePlatforms, addPlatformTarget.day, rowsByPlatform, pausesByPlatform),
+          dayLabel: `${WEEKDAY_LABELS[addPlatformTarget.day]} ${formatWeekdayDate(weekStart, dayIndex)}`,
+        };
+      })()
+    : null;
 
   return (
     <div className="space-y-4">
@@ -405,30 +450,7 @@ export default function SchedulePlanner() {
               ) : (
                 filteredBrands.map((brand) => {
                   const legacyRow = isLegacyWeek ? scheduleFor(scheduleRows, tab, brand, weekStartISO) : undefined;
-                  const brandKey = normalizeBrandKey(brand);
-                  const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
-                  const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
-                  for (const platform of activePlatforms) {
-                    const r = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
-                    if (r) rowsByPlatform[platform] = r;
-                    // Matched by brandKey computed from `brand` directly, not
-                    // from `r?.brand_key` — a paused platform has ZERO
-                    // schedule rows this week by design (the engine skips
-                    // assigning any days to a paused combo), so `r` would be
-                    // undefined for exactly the case this needs to detect.
-                    // Also scoped to the currently viewed week via
-                    // paused_week_start: a pause row only governs the week it
-                    // was created for (matching schedulerService.ts's own
-                    // `paused_week_start === weekStart` check) — without this,
-                    // a pause created for one week would make that platform's
-                    // chip non-interactive on every other week, including
-                    // legacy history and future weeks it has nothing to do
-                    // with.
-                    const p = pauses.find(
-                      (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === weekStartISO,
-                    );
-                    if (p) pausesByPlatform[platform] = p;
-                  }
+                  const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
                   const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
@@ -472,6 +494,7 @@ export default function SchedulePlanner() {
                               // affordance is removed.
                               isApproved={isApproved && !isFutureWeek}
                               onToggle={(platform) => handleCellClick(brand, platform, day)}
+                              onAddPlatform={() => setAddPlatformTarget({ brand, day })}
                             />
                           )}
                         </td>
@@ -495,6 +518,15 @@ export default function SchedulePlanner() {
         </div>
       </div>
       {toast && <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} />}
+      {addPlatformTarget && addPlatformModalData && (
+        <AddPlatformModal
+          brand={addPlatformTarget.brand}
+          dayLabel={addPlatformModalData.dayLabel}
+          platforms={addPlatformModalData.platforms}
+          onSetStatus={(platform, status) => handleSetDayStatus(addPlatformTarget.brand, platform, addPlatformTarget.day, status)}
+          onClose={() => setAddPlatformTarget(null)}
+        />
+      )}
     </div>
   );
 }
