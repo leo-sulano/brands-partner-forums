@@ -2,11 +2,20 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchBrandSchedule, setBrandScheduleDay, resolveActivePlatforms } from '../lib/queries';
+import {
+  fetchRawEntriesByTab,
+  fetchTabHeaders,
+  fetchBrandSchedule,
+  setBrandScheduleDay,
+  resolveActivePlatforms,
+  fetchActiveBrandPlatformPauses,
+  type BrandPlatformPause,
+} from '../lib/queries';
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
-import type { Platform } from '../lib/removedPlatformBrands';
+import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
-import { PLATFORM_BADGE } from '../lib/scheduler/scheduleUtils';
+import { ScheduleCell, PausedPlatformIndicator, SuccessRateBadge } from '../lib/scheduler/calendarRenderer';
+import { computeSuccessRates } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 import SelectDropdown from '../components/SelectDropdown';
@@ -67,6 +76,8 @@ export default function SchedulePlanner() {
   const [activePlatforms, setActivePlatforms] = useState<Platform[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
+  const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
+  const [successRates, setSuccessRates] = useState<Map<string, number | null>>(new Map());
   const [brandsLoading, setBrandsLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const loading = brandsLoading || scheduleLoading;
@@ -170,9 +181,29 @@ export default function SchedulePlanner() {
           await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
           if (canceled) return;
         }
-        const rows = await fetchBrandSchedule(tab, weekStartISO);
+        const [rows, activePauses] = await Promise.all([
+          fetchBrandSchedule(tab, weekStartISO),
+          fetchActiveBrandPlatformPauses(tab),
+        ]);
         if (canceled) return;
         setScheduleRows(rows);
+        setPauses(activePauses);
+
+        if (activePlatforms.length > 0) {
+          const rateMap = new Map<string, number | null>();
+          for (const platform of activePlatforms) {
+            const rates = computeSuccessRates(entries, platform);
+            for (const brand of brands) {
+              const existing = rateMap.get(brand);
+              const r = rates.get(`${tab} ${brand}`)?.rate ?? null;
+              // A brand's Success Rate column combines all its active
+              // platforms — keep whichever platform's rate is worse (more
+              // urgent to notice), matching the color-coded severity intent.
+              if (r != null && (existing == null || r < existing)) rateMap.set(brand, r);
+            }
+          }
+          setSuccessRates(rateMap);
+        }
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -289,24 +320,45 @@ export default function SchedulePlanner() {
                     {WEEKDAY_LABELS[day]} {formatWeekdayDate(weekStart, i)}
                   </th>
                 ))}
+                <th
+                  className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
+                  style={{ top: toolbarHeight }}
+                >
+                  Success Rate
+                </th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={WEEKDAYS.length + 1} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={WEEKDAYS.length + 2} className="px-4 py-8 text-center text-slate-400">
                     Loading…
                   </td>
                 </tr>
               ) : filteredBrands.length === 0 ? (
                 <tr>
-                  <td colSpan={WEEKDAYS.length + 1} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={WEEKDAYS.length + 2} className="px-4 py-8 text-center text-slate-400">
                     No brands match.
                   </td>
                 </tr>
               ) : (
                 filteredBrands.map((brand) => {
                   const legacyRow = isLegacyWeek ? scheduleFor(scheduleRows, tab, brand, weekStartISO) : undefined;
+                  const brandKey = normalizeBrandKey(brand);
+                  const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
+                  const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
+                  for (const platform of activePlatforms) {
+                    const r = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
+                    if (r) rowsByPlatform[platform] = r;
+                    // Matched by brandKey computed from `brand` directly, not
+                    // from `r?.brand_key` — a paused platform has ZERO
+                    // schedule rows this week by design (the engine skips
+                    // assigning any days to a paused combo), so `r` would be
+                    // undefined for exactly the case this needs to detect.
+                    const p = pauses.find((x) => x.brand_key === brandKey && x.platform === platform);
+                    if (p) pausesByPlatform[platform] = p;
+                  }
+                  const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
@@ -330,38 +382,28 @@ export default function SchedulePlanner() {
                               )}
                             </div>
                           ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {activePlatforms.map((platform) => {
-                                const row = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
-                                const status = row?.[day] ?? null;
-                                const badge = PLATFORM_BADGE[platform];
-                                // Every active platform gets a chip in every cell,
-                                // regardless of whether a row/day value exists yet —
-                                // an unset day has no DB row, but it must still be
-                                // clickable so a manual override can turn it on.
-                                // Three distinct visual states so all three are
-                                // unambiguous at a glance: solid fill (active),
-                                // dimmed fill (paused), faint outline (unset).
-                                const stateClassName =
-                                  status === 'active'
-                                    ? badge.className
-                                    : status === 'paused'
-                                      ? `${badge.className} opacity-40`
-                                      : 'border border-dashed border-slate-300 text-slate-400 opacity-30 hover:opacity-70';
-                                return (
-                                  <span
-                                    key={platform}
-                                    onClick={() => handleCellClick(brand, platform, day)}
-                                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${stateClassName} ${isApproved ? 'cursor-pointer' : ''}`}
-                                  >
-                                    {badge.label}
-                                  </span>
-                                );
-                              })}
-                            </div>
+                            <ScheduleCell
+                              brand={brand}
+                              day={day}
+                              platforms={activePlatforms}
+                              rowsByPlatform={rowsByPlatform}
+                              pausesByPlatform={pausesByPlatform}
+                              isApproved={isApproved}
+                              onToggle={(platform) => handleCellClick(brand, platform, day)}
+                            />
                           )}
                         </td>
                       ))}
+                      <td className="px-3 py-2 text-left">
+                        {pausedPlatforms.length > 0 && (
+                          <div className="mb-1 flex flex-wrap gap-1">
+                            {pausedPlatforms.map((p) => (
+                              <PausedPlatformIndicator key={p} platform={p} pause={pausesByPlatform[p] as BrandPlatformPause} />
+                            ))}
+                          </div>
+                        )}
+                        <SuccessRateBadge ratePct={successRates.has(brand) ? Math.round(successRates.get(brand) as number) : null} />
+                      </td>
                     </tr>
                   );
                 })
