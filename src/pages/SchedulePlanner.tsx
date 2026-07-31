@@ -72,9 +72,15 @@ export default function SchedulePlanner() {
   });
   const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
   const weekStartISO = useMemo(() => toISODate(weekStart), [weekStart]);
-  const [brands, setBrands] = useState<string[]>([]);
-  const [activePlatforms, setActivePlatforms] = useState<Platform[]>([]);
-  const [entries, setEntries] = useState<Entry[]>([]);
+  // Bundles brands/activePlatforms/entries together, tagged with the tab they
+  // were loaded for. This lets the schedule-loading effect below confirm the
+  // data it's about to hand to the scheduler actually belongs to the
+  // currently-selected tab — see the tabCtx.tab === tab guard there. Without
+  // that tag, a tab switch could fire the scheduler for the NEW tab using the
+  // OLD tab's brands/platforms/entries, since brands/activePlatforms/entries
+  // used to be three separate state slots that committed across multiple
+  // renders with no atomic "this batch belongs together" marker.
+  const [tabCtx, setTabCtx] = useState<{ tab: string; brands: string[]; activePlatforms: Platform[]; entries: Entry[] } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
   const [successRates, setSuccessRates] = useState<Map<string, number | null>>(new Map());
@@ -120,6 +126,14 @@ export default function SchedulePlanner() {
     let canceled = false;
     setBrandsLoading(true);
     setError(null);
+    // Reset tab-scoped state up front so a slow-loading new tab never shows
+    // the previous tab's brands/rates/pauses while it's loading, and so the
+    // schedule-loading effect's tabCtx.tab === tab guard sees a mismatch
+    // (tabCtx is null here) immediately rather than only once this async
+    // block resolves.
+    setTabCtx(null);
+    setSuccessRates(new Map());
+    setPauses([]);
     (async () => {
       try {
         const [rawEntries, headers] = await Promise.all([
@@ -134,11 +148,12 @@ export default function SchedulePlanner() {
             .filter((v): v is string => !!v && v.trim() !== ''),
         )].sort();
         if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
-        setBrands(uniqueBrands);
         const platforms = await resolveActivePlatforms(tab);
         if (canceled) return;
-        setActivePlatforms(platforms);
-        setEntries(rawEntries);
+        // Set all three together, tagged with the tab they were loaded for —
+        // never as separate setState calls, so there's no window where one
+        // has updated and the others haven't.
+        setTabCtx({ tab, brands: uniqueBrands, activePlatforms: platforms, entries: rawEntries });
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -161,13 +176,25 @@ export default function SchedulePlanner() {
   // today's data — those weeks just render whatever already exists, exactly
   // like a plain read. Manual cell-click editing is unaffected and still
   // works for every week.
+  //
+  // Additionally gated on `tabCtx !== null && tabCtx.tab === tab`: this
+  // effect's dependency array includes `tabCtx`, so it re-fires the instant
+  // `tab` changes (before the brands-loading effect above has finished
+  // resolving the new tab's data). Without the tag check, that first re-fire
+  // would run the scheduler for the NEW tab using whatever tabCtx still held
+  // from the OLD tab (or null, before it's populated) — writing
+  // brand_platform_pause and brand_schedule rows tagged with the new tab but
+  // built from the old tab's brand list and platform set. Requiring
+  // tabCtx.tab === tab means the scheduler only ever runs once tabCtx has
+  // actually been (re)populated for the currently-selected tab.
   useEffect(() => {
     let canceled = false;
     setScheduleLoading(true);
     (async () => {
       try {
         const isCurrentWeek = weekStartISO === toISODate(mondayOf(new Date()));
-        if (isCurrentWeek && isApproved && brands.length > 0 && activePlatforms.length > 0) {
+        const ctxReadyForTab = tabCtx !== null && tabCtx.tab === tab;
+        if (isCurrentWeek && isApproved && ctxReadyForTab && tabCtx!.brands.length > 0 && tabCtx!.activePlatforms.length > 0) {
           // recalculatePauses and ensureWeekGenerated are a paired backend
           // operation: recalculatePauses's DB deletes (clearing resumed
           // pauses) are already irreversible by the time it returns, so a
@@ -176,7 +203,7 @@ export default function SchedulePlanner() {
           // with "resuming" priority, and there's no way to recover it on a
           // later run). Let both complete once started; only check
           // `canceled` before touching state afterward.
-          const ctx: TabContext = { brands, activePlatforms, entries };
+          const ctx: TabContext = { brands: tabCtx!.brands, activePlatforms: tabCtx!.activePlatforms, entries: tabCtx!.entries };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
           await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
           if (canceled) return;
@@ -189,11 +216,11 @@ export default function SchedulePlanner() {
         setScheduleRows(rows);
         setPauses(activePauses);
 
-        if (activePlatforms.length > 0) {
+        if (ctxReadyForTab && tabCtx!.activePlatforms.length > 0) {
           const rateMap = new Map<string, number | null>();
-          for (const platform of activePlatforms) {
-            const rates = computeSuccessRates(entries, platform);
-            for (const brand of brands) {
+          for (const platform of tabCtx!.activePlatforms) {
+            const rates = computeSuccessRates(tabCtx!.entries, platform);
+            for (const brand of tabCtx!.brands) {
               const existing = rateMap.get(brand);
               const r = rates.get(`${tab} ${brand.trim()}`)?.rate ?? null;
               // A brand's Success Rate column combines all its active
@@ -213,13 +240,14 @@ export default function SchedulePlanner() {
     return () => {
       canceled = true;
     };
-  }, [tab, weekStartISO, brands, activePlatforms, entries, isApproved]);
+  }, [tab, weekStartISO, tabCtx, isApproved]);
 
   const filteredBrands = useMemo(() => {
+    const brands = tabCtx?.brands ?? [];
     const q = search.trim().toLowerCase();
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
-  }, [brands, search]);
+  }, [tabCtx, search]);
 
   async function handleCellClick(brand: string, platform: Platform, day: Weekday) {
     if (!isApproved) return;
@@ -239,6 +267,20 @@ export default function SchedulePlanner() {
     () => scheduleRows.length > 0 && scheduleRows.every((r) => r.platform == null),
     [scheduleRows],
   );
+
+  // Any week strictly after the current one is read-only in the UI: nothing
+  // gates a manual cell click against a future week today, and a stray click
+  // there would create a platform-tagged row that permanently blocks
+  // ensureWeekGenerated's no-op guard once that week actually becomes
+  // current (the guard only checks "does any platform row already exist for
+  // this (tab, weekStart)", with no way to tell a real generation apart from
+  // one stray manual row). Deliberately `>` not `>=` — the current week
+  // (weekStartISO === today's Monday) must stay fully interactive.
+  const isFutureWeek = useMemo(
+    () => weekStartISO > toISODate(mondayOf(new Date())),
+    [weekStartISO],
+  );
+  const activePlatforms = tabCtx?.activePlatforms ?? [];
 
   return (
     <div className="space-y-4">
@@ -398,7 +440,18 @@ export default function SchedulePlanner() {
                               platforms={activePlatforms}
                               rowsByPlatform={rowsByPlatform}
                               pausesByPlatform={pausesByPlatform}
-                              isApproved={isApproved}
+                              // A future week is read-only: forcing isApproved
+                              // to false here (rather than threading a
+                              // separate readOnly prop through ScheduleCell)
+                              // reuses its existing `clickable = isApproved &&
+                              // !isPaused` gate, so no chip in a future week
+                              // ever gets an onClick/cursor-pointer, exactly
+                              // like the legacy-week branch above. Still
+                              // renders whatever platform badges/statuses
+                              // already exist (including none, if the week
+                              // hasn't been touched) — only the click
+                              // affordance is removed.
+                              isApproved={isApproved && !isFutureWeek}
                               onToggle={(platform) => handleCellClick(brand, platform, day)}
                             />
                           )}
