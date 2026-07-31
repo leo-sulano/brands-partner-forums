@@ -33,6 +33,7 @@ const WEEKDAY_LABELS: Record<Weekday, string> = {
 
 const TAB_STORAGE_KEY = 'schedulePlanner.tab';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
+const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
 
 function mondayOf(date: Date): Date {
   const d = new Date(date);
@@ -70,7 +71,16 @@ export default function SchedulePlanner() {
       return '';
     }
   });
-  const [weekStart, setWeekStart] = useState<Date>(() => mondayOf(new Date()));
+  const [weekStart, setWeekStart] = useState<Date>(() => {
+    try {
+      const saved = sessionStorage.getItem(WEEK_STORAGE_KEY);
+      const parsed = saved ? new Date(`${saved}T00:00:00`) : null;
+      if (parsed && !Number.isNaN(parsed.getTime())) return mondayOf(parsed);
+    } catch {
+      // sessionStorage unavailable — fall through to the current week
+    }
+    return mondayOf(new Date());
+  });
   const weekStartISO = useMemo(() => toISODate(weekStart), [weekStart]);
   // Bundles brands/activePlatforms/entries together, tagged with the tab they
   // were loaded for. This lets the schedule-loading effect below confirm the
@@ -117,6 +127,14 @@ export default function SchedulePlanner() {
       // same as above
     }
   }, [search]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(WEEK_STORAGE_KEY, weekStartISO);
+    } catch {
+      // same as above
+    }
+  }, [weekStartISO]);
 
   // Brand list depends only on the tab (raw entries + headers), never on the
   // displayed week — re-fetching this on every Prev/Next/Today click would

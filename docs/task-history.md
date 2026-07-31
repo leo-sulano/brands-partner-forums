@@ -1649,3 +1649,72 @@ Brand tab pages (`BrandGroup.tsx`) previously showed Total/Live/Removed (single-
 - Spec: `docs/superpowers/specs/2026-07-30-brand-tab-success-rate-card-design.md`. Plan: `docs/superpowers/plans/2026-07-30-brand-tab-success-rate-card.md`.
 
 ---
+
+## Task 159: Schedule Planner (Per-Tab Weekly Status Grid)
+
+**Date:** July 30, 2026
+
+Added a Schedule Planner — a per-tab weekly grid tracking which weekdays a brand's outreach/posting is active vs. paused, independent of any specific calendar week.
+
+- New `brand_schedule` table: one recurring Mon-Fri row per (tab, brand), five nullable day columns constrained to `'active' | 'paused'` (NULL = unset), a generated `brand_key` for case/whitespace-insensitive matching, and all four RLS policies (read/insert/update/delete for approved users).
+- New page `src/pages/SchedulePlanner.tsx`, routed at `/schedule-planner`, linked from the sidebar's "Admin" section next to Score Summary and Log — not admin-only, gated only by the same `ProtectedRoute` every approved user passes through.
+- Brand-tab dropdown, search box filtering rows by brand name, cosmetic prev/next-week/Today navigation (only relabels dates, doesn't affect any cell — the schedule wasn't yet tied to a real week), frozen Brand column and frozen weekday header via sticky positioning so both stay visible while scrolling.
+- Clicking a day cell cycles blank → ✓ (active) → Pause → blank and persists immediately via new `fetchBrandSchedule`/`setBrandScheduleDay` in `src/lib/queries.ts`; cycle/lookup logic factored into `src/lib/scheduleBrands.ts` (8 unit tests).
+- Full test suite (99 tests) and build both pass. Live-verified end to end as the signed-in admin user: sidebar link, tab dropdown, search filtering, click-cycle persistence across reload, independent per-tab state, and sticky scroll on both axes at a narrow viewport. Non-admin-approved-user access confirmed by reading the code (no `isAdmin` check anywhere in the page or its sidebar link) rather than a second live account.
+- Spec: `docs/superpowers/specs/2026-07-30-schedule-planner-design.md`. Plan: `docs/superpowers/plans/2026-07-30-schedule-planner.md`.
+
+---
+
+## Task 160: Schedule Planner — Per-Calendar-Week Tracking & Historical Import
+
+**Date:** July 31, 2026
+
+Moved the Schedule Planner from one recurring Mon-Fri template per (tab, brand) to real per-calendar-week tracking, and imported 9 months of real history (Oct 2025–present) from `csv/Scheduled_Planner.xlsx`.
+
+- `brand_schedule` gained a `week_start date not null` column (the Monday of that week); uniqueness widened to `(tab, brand_key, week_start)`; the 43 rows already in the table were backfilled to the week they were written before the column went `NOT NULL`.
+- `scheduleFor`/`withDayStatus` and `fetchBrandSchedule`/`setBrandScheduleDay` all now take a `weekStart` parameter; the page's prev/next/Today buttons trigger a real refetch instead of only relabeling dates, and every week (past or future) is independently editable.
+- Historical import: parsed all 42 dated sheets in the source spreadsheet, deriving each sheet's `week_start` from its name (41/42 land exactly on a Monday 7 days apart; one, a typo in the source, corrected to the computed date). Two older sheets genuinely combined two brand groups under one shared header row — a real historical layout, not a data error — so brand-to-tab matching was resolved per-brand rather than per-whole-sheet, with anchor-tab disambiguation for 4 brand names shared verbatim between two tabs. Wrote 1119 rows across all 42 weeks via bulk upsert; the skip list for brands matching none of today's 11 tabs stayed stable at 6 known groups.
+- Caught and fixed a real timezone bug before it shipped: `date.toISOString().slice(0, 10)` rolls the calendar date back one day in any UTC+ timezone (this dev environment is UTC+8), which would have made every migrated row permanently invisible in that timezone; fixed to build the ISO string from local `getFullYear`/`getMonth`/`getDate()`, matching the page's existing local-time helpers, with a `TZ=Asia/Manila` regression test guarding against a re-regression.
+- Also fixed the week-navigation refetch re-downloading a tab's entire (2000+ row) entries table on every Prev/Next/Today click; split into two effects (`[tab]` for entries/brands, `[tab, weekStartISO]` for schedule data only), which also fixed a "Today" no-op still triggering a reload.
+- Full test suite (110 tests) and build both pass. One known, deliberately-deferred issue: the schedule-only effect doesn't clear the error banner on a successful fetch after a prior failure — low-impact, one-line fix, left for a follow-up.
+- Spec: `docs/superpowers/specs/2026-07-31-schedule-planner-per-week-design.md`. Plan: `docs/superpowers/plans/2026-07-31-schedule-planner-per-week.md`.
+
+---
+
+## Task 161: Intelligent Schedule Planner — Auto-Generation, Pause/Resume, Success Rate
+
+**Date:** July 31, 2026
+
+Turned the Schedule Planner into a platform-aware (TP/AG/CG/WO) system with auto-generation, auto-pause/resume, and a Success Rate column on top of the per-week grid shipped in Tasks 159–160.
+
+- New `src/lib/scheduler/` module: `schedulerRules.ts` (configurable per-platform posting frequency — TP 2/wk preferring Mon+Thu or Tue+Fri, AG 2/wk, CG 1/wk, WO 3/wk preferring Mon/Wed/Fri — plus pause/carryover thresholds), pure `schedulerEngine.ts` (`generateWeekSchedule`, priority-ordered carryover→resuming→normal assignment with day-load balancing), I/O `schedulerService.ts` (`recalculatePauses`/`ensureWeekGenerated`), shared `scheduleUtils.ts`, presentational `calendarRenderer.tsx`.
+- `brand_schedule` gained a nullable `platform` column, applied live via the Supabase SQL Editor (no DB credential available in-session; migration file written after, to match); the 1,133 pre-existing rows keep `platform = null` and render read-only in the old checkmark style. New `brand_platform_pause` table (same 4-policy RLS shape as `brand_schedule`) tracks one row per active pause, inserted when a brand+platform's two most recent posts are both Removed/Refused, deleted a week later on resume.
+- Generation/pause-recalc run lazily, gated to the actual current week only — browsing to a past or future week never triggers a write, and future weeks are read-only in the UI for the same reason.
+- Day cells show one small colored badge per platform instead of a bare checkmark, with a hover/long-press tooltip for status detail; a paused platform's badge is dimmed and non-interactive for the week it governs, with a separate "⛔ Paused" indicator. New Success Rate column reuses `computeSuccessRates`, color-coded green/yellow/red.
+- Completion-based carryover ("<40% last week → carry unfinished work forward") is implemented but **deliberately disabled** (`CARRYOVER_RULES.completionThreshold = 0`) — the formula as specified compounds unbounded and would saturate any underperforming brand to all 5 weekdays within ~5 weeks; needs a redesign (time-scoped completion, capped/remainder-based count) validated against real platform-generated week data before re-enabling.
+- Built via 12 subagent-driven-development tasks with per-task review; the review loop caught and fixed 3 genuine plan-level bugs before they shipped — a duplicate-day collision silently nullifying carryover, a pause-reinsertion bug permanently defeating re-pausing after one resume cycle, and a tab-switch race where the scheduler could write a newly-selected tab's week using the *previous* tab's brand list (caught only by the final whole-branch review).
+- One known follow-up, never resolvable in-session (no Supabase DB credential available): confirm the live `WoO Review Status`/`Wizard of Odds` header names on a WO-tracking tab against `scoreSummary.ts`'s `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS` (exact-match) before trusting WO pause detection's post-recency ordering.
+- Full test suite (395 tests) and build both pass.
+- Spec: `docs/superpowers/specs/2026-07-31-intelligent-schedule-planner-design.md`. Plan: `docs/superpowers/plans/2026-07-31-intelligent-schedule-planner.md`.
+
+---
+
+## Task 162: Fix Brand Tab Filters/Search Not Persisting Across Navigation
+
+**Date:** July 31, 2026
+
+Sidebar tab links carry no query string, and agent/proxy/country/search/date filters on brand tab pages had no persistence at all, so every tab switch reset the whole view back to blank.
+
+- `BrandGroup.tsx` now restores the last-used view per tab from `localStorage`, mirroring the existing sort-order persistence, while explicit deep-link query params (brand/platform/status/rating) still take priority as before.
+
+---
+
+## Task 163: Schedule Planner Favicon Icons, Filter Font-Size Bump & Housekeeping
+
+**Date:** July 31, 2026
+
+- Swapped the TP/AG/CG/WO letter badges in Schedule Planner's day cells and paused-platform indicator for real platform favicon icons, matching the treatment already used in Score Summary's platform filter and the Brand Tabs modal; centralized the favicon URLs into a shared `PLATFORM_FAVICON` map in `src/lib/removedPlatformBrands.ts` instead of a third duplicate. Labeled the tab selector "Brand Tabs" to match terminology used elsewhere in the app.
+- Bumped Score Summary's filter row (platform tabs, date range pickers, brand dropdown) from `text-xs` (12px) to `text-sm` (14px) for readability; `DatePicker` gained a scoped `triggerTextClassName` prop so Brand Group's own date pickers are unaffected.
+- Housekeeping: added `csv/` to `.gitignore` (source data already imported into the DB); reverted an unrelated `BrandGroup.tsx` WIP that had been accidentally staged and committed to main from an earlier stash-pop conflict resolution (the WIP itself is preserved locally as uncommitted changes, not lost).
+
+---

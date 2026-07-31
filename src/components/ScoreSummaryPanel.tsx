@@ -96,6 +96,36 @@ const PLATFORM_DATE_LABEL: Record<Platform, string> = {
 
 const PLATFORM_VALUES = new Set<string>(['tp', 'ag', 'cg', 'wo']);
 
+// Remembers the last view (platform/date range/tab) so that the sidebar's
+// bare `/score-summary` link — which carries no query string — restores it
+// instead of always reopening to the tp/all-time/all-brands defaults.
+// Mirrors BrandGroup's per-tab filter persistence.
+const FILTER_STORAGE_KEY = 'bpf_score_summary_filters';
+
+type StoredScoreSummaryFilters = {
+  platform: string;
+  from: string;
+  to: string;
+  tab: string;
+};
+
+function readFiltersFromStorage(): Partial<StoredScoreSummaryFilters> {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeFiltersToStorage(filters: StoredScoreSummaryFilters) {
+  try {
+    localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(filters));
+  } catch {
+    // storage unavailable/full — view just won't persist across navigation
+  }
+}
+
 export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMPTY_REMOVED_PLATFORM_BRANDS }: Props) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -121,6 +151,44 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
   const setFromIso = (v: string) => setParam('from', v);
   const setToIso = (v: string) => setParam('to', v);
   const setTabFilter = (v: string) => setParam('tab', v);
+
+  // On first mount only: a bare URL (no filter params at all — the sidebar
+  // link, or the initial page load) restores the last remembered view. An
+  // explicit query string (a future deep link) always wins and is left
+  // untouched.
+  const didInitRef = useRef(false);
+  const skipNextFilterSaveRef = useRef(false);
+  useEffect(() => {
+    if (didInitRef.current) return;
+    didInitRef.current = true;
+    const hasAnyParam = ['platform', 'from', 'to', 'tab'].some((p) => searchParams.has(p));
+    if (hasAnyParam) return;
+    const saved = readFiltersFromStorage();
+    if (!saved.platform && !saved.from && !saved.to && !saved.tab) return;
+    skipNextFilterSaveRef.current = true;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (saved.platform && saved.platform !== 'tp') next.set('platform', saved.platform); else next.delete('platform');
+      if (saved.from) next.set('from', saved.from); else next.delete('from');
+      if (saved.to) next.set('to', saved.to); else next.delete('to');
+      if (saved.tab) next.set('tab', saved.tab); else next.delete('tab');
+      return next;
+    }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Remember the current view so it can be restored on return (see the
+  // mount effect above). Skipped once right after that effect runs: its
+  // setSearchParams call hasn't committed yet when this effect fires in the
+  // same flush, so without the guard it would immediately overwrite the
+  // just-read storage with the pre-restore (blank) values.
+  useEffect(() => {
+    if (skipNextFilterSaveRef.current) {
+      skipNextFilterSaveRef.current = false;
+      return;
+    }
+    writeFiltersToStorage({ platform, from: fromIso, to: toIso, tab: tabFilter });
+  }, [platform, fromIso, toIso, tabFilter]);
 
   // Range is driven entirely by the From/To date pickers. Both empty = all time.
   const range = useMemo(
