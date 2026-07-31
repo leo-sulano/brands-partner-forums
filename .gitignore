@@ -51,5 +51,8 @@ supabase/functions/**/.env
 # Superpowers scratch state (brainstorm sessions, plan state)
 .superpowers/
 
+# Source data already imported into the DB — not app code
+csv/
+
 # Stray temp files
 *.tmp.*
