@@ -2,7 +2,7 @@ import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, C
 import { inDateRange } from './dateUtils';
 import { getTabColumns, getBrandNameCol } from './tab-configs';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands';
-import type { BrandScheduleRow, Weekday, DayStatus } from './scheduleBrands';
+import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands';
 import type { Mention, MentionStatus } from '../types/mention';
 import type { Entry } from '../types/entry';
 import type { Profile } from '../types/profile';
@@ -320,6 +320,22 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
   return Array.from(new Set(filtered));
 }
 
+// Mirrors the tpCol/agCol/cgCol/woCol resolution inside fetchTabKpis (kept as
+// a separate, header-only function here — the scheduler only needs which
+// platforms exist for a tab, not the full KPI computation).
+export async function resolveActivePlatforms(tab: string): Promise<Platform[]> {
+  const headers = await fetchTabHeaders(tab);
+  function has(...variants: string[]): boolean {
+    return variants.some((v) => headers.some((h) => h.toLowerCase() === v.toLowerCase()));
+  }
+  const platforms: Platform[] = [];
+  if (has('TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status')) platforms.push('tp');
+  if (has('AG Review Status')) platforms.push('ag');
+  if (has('CG Review Status')) platforms.push('cg');
+  if (has('WoO Review Status')) platforms.push('wo');
+  return platforms;
+}
+
 function isLiveStatus(s: string) {
   if (s.includes('not pub') || s.includes('refused')) return false;
   return s.includes('published') || s.includes('live');
@@ -327,7 +343,7 @@ function isLiveStatus(s: string) {
 function isRemovedStatus(s: string) {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
-function isDoneStatus(s: string) { return s === 'done'; }
+export function isDoneStatus(s: string) { return s === 'done'; }
 function isPendingStatus(s: string) { return s.includes('pending') || s === 'not published'; }
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
@@ -629,29 +645,46 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
 export async function fetchBrandSchedule(tab: string, weekStart: string): Promise<BrandScheduleRow[]> {
   const { data, error } = await supabase
     .from('brand_schedule')
-    .select('tab, brand_key, week_start, monday, tuesday, wednesday, thursday, friday')
+    .select('tab, brand_key, week_start, platform, monday, tuesday, wednesday, thursday, friday')
     .eq('tab', tab)
     .eq('week_start', weekStart);
   if (error) throw error;
   return (data ?? []) as BrandScheduleRow[];
 }
 
-// Upserts on (tab, brand_key, week_start) — only the one `day` column (plus
-// updated_at) is included in the payload, so PostgREST's generated
-// `ON CONFLICT ... DO UPDATE SET` only touches that column, leaving the
-// other four weekdays on that week's row exactly as they were.
+// Upserts on (tab, brand_key, platform, week_start) — only the one `day`
+// column (plus updated_at) is included in the payload, so PostgREST's
+// generated ON CONFLICT ... DO UPDATE SET only touches that column, leaving
+// the other four weekdays on that row exactly as they were. `platform` is
+// always a real platform here — manual clicks (the only caller) always
+// target one specific platform's cell, never a legacy platform-less row.
 export async function setBrandScheduleDay(
   tab: string,
   brand: string,
   weekStart: string,
+  platform: Platform,
   day: Weekday,
   status: DayStatus,
 ): Promise<void> {
   const { error } = await supabase
     .from('brand_schedule')
     .upsert(
-      { tab, brand, week_start: weekStart, [day]: status, updated_at: new Date().toISOString() },
-      { onConflict: 'tab,brand_key,week_start' },
+      { tab, brand, week_start: weekStart, platform, [day]: status, updated_at: new Date().toISOString() },
+      { onConflict: 'tab,brand_key,platform,week_start' },
+    );
+  if (error) throw error;
+}
+
+// Bulk-writes generation output in one round trip. Each row supplies all
+// five day columns (nulls included) so a freshly-generated row is written in
+// full, unlike setBrandScheduleDay's single-column partial upsert.
+export async function bulkUpsertBrandSchedule(rows: BrandScheduleUpsertRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  const { error } = await supabase
+    .from('brand_schedule')
+    .upsert(
+      rows.map((r) => ({ ...r, updated_at: new Date().toISOString() })),
+      { onConflict: 'tab,brand_key,platform,week_start' },
     );
   if (error) throw error;
 }
