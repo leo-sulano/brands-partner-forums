@@ -689,6 +689,49 @@ export async function bulkUpsertBrandSchedule(rows: BrandScheduleUpsertRow[]): P
   if (error) throw error;
 }
 
+export interface BrandPlatformPause {
+  tab: string;
+  brand_key: string;
+  platform: Platform;
+  paused_week_start: string;
+  reason: string;
+}
+
+export async function fetchActiveBrandPlatformPauses(tab: string): Promise<BrandPlatformPause[]> {
+  const { data, error } = await supabase
+    .from('brand_platform_pause')
+    .select('tab, brand_key, platform, paused_week_start, reason')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as BrandPlatformPause[];
+}
+
+export async function upsertBrandPlatformPause(
+  tab: string,
+  brand: string,
+  platform: Platform,
+  pausedWeekStart: string,
+  reason: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('brand_platform_pause')
+    .upsert(
+      { tab, brand, platform, paused_week_start: pausedWeekStart, reason },
+      { onConflict: 'tab,brand_key,platform' },
+    );
+  if (error) throw error;
+}
+
+export async function deleteBrandPlatformPause(tab: string, brandKey: string, platform: Platform): Promise<void> {
+  const { error } = await supabase
+    .from('brand_platform_pause')
+    .delete()
+    .eq('tab', tab)
+    .eq('brand_key', brandKey)
+    .eq('platform', platform);
+  if (error) throw error;
+}
+
 // ---------------------------------------------------------------------------
 // TP/AG/CG/WO review status check triggers
 // ---------------------------------------------------------------------------
