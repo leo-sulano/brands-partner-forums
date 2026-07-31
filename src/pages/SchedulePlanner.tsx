@@ -157,9 +157,16 @@ export default function SchedulePlanner() {
       try {
         const isCurrentWeek = weekStartISO === toISODate(mondayOf(new Date()));
         if (isCurrentWeek && isApproved && brands.length > 0 && activePlatforms.length > 0) {
+          // recalculatePauses and ensureWeekGenerated are a paired backend
+          // operation: recalculatePauses's DB deletes (clearing resumed
+          // pauses) are already irreversible by the time it returns, so a
+          // `canceled` bail-out between the two calls would lose those
+          // resumed combos permanently (they'd never get scheduled this week
+          // with "resuming" priority, and there's no way to recover it on a
+          // later run). Let both complete once started; only check
+          // `canceled` before touching state afterward.
           const ctx: TabContext = { brands, activePlatforms, entries };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
-          if (canceled) return;
           await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
           if (canceled) return;
         }
@@ -308,10 +315,15 @@ export default function SchedulePlanner() {
                       {WEEKDAYS.map((day) => (
                         <td key={day} className="px-3 py-2 text-left align-top">
                           {isLegacyWeek ? (
-                            <div
-                              onClick={() => handleCellClick(brand, 'tp', day)}
-                              className={isApproved ? 'cursor-pointer' : ''}
-                            >
+                            // Legacy weeks are read-only, for every user, always: this
+                            // grid's ~1,133 imported historical rows are never
+                            // migrated/edited/regenerated (see CLAUDE.md), so no
+                            // onClick/cursor-pointer here at all — no
+                            // `handleCellClick`, since that would create a
+                            // platform='tp' row and flip `isLegacyWeek` to false on
+                            // the very next render, silently hiding this week's other
+                            // platform-null rows.
+                            <div>
                               {legacyRow?.[day] === 'active' && <span className="text-emerald-600 font-semibold">✓</span>}
                               {legacyRow?.[day] === 'paused' && (
                                 <span className="inline-block rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">Pause</span>
@@ -321,13 +333,26 @@ export default function SchedulePlanner() {
                             <div className="flex flex-wrap gap-1">
                               {activePlatforms.map((platform) => {
                                 const row = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
-                                if (row?.[day] == null) return null;
+                                const status = row?.[day] ?? null;
                                 const badge = PLATFORM_BADGE[platform];
+                                // Every active platform gets a chip in every cell,
+                                // regardless of whether a row/day value exists yet —
+                                // an unset day has no DB row, but it must still be
+                                // clickable so a manual override can turn it on.
+                                // Three distinct visual states so all three are
+                                // unambiguous at a glance: solid fill (active),
+                                // dimmed fill (paused), faint outline (unset).
+                                const stateClassName =
+                                  status === 'active'
+                                    ? badge.className
+                                    : status === 'paused'
+                                      ? `${badge.className} opacity-40`
+                                      : 'border border-dashed border-slate-300 text-slate-400 opacity-30 hover:opacity-70';
                                 return (
                                   <span
                                     key={platform}
                                     onClick={() => handleCellClick(brand, platform, day)}
-                                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${badge.className} ${isApproved ? 'cursor-pointer' : ''} ${row[day] === 'paused' ? 'opacity-40' : ''}`}
+                                    className={`inline-flex items-center rounded px-1.5 py-0.5 text-xs font-semibold ${stateClassName} ${isApproved ? 'cursor-pointer' : ''}`}
                                   >
                                     {badge.label}
                                   </span>
