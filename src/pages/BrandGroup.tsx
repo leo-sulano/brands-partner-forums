@@ -639,43 +639,6 @@ function writeSortToStorage(tab: string, col: string | null, dir: 'asc' | 'desc'
   }
 }
 
-// Remembers the last view (search/filters/date range) per brand tab so that
-// leaving a tab (which fully unmounts this route) and coming back restores
-// it, instead of the tab always reopening blank.
-type StoredBrandFilters = {
-  search: string;
-  brandFilter: string;
-  agentFilter: string;
-  proxyFilter: string;
-  countryFilter: string;
-  statusFilter: string;
-  platformFilter: string;
-  ratingFilter: number | 'unrated' | 'any' | null;
-  dateFrom: string;
-  dateTo: string;
-};
-
-function filterStorageKey(tab: string) {
-  return `bpf_filters_${tab}`;
-}
-
-function readFiltersFromStorage(tab: string): Partial<StoredBrandFilters> {
-  try {
-    const raw = localStorage.getItem(filterStorageKey(tab));
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeFiltersToStorage(tab: string, filters: StoredBrandFilters) {
-  try {
-    localStorage.setItem(filterStorageKey(tab), JSON.stringify(filters));
-  } catch {
-    // storage unavailable/full — view just won't persist across navigation
-  }
-}
-
 export default function BrandGroup() {
   const { tab } = useParams<{ tab: string }>();
   // URL carries kebab-case slug (e.g. "tp-brand-injection"); resolve to the
@@ -728,15 +691,6 @@ export default function BrandGroup() {
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
   const lastLoadedTabRef = useRef<string | null>(null);
-  // Set right after the tab-change block below restores filters from storage,
-  // so the auto-save effect skips the one render where state still holds the
-  // previous tab's stale values (state updates from that block haven't
-  // committed yet when effects run in the same flush).
-  const skipNextFilterSaveRef = useRef(false);
-  // Tracks which tab the URL re-sync effect below last processed, so it can
-  // tell a genuine tab change (already handled by the effect above) apart
-  // from a same-tab query-string change it should still react to.
-  const lastResyncedTabRef = useRef<string | null>(null);
 
   // Sticky toolbar: the column-header row sticks just below this element,
   // offset by its live height. The toolbar's height isn't fixed — it wraps
@@ -850,40 +804,25 @@ export default function BrandGroup() {
       setHeaders([]);
       setFullHeaders([]);
       setError(null);
-
-      // An explicit deep link (e.g. from Score Summary or Overview) always wins
-      // over whatever was remembered for this tab. A bare tab URL — including
-      // the sidebar's tab links, which never carry a query string — restores
-      // the last view instead of always reopening blank.
-      const saved = readFiltersFromStorage(decodedTab);
-      const hasDeepLinkParams = ['brand', 'platform', 'status', 'rating'].some((p) => searchParams.has(p));
-
-      setSearch(saved.search ?? '');
-      setBrandFilter(hasDeepLinkParams ? (searchParams.get('brand') ?? '') : (saved.brandFilter ?? ''));
-      setStatusFilter(hasDeepLinkParams
-        ? (STATUS_FILTER_VALUES.includes(searchParams.get('status') as typeof STATUS_FILTER_VALUES[number]) ? searchParams.get('status') as typeof STATUS_FILTER_VALUES[number] : 'all')
-        : (STATUS_FILTER_VALUES.includes(saved.statusFilter as typeof STATUS_FILTER_VALUES[number]) ? saved.statusFilter as typeof STATUS_FILTER_VALUES[number] : 'all'));
-      setPlatformFilter(hasDeepLinkParams
-        ? (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
-        : (['tp', 'ag', 'cg', 'wo'].includes(saved.platformFilter ?? '') ? saved.platformFilter as 'tp' | 'ag' | 'cg' | 'wo' : 'all'));
-      setRatingFilter(hasDeepLinkParams
-        ? (() => {
-            const raw = searchParams.get('rating');
-            if (raw === 'unrated') return 'unrated';
-            if (raw === 'any') return 'any';
-            const r = Number(raw);
-            return Number.isInteger(r) && r > 0 ? r : null;
-          })()
-        : (saved.ratingFilter ?? null));
-      setAgentFilter(saved.agentFilter ?? '');
-      setProxyFilter(saved.proxyFilter ?? '');
-      setCountryFilter(saved.countryFilter ?? '');
-      setDateFrom(saved.dateFrom ?? '');
-      setDateTo(saved.dateTo ?? '');
+      setSearch('');
+      setBrandFilter(searchParams.get('brand') ?? '');
+      setStatusFilter('all');
+      setPlatformFilter((['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all'));
+      setRatingFilter((() => {
+        const raw = searchParams.get('rating');
+        if (raw === 'unrated') return 'unrated';
+        if (raw === 'any') return 'any';
+        const r = Number(raw);
+        return Number.isInteger(r) && r > 0 ? r : null;
+      })());
+      setAgentFilter('');
+      setProxyFilter('');
+      setCountryFilter('');
+      setDateFrom('');
+      setDateTo('');
       setPage(1);
       setJumpInput('');
       setSelectedIds(new Set());
-      skipNextFilterSaveRef.current = true;
     }
 
     (async () => {
@@ -1030,14 +969,6 @@ export default function BrandGroup() {
   // for the same brand-group tab. The effect above only re-derives these on an actual tab
   // change; without this, such same-tab navigations would silently keep the old filters.
   useEffect(() => {
-    if (lastResyncedTabRef.current !== decodedTab) {
-      // An actual tab change (including a fresh mount) is already fully handled
-      // by the effect above, which also falls back to the remembered per-tab
-      // view when the URL carries no filter params — running the URL-only sync
-      // below too would immediately blank out whatever that effect restored.
-      lastResyncedTabRef.current = decodedTab;
-      return;
-    }
     const p = searchParams.get('platform');
     setPlatformFilter(['tp', 'ag', 'cg', 'wo'].includes(p ?? '') ? (p as 'tp' | 'ag' | 'cg' | 'wo') : 'all');
     const s = searchParams.get('status');
@@ -1052,24 +983,7 @@ export default function BrandGroup() {
       const r = Number(raw);
       setRatingFilter(Number.isInteger(r) && r > 0 ? r : null);
     }
-  }, [searchParams, decodedTab]);
-
-  // Remember the current view per tab so it can be restored on return (see the
-  // tab-change block above). Skipped once right after that block runs: its
-  // setState calls haven't committed yet when this effect fires in the same
-  // flush, so without the guard it would immediately overwrite the just-read
-  // storage with the previous tab's stale values.
-  useEffect(() => {
-    if (skipNextFilterSaveRef.current) {
-      skipNextFilterSaveRef.current = false;
-      return;
-    }
-    if (!decodedTab) return;
-    writeFiltersToStorage(decodedTab, {
-      search, brandFilter, agentFilter, proxyFilter, countryFilter,
-      statusFilter, platformFilter, ratingFilter, dateFrom, dateTo,
-    });
-  }, [decodedTab, search, brandFilter, agentFilter, proxyFilter, countryFilter, statusFilter, platformFilter, ratingFilter, dateFrom, dateTo]);
+  }, [searchParams]);
 
   useEffect(() => {
     setSelectedIds(new Set());
