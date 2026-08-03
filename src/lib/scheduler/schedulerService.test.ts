@@ -96,6 +96,80 @@ describe('recalculatePauses', () => {
     await recalculatePauses('BITP', '2026-08-03', ctx);
     expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
   });
+
+  describe('success-rate trigger', () => {
+    it('pauses a brand+platform whose all-time success rate is below 40% with at least 5 decided posts', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          // Most recent post is Published, so the consecutive-removed check
+          // (top 2 by date) never fires here — isolates the success-rate path.
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-15' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Success rate below 40% (20% over 5 posts)',
+      );
+    });
+
+    it('does not pause on a low success rate with fewer than 5 decided posts', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('does not pause at exactly 40% (boundary is strictly-below)', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-07-24' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-15' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('prefers the consecutive-removed reason when both triggers are true at once', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          // Top 2 most recent are both Removed (fires consecutive-removed)
+          // AND overall rate is 1/5 = 20% with 5 decided posts (would also
+          // fire success-rate) -- only one pause row/reason should result.
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-01' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-07-15' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Two consecutive Removed/Refused posts',
+      );
+    });
+  });
 });
 
 describe('ensureWeekGenerated', () => {

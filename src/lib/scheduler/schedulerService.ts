@@ -6,13 +6,16 @@ import {
   upsertBrandPlatformPause,
   deleteBrandPlatformPause,
 } from '../queries';
-import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate } from '../scoreSummary';
+import {
+  PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
+  computeSuccessRates, successRatePct,
+} from '../scoreSummary';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands';
 import { BRAND_COLS } from '../tab-configs';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine';
 import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils';
-import { CARRYOVER_RULES } from './schedulerRules';
+import { CARRYOVER_RULES, PAUSE_RULES } from './schedulerRules';
 import type { Entry } from '../../types/entry';
 
 export interface TabContext {
@@ -70,6 +73,12 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   const weekAlreadyGenerated = existingRows.some((r) => r.platform != null);
   const resumed: PinnedCombo[] = [];
 
+  // Computed once per active platform (not per brand) since each call scans
+  // all of ctx.entries — reused by the success-rate pause check below.
+  const ratesByPlatform = new Map(
+    ctx.activePlatforms.map((platform) => [platform, computeSuccessRates(ctx.entries, platform)]),
+  );
+
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
     for (const platform of ctx.activePlatforms) {
@@ -82,10 +91,31 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         continue;
       }
       if (weekAlreadyGenerated) continue;
+
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
       if (bothRemoved) {
         await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Two consecutive Removed/Refused posts');
+        continue;
+      }
+
+      // Second, independent trigger: sustained poor performance rather than
+      // just the last two posts. Lower priority than the check above — a
+      // combo can only hold one pause row, and consecutive-removed is
+      // checked first.
+      const sr = ratesByPlatform.get(platform)?.get(`${tab} ${brand.trim()}`);
+      const decided = (sr?.live ?? 0) + (sr?.removed ?? 0);
+      const lowSuccessRate =
+        sr != null &&
+        decided >= PAUSE_RULES.minDecidedPostsForRateCheck &&
+        sr.rate != null &&
+        sr.rate < PAUSE_RULES.successRateThreshold;
+      if (lowSuccessRate) {
+        const pct = successRatePct(sr!.rate);
+        await upsertBrandPlatformPause(
+          tab, brand, platform, weekStart,
+          `Success rate below ${PAUSE_RULES.successRateThreshold}% (${pct}% over ${decided} posts)`,
+        );
       }
     }
   }

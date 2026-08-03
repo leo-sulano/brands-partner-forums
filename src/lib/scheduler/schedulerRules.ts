@@ -21,6 +21,14 @@ export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
 export const PAUSE_RULES = {
   consecutiveRemovedThreshold: 2,
   pauseDurationWeeks: 1,
+  // A brand+platform combo also pauses when its all-time success rate
+  // (see computeSuccessRates in scoreSummary.ts) is strictly below this
+  // percentage, once it has at least minDecidedPostsForRateCheck decided
+  // (live+removed) posts on that platform. Independent of, and lower-
+  // priority than, the consecutiveRemovedThreshold rule above — see
+  // recalculatePauses in schedulerService.ts.
+  successRateThreshold: 40,
+  minDecidedPostsForRateCheck: 5,
 };
 
 export const CARRYOVER_RULES = {
