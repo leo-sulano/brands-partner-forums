@@ -74,14 +74,14 @@ describe('recalculatePauses', () => {
   });
 
   // Regression test: a pause is only meaningful if it's inserted before the
-  // target week's schedule is generated. If week W was already generated
-  // (platform-tagged rows exist for it), a newly-detected two-consecutive-
+  // target combo's schedule is generated. If a brand+platform combo already
+  // has a row for week W (platform-tagged), a newly-detected two-consecutive-
   // removed combo with no existing pause row must NOT insert a pause for W
-  // — that pause could never affect W's already-written schedule, and would
+  // — that pause could never affect W's already-written row, and would
   // instead corrupt week W+1's resume logic by looking like a real pause
   // that "expired" (see finding writeup: this previously let a brand+
   // platform get stuck permanently un-pauseable after one resume cycle).
-  it('does not insert a pause for a week that is already generated', async () => {
+  it('does not insert a pause for a combo that already has a row for the week', async () => {
     queries.fetchBrandSchedule.mockResolvedValue([
       { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
     ]);
@@ -197,12 +197,12 @@ describe('recalculatePauses', () => {
     });
 
     // Regression test: a success-rate pause is only meaningful if it's inserted
-    // before the target week's schedule is generated. If week W was already
-    // generated (platform-tagged rows exist for it), the success-rate check must
+    // before the target combo's schedule is generated. If a brand+platform combo
+    // already has a row for week W (platform-tagged), the success-rate check must
     // NOT insert a pause for W — it would never affect W's already-written
-    // schedule and would corrupt week W+1's resume logic (see the
-    // weekAlreadyGenerated guard).
-    it('does not insert a success-rate pause for a week that is already generated', async () => {
+    // row and would corrupt week W+1's resume logic (see the per-combo
+    // alreadyHasRow check in recalculatePauses).
+    it('does not insert a success-rate pause for a combo that already has a row for the week', async () => {
       queries.fetchBrandSchedule.mockResolvedValue([
         { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
       ]);
@@ -211,7 +211,7 @@ describe('recalculatePauses', () => {
         activePlatforms: ['tp'],
         entries: [
           // 1 live + 4 removed = 5 decided, rate 20% — would normally trigger
-          // success-rate pause, but week is already generated so no insert should occur.
+          // success-rate pause, but this combo already has a row so no insert should occur.
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),

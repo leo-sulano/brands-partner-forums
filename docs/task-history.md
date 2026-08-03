@@ -1813,8 +1813,58 @@ User-reported bug via the GRG - Gulf Recovery Group tab: a real Removed entry (`
 - Root cause: Task 169's fix only fired for `isLegacyWeek` (`scheduleRows.length > 0 && every(r => r.platform == null)`) — a week that already had at least one pre-existing platform-null row. GRG is a TP-only tab that was never part of the old spreadsheet's historical import (only the multi-platform brand groups were), so its `brand_schedule` has zero rows at all for any week before its scheduler first ran — data-wise identical to a legacy week (`rowsByPlatform` empty either way), but `isLegacyWeek` evaluates `false` for it, so the removed-merge never applied. This affects every past week on every TP-only tab (GRG, TP Brand Injection, TP Affiliate, SuprPlay Limited, HazEmirates UAE).
 - Scope was broadened (confirmed with the user) from "legacy weeks only" to universal: a removed chip should render anywhere no real `brand_schedule` row exists, exactly like a confirmed chip already does unconditionally — independent of week timing.
 - First attempt (reverted): merging `removedByPlatform` into the `confirmedByPlatform` value passed to `ScheduleCell`, unconditionally. Live-verified against the running dev server and real Supabase data, this produced a genuine visual bug — `buildDateStatusIndex`'s `removed`/`confirmed` sets are normally mutually exclusive per platform+date, so `ScheduleCell` never had to handle both `isConfirmed` and `isRemoved` being true for the same chip; the merge broke that invariant, making a removed-only day show both the ✓ and ✕ badges at once.
-- Actual fix, in `src/lib/scheduler/calendarRenderer.tsx`: `ScheduleCell`'s render guard now checks `isRemoved` directly (`!isPaused && status == null && !isConfirmed && !isRemoved`) instead of only `isConfirmed`, and `isActiveLook` includes `isRemoved` too — `isConfirmed`/`isRemoved` stay fully independent flags, so a chip can never show both corner badges from real data (which is never both at once for the same key). `SchedulePlanner.tsx`'s Task 169 merge and legacy-only gating for this specific behavior were removed; `isLegacyWeek` is retained only for the `isApproved` read-only gate (legacy and future weeks stay non-interactive, unchanged).
+- Actual fix, in `src/lib/scheduler/calendarRenderer.tsx`: `ScheduleCell`'s render guard now checks `isRemoved` directly (`!isPaused && status == null && !isConfirmed && !isRemoved`) instead of only `isConfirmed`, and `isActiveLook` includes `isRemoved` too — `isConfirmed`/`isRemoved` stay fully independent flags, so a chip can never show both corner badges from real data (which is never both at once for the same key). `SchedulePlanner.tsx`'s Task 169 merge and legacy-only gating for this specific behavior were removed; `isLegacyWeek` is retained only for the `isApproved` read-only gate (legacy and future weeks stay non-interactive, unchanged — future weeks were later unlocked in Task 171).
 - Live-verified end to end against the real running app and Supabase data for GRG's Jun 29 – Jul 3 week: Mon 29 (Removed) and Wed Jul 1 (Removed, `024 - HazEmirates UAE`) both now show a TP chip with the rose ring/✕ badge, Fri Jul 3 (Published, `001 l GrG TP l UAE`) shows the emerald ✓, and Tue 30/Thu 2 (no entries either date) render blank — an exact match to the tab's 13 real rows, confirmed by reading the raw Supabase response.
 - No schema change, no `brand_schedule` writes, still read-only. No new automated tests (consistent with this file's established lack of component-rendering test infra); verified via full test suite (269 tests) + build + the live check above.
+
+---
+
+## Task 171: Schedule Planner — Manual Editing Unlocked for Future Weeks
+
+**Date:** August 3, 2026
+
+Future weeks in the Schedule Planner were fully read-only in the UI, so a brand's schedule
+could only be set once auto-generation ran for that week (which only happens once it becomes
+current). This let users pre-fill a future week's schedule ahead of time instead.
+
+- The read-only lock existed because `ensureWeekGenerated`/`recalculatePauses`
+  (`src/lib/scheduler/schedulerService.ts`) both guarded against re-running with a week-wide
+  check — "does *any* platform-tagged row exist for this (tab, weekStart)?" — which is only
+  safe while manual edits can't happen ahead of generation. A single manual edit to one
+  brand+platform would have made that guard true for the *whole* week, silently blocking
+  generation and pause-detection for every other brand and platform once the week went live.
+- Fix: both guards moved from week-level to per-combo (brand+platform). `ensureWeekGenerated`
+  now computes which combos already have a row and passes them to `generateWeekSchedule` as
+  `pinnedBrandPlatforms` — an existing `SchedulerInput` field the engine already fully honored
+  in both its assignment loops, but that was always called with `[]` until now. Pinned combos
+  are skipped entirely, so a manual row is never touched by the bulk upsert; every other combo
+  still generates normally. `recalculatePauses`'s equivalent `weekAlreadyGenerated` short-circuit
+  was replaced the same way, so a manual row for Brand A no longer blocks pause-detection for
+  Brand B in the same week.
+- `SchedulePlanner.tsx`: the `isFutureWeek` gate (forcing `isApproved` off for the whole grid,
+  plus a `handleSetDayStatus` early-return) is deleted entirely. Future weeks now get full
+  click-to-cycle and "+ Add Platform" parity with the current week, with no added horizon limit
+  — any week the grid can already navigate to. `isLegacyWeek` remains the only read-only gate;
+  `isCurrentWeek`'s scheduler-invocation gate (auto-generation/pause-recalc only ever run for the
+  actual current week) is unchanged.
+- Protection against overwriting a manual edit is per `(brand, platform, week)`, not per exact
+  day — `setBrandScheduleDay` upserts a row for a combo on its first click and never deletes it
+  (even cycling back to blank leaves the row with that day column null), so "a row already
+  exists for this combo" is a reliable, persistent "manually touched" signal at that
+  granularity. Touching only Monday for a combo protects that combo's whole week from
+  regeneration, not just Monday — an accepted consequence of the one-row-per-combo data model.
+- Built as two sequenced tasks (backend guard fix, then UI unlock) via subagent-driven
+  development, each independently reviewed; final whole-branch review confirmed the two changes
+  compose correctly (traced that the pause-detection/generation interaction specifically stays
+  correct, not just each guard in isolation) and flagged a documentation gap as its one
+  Important finding, fixed in this same pass.
+- Full test suite (168 tests, including 2 new regression tests locking in combo-level, not
+  week-level, guard behavior) and build both pass. No schema change, no `brand_schedule`/
+  `brand_platform_pause` writes beyond what manual clicks already did. Live browser verification
+  of the future-week click-to-cycle/"+ Add Platform" path was not performed this session (no
+  browser-automation tooling available) — the unlocked path is otherwise byte-identical to the
+  already-live-verified current-week path (Tasks 164/169/170).
+- Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-future-week-manual-edit-design.md`.
+  Plan: `docs/superpowers/plans/2026-08-03-schedule-planner-future-week-manual-edit.md`.
 
 ---

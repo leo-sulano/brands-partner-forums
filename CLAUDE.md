@@ -56,7 +56,29 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-03 (newest):* Fixed a gap in the legacy-week chip fix directly below: it only fired
+- *2026-08-03 (newest):* Future Schedule Planner weeks are no longer read-only — supersedes the
+  "legacy and future weeks stay non-interactive, unchanged" line in Task 170's write-up
+  (`docs/task-history.md`). Users can now click-to-cycle and use "+ Add Platform" on any future
+  week the grid can already navigate to, exactly like the current week; only legacy
+  (pre-platform-tagged) weeks remain read-only. This was safe to unlock because
+  `ensureWeekGenerated`/`recalculatePauses` (`src/lib/scheduler/schedulerService.ts`) moved from
+  a week-level no-op guard ("does *any* platform row exist for this week?") to a per-brand+
+  platform-combo guard — a manual edit to one combo in a future week is passed to the generator
+  as a "pinned" combo (`pinnedBrandPlatforms`, an existing `SchedulerInput` field the engine
+  already fully honored but had never been wired up) and skipped, so it can no longer block
+  generation or pause-detection for every *other* combo once that week becomes current.
+  Protection is per (brand, platform, week), not per exact day — touching one day pins the
+  whole combo's row for that week, a deliberate consequence of the one-row-per-combo data
+  model, not a bug. `isFutureWeek` (`SchedulePlanner.tsx`) is deleted entirely; `isCurrentWeek`'s
+  scheduler-invocation gate is unchanged. Full test suite (168 tests, including 2 new
+  combo-level regression cases in `schedulerService.test.ts`) and build both pass. No schema
+  change. Live browser verification of the click-to-cycle/"+ Add Platform" path on a future
+  week was not performed this session (no browser-automation tooling available to the
+  implementing agent) — the unlocked code path is otherwise identical to the already
+  live-verified current-week path (Tasks 164/169/170). Spec:
+  `docs/superpowers/specs/2026-08-03-schedule-planner-future-week-manual-edit-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-03-schedule-planner-future-week-manual-edit.md`. Task 171.
+- *2026-08-03 (previous):* Fixed a gap in the legacy-week chip fix directly below: it only fired
   for weeks with an existing platform-null `brand_schedule` row, so a tab with *zero* rows for
   a past week (e.g. GRG - Gulf Recovery Group, a TP-only tab never covered by the old
   spreadsheet import) still showed nothing for a real Removed post — reported live by the user
@@ -159,9 +181,9 @@ Brands Partner Forum/
   are both Removed/Refused-classified (reusing `scoreSummary.ts`'s existing status/date
   helpers, now exported for reuse) and deleted a week later on resume. Generation/pause-recalc
   run lazily from the page's existing effect, gated to the actual current week only — browsing
-  to a past or future week never triggers a write; future weeks are read-only in the UI for
+  to a past or future week never triggers a write; future weeks were read-only in the UI for
   the same reason (a manual edit there would permanently block that week's own eventual
-  auto-generation). Day cells now show one small colored badge per platform (TP/AG/CG/WO)
+  auto-generation) until Task 171 made it safe to unlock. Day cells now show one small colored badge per platform (TP/AG/CG/WO)
   instead of a bare checkmark, with a hover/long-press tooltip for status detail (the
   design's originally-specified click-to-open popover was dropped in favor of keeping every
   cell — including never-scheduled ones — independently clickable, a deliberate,
