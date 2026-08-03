@@ -457,7 +457,6 @@ export default function SchedulePlanner() {
                 </tr>
               ) : (
                 filteredBrands.map((brand) => {
-                  const legacyRow = isLegacyWeek ? scheduleFor(scheduleRows, tab, brand, weekStartISO) : undefined;
                   const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
                   const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
                   return (
@@ -473,46 +472,32 @@ export default function SchedulePlanner() {
                       </td>
                       {WEEKDAYS.map((day, dayIndex) => (
                         <td key={day} className="px-3 py-2 text-left align-top">
-                          {isLegacyWeek ? (
-                            // Legacy weeks are read-only, for every user, always: this
-                            // grid's ~1,133 imported historical rows are never
-                            // migrated/edited/regenerated (see CLAUDE.md), so no
-                            // onClick/cursor-pointer here at all — no
-                            // `handleCellClick`, since that would create a
-                            // platform='tp' row and flip `isLegacyWeek` to false on
-                            // the very next render, silently hiding this week's other
-                            // platform-null rows.
-                            <div>
-                              {legacyRow?.[day] === 'active' && <span className="text-emerald-600 font-semibold">✓</span>}
-                              {legacyRow?.[day] === 'paused' && (
-                                <span className="inline-block rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">Pause</span>
-                              )}
-                            </div>
-                          ) : (
-                            <ScheduleCell
-                              brand={brand}
-                              day={day}
-                              platforms={activePlatforms}
-                              rowsByPlatform={rowsByPlatform}
-                              pausesByPlatform={pausesByPlatform}
-                              removedByPlatform={computeRemovedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
-                              confirmedByPlatform={computeConfirmedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
-                              // A future week is read-only: forcing isApproved
-                              // to false here (rather than threading a
-                              // separate readOnly prop through ScheduleCell)
-                              // reuses its existing `clickable = isApproved &&
-                              // !isPaused` gate, so no chip in a future week
-                              // ever gets an onClick/cursor-pointer, exactly
-                              // like the legacy-week branch above. Still
-                              // renders whatever platform badges/statuses
-                              // already exist (including none, if the week
-                              // hasn't been touched) — only the click
-                              // affordance is removed.
-                              isApproved={isApproved && !isFutureWeek}
-                              onToggle={(platform) => handleCellClick(brand, platform, day)}
-                              onAddPlatform={() => setAddPlatformTarget({ brand, day })}
-                            />
-                          )}
+                          <ScheduleCell
+                            brand={brand}
+                            day={day}
+                            platforms={activePlatforms}
+                            rowsByPlatform={rowsByPlatform}
+                            pausesByPlatform={pausesByPlatform}
+                            removedByPlatform={computeRemovedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
+                            confirmedByPlatform={computeConfirmedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
+                            // Both legacy weeks (imported platform-null brand_schedule rows,
+                            // pre-dating per-platform tracking) and future weeks are
+                            // read-only: forcing isApproved to false here (rather than
+                            // threading a separate readOnly prop through ScheduleCell) reuses
+                            // its existing `clickable = isApproved && !isPaused` gate, so no
+                            // chip in either kind of week ever gets an onClick/cursor-pointer
+                            // or a "+ Add Platform" button. A legacy week's rowsByPlatform is
+                            // already empty with zero extra code — scheduleFor's exact
+                            // `r.platform === platform` match never matches a platform-null
+                            // row — so every chip that renders for a legacy week comes
+                            // entirely from the confirmed/removed overlay below, computed
+                            // from real entry Added-dates. That's what makes a legacy week
+                            // visually accurate now, replacing the single plain checkmark it
+                            // used to show.
+                            isApproved={isApproved && !isFutureWeek && !isLegacyWeek}
+                            onToggle={(platform) => handleCellClick(brand, platform, day)}
+                            onAddPlatform={() => setAddPlatformTarget({ brand, day })}
+                          />
                         </td>
                       ))}
                       <td className="px-3 py-2 text-left">
