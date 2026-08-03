@@ -56,7 +56,20 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-03 (newest):* Legacy (pre-platform-tagged, `platform = null`) Schedule Planner weeks
+- *2026-08-03 (newest):* Fixed a gap in the legacy-week chip fix directly below: it only fired
+  for weeks with an existing platform-null `brand_schedule` row, so a tab with *zero* rows for
+  a past week (e.g. GRG - Gulf Recovery Group, a TP-only tab never covered by the old
+  spreadsheet import) still showed nothing for a real Removed post — reported live by the user
+  via GRG's Jun 29 – Jul 3 week. Broadened (confirmed with user) to a universal rule: a removed
+  chip renders anywhere no real schedule row exists, same as confirmed already does. A first
+  attempt (merging removed into confirmed at the `SchedulePlanner.tsx` call site) was reverted
+  after live Playwright verification against real Supabase data showed it broke
+  `buildDateStatusIndex`'s mutually-exclusive removed/confirmed invariant, making a removed-only
+  day show both the ✓ and ✕ badges at once. Real fix is in `ScheduleCell`
+  (`src/lib/scheduler/calendarRenderer.tsx`): the render guard and `isActiveLook` now check
+  `isRemoved` directly instead of only `isConfirmed`, keeping the two flags independent. No
+  schema change, no writes, still read-only. Task 170.
+- *2026-08-03 (previous):* Legacy (pre-platform-tagged, `platform = null`) Schedule Planner weeks
   now render through the same `ScheduleCell` component current weeks use instead of a separate
   plain-checkmark block, so a legacy week shows real TP/AG/CG/WO confirmed (green ✓) chips
   wherever a brand's entry has a Live/Published add-date matching that day — read-only, via

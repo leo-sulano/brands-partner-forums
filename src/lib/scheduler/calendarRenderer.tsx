@@ -24,9 +24,17 @@ interface ScheduleCellProps {
 
 // Each day cell renders a chip for a platform actually scheduled that day
 // (status !== null), scheduler-paused for the week (pausesByPlatform[platform]
-// truthy), or confirmed by a real entry's add-date matching this exact day
-// (confirmedByPlatform[platform] truthy, from buildDateStatusIndex) — an
-// otherwise-unset platform+day renders nothing, not even a placeholder.
+// truthy), or confirmed/removed by a real entry's add-date matching this
+// exact day (confirmedByPlatform[platform]/removedByPlatform[platform]
+// truthy, from buildDateStatusIndex) — an otherwise-unset platform+day
+// renders nothing, not even a placeholder. isConfirmed and isRemoved are
+// checked independently (both gate the render guard, both drive their own
+// corner badge) rather than folded into one flag, because a caller that
+// merged them to satisfy the guard would make a removed-only day show both
+// the ✓ and ✕ badges at once — buildDateStatusIndex's removed/confirmed sets
+// are mutually exclusive per platform+date, so in real data at most one of
+// isConfirmed/isRemoved is ever true for a given chip; keeping them separate
+// preserves that.
 // Earlier versions of this component rendered every active platform in every
 // cell unconditionally, including a dashed "unset" placeholder chip, so every
 // cell always had a click target to create the first row for a brand/week the
@@ -48,10 +56,10 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const row = rowsByPlatform[platform];
         const status: DayStatus = row?.[day] ?? null;
         const isConfirmed = !!confirmedByPlatform[platform];
-        if (!isPaused && status == null && !isConfirmed) return null;
         const isRemoved = !!removedByPlatform[platform];
+        if (!isPaused && status == null && !isConfirmed && !isRemoved) return null;
         const badge = PLATFORM_BADGE[platform];
-        const isActiveLook = status === 'active' || (status == null && isConfirmed);
+        const isActiveLook = status === 'active' || (status == null && (isConfirmed || isRemoved));
         const stateClassName = isPaused
           ? `${badge.className} opacity-30`
           : isActiveLook

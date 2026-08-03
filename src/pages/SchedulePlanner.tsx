@@ -474,19 +474,6 @@ export default function SchedulePlanner() {
                         const dayISO = toISODate(addDays(weekStart, dayIndex));
                         const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                         const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
-                        // On a legacy week there is no real brand_schedule row for
-                        // ScheduleCell's render guard to key off, so a Removed/Refused post
-                        // (which only ever decorates an existing chip, per
-                        // buildDateStatusIndex's mutually exclusive removed/confirmed sets)
-                        // would otherwise never render at all. Folding removed platforms
-                        // into the confirmed set — legacy weeks only — makes the chip
-                        // render; removedByPlatform is still passed through unchanged so
-                        // ScheduleCell applies the rose ring/✕ badge instead of the emerald
-                        // ✓. Non-legacy weeks never take this branch, so their rendering is
-                        // untouched.
-                        const displayConfirmedByPlatform = isLegacyWeek
-                          ? { ...confirmedByPlatform, ...removedByPlatform }
-                          : confirmedByPlatform;
                         return (
                           <td key={day} className="px-3 py-2 text-left align-top">
                             <ScheduleCell
@@ -496,7 +483,7 @@ export default function SchedulePlanner() {
                               rowsByPlatform={rowsByPlatform}
                               pausesByPlatform={pausesByPlatform}
                               removedByPlatform={removedByPlatform}
-                              confirmedByPlatform={displayConfirmedByPlatform}
+                              confirmedByPlatform={confirmedByPlatform}
                               // Both legacy weeks (imported platform-null brand_schedule rows,
                               // pre-dating per-platform tracking) and future weeks are
                               // read-only: forcing isApproved to false here (rather than

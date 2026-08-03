@@ -1803,3 +1803,18 @@ Legacy (pre-platform-tagged) `brand_schedule` weeks — rows written before per-
 - Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-legacy-week-platform-chips-design.md`. Plan: `docs/superpowers/plans/2026-08-03-schedule-planner-legacy-week-platform-chips.md`.
 
 ---
+
+## Task 170: Schedule Planner — Removed Chips on Any Zero-Row Week, Not Just Legacy
+
+**Date:** August 3, 2026
+
+User-reported bug via the GRG - Gulf Recovery Group tab: a real Removed entry (`021 - HazEmirates UAE`, TP Added 29/06/2026) had no matching chip on Schedule Planner's Jun 29 – Jul 3 week, even after Task 169.
+
+- Root cause: Task 169's fix only fired for `isLegacyWeek` (`scheduleRows.length > 0 && every(r => r.platform == null)`) — a week that already had at least one pre-existing platform-null row. GRG is a TP-only tab that was never part of the old spreadsheet's historical import (only the multi-platform brand groups were), so its `brand_schedule` has zero rows at all for any week before its scheduler first ran — data-wise identical to a legacy week (`rowsByPlatform` empty either way), but `isLegacyWeek` evaluates `false` for it, so the removed-merge never applied. This affects every past week on every TP-only tab (GRG, TP Brand Injection, TP Affiliate, SuprPlay Limited, HazEmirates UAE).
+- Scope was broadened (confirmed with the user) from "legacy weeks only" to universal: a removed chip should render anywhere no real `brand_schedule` row exists, exactly like a confirmed chip already does unconditionally — independent of week timing.
+- First attempt (reverted): merging `removedByPlatform` into the `confirmedByPlatform` value passed to `ScheduleCell`, unconditionally. Live-verified against the running dev server and real Supabase data, this produced a genuine visual bug — `buildDateStatusIndex`'s `removed`/`confirmed` sets are normally mutually exclusive per platform+date, so `ScheduleCell` never had to handle both `isConfirmed` and `isRemoved` being true for the same chip; the merge broke that invariant, making a removed-only day show both the ✓ and ✕ badges at once.
+- Actual fix, in `src/lib/scheduler/calendarRenderer.tsx`: `ScheduleCell`'s render guard now checks `isRemoved` directly (`!isPaused && status == null && !isConfirmed && !isRemoved`) instead of only `isConfirmed`, and `isActiveLook` includes `isRemoved` too — `isConfirmed`/`isRemoved` stay fully independent flags, so a chip can never show both corner badges from real data (which is never both at once for the same key). `SchedulePlanner.tsx`'s Task 169 merge and legacy-only gating for this specific behavior were removed; `isLegacyWeek` is retained only for the `isApproved` read-only gate (legacy and future weeks stay non-interactive, unchanged).
+- Live-verified end to end against the real running app and Supabase data for GRG's Jun 29 – Jul 3 week: Mon 29 (Removed) and Wed Jul 1 (Removed, `024 - HazEmirates UAE`) both now show a TP chip with the rose ring/✕ badge, Fri Jul 3 (Published, `001 l GrG TP l UAE`) shows the emerald ✓, and Tue 30/Thu 2 (no entries either date) render blank — an exact match to the tab's 13 real rows, confirmed by reading the raw Supabase response.
+- No schema change, no `brand_schedule` writes, still read-only. No new automated tests (consistent with this file's established lack of component-rendering test infra); verified via full test suite (269 tests) + build + the live check above.
+
+---
