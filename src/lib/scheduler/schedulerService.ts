@@ -91,20 +91,21 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
 // Returns the combos that resumed on this call, for the caller to pass into
 // ensureWeekGenerated as `resumedThisWeek`.
 //
-// A new pause is only ever inserted for a week that hasn't been generated
-// yet (mirroring ensureWeekGenerated's own no-op check). Once a week's
-// schedule is already written, inserting a pause for that same week can
-// never actually affect it — the pause would just sit in the table inert,
-// and its mere existence would corrupt the *next* week's resume logic (it
-// would look like a real pause that "expired" and get reported as resumed
-// even though it never took effect). The resume/delete path stays
+// A new pause is only ever inserted for a brand+platform combo that doesn't
+// already have a row for this week — checked per combo, not per week, so a
+// manually pre-filled combo (e.g. a future week edited ahead of time) can
+// never block pause-detection for every OTHER combo that week. Once a
+// combo's row for that week already exists, inserting a pause for it can
+// never actually affect that row — the pause would just sit in the table
+// inert, and its mere existence would corrupt the *next* week's resume
+// logic (it would look like a real pause that "expired" and get reported as
+// resumed even though it never took effect). The resume/delete path stays
 // unconditional: deleting an expired pause is always safe and idempotent.
 export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext): Promise<PinnedCombo[]> {
   const [pauses, existingRows] = await Promise.all([
     fetchActiveBrandPlatformPauses(tab),
     fetchBrandSchedule(tab, weekStart),
   ]);
-  const weekAlreadyGenerated = existingRows.some((r) => r.platform != null);
   const resumed: PinnedCombo[] = [];
 
   // Computed once per active platform (not per brand) since each call scans
@@ -126,7 +127,8 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         }
         continue;
       }
-      if (weekAlreadyGenerated) continue;
+      const alreadyHasRow = existingRows.some((r) => r.platform === platform && r.brand_key === brandKey);
+      if (alreadyHasRow) continue;
 
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
@@ -216,9 +218,14 @@ function groupSlotsIntoRows(tab: string, weekStart: string, slots: ScheduledSlot
   return [...map.values()];
 }
 
-// Generates and writes this week's schedule exactly once — a no-op if any
-// platform-tagged row already exists for (tab, weekStart), so navigating
-// back to an already-generated week never regenerates it.
+// Generates and writes this week's schedule for every brand+platform combo
+// that doesn't already have a row for (tab, weekStart) — any combo that
+// already has one is passed to the engine as "pinned" and left completely
+// untouched. This is checked per combo, not per week: navigating back to
+// an already-fully-generated week still writes nothing (every combo is
+// pinned, so the generator produces zero slots), but a week with only SOME
+// combos manually pre-filled (e.g. a future week edited ahead of time)
+// still gets every other combo generated normally once it becomes current.
 export async function ensureWeekGenerated(
   tab: string,
   weekStart: string,
@@ -226,7 +233,9 @@ export async function ensureWeekGenerated(
   resumedThisWeek: PinnedCombo[],
 ): Promise<void> {
   const existingRows = await fetchBrandSchedule(tab, weekStart);
-  if (existingRows.some((r) => r.platform != null)) return;
+  const alreadyHasRowCombos: PinnedCombo[] = existingRows
+    .filter((r) => r.platform != null)
+    .map((r) => ({ brandKey: r.brand_key, platform: r.platform as Platform }));
 
   const pauses = await fetchActiveBrandPlatformPauses(tab);
   const pausedBrandPlatforms: PinnedCombo[] = pauses
@@ -238,7 +247,7 @@ export async function ensureWeekGenerated(
   const slots = generateWeekSchedule({
     brands: ctx.brands,
     activePlatforms: ctx.activePlatforms,
-    pinnedBrandPlatforms: [],
+    pinnedBrandPlatforms: alreadyHasRowCombos,
     pausedBrandPlatforms,
     resumingBrandPlatforms: resumedThisWeek,
     carryover,

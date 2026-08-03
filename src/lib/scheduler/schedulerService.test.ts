@@ -97,6 +97,32 @@ describe('recalculatePauses', () => {
     expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
   });
 
+  // Regression test for future-week manual editing: an existing row for one
+  // brand+platform combo must not block pause-detection for a DIFFERENT
+  // combo in the same week.
+  it('still detects a pause for one combo when a different combo already has a row for the week', async () => {
+    queries.fetchBrandSchedule.mockResolvedValue([
+      { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ]);
+    const ctx: TabContext = {
+      brands: ['WinMega', 'BrandB'],
+      activePlatforms: ['tp'],
+      entries: [
+        // Both brands independently qualify for the consecutive-removed pause trigger.
+        entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        entry({ Brands: 'BrandB', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'BrandB', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+      ],
+    };
+    await recalculatePauses('BITP', '2026-08-03', ctx);
+    // WinMega/tp already has a row for this week (a manual future-week edit,
+    // in the scenario this guards) -- skipped even though it would otherwise
+    // qualify. BrandB/tp has no existing row and still gets paused.
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'BrandB', 'tp', '2026-08-03', expect.any(String));
+  });
+
   describe('success-rate trigger', () => {
     it('pauses a brand+platform whose all-time success rate is below 40% with at least 5 decided posts', async () => {
       const ctx: TabContext = {
@@ -318,5 +344,20 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
     expect(activeDays).toHaveLength(1); // normal frequency only, no carryover
+  });
+
+  // Regression test for future-week manual editing: a manually-created row
+  // for one brand+platform combo must not block generation for every OTHER
+  // combo in the same week — only that exact combo should be skipped.
+  it('generates rows only for combos that do not already have one, leaving existing combos untouched', async () => {
+    queries.fetchBrandSchedule.mockResolvedValue([
+      { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-10', platform: 'cg', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ]);
+    const ctx: TabContext = { brands: ['WinMega', 'BrandB'], activePlatforms: ['cg'], entries: [] };
+    await ensureWeekGenerated('BITP', '2026-08-10', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-10', platform: 'cg' });
   });
 });
