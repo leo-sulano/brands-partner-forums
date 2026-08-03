@@ -56,7 +56,22 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-03 (newest):* Added a read-only `bif_review_accounts` Postgres view over `entries`
+- *2026-08-04 (newest):* Fixed a critical post-merge bug in the `bif_review_accounts` view
+  (Task 172, directly below) caught by that same task's own Step 5 live-verification: its
+  `review_status` column read only `data->>'Review Status'`, but a direct count against all
+  793 live TP Brand Injection rows found zero use that exact key — every single row stores
+  status under `TP Review Status` instead, so `review_status` was `NULL` for 100% of rows,
+  not an edge case. The app already has a header-alias table for exactly this
+  (`PLATFORM_STATUS_KEYS.tp` + `pick()` in `scoreSummary.ts`); the view just didn't use it.
+  New migration `20260804090000_fix_bif_review_accounts_status_key.sql` redefines
+  `review_status` as a `coalesce(nullif(..., ''), ...)` chain across all 5 known aliases in
+  `pick()`'s exact precedence order, closing a gap a bare `coalesce()` would still have (an
+  empty-string value winning over a real one in a lower-precedence key). The other 7
+  jsonb-derived columns were individually re-verified against the same 793-row count and are
+  unaffected. Also confirmed via direct `anon`-key REST calls (not just the SQL Editor):
+  Step 3's permission check returns HTTP 200, and Step 4's `brand_url IS NULL` count is 98 of
+  793 (~12%).
+- *2026-08-03 (prior):* Added a read-only `bif_review_accounts` Postgres view over `entries`
   (TP Brand Injection tab only) so the externally-hosted BIF Dashboard can query/subscribe
   directly, under stable column names, without depending on this repo's internal `data` jsonb
   key names — no app code changed, this repo's only touch point is the one migration file.
