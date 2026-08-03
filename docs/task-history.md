@@ -1761,3 +1761,15 @@ Only Rooster Partners (and possibly a couple of others) were ever showing the ne
 - Full test suite (268 tests) and build both pass. Live browser verification not performed — no Supabase login credentials available in this session; worth confirming live that Wizard of Odds, BITP, FTP, SuprPlay, Trybet, HazEmirates, SilverPlay, Hanan, Revolution Casino, and GRG all pick up the new chip design on next visit.
 
 ---
+
+## Task 167: Schedule Planner — Brand Name Links Through to Brand Tabs
+
+**Date:** August 3, 2026
+
+A brand's name in the Schedule Planner grid used to be a button that just filtered the search box in place — there was no way to jump from a brand's schedule to its actual review data.
+
+- Brand name is now a `<Link>` to `/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}` (`src/pages/SchedulePlanner.tsx`), reusing the `?brand=` deep-link convention `BrandGroup.tsx` already reads (`searchParams.get('brand')` → `brandFilter`, exact-match against the same brand column Schedule Planner's own brand list is built from) and the same `tabToSlug`-based route already used by `BrandTabsModal`/the sidebar — no new plumbing on the Brand Tabs side.
+- Connects the two halves of the feature end to end: a brand's weekly schedule (Schedule Planner) and its real review entries (Brand Tabs) are now one click apart.
+- Full test suite (268 tests) and build both pass.
+
+---

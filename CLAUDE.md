@@ -56,6 +56,10 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-08-03 (latest):* A brand's name in the Schedule Planner grid now links straight to its
+  row on the Brand Tabs page (`/brands/<tab>?brand=<name>`) instead of just filtering the
+  Schedule Planner's own search box — reuses `BrandGroup.tsx`'s existing `?brand=` deep-link
+  exact-match filter, no Brand Tabs-side changes needed. Task 167.
 - *2026-08-03 (later):* Fixed why most brand tabs never showed the new platform-chip Schedule
   Planner grid at all — only Rooster Partners had actually gotten it. Root cause:
   `SchedulePlanner.tsx` resolved a tab's active platforms via its own `resolveActivePlatforms`
