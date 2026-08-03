@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabDisplayName, tabToSlug } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
 import {
   fetchRawEntriesByTab,
@@ -453,14 +454,13 @@ export default function SchedulePlanner() {
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
-                        <button
-                          type="button"
-                          onClick={() => setSearch(brand)}
+                        <Link
+                          to={`/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`}
                           className="hover:text-blue-600 hover:underline"
-                          title={`Filter to ${brand}`}
+                          title={`View ${brand} in Brand Tabs`}
                         >
                           {brand}
-                        </button>
+                        </Link>
                       </td>
                       {WEEKDAYS.map((day, dayIndex) => (
                         <td key={day} className="px-3 py-2 text-left align-top">

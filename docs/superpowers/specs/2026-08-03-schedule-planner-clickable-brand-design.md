@@ -1,22 +1,24 @@
 # Schedule Planner: Clickable Brand Name (Design)
 
 ## Problem
-The Brand column in the Schedule Planner grid is plain text. With many brands on a tab,
-finding one specific brand's row means using the search box above the table, even when
-you're already looking right at the row you want.
+The Brand column in the Schedule Planner grid is plain text. Seeing a brand's full
+review/outreach entries means leaving the page, switching to Brand Tabs, and manually
+finding the same brand there.
 
 ## Design
 Make the brand name in each row's Brand cell (`SchedulePlanner.tsx`, the `<td>` around
-line 456-458) clickable. Clicking it sets the existing `search` state to that brand's
-exact name, which re-filters `filteredBrands` down to just that row via the existing
-case-insensitive substring match (`b.toLowerCase().includes(q)`) — an exact name is
-always a substring of itself, so no new matching logic is needed.
+line 455-464) a `Link` to that brand's row on the Brand Tabs page:
+`/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`.
 
-Visual treatment: `cursor-pointer` plus a hover color/underline on the brand text,
-consistent with other clickable brand-name text in the app (e.g. `BrandSelectDropdown`).
-No new component, no new state — one `onClick` wired to the existing `setSearch`.
+This reuses an existing deep-link convention — `BrandGroup.tsx` already reads a `brand`
+query param on load and pre-sets its `brandFilter` from it (see the `hasDeepLinkParams`
+check around line 859-862), and `ScoreSummaryPanel.tsx` already links to brands this same
+way. No changes needed on the `BrandGroup` side.
+
+Visual treatment: hover color/underline on the brand text, consistent with other
+clickable brand-name text in the app.
 
 ## Out of scope
-- No toggle-to-clear-on-second-click behavior — the search box is already visible and
-  editable, so clearing it manually is one click away.
-- No navigation to another page/tab. This only filters the current grid.
+- No `platform`/`status`/`rating` query params — Schedule Planner has no such filter
+  selected, so the link only carries `brand`.
+- No changes to `BrandGroup.tsx` — its existing deep-link handling already covers this.
