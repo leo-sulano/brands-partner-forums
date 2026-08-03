@@ -56,7 +56,26 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-03 (newest):* Fixed a gap in the legacy-week chip fix directly below: it only fired
+- *2026-08-03 (newest):* Added a read-only `bif_review_accounts` Postgres view over `entries`
+  (TP Brand Injection tab only) so the externally-hosted BIF Dashboard can query/subscribe
+  directly, under stable column names, without depending on this repo's internal `data` jsonb
+  key names — no app code changed, this repo's only touch point is the one migration file.
+  `with (security_invoker = true)` means it inherits `entries`' existing "anyone can read"
+  policy rather than needing a new grant. A final whole-branch review changed the migration
+  from `create view` to `create or replace view` (the plan's stated apply path is the Supabase
+  SQL Editor by hand, since no DB credential exists in this session — a later `supabase db push`
+  re-applying the same file would otherwise fail on "relation already exists" and block every
+  later migration, the same shape of incident this repo already hit once before) and added SQL
+  comments documenting three undocumented gotchas for BIF: `trustpilot_added_date` mixes
+  `YYYY-MM-DD` and day-first `DD/MM/YYYY` text, `brand_url` can be NULL even when the app shows
+  a working link (the app additionally falls back to the code-side `BRAND_TP_URLS` map in
+  `tab-configs.ts`), and `review_status`'s fixed text vocabulary. The review also added an
+  `anon`-key `curl` verification step to Task 2 of the plan (the existing SQL Editor spot-check
+  runs as a superuser/service role and proves nothing about the actual BIF access path) and a
+  `brand_url IS NULL` count step to size that gap before BIF builds against the column. Spec:
+  `docs/superpowers/specs/2026-08-03-bif-dashboard-review-accounts-view-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-03-bif-dashboard-review-accounts-view.md`.
+- *2026-08-03 (prior):* Fixed a gap in the legacy-week chip fix directly below: it only fired
   for weeks with an existing platform-null `brand_schedule` row, so a tab with *zero* rows for
   a past week (e.g. GRG - Gulf Recovery Group, a TP-only tab never covered by the old
   spreadsheet import) still showed nothing for a real Removed post — reported live by the user
@@ -413,6 +432,17 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- `entries` is fully public-readable via the `anon` key across **all** tabs, not just TP Brand
+  Injection, and its `data` jsonb contains credential fields (`Password`, `Backup Codes`,
+  `Authenticator Backup` — see `AddReviewAccountModal.tsx`). This is a pre-existing condition,
+  not something the 2026-08-03 `bif_review_accounts` view created — but that view's design
+  relies on it (it inherits `entries`' policy via `security_invoker` rather than defining a
+  narrower one), and BIF Dashboard's live-update design (a raw `postgres_changes` subscription
+  on `entries` itself, per its spec) receives this same full raw payload, including credential
+  fields, for every row it's subscribed to. Now operationally relevant to a second, external
+  consumer — worth a deliberate future decision (tightening `entries`' RLS policy, or a
+  column-filtered publication) rather than staying an implicit side effect. Not fixed as part
+  of that task; documentation only.
 - The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
   in `src/lib/scheduler/schedulerRules.ts`) uses an all-time, unwindowed rate paired with a fixed
   1-week pause. A chronically underperforming brand+platform will pause, auto-resume after 1
