@@ -454,7 +454,14 @@ export default function SchedulePlanner() {
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
-                        {brand}
+                        <button
+                          type="button"
+                          onClick={() => setSearch(brand)}
+                          className="hover:text-blue-600 hover:underline"
+                          title={`Filter to ${brand}`}
+                        >
+                          {brand}
+                        </button>
                       </td>
                       {WEEKDAYS.map((day, dayIndex) => (
                         <td key={day} className="px-3 py-2 text-left align-top">
