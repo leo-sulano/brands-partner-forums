@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildRemovedOnDateIndex } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex } from './scheduleUtils';
 import type { BrandScheduleRow } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
@@ -94,39 +94,51 @@ describe('unscheduledPlatforms', () => {
   });
 });
 
-describe('buildRemovedOnDateIndex', () => {
+describe('buildDateStatusIndex', () => {
   const entry = (data: Record<string, string | null>): Entry => ({
     id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null,
   });
 
-  it('indexes a brand+platform+date whose status is Removed', () => {
+  it('indexes a brand+platform+date whose status is Removed into removed, not confirmed', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28' })];
-    const index = buildRemovedOnDateIndex(entries);
-    expect(index.has('winmega::tp::2026-07-28')).toBe(true);
+    const { removed, confirmed } = buildDateStatusIndex(entries);
+    expect(removed.has('winmega::tp::2026-07-28')).toBe(true);
+    expect(confirmed.has('winmega::tp::2026-07-28')).toBe(false);
   });
 
-  it('does not index a brand+platform+date whose status is Live', () => {
+  it('indexes a brand+platform+date whose status is Live into confirmed, not removed', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Live', 'Trust Pilot': '2026-07-28' })];
-    const index = buildRemovedOnDateIndex(entries);
-    expect(index.size).toBe(0);
+    const { removed, confirmed } = buildDateStatusIndex(entries);
+    expect(confirmed.has('winmega::tp::2026-07-28')).toBe(true);
+    expect(removed.has('winmega::tp::2026-07-28')).toBe(false);
+  });
+
+  it('indexes neither set for a status that is neither live nor removed (e.g. Pending)', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Pending', 'Trust Pilot': '2026-07-28' })];
+    const { removed, confirmed } = buildDateStatusIndex(entries);
+    expect(removed.size).toBe(0);
+    expect(confirmed.size).toBe(0);
   });
 
   it('skips an entry with a Removed status but no parseable date, without throwing', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': null })];
-    expect(() => buildRemovedOnDateIndex(entries)).not.toThrow();
-    expect(buildRemovedOnDateIndex(entries).size).toBe(0);
+    expect(() => buildDateStatusIndex(entries)).not.toThrow();
+    const { removed, confirmed } = buildDateStatusIndex(entries);
+    expect(removed.size).toBe(0);
+    expect(confirmed.size).toBe(0);
   });
 
-  it('indexes multiple brand+platform+date combinations independently', () => {
+  it('indexes multiple brand+platform+date combinations independently across both sets', () => {
     const entries = [
       entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28' }),
       entry({ Brands: 'WinMega', 'AG Review Status': 'Refused', 'Ask Gambler review added': '2026-07-29' }),
-      entry({ Brands: 'OtherBrand', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-30' }),
+      entry({ Brands: 'OtherBrand', 'TP Review Status': 'Live', 'Trust Pilot': '2026-07-30' }),
     ];
-    const index = buildRemovedOnDateIndex(entries);
-    expect(index.has('winmega::tp::2026-07-28')).toBe(true);
-    expect(index.has('winmega::ag::2026-07-29')).toBe(true);
-    expect(index.has('otherbrand::tp::2026-07-30')).toBe(true);
-    expect(index.size).toBe(3);
+    const { removed, confirmed } = buildDateStatusIndex(entries);
+    expect(removed.has('winmega::tp::2026-07-28')).toBe(true);
+    expect(removed.has('winmega::ag::2026-07-29')).toBe(true);
+    expect(removed.size).toBe(2);
+    expect(confirmed.has('otherbrand::tp::2026-07-30')).toBe(true);
+    expect(confirmed.size).toBe(1);
   });
 });

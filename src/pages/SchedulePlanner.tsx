@@ -15,7 +15,7 @@ import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type Brand
 import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildRemovedOnDateIndex } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
@@ -245,10 +245,10 @@ export default function SchedulePlanner() {
   }, [tab, weekStartISO, tabCtx, isApproved]);
 
   // Built once per tab load (off tabCtx.entries), not per render — see
-  // buildRemovedOnDateIndex's own doc comment for why brand-key resolution
-  // here must match BRAND_COLS, not scoreSummary.ts's separate BRAND_KEYS.
-  const removedIndex = useMemo(
-    () => buildRemovedOnDateIndex(tabCtx?.entries ?? []),
+  // buildDateStatusIndex's own doc comment for why brand-key resolution here
+  // must match BRAND_COLS, not scoreSummary.ts's separate BRAND_KEYS.
+  const dateStatusIndex = useMemo(
+    () => buildDateStatusIndex(tabCtx?.entries ?? []),
     [tabCtx],
   );
 
@@ -256,9 +256,18 @@ export default function SchedulePlanner() {
     const brandKey = normalizeBrandKey(brand);
     const removedByPlatform: Partial<Record<Platform, boolean>> = {};
     for (const platform of activePlatforms) {
-      if (removedIndex.has(`${brandKey}::${platform}::${dayISO}`)) removedByPlatform[platform] = true;
+      if (dateStatusIndex.removed.has(`${brandKey}::${platform}::${dayISO}`)) removedByPlatform[platform] = true;
     }
     return removedByPlatform;
+  }
+
+  function computeConfirmedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
+    const brandKey = normalizeBrandKey(brand);
+    const confirmedByPlatform: Partial<Record<Platform, boolean>> = {};
+    for (const platform of activePlatforms) {
+      if (dateStatusIndex.confirmed.has(`${brandKey}::${platform}::${dayISO}`)) confirmedByPlatform[platform] = true;
+    }
+    return confirmedByPlatform;
   }
 
   const filteredBrands = useMemo(() => {
@@ -487,6 +496,7 @@ export default function SchedulePlanner() {
                               rowsByPlatform={rowsByPlatform}
                               pausesByPlatform={pausesByPlatform}
                               removedByPlatform={computeRemovedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
+                              confirmedByPlatform={computeConfirmedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
                               // A future week is read-only: forcing isApproved
                               // to false here (rather than threading a
                               // separate readOnly prop through ScheduleCell)

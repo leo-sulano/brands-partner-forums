@@ -1,6 +1,6 @@
 import { WEEKDAYS, toISODate, type Weekday, type BrandScheduleRow } from '../scheduleBrands';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
-import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate } from '../scoreSummary';
+import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, parsePostDate } from '../scoreSummary';
 import { BRAND_COLS } from '../tab-configs';
 import type { Entry } from '../../types/entry';
 
@@ -53,27 +53,43 @@ export function completedBrandPlatformKey(brandKey: string, platform: Platform):
 
 const ALL_PLATFORMS = Object.keys(PLATFORM_STATUS_KEYS) as Platform[];
 
-// A brand+platform+exact-date lookup of "the post scheduled for this brand
-// on this platform on this calendar day was later found Removed/Refused",
-// built once per tab load from raw entries. Brand resolution matches
-// SchedulePlanner.tsx's own brand-list resolution (BRAND_COLS), not
-// scoreSummary.ts's separate BRAND_KEYS list — see the note in
-// schedulerService.ts's normalizedRates for why those two lists disagree.
-export function buildRemovedOnDateIndex(entries: Entry[]): Set<string> {
-  const index = new Set<string>();
+export interface DateStatusIndex {
+  // brandKey::platform::date keys of posts whose recorded status is
+  // Removed/Refused on that exact date.
+  removed: Set<string>;
+  // brandKey::platform::date keys of posts whose recorded status is
+  // Live/Published on that exact date — evidence a real post actually
+  // happened there, independent of whatever brand_schedule's plan says.
+  confirmed: Set<string>;
+}
+
+// A brand+platform+exact-date lookup, in both directions, of what a real
+// entry's status says actually happened on that calendar day — built once
+// per tab load from raw entries. Brand resolution matches SchedulePlanner's
+// own brand-list resolution (BRAND_COLS), not scoreSummary.ts's separate
+// BRAND_KEYS list — see the note in schedulerService.ts's normalizedRates for
+// why those two lists disagree. A status that is neither Removed/Refused nor
+// Live/Published (e.g. Pending) lands in neither set.
+export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
+  const removed = new Set<string>();
+  const confirmed = new Set<string>();
   for (const entry of entries) {
     const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
     if (!brand) continue;
     const brandKey = normalizeBrandKey(brand);
     for (const platform of ALL_PLATFORMS) {
       const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
-      if (!status || !isRemovedStatus(status)) continue;
+      if (!status) continue;
+      const isRemoved = isRemovedStatus(status);
+      const isConfirmed = !isRemoved && isLiveStatus(status);
+      if (!isRemoved && !isConfirmed) continue;
       const date = parsePostDate(pick(entry.data, PLATFORM_DATE_KEYS[platform]));
       if (!date) continue;
-      index.add(`${brandKey}::${platform}::${toISODate(date)}`);
+      const key = `${brandKey}::${platform}::${toISODate(date)}`;
+      (isRemoved ? removed : confirmed).add(key);
     }
   }
-  return index;
+  return { removed, confirmed };
 }
 
 // Brand Tab Completion Rule: scheduled = total non-null day-slots across this

@@ -16,25 +16,30 @@ interface ScheduleCellProps {
   rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
   removedByPlatform: Partial<Record<Platform, boolean>>;
+  confirmedByPlatform: Partial<Record<Platform, boolean>>;
   isApproved: boolean;
   onToggle: (platform: Platform) => void;
   onAddPlatform: () => void;
 }
 
-// Each day cell renders a chip only for platforms actually scheduled that
-// day (status !== null) or scheduler-paused for the week
-// (pausesByPlatform[platform] truthy) — an unset platform+day renders
-// nothing, not even a placeholder. Earlier versions of this component
-// rendered every active platform in every cell unconditionally, including a
-// dashed "unset" placeholder chip, so every cell always had a click target
-// to create the first row for a brand/week the scheduler hadn't touched
-// yet. That's superseded here: the per-cell "+" button (visible on hover,
-// rendered whenever unscheduledPlatforms(...) is non-empty) is the click
-// target for an otherwise-empty cell now, opening AddPlatformModal (wired
-// in SchedulePlanner.tsx) instead of relying on a placeholder chip.
-// Existing scheduled chips keep their original single-click-to-cycle
-// behavior via onToggle, unchanged.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+// Each day cell renders a chip for a platform actually scheduled that day
+// (status !== null), scheduler-paused for the week (pausesByPlatform[platform]
+// truthy), or confirmed by a real entry's add-date matching this exact day
+// (confirmedByPlatform[platform] truthy, from buildDateStatusIndex) — an
+// otherwise-unset platform+day renders nothing, not even a placeholder.
+// Earlier versions of this component rendered every active platform in every
+// cell unconditionally, including a dashed "unset" placeholder chip, so every
+// cell always had a click target to create the first row for a brand/week the
+// scheduler hadn't touched yet. That's superseded here: the per-cell "+"
+// button (visible on hover, rendered whenever unscheduledPlatforms(...) is
+// non-empty) is the click target for an otherwise-empty cell now, opening
+// AddPlatformModal (wired in SchedulePlanner.tsx) instead of relying on a
+// placeholder chip. Existing scheduled chips keep their original
+// single-click-to-cycle behavior via onToggle, unchanged — a chip shown only
+// because it's confirmed (no underlying brand_schedule row) still cycles
+// null → active → paused → null on click like any other, since onToggle reads
+// the real row status independently of the confirmed overlay.
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -42,12 +47,14 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const isPaused = !!pausesByPlatform[platform];
         const row = rowsByPlatform[platform];
         const status: DayStatus = row?.[day] ?? null;
-        if (!isPaused && status == null) return null;
+        const isConfirmed = !!confirmedByPlatform[platform];
+        if (!isPaused && status == null && !isConfirmed) return null;
         const isRemoved = !!removedByPlatform[platform];
         const badge = PLATFORM_BADGE[platform];
+        const isActiveLook = status === 'active' || (status == null && isConfirmed);
         const stateClassName = isPaused
           ? `${badge.className} opacity-30`
-          : status === 'active'
+          : isActiveLook
             ? badge.className
             : `${badge.className} opacity-40`;
         const clickable = isApproved && !isPaused;
@@ -55,7 +62,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
           <span
             key={platform}
             onClick={clickable ? () => onToggle(platform) : undefined}
-            title={`${PLATFORM_FULL_LABEL[platform]}: ${isPaused ? 'Paused (scheduler)' : statusLabel(status)}${isRemoved ? ' — Removed' : ''}`}
+            title={`${PLATFORM_FULL_LABEL[platform]}: ${isPaused ? 'Paused (scheduler)' : statusLabel(status)}${isRemoved ? ' — Removed' : isConfirmed ? ' — Confirmed' : ''}`}
             className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''}`}
           >
             <img
@@ -71,6 +78,14 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold leading-none text-white"
               >
                 ✕
+              </span>
+            )}
+            {isConfirmed && (
+              <span
+                aria-hidden="true"
+                className="absolute -right-1 -bottom-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
+              >
+                ✓
               </span>
             )}
           </span>

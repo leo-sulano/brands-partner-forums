@@ -56,6 +56,15 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-08-03 (newest):* Schedule Planner now shows a "confirmed" indicator (small emerald ✓
+  corner badge, bottom-right) on a day whose real entry add-date matches, distinct from the
+  "removed" indicator's (Task 165) top-right ✕. Unlike the removed indicator, a confirmed day
+  renders its own chip even if `brand_schedule` has no row for it at all — the calendar now
+  genuinely reflects real review-add history, not just the plan. `buildRemovedOnDateIndex` is
+  generalized into `buildDateStatusIndex` (`src/lib/scheduler/scheduleUtils.ts`), returning
+  both `removed`/`confirmed` sets from one entries scan; `isLiveStatus` newly exported from
+  `scoreSummary.ts`. Purely additive — no schema change, click-to-cycle behavior unchanged.
+  Task 168, spec `docs/superpowers/specs/2026-08-03-schedule-planner-confirmed-indicator-design.md`.
 - *2026-08-03 (latest):* A brand's name in the Schedule Planner grid now links straight to its
   row on the Brand Tabs page (`/brands/<tab>?brand=<name>`) instead of just filtering the
   Schedule Planner's own search box — reuses `BrandGroup.tsx`'s existing `?brand=` deep-link

@@ -330,7 +330,7 @@ export interface SuccessRate {
 // Mirrors isLiveStatus/isRemovedStatus in src/lib/queries.ts (duplicated here
 // rather than imported since that module is Supabase-coupled and this one is
 // a pure data transform — keep these two definitions in sync if either changes).
-function isLiveStatus(s: string): boolean {
+export function isLiveStatus(s: string): boolean {
   if (s.includes('not pub') || s.includes('refused')) return false;
   return s.includes('published') || s.includes('live');
 }

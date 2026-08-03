@@ -1773,3 +1773,18 @@ A brand's name in the Schedule Planner grid used to be a button that just filter
 - Full test suite (268 tests) and build both pass.
 
 ---
+
+## Task 168: Schedule Planner — Confirmed-Post Indicator (Calendar Reads Real Add-Dates)
+
+**Date:** August 3, 2026
+
+The removed-post indicator (Task 165) only ever decorated a chip that `brand_schedule`'s plan already showed — there was no way to see, directly on the calendar, that a real review was actually added on a given day, especially on a day the plan itself never marked as scheduled.
+
+- `buildRemovedOnDateIndex` (`src/lib/scheduler/scheduleUtils.ts`) is generalized into `buildDateStatusIndex`, scanning a tab's entries once and returning both a `removed` and a `confirmed` set (`brandKey::platform::date` keys) instead of just one — Live/Published-classified entries (`isLiveStatus`, newly exported from `scoreSummary.ts`) land in `confirmed`, Removed/Refused in `removed`, and anything else (e.g. Pending) in neither.
+- `SchedulePlanner.tsx` computes a per-day `confirmedByPlatform` map alongside the existing `removedByPlatform` and passes both into `ScheduleCell`.
+- `ScheduleCell`'s render guard now shows a chip if the day is scheduled, scheduler-paused, **or confirmed by a real add-date** — even when `brand_schedule` has no row for that day at all, so the calendar genuinely reflects real review-add history, not just the plan. A confirmed-only chip renders with full ('active'-style) badge color plus a small emerald ✓ corner badge (bottom-right, distinct from the removed indicator's top-right ✕) and a "— Confirmed" tooltip suffix. Click-to-cycle is unaffected — `onToggle` still reads the real `brand_schedule` row independently of the confirmed overlay.
+- Purely additive: no schema change, no change to the scheduler's auto-generation/pause logic or manual-toggle behavior.
+- Full test suite (269 tests, including the renamed/expanded `buildDateStatusIndex` suite) and build both pass.
+- Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-confirmed-indicator-design.md`.
+
+---
