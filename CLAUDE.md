@@ -343,6 +343,16 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
+  in `src/lib/scheduler/schedulerRules.ts`) uses an all-time, unwindowed rate paired with a fixed
+  1-week pause. A chronically underperforming brand+platform will pause, auto-resume after 1
+  week, post once or twice, but its all-time rate barely moves — so it pauses again next cycle,
+  indefinitely, at roughly half normal cadence rather than eventually stabilizing. This is an
+  accepted, deliberate tradeoff (not a bug), matching how completion-based carryover (below) was
+  disabled for a related unbounded-compounding shape. If this becomes a real problem in practice,
+  the fix would be windowing the rate (e.g. last N posts, or a trailing date range —
+  `computeSuccessRates` already supports a `DateRange` param) or adding a re-pause cooldown after
+  resume.
 - Intelligent Schedule Planner's completion-based carryover is implemented but disabled
   (`CARRYOVER_RULES.completionThreshold = 0` in `src/lib/scheduler/schedulerRules.ts`) — the
   formula as originally specified compounds unbounded (see 2026-07-31 entry above). Needs a

@@ -21,6 +21,25 @@ export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
 export const PAUSE_RULES = {
   consecutiveRemovedThreshold: 2,
   pauseDurationWeeks: 1,
+  // A brand+platform combo also pauses when its all-time success rate
+  // (see computeSuccessRates in scoreSummary.ts) is strictly below this
+  // percentage, once it has at least minDecidedPostsForRateCheck decided
+  // (live+removed) posts on that platform. Independent of, and lower-
+  // priority than, the consecutiveRemovedThreshold rule above — see
+  // recalculatePauses in schedulerService.ts.
+  //
+  // Note: this uses an all-time, unwindowed rate paired with a fixed
+  // 1-week pause. A chronically underperforming brand+platform will
+  // pause, auto-resume after 1 week, post once or twice, but its
+  // all-time rate barely moves (e.g., 20% over 200 posts needs ~150
+  // straight live posts to climb back over 40%) — so it pauses again
+  // next cycle, indefinitely, at roughly half normal cadence. This is
+  // an accepted, deliberate tradeoff (not a bug), matching how
+  // CARRYOVER_RULES.completionThreshold was disabled for a related
+  // unbounded-compounding shape (see comment above that block). Do not
+  // "fix" this oscillation without a product conversation first.
+  successRateThreshold: 40,
+  minDecidedPostsForRateCheck: 5,
 };
 
 export const CARRYOVER_RULES = {

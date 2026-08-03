@@ -6,13 +6,16 @@ import {
   upsertBrandPlatformPause,
   deleteBrandPlatformPause,
 } from '../queries';
-import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate } from '../scoreSummary';
+import {
+  PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
+  computeSuccessRates, successRatePct, type SuccessRate,
+} from '../scoreSummary';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands';
 import { BRAND_COLS } from '../tab-configs';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine';
 import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils';
-import { CARRYOVER_RULES } from './schedulerRules';
+import { CARRYOVER_RULES, PAUSE_RULES } from './schedulerRules';
 import type { Entry } from '../../types/entry';
 
 export interface TabContext {
@@ -48,6 +51,40 @@ function recentStatusesFor(entries: Entry[], brandKey: string, platform: Platfor
     .map((x) => x.status);
 }
 
+// computeSuccessRates buckets by exact brand-string casing (its Map key is
+// `${tab} ${brand}`, unnormalized). Everything else in this file matches
+// brands via normalizeBrandKey (trim + lowercase) — re-bucket here so two
+// casing variants of the same brand (e.g. "WinMega" / "winmega") in raw
+// entry data can't silently split into two under-counted buckets and cause
+// a false negative (missed 5-post minimum) or false positive (understated
+// post count) on the success-rate pause check.
+//
+// Note: computeSuccessRates uses scoreSummary.ts's BRAND_KEYS for brand
+// resolution while recentStatusesFor/brandOf use BRAND_COLS (from
+// tab-configs.ts), and these lists aren't identical (BRAND_COLS includes
+// 'Account Name', BRAND_KEYS doesn't) — a tab whose brand column resolves
+// to 'Account Name' would have computeSuccessRates silently find no brand
+// for every row. This is a latent (not live) limitation; do not fix it
+// without coordinating with scoreSummary.ts's broader usage.
+function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<string, SuccessRate> {
+  const merged = new Map<string, { live: number; removed: number }>();
+  const prefix = `${tab} `;
+  for (const [key, sr] of rates) {
+    if (!key.startsWith(prefix)) continue;
+    const brandKey = normalizeBrandKey(key.slice(prefix.length));
+    const acc = merged.get(brandKey) ?? { live: 0, removed: 0 };
+    acc.live += sr.live;
+    acc.removed += sr.removed;
+    merged.set(brandKey, acc);
+  }
+  const result = new Map<string, SuccessRate>();
+  for (const [brandKey, { live, removed }] of merged) {
+    const total = live + removed;
+    result.set(brandKey, { live, removed, rate: total === 0 ? null : (live / total) * 100 });
+  }
+  return result;
+}
+
 // Evaluates every active brand+platform combination for this tab: pauses one
 // if its two most recent posts are both Removed/Refused-classified and it
 // isn't already paused; resumes (deletes) any pause whose week has passed.
@@ -70,6 +107,14 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   const weekAlreadyGenerated = existingRows.some((r) => r.platform != null);
   const resumed: PinnedCombo[] = [];
 
+  // Computed once per active platform (not per brand) since each call scans
+  // all of ctx.entries — reused by the success-rate pause check below.
+  // normalizedRates re-buckets by normalized brand keys so case variants
+  // (e.g. "WinMega" / "winmega") merge correctly.
+  const ratesByPlatform = new Map(
+    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform), tab)]),
+  );
+
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
     for (const platform of ctx.activePlatforms) {
@@ -82,10 +127,31 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         continue;
       }
       if (weekAlreadyGenerated) continue;
+
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
       if (bothRemoved) {
         await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Two consecutive Removed/Refused posts');
+        continue;
+      }
+
+      // Second, independent trigger: sustained poor performance rather than
+      // just the last two posts. Lower priority than the check above — a
+      // combo can only hold one pause row, and consecutive-removed is
+      // checked first.
+      const sr = ratesByPlatform.get(platform)?.get(brandKey);
+      const decided = (sr?.live ?? 0) + (sr?.removed ?? 0);
+      const lowSuccessRate =
+        sr != null &&
+        decided >= PAUSE_RULES.minDecidedPostsForRateCheck &&
+        sr.rate != null &&
+        sr.rate < PAUSE_RULES.successRateThreshold;
+      if (lowSuccessRate) {
+        const pct = successRatePct(sr!.rate);
+        await upsertBrandPlatformPause(
+          tab, brand, platform, weekStart,
+          `Success rate below ${PAUSE_RULES.successRateThreshold}% (${pct}% over ${decided} posts)`,
+        );
       }
     }
   }
