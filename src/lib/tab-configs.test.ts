@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -8,6 +8,34 @@ describe('TAB_COLUMN_CONFIGS', () => {
       expect(accountIdx, `${tab} has no Account column`).toBeGreaterThanOrEqual(0);
       expect(cols[accountIdx + 1], `${tab}: Country should immediately follow Account`).toBe('Country');
     }
+  });
+});
+
+// Regression lock for the platform set every one of the 11 real brand tabs
+// resolves to — the Schedule Planner (SchedulePlanner.tsx) now uses this as
+// its sole source of "which platforms does this tab track" instead of the
+// live-header-based resolveActivePlatforms it used to call, so a silent
+// change here would silently change which tabs the scheduler generates
+// platform-tagged rows for.
+describe('getTabPlatforms', () => {
+  it('resolves the three multi-platform tabs to tp+ag+cg', () => {
+    expect(getTabPlatforms('Rooster Partners')).toEqual(['tp', 'ag', 'cg']);
+    expect(getTabPlatforms('Hanan')).toEqual(['tp', 'ag', 'cg']);
+    expect(getTabPlatforms('Revolution Casino')).toEqual(['tp', 'ag', 'cg']);
+    expect(getTabPlatforms('SilverPlay')).toEqual(['tp', 'ag', 'cg']);
+  });
+
+  it('resolves TP-only tabs (including ones whose status column is bare "Review Status") to tp only', () => {
+    expect(getTabPlatforms('TP Brand Injection')).toEqual(['tp']);
+    expect(getTabPlatforms('TP Affiliate')).toEqual(['tp']);
+    expect(getTabPlatforms('SuprPlay Limited')).toEqual(['tp']);
+    expect(getTabPlatforms('Trybet')).toEqual(['tp']);
+    expect(getTabPlatforms('HazEmirates UAE')).toEqual(['tp']);
+    expect(getTabPlatforms('GRG - Gulf Recovery Group')).toEqual(['tp']);
+  });
+
+  it('resolves Wizard of Odds to wo only, with no dependency on a live header match', () => {
+    expect(getTabPlatforms('Wizard of Odds')).toEqual(['wo']);
   });
 });
 

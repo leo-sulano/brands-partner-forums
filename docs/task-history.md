@@ -1747,3 +1747,17 @@ A day's platform chip on the Schedule Planner grid looked identical whether the 
 - Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-removed-indicator-design.md`.
 
 ---
+
+## Task 166: Schedule Planner — Fix Platform Detection So All 11 Brand Tabs Get the New Grid
+
+**Date:** August 3, 2026
+
+Only Rooster Partners (and possibly a couple of others) were ever showing the new platform-chip Schedule Planner design — every other tab, including Wizard of Odds, stayed stuck on the old pre-migration checkmark/Pause grid, permanently, no matter how long you waited.
+
+- Root cause: the scheduler resolved a tab's active platforms via its own `resolveActivePlatforms` (`src/lib/queries.ts`), which queried *live* Supabase column headers with a narrow, independently-maintained name-variant list — TP: 4 variants, AG/CG/WO: exactly 1 variant each, no fallback. Every other feature in the app (BrandGroup, Score Summary, Sidebar, Topbar, Edit Entry) instead resolves a tab's platforms via the existing static `getTabPlatforms` (`src/lib/tab-configs.ts`), driven by the already-known `TAB_COLUMN_CONFIGS` whitelist, with no live-header dependency at all (Wizard of Odds is a hardcoded special case there — `['wo']`, no header check needed).
+- `resolveActivePlatforms`'s TP variant list was missing plain `'Review Status'` — the exact status-column name configured for TP Brand Injection (BITP), TP Affiliate (FTP), and SuprPlay Limited — while `scoreSummary.ts`'s equivalent list already includes it. That gap alone was enough to silently zero out `activePlatforms` for those three tabs.
+- Fix: `SchedulePlanner.tsx` now calls `getTabPlatforms(tab)` directly (synchronous, no extra `fetchTabHeaders` round-trip) instead of `resolveActivePlatforms`, which is now dead code and deleted from `queries.ts`. Added a `getTabPlatforms` regression-lock test suite (`tab-configs.test.ts`) covering all 11 operational tabs' expected platform sets.
+- This doesn't retroactively rewrite any past week's history — `ensureWeekGenerated` only ever writes the *current* week the first time a tab is opened with its (now-correct) active platforms resolved, so each of the other 10 tabs will get real platform-tagged rows generated the next time it's opened during its current week, same as Rooster Partners did originally.
+- Full test suite (268 tests) and build both pass. Live browser verification not performed — no Supabase login credentials available in this session; worth confirming live that Wizard of Odds, BITP, FTP, SuprPlay, Trybet, HazEmirates, SilverPlay, Hanan, Revolution Casino, and GRG all pick up the new chip design on next visit.
+
+---

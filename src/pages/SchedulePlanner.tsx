@@ -1,13 +1,12 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND } from '../lib/tab-configs';
+import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
 import {
   fetchRawEntriesByTab,
   fetchTabHeaders,
   fetchBrandSchedule,
   setBrandScheduleDay,
-  resolveActivePlatforms,
   fetchActiveBrandPlatformPauses,
   type BrandPlatformPause,
 } from '../lib/queries';
@@ -166,7 +165,7 @@ export default function SchedulePlanner() {
             .filter((v): v is string => !!v && v.trim() !== ''),
         )].sort();
         if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
-        const platforms = await resolveActivePlatforms(tab);
+        const platforms = getTabPlatforms(tab);
         if (canceled) return;
         // Set all three together, tagged with the tab they were loaded for —
         // never as separate setState calls, so there's no window where one

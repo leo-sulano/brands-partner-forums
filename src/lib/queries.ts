@@ -320,22 +320,6 @@ export async function fetchTabHeaders(tab: string): Promise<string[]> {
   return Array.from(new Set(filtered));
 }
 
-// Mirrors the tpCol/agCol/cgCol/woCol resolution inside fetchTabKpis (kept as
-// a separate, header-only function here — the scheduler only needs which
-// platforms exist for a tab, not the full KPI computation).
-export async function resolveActivePlatforms(tab: string): Promise<Platform[]> {
-  const headers = await fetchTabHeaders(tab);
-  function has(...variants: string[]): boolean {
-    return variants.some((v) => headers.some((h) => h.toLowerCase() === v.toLowerCase()));
-  }
-  const platforms: Platform[] = [];
-  if (has('TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status')) platforms.push('tp');
-  if (has('AG Review Status')) platforms.push('ag');
-  if (has('CG Review Status')) platforms.push('cg');
-  if (has('WoO Review Status')) platforms.push('wo');
-  return platforms;
-}
-
 function isLiveStatus(s: string) {
   if (s.includes('not pub') || s.includes('refused')) return false;
   return s.includes('published') || s.includes('live');

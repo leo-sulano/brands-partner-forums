@@ -56,6 +56,23 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-08-03 (later):* Fixed why most brand tabs never showed the new platform-chip Schedule
+  Planner grid at all — only Rooster Partners had actually gotten it. Root cause:
+  `SchedulePlanner.tsx` resolved a tab's active platforms via its own `resolveActivePlatforms`
+  (`src/lib/queries.ts`), which queried live Supabase headers with a narrower name-variant
+  list than every other feature in the app uses (BrandGroup/Score Summary/Sidebar/Topbar all
+  use the static `getTabPlatforms` in `src/lib/tab-configs.ts`, driven by the already-known
+  `TAB_COLUMN_CONFIGS` whitelist — no live-header dependency, Wizard of Odds hardcoded to
+  `['wo']`). `resolveActivePlatforms`'s TP variant list was missing plain `'Review Status'`,
+  the configured status column for TP Brand Injection/TP Affiliate/SuprPlay Limited, silently
+  zeroing out `activePlatforms` for those tabs; Wizard of Odds depended on a live
+  `'WoO Review Status'` header that was never confirmed to exist (see Known Issues below —
+  now resolved by no longer depending on it at all). Fix: `SchedulePlanner.tsx` now calls
+  `getTabPlatforms(tab)` directly; `resolveActivePlatforms` is deleted (had no other callers).
+  Added a `getTabPlatforms` regression-lock test suite covering all 11 operational tabs.
+  Doesn't rewrite history — each of the other 10 tabs gets its current week's platform-tagged
+  rows generated the next time it's opened, same lazy-generation model Rooster Partners went
+  through originally. Task 166.
 - *2026-08-03:* Schedule Planner day cells now flag a platform chip as removed (rose ring +
   small ✕ corner badge + "— Removed" tooltip suffix) when the post scheduled for that exact
   calendar day was later found Removed/Refused. New `buildRemovedOnDateIndex`
@@ -374,6 +391,11 @@ Brands Partner Forum/
   brand tab against `scoreSummary.ts`'s `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS`
   (`pick()` does an exact string match, not case-insensitive) — never verified live, no
   Supabase DB credential was available in the session that shipped WO pause detection.
+  Narrower than it used to be: the Schedule Planner grid itself no longer depends on this
+  (2026-08-03, Task 166, now uses the static `getTabPlatforms` instead of a live header
+  check), but WO pause detection and the removed-post indicator's date-matching (Task 165)
+  both still read actual status/date *values* through these same two keys, so a real
+  mismatch there would still silently make both features inert for WO specifically.
 - Recharts pinned to v2; revisit if a major upgrade is available at install time.
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.
