@@ -310,7 +310,7 @@ export default function SchedulePlanner() {
   }
 
   async function handleSetDayStatus(brand: string, platform: Platform, day: Weekday, status: 'active' | 'paused') {
-    if (!isApproved || isFutureWeek) return;
+    if (!isApproved) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, status));
@@ -327,18 +327,6 @@ export default function SchedulePlanner() {
     [scheduleRows],
   );
 
-  // Any week strictly after the current one is read-only in the UI: nothing
-  // gates a manual cell click against a future week today, and a stray click
-  // there would create a platform-tagged row that permanently blocks
-  // ensureWeekGenerated's no-op guard once that week actually becomes
-  // current (the guard only checks "does any platform row already exist for
-  // this (tab, weekStart)", with no way to tell a real generation apart from
-  // one stray manual row). Deliberately `>` not `>=` — the current week
-  // (weekStartISO === today's Monday) must stay fully interactive.
-  const isFutureWeek = useMemo(
-    () => weekStartISO > toISODate(mondayOf(new Date())),
-    [weekStartISO],
-  );
   const activePlatforms = tabCtx?.activePlatforms ?? [];
 
   const addPlatformModalData = addPlatformTarget
@@ -484,21 +472,22 @@ export default function SchedulePlanner() {
                               pausesByPlatform={pausesByPlatform}
                               removedByPlatform={removedByPlatform}
                               confirmedByPlatform={confirmedByPlatform}
-                              // Both legacy weeks (imported platform-null brand_schedule rows,
-                              // pre-dating per-platform tracking) and future weeks are
-                              // read-only: forcing isApproved to false here (rather than
-                              // threading a separate readOnly prop through ScheduleCell) reuses
-                              // its existing `clickable = isApproved && !isPaused` gate, so no
-                              // chip in either kind of week ever gets an onClick/cursor-pointer
-                              // or a "+ Add Platform" button. A legacy week's rowsByPlatform is
-                              // already empty with zero extra code — scheduleFor's exact
+                              // Legacy weeks (imported platform-null brand_schedule rows,
+                              // pre-dating per-platform tracking) are read-only: forcing
+                              // isApproved to false here (rather than threading a separate
+                              // readOnly prop through ScheduleCell) reuses its existing
+                              // `clickable = isApproved && !isPaused` gate, so no chip in a
+                              // legacy week ever gets an onClick/cursor-pointer or a "+ Add
+                              // Platform" button. A legacy week's rowsByPlatform is already
+                              // empty with zero extra code — scheduleFor's exact
                               // `r.platform === platform` match never matches a platform-null
                               // row — so every chip that renders for a legacy week comes
                               // entirely from the confirmed/removed overlay above, computed
-                              // from real entry Added-dates. That's what makes a legacy week
-                              // visually accurate now, replacing the single plain checkmark it
-                              // used to show.
-                              isApproved={isApproved && !isFutureWeek && !isLegacyWeek}
+                              // from real entry Added-dates. Future weeks are fully
+                              // interactive — see schedulerService.ts's per-combo
+                              // ensureWeekGenerated/recalculatePauses guards for why a manual
+                              // edit here stays safe once the week becomes current.
+                              isApproved={isApproved && !isLegacyWeek}
                               onToggle={(platform) => handleCellClick(brand, platform, day)}
                               onAddPlatform={() => setAddPlatformTarget({ brand, day })}
                             />

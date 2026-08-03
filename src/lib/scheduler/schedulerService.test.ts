@@ -74,14 +74,14 @@ describe('recalculatePauses', () => {
   });
 
   // Regression test: a pause is only meaningful if it's inserted before the
-  // target week's schedule is generated. If week W was already generated
-  // (platform-tagged rows exist for it), a newly-detected two-consecutive-
+  // target combo's schedule is generated. If a brand+platform combo already
+  // has a row for week W (platform-tagged), a newly-detected two-consecutive-
   // removed combo with no existing pause row must NOT insert a pause for W
-  // — that pause could never affect W's already-written schedule, and would
+  // — that pause could never affect W's already-written row, and would
   // instead corrupt week W+1's resume logic by looking like a real pause
   // that "expired" (see finding writeup: this previously let a brand+
   // platform get stuck permanently un-pauseable after one resume cycle).
-  it('does not insert a pause for a week that is already generated', async () => {
+  it('does not insert a pause for a combo that already has a row for the week', async () => {
     queries.fetchBrandSchedule.mockResolvedValue([
       { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
     ]);
@@ -95,6 +95,32 @@ describe('recalculatePauses', () => {
     };
     await recalculatePauses('BITP', '2026-08-03', ctx);
     expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+  });
+
+  // Regression test for future-week manual editing: an existing row for one
+  // brand+platform combo must not block pause-detection for a DIFFERENT
+  // combo in the same week.
+  it('still detects a pause for one combo when a different combo already has a row for the week', async () => {
+    queries.fetchBrandSchedule.mockResolvedValue([
+      { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ]);
+    const ctx: TabContext = {
+      brands: ['WinMega', 'BrandB'],
+      activePlatforms: ['tp'],
+      entries: [
+        // Both brands independently qualify for the consecutive-removed pause trigger.
+        entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        entry({ Brands: 'BrandB', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'BrandB', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+      ],
+    };
+    await recalculatePauses('BITP', '2026-08-03', ctx);
+    // WinMega/tp already has a row for this week (a manual future-week edit,
+    // in the scenario this guards) -- skipped even though it would otherwise
+    // qualify. BrandB/tp has no existing row and still gets paused.
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'BrandB', 'tp', '2026-08-03', expect.any(String));
   });
 
   describe('success-rate trigger', () => {
@@ -171,12 +197,12 @@ describe('recalculatePauses', () => {
     });
 
     // Regression test: a success-rate pause is only meaningful if it's inserted
-    // before the target week's schedule is generated. If week W was already
-    // generated (platform-tagged rows exist for it), the success-rate check must
+    // before the target combo's schedule is generated. If a brand+platform combo
+    // already has a row for week W (platform-tagged), the success-rate check must
     // NOT insert a pause for W — it would never affect W's already-written
-    // schedule and would corrupt week W+1's resume logic (see the
-    // weekAlreadyGenerated guard).
-    it('does not insert a success-rate pause for a week that is already generated', async () => {
+    // row and would corrupt week W+1's resume logic (see the per-combo
+    // alreadyHasRow check in recalculatePauses).
+    it('does not insert a success-rate pause for a combo that already has a row for the week', async () => {
       queries.fetchBrandSchedule.mockResolvedValue([
         { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
       ]);
@@ -185,7 +211,7 @@ describe('recalculatePauses', () => {
         activePlatforms: ['tp'],
         entries: [
           // 1 live + 4 removed = 5 decided, rate 20% — would normally trigger
-          // success-rate pause, but week is already generated so no insert should occur.
+          // success-rate pause, but this combo already has a row so no insert should occur.
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
@@ -318,5 +344,20 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
     expect(activeDays).toHaveLength(1); // normal frequency only, no carryover
+  });
+
+  // Regression test for future-week manual editing: a manually-created row
+  // for one brand+platform combo must not block generation for every OTHER
+  // combo in the same week — only that exact combo should be skipped.
+  it('generates rows only for combos that do not already have one, leaving existing combos untouched', async () => {
+    queries.fetchBrandSchedule.mockResolvedValue([
+      { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-10', platform: 'cg', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ]);
+    const ctx: TabContext = { brands: ['WinMega', 'BrandB'], activePlatforms: ['cg'], entries: [] };
+    await ensureWeekGenerated('BITP', '2026-08-10', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-10', platform: 'cg' });
   });
 });
