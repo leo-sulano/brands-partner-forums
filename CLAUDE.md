@@ -71,7 +71,7 @@ Brands Partner Forum/
   weeks are untouched. No schema change, no `brand_schedule` writes. Task 169, spec
   `docs/superpowers/specs/2026-08-03-schedule-planner-legacy-week-platform-chips-design.md`,
   plan `docs/superpowers/plans/2026-08-03-schedule-planner-legacy-week-platform-chips.md`.
-- *2026-08-03:* Schedule Planner now shows a "confirmed" indicator (small emerald ✓
+- *2026-08-03 (prior):* Schedule Planner now shows a "confirmed" indicator (small emerald ✓
   corner badge, bottom-right) on a day whose real entry add-date matches, distinct from the
   "removed" indicator's (Task 165) top-right ✕. Unlike the removed indicator, a confirmed day
   renders its own chip even if `brand_schedule` has no row for it at all — the calendar now
