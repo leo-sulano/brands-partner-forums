@@ -470,36 +470,54 @@ export default function SchedulePlanner() {
                           {brand}
                         </Link>
                       </td>
-                      {WEEKDAYS.map((day, dayIndex) => (
-                        <td key={day} className="px-3 py-2 text-left align-top">
-                          <ScheduleCell
-                            brand={brand}
-                            day={day}
-                            platforms={activePlatforms}
-                            rowsByPlatform={rowsByPlatform}
-                            pausesByPlatform={pausesByPlatform}
-                            removedByPlatform={computeRemovedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
-                            confirmedByPlatform={computeConfirmedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
-                            // Both legacy weeks (imported platform-null brand_schedule rows,
-                            // pre-dating per-platform tracking) and future weeks are
-                            // read-only: forcing isApproved to false here (rather than
-                            // threading a separate readOnly prop through ScheduleCell) reuses
-                            // its existing `clickable = isApproved && !isPaused` gate, so no
-                            // chip in either kind of week ever gets an onClick/cursor-pointer
-                            // or a "+ Add Platform" button. A legacy week's rowsByPlatform is
-                            // already empty with zero extra code — scheduleFor's exact
-                            // `r.platform === platform` match never matches a platform-null
-                            // row — so every chip that renders for a legacy week comes
-                            // entirely from the confirmed/removed overlay below, computed
-                            // from real entry Added-dates. That's what makes a legacy week
-                            // visually accurate now, replacing the single plain checkmark it
-                            // used to show.
-                            isApproved={isApproved && !isFutureWeek && !isLegacyWeek}
-                            onToggle={(platform) => handleCellClick(brand, platform, day)}
-                            onAddPlatform={() => setAddPlatformTarget({ brand, day })}
-                          />
-                        </td>
-                      ))}
+                      {WEEKDAYS.map((day, dayIndex) => {
+                        const dayISO = toISODate(addDays(weekStart, dayIndex));
+                        const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
+                        const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
+                        // On a legacy week there is no real brand_schedule row for
+                        // ScheduleCell's render guard to key off, so a Removed/Refused post
+                        // (which only ever decorates an existing chip, per
+                        // buildDateStatusIndex's mutually exclusive removed/confirmed sets)
+                        // would otherwise never render at all. Folding removed platforms
+                        // into the confirmed set — legacy weeks only — makes the chip
+                        // render; removedByPlatform is still passed through unchanged so
+                        // ScheduleCell applies the rose ring/✕ badge instead of the emerald
+                        // ✓. Non-legacy weeks never take this branch, so their rendering is
+                        // untouched.
+                        const displayConfirmedByPlatform = isLegacyWeek
+                          ? { ...confirmedByPlatform, ...removedByPlatform }
+                          : confirmedByPlatform;
+                        return (
+                          <td key={day} className="px-3 py-2 text-left align-top">
+                            <ScheduleCell
+                              brand={brand}
+                              day={day}
+                              platforms={activePlatforms}
+                              rowsByPlatform={rowsByPlatform}
+                              pausesByPlatform={pausesByPlatform}
+                              removedByPlatform={removedByPlatform}
+                              confirmedByPlatform={displayConfirmedByPlatform}
+                              // Both legacy weeks (imported platform-null brand_schedule rows,
+                              // pre-dating per-platform tracking) and future weeks are
+                              // read-only: forcing isApproved to false here (rather than
+                              // threading a separate readOnly prop through ScheduleCell) reuses
+                              // its existing `clickable = isApproved && !isPaused` gate, so no
+                              // chip in either kind of week ever gets an onClick/cursor-pointer
+                              // or a "+ Add Platform" button. A legacy week's rowsByPlatform is
+                              // already empty with zero extra code — scheduleFor's exact
+                              // `r.platform === platform` match never matches a platform-null
+                              // row — so every chip that renders for a legacy week comes
+                              // entirely from the confirmed/removed overlay above, computed
+                              // from real entry Added-dates. That's what makes a legacy week
+                              // visually accurate now, replacing the single plain checkmark it
+                              // used to show.
+                              isApproved={isApproved && !isFutureWeek && !isLegacyWeek}
+                              onToggle={(platform) => handleCellClick(brand, platform, day)}
+                              onAddPlatform={() => setAddPlatformTarget({ brand, day })}
+                            />
+                          </td>
+                        );
+                      })}
                       <td className="px-3 py-2 text-left">
                         {pausedPlatforms.length > 0 && (
                           <div className="flex flex-wrap gap-1">

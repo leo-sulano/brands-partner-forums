@@ -56,7 +56,22 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-03 (newest):* Schedule Planner now shows a "confirmed" indicator (small emerald ✓
+- *2026-08-03 (newest):* Legacy (pre-platform-tagged, `platform = null`) Schedule Planner weeks
+  now render through the same `ScheduleCell` component current weeks use instead of a separate
+  plain-checkmark block, so a legacy week shows real TP/AG/CG/WO confirmed (green ✓) chips
+  wherever a brand's entry has a Live/Published add-date matching that day — read-only, via
+  `isApproved` forced off for the week. A final-review fix then closed a gap left by the initial
+  version: `buildDateStatusIndex`'s `removed`/`confirmed` sets are mutually exclusive, and
+  `ScheduleCell`'s render guard only fires on `isConfirmed` (or a real schedule row/pause), so a
+  legacy week's removed/refused posts never rendered a chip at all. Fixed entirely inside
+  `SchedulePlanner.tsx` (no changes to `scheduleUtils.ts`/`calendarRenderer.tsx`): for a legacy
+  week only, `confirmedByPlatform` now folds in any truthy `removedByPlatform` entries so the
+  guard fires, while `removedByPlatform` still passes through unchanged so `ScheduleCell`'s
+  existing `isRemoved` styling (rose ring, ✕ badge, "— Removed" tooltip) takes over. Non-legacy
+  weeks are untouched. No schema change, no `brand_schedule` writes. Task 169, spec
+  `docs/superpowers/specs/2026-08-03-schedule-planner-legacy-week-platform-chips-design.md`,
+  plan `docs/superpowers/plans/2026-08-03-schedule-planner-legacy-week-platform-chips.md`.
+- *2026-08-03:* Schedule Planner now shows a "confirmed" indicator (small emerald ✓
   corner badge, bottom-right) on a day whose real entry add-date matches, distinct from the
   "removed" indicator's (Task 165) top-right ✕. Unlike the removed indicator, a confirmed day
   renders its own chip even if `brand_schedule` has no row for it at all — the calendar now

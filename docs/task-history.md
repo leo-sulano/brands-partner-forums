@@ -1788,3 +1788,18 @@ The removed-post indicator (Task 165) only ever decorated a chip that `brand_sch
 - Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-confirmed-indicator-design.md`.
 
 ---
+
+## Task 169: Schedule Planner — Legacy Weeks Render Real Per-Platform Chips (Confirmed + Removed)
+
+**Date:** August 3, 2026
+
+Legacy (pre-platform-tagged) `brand_schedule` weeks — rows written before per-platform tracking existed, `platform = null` — still rendered a single plain checkmark with no TP/AG/CG/WO breakdown, bypassing the confirmed/removed overlay (Tasks 165/168) that already works for every other week.
+
+- `SchedulePlanner.tsx` now routes a legacy week's day cells through the same `ScheduleCell` component current weeks use, instead of a separate plain-checkmark block, with `isApproved` forced off for the week (reusing the existing `clickable = isApproved && !isPaused` gate) so nothing in a legacy week is editable — a legacy week's `rowsByPlatform` is already empty by construction, so every chip it shows comes entirely from the confirmed/removed overlay, computed from real entry add-dates.
+- A final whole-branch review caught that this only surfaced half of what was intended: `buildDateStatusIndex`'s `removed`/`confirmed` sets are mutually exclusive (a Removed/Refused post lands only in `removed`), and `ScheduleCell`'s render guard only fires on `isConfirmed` (or a real `brand_schedule` row/pause) — it never checks `isRemoved` on its own, since `isRemoved` only ever decorates a chip something else already caused to render. On a legacy week, with no real per-platform row to trigger that guard, a removed-only day rendered nothing at all.
+- Fixed entirely inside `SchedulePlanner.tsx` (no changes to `scheduleUtils.ts` or `calendarRenderer.tsx`, both off-limits per the plan's global constraints): for a legacy week only, the value passed as `confirmedByPlatform` now folds in any truthy `removedByPlatform` entries (`{ ...confirmedByPlatform, ...removedByPlatform }`), so the guard fires and renders the chip while `removedByPlatform` is still passed through unchanged — `ScheduleCell`'s existing `isRemoved` styling (rose ring, ✕ badge, "— Removed" tooltip) takes over independently of why `isConfirmed` was true. `computeConfirmedByPlatform`/`computeRemovedByPlatform` themselves are untouched, and non-legacy weeks never take the merge branch, so their rendering is byte-for-byte unchanged.
+- Purely read-only: no `brand_schedule` writes, no schema change.
+- Full test suite (269 tests) and build both pass.
+- Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-legacy-week-platform-chips-design.md`. Plan: `docs/superpowers/plans/2026-08-03-schedule-planner-legacy-week-platform-chips.md`.
+
+---
