@@ -14,10 +14,9 @@ import {
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
-import { ScheduleCell, PausedPlatformIndicator, SuccessRateBadge } from '../lib/scheduler/calendarRenderer';
+import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
-import { computeSuccessRates } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 import SelectDropdown from '../components/SelectDropdown';
@@ -95,7 +94,6 @@ export default function SchedulePlanner() {
   const [tabCtx, setTabCtx] = useState<{ tab: string; brands: string[]; activePlatforms: Platform[]; entries: Entry[] } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
-  const [successRates, setSuccessRates] = useState<Map<string, number | null>>(new Map());
   const [brandsLoading, setBrandsLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const loading = brandsLoading || scheduleLoading;
@@ -153,7 +151,6 @@ export default function SchedulePlanner() {
     // (tabCtx is null here) immediately rather than only once this async
     // block resolves.
     setTabCtx(null);
-    setSuccessRates(new Map());
     setPauses([]);
     (async () => {
       try {
@@ -236,22 +233,6 @@ export default function SchedulePlanner() {
         if (canceled) return;
         setScheduleRows(rows);
         setPauses(activePauses);
-
-        if (ctxReadyForTab && tabCtx!.activePlatforms.length > 0) {
-          const rateMap = new Map<string, number | null>();
-          for (const platform of tabCtx!.activePlatforms) {
-            const rates = computeSuccessRates(tabCtx!.entries, platform);
-            for (const brand of tabCtx!.brands) {
-              const existing = rateMap.get(brand);
-              const r = rates.get(`${tab} ${brand.trim()}`)?.rate ?? null;
-              // A brand's Success Rate column combines all its active
-              // platforms — keep whichever platform's rate is worse (more
-              // urgent to notice), matching the color-coded severity intent.
-              if (r != null && (existing == null || r < existing)) rateMap.set(brand, r);
-            }
-          }
-          setSuccessRates(rateMap);
-        }
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -429,9 +410,7 @@ export default function SchedulePlanner() {
                 <th
                   className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
                   style={{ top: toolbarHeight }}
-                >
-                  Success Rate
-                </th>
+                />
               </tr>
             </thead>
             <tbody>
@@ -501,13 +480,12 @@ export default function SchedulePlanner() {
                       ))}
                       <td className="px-3 py-2 text-left">
                         {pausedPlatforms.length > 0 && (
-                          <div className="mb-1 flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1">
                             {pausedPlatforms.map((p) => (
                               <PausedPlatformIndicator key={p} platform={p} pause={pausesByPlatform[p] as BrandPlatformPause} />
                             ))}
                           </div>
                         )}
-                        <SuccessRateBadge ratePct={successRates.has(brand) ? Math.round(successRates.get(brand) as number) : null} />
                       </td>
                     </tr>
                   );

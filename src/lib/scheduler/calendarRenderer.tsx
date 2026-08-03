@@ -110,18 +110,3 @@ export function PausedPlatformIndicator({ platform, pause }: PausedPlatformIndic
     </span>
   );
 }
-
-interface SuccessRateBadgeProps {
-  ratePct: number | null;
-}
-
-export function SuccessRateBadge({ ratePct }: SuccessRateBadgeProps) {
-  if (ratePct == null) return <span className="text-slate-400">—</span>;
-  const color = ratePct >= 80 ? 'text-emerald-600' : ratePct >= 50 ? 'text-amber-600' : 'text-rose-600';
-  const dot = ratePct >= 80 ? '🟢' : ratePct >= 50 ? '🟡' : '🔴';
-  return (
-    <span className={`font-medium ${color}`}>
-      {dot} {ratePct}%
-    </span>
-  );
-}
