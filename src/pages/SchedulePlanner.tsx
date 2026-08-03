@@ -15,7 +15,7 @@ import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type Brand
 import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildRemovedOnDateIndex } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
@@ -244,6 +244,23 @@ export default function SchedulePlanner() {
     };
   }, [tab, weekStartISO, tabCtx, isApproved]);
 
+  // Built once per tab load (off tabCtx.entries), not per render — see
+  // buildRemovedOnDateIndex's own doc comment for why brand-key resolution
+  // here must match BRAND_COLS, not scoreSummary.ts's separate BRAND_KEYS.
+  const removedIndex = useMemo(
+    () => buildRemovedOnDateIndex(tabCtx?.entries ?? []),
+    [tabCtx],
+  );
+
+  function computeRemovedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
+    const brandKey = normalizeBrandKey(brand);
+    const removedByPlatform: Partial<Record<Platform, boolean>> = {};
+    for (const platform of activePlatforms) {
+      if (removedIndex.has(`${brandKey}::${platform}::${dayISO}`)) removedByPlatform[platform] = true;
+    }
+    return removedByPlatform;
+  }
+
   const filteredBrands = useMemo(() => {
     const brands = tabCtx?.brands ?? [];
     const q = search.trim().toLowerCase();
@@ -347,15 +364,18 @@ export default function SchedulePlanner() {
                 />
               </div>
 
-              <div className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5 flex-1 min-w-[160px] max-w-xs">
-                <Search className="size-4 text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search brands…"
-                  className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
-                />
+              <div className="flex-1 min-w-[160px] max-w-xs">
+                <label className="mb-1.5 block text-xs font-medium text-slate-500 invisible">Search</label>
+                <div className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5">
+                  <Search className="size-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search brands…"
+                    className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
+                  />
+                </div>
               </div>
 
               <div className="ml-auto flex items-center gap-2">
@@ -436,7 +456,7 @@ export default function SchedulePlanner() {
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
                         {brand}
                       </td>
-                      {WEEKDAYS.map((day) => (
+                      {WEEKDAYS.map((day, dayIndex) => (
                         <td key={day} className="px-3 py-2 text-left align-top">
                           {isLegacyWeek ? (
                             // Legacy weeks are read-only, for every user, always: this
@@ -460,6 +480,7 @@ export default function SchedulePlanner() {
                               platforms={activePlatforms}
                               rowsByPlatform={rowsByPlatform}
                               pausesByPlatform={pausesByPlatform}
+                              removedByPlatform={computeRemovedByPlatform(brand, toISODate(addDays(weekStart, dayIndex)))}
                               // A future week is read-only: forcing isApproved
                               // to false here (rather than threading a
                               // separate readOnly prop through ScheduleCell)

@@ -56,6 +56,18 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
+- *2026-08-03:* Schedule Planner day cells now flag a platform chip as removed (rose ring +
+  small ✕ corner badge + "— Removed" tooltip suffix) when the post scheduled for that exact
+  calendar day was later found Removed/Refused. New `buildRemovedOnDateIndex`
+  (`src/lib/scheduler/scheduleUtils.ts`, TDD'd) scans a tab's raw entries once per tab load
+  and builds a `brandKey::platform::date` index, reusing the same
+  `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS`/`isRemovedStatus`/`parsePostDate` helpers the
+  scheduler's auto-pause logic already reads from `scoreSummary.ts` — no new schema. Matching
+  is deliberately exact-date-only (not nearest-date or most-recent-status), so under-flagging
+  is possible if a recorded add-date doesn't line up exactly with the scheduled day, but the
+  day a chip is flagged for can never be wrong. Purely a read-only visual overlay — no change
+  to click/cycle behavior, and legacy (pre-platform) weeks are untouched. Task 165, spec
+  `docs/superpowers/specs/2026-08-03-schedule-planner-removed-indicator-design.md`.
 - *2026-08-01:* Schedule Planner day cells no longer render a chip for every active platform
   unconditionally — `ScheduleCell` (`src/lib/scheduler/calendarRenderer.tsx`) now shows a chip
   only for platforms actually scheduled that day or scheduler-paused for the week, and existing

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildRemovedOnDateIndex } from './scheduleUtils';
 import type { BrandScheduleRow } from '../scheduleBrands';
+import type { Entry } from '../../types/entry';
 
 describe('leastLoadedDay', () => {
   it('picks the candidate with the fewest assignments', () => {
@@ -90,5 +91,42 @@ describe('unscheduledPlatforms', () => {
   it('excludes a platform with a manually-paused status for that day', () => {
     const rowsByPlatform = { tp: rowWith('tp', { monday: 'paused' }) };
     expect(unscheduledPlatforms(['tp'], 'monday', rowsByPlatform, {})).toEqual([]);
+  });
+});
+
+describe('buildRemovedOnDateIndex', () => {
+  const entry = (data: Record<string, string | null>): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('indexes a brand+platform+date whose status is Removed', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28' })];
+    const index = buildRemovedOnDateIndex(entries);
+    expect(index.has('winmega::tp::2026-07-28')).toBe(true);
+  });
+
+  it('does not index a brand+platform+date whose status is Live', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Live', 'Trust Pilot': '2026-07-28' })];
+    const index = buildRemovedOnDateIndex(entries);
+    expect(index.size).toBe(0);
+  });
+
+  it('skips an entry with a Removed status but no parseable date, without throwing', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': null })];
+    expect(() => buildRemovedOnDateIndex(entries)).not.toThrow();
+    expect(buildRemovedOnDateIndex(entries).size).toBe(0);
+  });
+
+  it('indexes multiple brand+platform+date combinations independently', () => {
+    const entries = [
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28' }),
+      entry({ Brands: 'WinMega', 'AG Review Status': 'Refused', 'Ask Gambler review added': '2026-07-29' }),
+      entry({ Brands: 'OtherBrand', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-30' }),
+    ];
+    const index = buildRemovedOnDateIndex(entries);
+    expect(index.has('winmega::tp::2026-07-28')).toBe(true);
+    expect(index.has('winmega::ag::2026-07-29')).toBe(true);
+    expect(index.has('otherbrand::tp::2026-07-30')).toBe(true);
+    expect(index.size).toBe(3);
   });
 });

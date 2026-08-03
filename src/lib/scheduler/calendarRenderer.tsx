@@ -15,6 +15,7 @@ interface ScheduleCellProps {
   platforms: Platform[];
   rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+  removedByPlatform: Partial<Record<Platform, boolean>>;
   isApproved: boolean;
   onToggle: (platform: Platform) => void;
   onAddPlatform: () => void;
@@ -33,7 +34,7 @@ interface ScheduleCellProps {
 // in SchedulePlanner.tsx) instead of relying on a placeholder chip.
 // Existing scheduled chips keep their original single-click-to-cycle
 // behavior via onToggle, unchanged.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -42,6 +43,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const row = rowsByPlatform[platform];
         const status: DayStatus = row?.[day] ?? null;
         if (!isPaused && status == null) return null;
+        const isRemoved = !!removedByPlatform[platform];
         const badge = PLATFORM_BADGE[platform];
         const stateClassName = isPaused
           ? `${badge.className} opacity-30`
@@ -53,8 +55,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
           <span
             key={platform}
             onClick={clickable ? () => onToggle(platform) : undefined}
-            title={`${PLATFORM_FULL_LABEL[platform]}: ${isPaused ? 'Paused (scheduler)' : statusLabel(status)}`}
-            className={`inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${clickable ? 'cursor-pointer' : ''}`}
+            title={`${PLATFORM_FULL_LABEL[platform]}: ${isPaused ? 'Paused (scheduler)' : statusLabel(status)}${isRemoved ? ' — Removed' : ''}`}
+            className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''}`}
           >
             <img
               src={PLATFORM_FAVICON[platform]}
@@ -63,6 +65,14 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
             />
             {badge.label}
+            {isRemoved && (
+              <span
+                aria-hidden="true"
+                className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold leading-none text-white"
+              >
+                ✕
+              </span>
+            )}
           </span>
         );
       })}

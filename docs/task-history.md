@@ -1732,3 +1732,18 @@ Day cells previously rendered a chip for every active platform unconditionally (
 - Spec: `docs/superpowers/specs/2026-07-31-schedule-planner-cell-display-design.md`. Plan: `docs/superpowers/plans/2026-07-31-schedule-planner-cell-display.md`.
 
 ---
+
+## Task 165: Schedule Planner — Removed-Post Indicator on Platform Chips
+
+**Date:** August 3, 2026
+
+A day's platform chip on the Schedule Planner grid looked identical whether the post was still live or was later found removed/refused on that platform — there was no way to tell from the grid alone.
+
+- New `buildRemovedOnDateIndex` (`src/lib/scheduler/scheduleUtils.ts`, TDD'd with 4 new tests) scans a tab's raw entries once and builds a `brandKey::platform::date` lookup of posts whose recorded status is Removed/Refused, reusing the same `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS`/`isRemovedStatus`/`parsePostDate` helpers the scheduler's auto-pause logic already reads from `scoreSummary.ts` — no new schema, no new "removed" concept.
+- Matching is exact-date only: a day cell is flagged removed only if an entry's platform "added" date equals that exact calendar day, not a nearest-date or most-recent-status heuristic — avoids mislabeling the wrong day, at the cost of not flagging cases where the recorded date doesn't line up exactly with the schedule.
+- `SchedulePlanner.tsx` memoizes the index off `tabCtx.entries` (built once per tab load, not per render) and passes a per-day `removedByPlatform` map into `ScheduleCell`.
+- `ScheduleCell` (`src/lib/scheduler/calendarRenderer.tsx`) renders a flagged chip with a rose ring, a small ✕ corner badge, and a "— Removed" tooltip suffix; click behavior is unchanged (still a read-only visual overlay). Legacy (pre-platform) weeks are untouched, as before.
+- Full test suite (265 tests) and build (`tsc -b && vite build`) both pass. Live browser verification not performed — no Supabase login credentials available in this session.
+- Spec: `docs/superpowers/specs/2026-08-03-schedule-planner-removed-indicator-design.md`.
+
+---

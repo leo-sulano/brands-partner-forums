@@ -1,5 +1,8 @@
-import { WEEKDAYS, type Weekday, type BrandScheduleRow } from '../scheduleBrands';
-import type { Platform } from '../removedPlatformBrands';
+import { WEEKDAYS, toISODate, type Weekday, type BrandScheduleRow } from '../scheduleBrands';
+import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
+import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate } from '../scoreSummary';
+import { BRAND_COLS } from '../tab-configs';
+import type { Entry } from '../../types/entry';
 
 export const PLATFORM_BADGE: Record<Platform, { label: string; className: string }> = {
   tp: { label: 'TP', className: 'bg-emerald-100 text-emerald-700' },
@@ -46,6 +49,31 @@ export function leastLoadedDay(dayCounts: Record<Weekday, number>, candidates: W
 
 export function completedBrandPlatformKey(brandKey: string, platform: Platform): string {
   return `${brandKey}::${platform}`;
+}
+
+const ALL_PLATFORMS = Object.keys(PLATFORM_STATUS_KEYS) as Platform[];
+
+// A brand+platform+exact-date lookup of "the post scheduled for this brand
+// on this platform on this calendar day was later found Removed/Refused",
+// built once per tab load from raw entries. Brand resolution matches
+// SchedulePlanner.tsx's own brand-list resolution (BRAND_COLS), not
+// scoreSummary.ts's separate BRAND_KEYS list — see the note in
+// schedulerService.ts's normalizedRates for why those two lists disagree.
+export function buildRemovedOnDateIndex(entries: Entry[]): Set<string> {
+  const index = new Set<string>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of ALL_PLATFORMS) {
+      const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status || !isRemovedStatus(status)) continue;
+      const date = parsePostDate(pick(entry.data, PLATFORM_DATE_KEYS[platform]));
+      if (!date) continue;
+      index.add(`${brandKey}::${platform}::${toISODate(date)}`);
+    }
+  }
+  return index;
 }
 
 // Brand Tab Completion Rule: scheduled = total non-null day-slots across this
