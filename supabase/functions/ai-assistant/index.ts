@@ -51,6 +51,7 @@ The dashboard manages:
 • FTD Tracking (first-time deposits per brand/source)
 • Review Monitoring (TP = Trustpilot, AG = AskGamblers, CG = Casino Guru)
 • Per-account attributes (Proxy Used, Agent, Country, and other operational fields tracked per review account)
+• Posting Schedule & Pause State (weekly per-platform posting calendar, auto-pause status)
 • User Management (roles: admin, manager, user)
 • Reports & Analytics (monthly reports, comparisons, summaries)
 
@@ -186,6 +187,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const context: string | undefined = body?.context;
 
   const messages: any[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+  messages.push({ role: 'system', content: `Current date: ${new Date().toISOString().slice(0, 10)} (UTC)` });
   if (context) messages.push({ role: 'system', content: `Current page context: ${context}` });
   messages.push(...userMessages);
 
