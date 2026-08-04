@@ -9,10 +9,11 @@ import {
   fetchBrandSchedule,
   setBrandScheduleDay,
   fetchActiveBrandPlatformPauses,
+  fetchRemovedPlatformBrands,
   type BrandPlatformPause,
 } from '../lib/queries';
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
-import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
+import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex } from '../lib/scheduler/scheduleUtils';
@@ -105,7 +106,26 @@ export default function SchedulePlanner() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; day: Weekday } | null>(null);
+  const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
   const { isApproved } = useAuth();
+
+  // A brand whose platform page (e.g. TP) was flagged removed in Brand Tabs
+  // must not show that platform on the Schedule Planner either — it's
+  // already fully excluded from that platform's Score Summary view, and a
+  // page that no longer exists has nothing to schedule. Fetched once (not
+  // tab-scoped) same as BrandGroup.tsx's own fetch of this table; a failed
+  // fetch just means nothing gets filtered, same fallback BrandGroup uses.
+  useEffect(() => {
+    let canceled = false;
+    fetchRemovedPlatformBrands()
+      .then((rows) => { if (!canceled) setRemovedPlatformBrandRows(rows); })
+      .catch(() => { /* filtering is best-effort — a failed fetch just means no filtering happens */ });
+    return () => { canceled = true; };
+  }, []);
+  const removedPlatformBrandSet = useMemo(
+    () => buildRemovedPlatformBrandSet(removedPlatformBrandRows),
+    [removedPlatformBrandRows],
+  );
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
@@ -257,10 +277,19 @@ export default function SchedulePlanner() {
     [tabCtx],
   );
 
+  // Drops any platform whose page was flagged removed for this exact
+  // (tab, brand) — same per-platform exclusion scoreSummary.ts already
+  // applies to Score Summary, so a TP-removed brand keeps its AG/CG/WO chips
+  // but never shows TP again here, in any cell state (scheduled, confirmed,
+  // removed-evidence, or addable).
+  function brandPlatforms(brand: string): Platform[] {
+    return activePlatforms.filter((p) => !removedPlatformBrandSet.has(platformRemovedKey(tab, brand, p)));
+  }
+
   function computeRemovedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
     const removedByPlatform: Partial<Record<Platform, boolean>> = {};
-    for (const platform of activePlatforms) {
+    for (const platform of brandPlatforms(brand)) {
       if (dateStatusIndex.removed.has(`${brandKey}::${platform}::${dayISO}`)) removedByPlatform[platform] = true;
     }
     return removedByPlatform;
@@ -269,7 +298,7 @@ export default function SchedulePlanner() {
   function computeConfirmedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
     const confirmedByPlatform: Partial<Record<Platform, boolean>> = {};
-    for (const platform of activePlatforms) {
+    for (const platform of brandPlatforms(brand)) {
       if (dateStatusIndex.confirmed.has(`${brandKey}::${platform}::${dayISO}`)) confirmedByPlatform[platform] = true;
     }
     return confirmedByPlatform;
@@ -289,7 +318,7 @@ export default function SchedulePlanner() {
     const brandKey = normalizeBrandKey(brand);
     const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
     const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
-    for (const platform of activePlatforms) {
+    for (const platform of brandPlatforms(brand)) {
       const r = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
       if (r) rowsByPlatform[platform] = r;
       const p = pauses.find(
@@ -339,7 +368,7 @@ export default function SchedulePlanner() {
         const { rowsByPlatform, pausesByPlatform } = computeCellData(addPlatformTarget.brand);
         const dayIndex = WEEKDAYS.indexOf(addPlatformTarget.day);
         return {
-          platforms: unscheduledPlatforms(activePlatforms, addPlatformTarget.day, rowsByPlatform, pausesByPlatform),
+          platforms: unscheduledPlatforms(brandPlatforms(addPlatformTarget.brand), addPlatformTarget.day, rowsByPlatform, pausesByPlatform),
           dayLabel: `${WEEKDAY_LABELS[addPlatformTarget.day]} ${formatWeekdayDate(weekStart, dayIndex)}`,
         };
       })()
@@ -472,7 +501,7 @@ export default function SchedulePlanner() {
                             <ScheduleCell
                               brand={brand}
                               day={day}
-                              platforms={activePlatforms}
+                              platforms={brandPlatforms(brand)}
                               rowsByPlatform={rowsByPlatform}
                               pausesByPlatform={pausesByPlatform}
                               removedByPlatform={removedByPlatform}
