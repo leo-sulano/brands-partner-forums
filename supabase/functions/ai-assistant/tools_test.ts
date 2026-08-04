@@ -10,6 +10,7 @@ import {
   redactSensitive,
   runTool,
   successRateByField,
+  ratingLabel,
   EntryRow,
 } from './tools.ts';
 
@@ -218,4 +219,61 @@ Deno.test('successRateByField picks up AG Review Status and CG Review Status (mu
   assertEquals(ann.total, 1);
   assertEquals(bob.removed, 1);
   assertEquals(bob.total, 1);
+});
+
+Deno.test('parseScore respects a custom maxScore and floors fractional values', () => {
+  assertEquals(parseScore('8', 10), 8);
+  assertEquals(parseScore('11', 10), null);
+  assertEquals(parseScore('4.7'), 4);
+  assertEquals(parseScore('0', 10), null);
+});
+
+Deno.test('ratingLabel maps average to a qualitative label, scaled by maxScore', () => {
+  assertEquals(ratingLabel(4.5), 'Excellent');
+  assertEquals(ratingLabel(4.0), 'Great');
+  assertEquals(ratingLabel(3.0), 'Average');
+  assertEquals(ratingLabel(2.0), 'Poor');
+  assertEquals(ratingLabel(1.0), 'Bad');
+  assertEquals(ratingLabel(null), null);
+  assertEquals(ratingLabel(9.0, 10), 'Excellent');
+  assertEquals(ratingLabel(8.0, 10), 'Great');
+});
+
+Deno.test('scoreSummary is platform-aware and supports AskGamblers 1-10 scores', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'A', 'AG Review Status': 'Published', 'AG Score added': '8' } },
+    { id: '2', tab: 't', data: { Brand: 'A', 'AG Review Status': 'Removed' } },
+    // A TP status key on the same tab/brand must NOT leak into an AG-scoped query.
+    { id: '3', tab: 't', data: { Brand: 'A', 'Review Status': 'Published', 'Score added': '2' } },
+  ];
+  const out = scoreSummary(entries, 'ag');
+  assertEquals(out.length, 1);
+  assertEquals(out[0].rated, 1);
+  assertEquals(out[0].average, 8);
+  assertEquals(out[0].live, 1);
+  assertEquals(out[0].removed, 1);
+  assertEquals(out[0].successRate, 50);
+});
+
+Deno.test('scoreSummary creates a bucket for a brand with only Removed entries (no stars, but a real success rate)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'B', 'Review Status': 'Removed' } },
+    { id: '2', tab: 't', data: { Brand: 'B', 'Review Status': 'Refused' } },
+  ];
+  const out = scoreSummary(entries);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].rated, 0);
+  assertEquals(out[0].average, null);
+  assertEquals(out[0].live, 0);
+  assertEquals(out[0].removed, 2);
+  assertEquals(out[0].successRate, 0);
+});
+
+Deno.test('get_score_summary defaults to tp platform when given an invalid value', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'C', 'Review Status': 'Published', 'Score added': '3' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'get_score_summary', { platform: 'not-a-real-platform' });
+  assertEquals(result.brands.length, 1);
+  assertEquals(result.brands[0].average, 3);
 });

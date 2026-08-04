@@ -7,7 +7,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
-export function pick(data: Record<string, any>, keys: string[]): string | null {
+export function pick(data: Record<string, any>, keys: readonly string[]): string | null {
   for (const k of keys) {
     const v = data?.[k];
     if (v != null && String(v).trim() !== '') return String(v);
@@ -55,13 +55,46 @@ const DATE_KEYS = [
   'Trust Pilot', 'Score added', 'posted_at', 'Posted At', 'date', 'Date',
 ];
 
-export type Star = 1 | 2 | 3 | 4 | 5;
+export type Platform = 'tp' | 'ag' | 'cg' | 'wo';
 
-export function parseScore(raw: string | null | undefined): Star | null {
+export const PLATFORM_STATUS_KEYS: Record<Platform, readonly string[]> = {
+  tp: ['TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status', 'Review Status'],
+  ag: ['AG Review Status'],
+  cg: ['CG Review Status'],
+  wo: ['WoO Review Status'],
+};
+
+const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
+  tp: ['TP Score added', 'Score added', 'Score Added', 'Score'],
+  ag: ['AG Score added'],
+  cg: ['CG Score added'],
+  wo: ['Wizard of OddsScore added'],
+};
+
+const PLATFORM_MAX_SCORE: Record<Platform, number> = { tp: 5, ag: 10, cg: 5, wo: 5 };
+
+export type Star = number;
+
+export function parseScore(raw: string | null | undefined, maxScore: number = 5): Star | null {
   if (raw == null) return null;
-  const s = String(raw).trim();
-  if (!/^[1-5]$/.test(s)) return null;
-  return Number(s) as Star;
+  const n = Number(String(raw).trim());
+  if (!Number.isFinite(n)) return null;
+  const floored = Math.floor(n);
+  if (floored < 1 || floored > maxScore) return null;
+  return floored;
+}
+
+export type RatingLabel = 'Excellent' | 'Great' | 'Average' | 'Poor' | 'Bad';
+
+export function ratingLabel(avg: number | null, maxScore: number = 5): RatingLabel | null {
+  if (avg == null) return null;
+  const k = maxScore / 5;
+  if (avg >= 4.5 * k) return 'Excellent';
+  if (avg >= 4.0 * k) return 'Great';
+  if (avg >= 3.0 * k) return 'Average';
+  if (avg >= 2.0 * k) return 'Poor';
+  if (avg >= 1.0) return 'Bad';
+  return null;
 }
 
 export interface EntryRow {
@@ -216,39 +249,79 @@ export function successRateByField(
     .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
 }
 
-// Published-only star rollup, grouped by `${tab} ${brand}`. Mirrors computeScoreSummary.
-export function scoreSummary(entries: EntryRow[]) {
-  const buckets = new Map<
-    string,
-    { tab: string; brand: string; counts: Record<Star, number>; unrated: number }
-  >();
+export interface BrandScoreSummary {
+  tab: string;
+  brand: string;
+  counts: Record<number, number>;
+  unrated: number;
+  total: number;
+  rated: number;
+  average: number | null;
+  label: RatingLabel | null;
+  live: number;
+  removed: number;
+  successRate: number | null;
+}
+
+// Star rollup (Published-only) AND live/removed Success Rate, grouped by
+// `${tab} ${brand}`, computed in one pass per platform. Mirrors
+// computeScoreSummary + computeSuccessRates in src/lib/scoreSummary.ts, merged
+// into a single result since the assistant only ever needs the combined view.
+export function scoreSummary(entries: EntryRow[], platform: Platform = 'tp'): BrandScoreSummary[] {
+  const statusKeys = PLATFORM_STATUS_KEYS[platform];
+  const scoreKeys = PLATFORM_SCORE_KEYS[platform];
+  const maxScore = PLATFORM_MAX_SCORE[platform];
+
+  interface Bucket {
+    tab: string;
+    brand: string;
+    counts: Record<number, number>;
+    unrated: number;
+    live: number;
+    removed: number;
+  }
+  const buckets = new Map<string, Bucket>();
+
   for (const e of entries) {
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
     if (!brand) continue;
-    const status = (pick(e.data, STATUS_KEYS) ?? '').trim().toLowerCase();
-    if (status !== 'published') continue;
+    const status = (pick(e.data, statusKeys) ?? '').trim().toLowerCase();
+    if (!status) continue;
+
     const key = `${e.tab} ${brand}`;
     let b = buckets.get(key);
     if (!b) {
-      b = { tab: e.tab, brand, counts: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }, unrated: 0 };
+      const counts: Record<number, number> = {};
+      for (let i = 1; i <= maxScore; i++) counts[i] = 0;
+      b = { tab: e.tab, brand, counts, unrated: 0, live: 0, removed: 0 };
       buckets.set(key, b);
     }
-    const sc = parseScore(pick(e.data, SCORE_KEYS));
-    if (sc == null) b.unrated += 1;
-    else b.counts[sc] += 1;
+
+    if (isLiveStatus(status)) b.live += 1;
+    else if (isRemovedStatus(status)) b.removed += 1;
+
+    if (status !== 'published') continue;
+    const score = parseScore(pick(e.data, scoreKeys), maxScore);
+    if (score == null) b.unrated += 1;
+    else b.counts[score] += 1;
   }
+
   return [...buckets.values()].map((b) => {
-    const rated = b.counts[1] + b.counts[2] + b.counts[3] + b.counts[4] + b.counts[5];
+    let rated = 0;
+    let weighted = 0;
+    for (let i = 1; i <= maxScore; i++) {
+      rated += b.counts[i];
+      weighted += i * b.counts[i];
+    }
     const total = rated + b.unrated;
-    const average =
-      rated === 0
-        ? null
-        : Math.round(
-            ((b.counts[1] + 2 * b.counts[2] + 3 * b.counts[3] + 4 * b.counts[4] + 5 * b.counts[5]) /
-              rated) *
-              10,
-          ) / 10;
-    return { tab: b.tab, brand: b.brand, counts: b.counts, unrated: b.unrated, rated, total, average };
+    const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
+    const label = ratingLabel(average, maxScore);
+    const successTotal = b.live + b.removed;
+    const successRate = successTotal === 0 ? null : (b.live / successTotal) * 100;
+    return {
+      tab: b.tab, brand: b.brand, counts: b.counts, unrated: b.unrated,
+      total, rated, average, label, live: b.live, removed: b.removed, successRate,
+    };
   });
 }
 
@@ -304,8 +377,18 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'get_score_summary',
-      description: 'Published-only star-rating rollup per brand, optionally filtered to one tab.',
-      parameters: { type: 'object', properties: { tab: { type: 'string' } } },
+      description:
+        'Star-rating rollup (Published reviews only) AND live/removed Success Rate ' +
+        'per brand, matching the dashboard\'s Score Summary page, for one platform: ' +
+        'tp (TrustPilot, default), ag (AskGamblers), cg (CasinoGuru), or wo (Wizard ' +
+        'of Odds). All-time only — no date-range filtering yet.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tab: { type: 'string' },
+          platform: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] },
+        },
+      },
     },
   },
   {
@@ -369,7 +452,9 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.tab) q = q.eq('tab', args.tab);
     const { data, error } = await q;
     if (error) throw error;
-    return { brands: scoreSummary(data ?? []) };
+    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+    const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
+    return { brands: scoreSummary(data ?? [], platform) };
   }
   if (name === 'get_success_rate_by_field') {
     let q = supabase.from('entries').select('id, tab, data');
