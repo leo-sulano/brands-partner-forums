@@ -15,6 +15,23 @@ export function pick(data: Record<string, any>, keys: string[]): string | null {
   return null;
 }
 
+export const SENSITIVE_KEYS = new Set([
+  'Password',
+  'AG Password',
+  'CG Password',
+  'Casino Password',
+  'Backup Codes',
+  'Authenticator Backup',
+]);
+
+export function redactSensitive(data: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(data ?? {})) {
+    if (!SENSITIVE_KEYS.has(k)) out[k] = v;
+  }
+  return out;
+}
+
 const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'];
 const ACCOUNT_KEYS = ['Account Name', 'account_name', 'casino', 'Casino', 'name', 'Name'];
 const STATUS_KEYS = [
@@ -191,7 +208,8 @@ export const TOOL_DEFS = [
         'month (e.g. "may 2026" or "2026-05"), and/or a free-text contains match. ' +
         'Returns summary rows and total count. ' +
         'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
-        'IMPORTANT: always pass month as "may 2026" style when user mentions a month.',
+        'IMPORTANT: always pass month as "may 2026" style when user mentions a month. ' +
+        'Each returned row includes its full set of non-credential fields under `data` (not just brand/status/score/date) — e.g. Proxy Used, Agent, Country, and any other tracked field for that tab.',
       parameters: {
         type: 'object',
         properties: {
@@ -244,7 +262,10 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.contains) rows = rows.filter((e) => entryMatches(e, args.contains));
     const total = rows.length;
     const limit = Math.min(Number(args?.limit) || 25, 50);
-    return { total, rows: rows.slice(0, limit).map(mapEntrySummary) };
+    return {
+      total,
+      rows: rows.slice(0, limit).map((e) => ({ id: e.id, tab: e.tab, data: redactSensitive(e.data) })),
+    };
   }
   if (name === 'get_entry') {
     const { data, error } = await supabase
@@ -253,7 +274,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       .eq('id', args?.id)
       .maybeSingle();
     if (error) throw error;
-    return data ?? { error: 'not found' };
+    if (!data) return { error: 'not found' };
+    return { id: data.id, tab: data.tab, data: redactSensitive(data.data) };
   }
   if (name === 'get_score_summary') {
     let q = supabase.from('entries').select('id, tab, data');

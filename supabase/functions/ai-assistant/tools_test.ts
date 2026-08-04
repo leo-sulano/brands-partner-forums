@@ -7,6 +7,9 @@ import {
   entryMatches,
   matchesStatus,
   scoreSummary,
+  redactSensitive,
+  runTool,
+  EntryRow,
 } from './tools.ts';
 
 Deno.test('pick falls through key variants and skips blanks', () => {
@@ -52,4 +55,76 @@ Deno.test('mapEntrySummary surfaces key fields', () => {
   assertEquals(row.brand, 'Acme');
   assertEquals(row.account, 'acc1');
   assertEquals(row.status, 'Published');
+});
+
+Deno.test('redactSensitive strips all 6 known credential keys, keeps everything else', () => {
+  const input = {
+    Account: '123',
+    Password: 'hunter2',
+    'AG Password': 'agpass',
+    'CG Password': 'cgpass',
+    'Casino Password': 'casinopass',
+    'Backup Codes': 'codes',
+    'Authenticator Backup': 'authbackup',
+    'Proxy Used': 'Enigma',
+    Country: '',
+  };
+  const out = redactSensitive(input);
+  assertEquals(out.Account, '123');
+  assertEquals(out['Proxy Used'], 'Enigma');
+  assertEquals(out.Country, '');
+  assertEquals('Password' in out, false);
+  assertEquals('AG Password' in out, false);
+  assertEquals('CG Password' in out, false);
+  assertEquals('Casino Password' in out, false);
+  assertEquals('Backup Codes' in out, false);
+  assertEquals('Authenticator Backup' in out, false);
+});
+
+function mockSupabase(rows: EntryRow[]) {
+  return {
+    from(_table: string) {
+      let filtered = rows;
+      const builder: any = {
+        select(_cols: string) {
+          return builder;
+        },
+        eq(key: string, value: string) {
+          filtered = filtered.filter((r: any) =>
+            key === 'tab' ? r.tab === value : r.id === value
+          );
+          return builder;
+        },
+        maybeSingle() {
+          return Promise.resolve({ data: filtered[0] ?? null, error: null });
+        },
+        then(resolve: any) {
+          resolve({ data: filtered, error: null });
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+Deno.test('get_entry never returns a credential key even when the row has one', async () => {
+  const rows: EntryRow[] = [
+    { id: 'e1', tab: 'TP Brand Injection', data: { Account: '1', Password: 'hunter2' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'get_entry', { id: 'e1' });
+  const json = JSON.stringify(result);
+  assertEquals(json.includes('hunter2'), false);
+  assertEquals(json.includes('Password'), false);
+  assertEquals(result.data.Account, '1');
+});
+
+Deno.test('query_entries never returns a credential key even when a row has one', async () => {
+  const rows: EntryRow[] = [
+    { id: 'e1', tab: 'TP Brand Injection', data: { Account: '1', 'Backup Codes': 'secretcodes' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {});
+  const json = JSON.stringify(result);
+  assertEquals(json.includes('secretcodes'), false);
+  assertEquals(json.includes('Backup Codes'), false);
+  assertEquals(result.rows[0].data.Account, '1');
 });
