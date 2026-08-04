@@ -9,6 +9,7 @@ import {
   scoreSummary,
   redactSensitive,
   runTool,
+  successRateByField,
   EntryRow,
 } from './tools.ts';
 
@@ -127,4 +128,51 @@ Deno.test('query_entries never returns a credential key even when a row has one'
   assertEquals(json.includes('secretcodes'), false);
   assertEquals(json.includes('Backup Codes'), false);
   assertEquals(result.rows[0].data.Account, '1');
+});
+
+Deno.test('successRateByField computes live/removed rate per proxy value', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Live' } },
+    { id: '3', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Removed' } },
+    { id: '4', tab: 't', data: { 'Proxy Used': 'OtherProxy', 'Review Status': 'Refused' } },
+  ];
+  const out = successRateByField(entries, 'proxy');
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 2);
+  assertEquals(enigma.removed, 1);
+  assertEquals(enigma.total, 3);
+  assertEquals(Math.round(enigma.rate!), 67);
+});
+
+Deno.test('successRateByField excludes rows with an undecided status from live/removed counts', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'X', 'Review Status': 'Pending' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'X', 'Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'proxy');
+  const x = out.find((r) => r.value === 'X')!;
+  assertEquals(x.live, 1);
+  assertEquals(x.removed, 0);
+  assertEquals(x.total, 1);
+});
+
+Deno.test('successRateByField skips rows with no value for the requested field', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 'TabWithNoAgent', data: { 'Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { Agent: 'ANN', 'Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'agent');
+  assertEquals(out.length, 1);
+  assertEquals(out[0].value, 'ANN');
+});
+
+Deno.test('successRateByField sorts best rate first, zero-total last', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Country: 'A', 'Review Status': 'Removed' } },
+    { id: '2', tab: 't', data: { Country: 'B', 'Review Status': 'Published' } },
+    { id: '3', tab: 't', data: { Country: 'C', 'Review Status': 'Pending' } },
+  ];
+  const out = successRateByField(entries, 'country');
+  assertEquals(out.map((r) => r.value), ['B', 'A', 'C']);
 });

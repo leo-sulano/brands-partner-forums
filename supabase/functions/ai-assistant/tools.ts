@@ -151,6 +151,58 @@ export function matchesStatus(e: EntryRow, status: string): boolean {
   return have === want;
 }
 
+// Ported from src/lib/scoreSummary.ts — keep in sync manually if either changes,
+// same convention as this file's existing ported pick()/BRAND_KEYS/etc.
+export function isLiveStatus(s: string): boolean {
+  if (s.includes('not pub') || s.includes('refused')) return false;
+  return s.includes('published') || s.includes('live');
+}
+
+export function isRemovedStatus(s: string): boolean {
+  return s.includes('remove') || s.includes('refus') || s.includes('reject');
+}
+
+const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
+  proxy: ['Proxy Used'],
+  agent: ['Agent'],
+  country: ['Country'],
+};
+
+export interface FieldSuccessRate {
+  value: string;
+  live: number;
+  removed: number;
+  total: number;
+  rate: number | null;
+}
+
+export function successRateByField(
+  entries: EntryRow[],
+  field: 'proxy' | 'agent' | 'country',
+): FieldSuccessRate[] {
+  const keys = FIELD_KEYS[field];
+  const buckets = new Map<string, { live: number; removed: number }>();
+  for (const e of entries) {
+    const value = (pick(e.data, keys) ?? '').trim();
+    if (!value) continue;
+    const status = (pick(e.data, STATUS_KEYS) ?? '').trim().toLowerCase();
+    if (!status) continue;
+    let b = buckets.get(value);
+    if (!b) {
+      b = { live: 0, removed: 0 };
+      buckets.set(value, b);
+    }
+    if (isLiveStatus(status)) b.live += 1;
+    else if (isRemovedStatus(status)) b.removed += 1;
+  }
+  return [...buckets.entries()]
+    .map(([value, { live, removed }]) => {
+      const total = live + removed;
+      return { value, live, removed, total, rate: total === 0 ? null : (live / total) * 100 };
+    })
+    .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
+}
+
 // Published-only star rollup, grouped by `${tab} ${brand}`. Mirrors computeScoreSummary.
 export function scoreSummary(entries: EntryRow[]) {
   const buckets = new Map<
@@ -242,6 +294,27 @@ export const TOOL_DEFS = [
       parameters: { type: 'object', properties: { tab: { type: 'string' } } },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_success_rate_by_field',
+      description:
+        'Computes the same live/removed "Success Rate" shown elsewhere in the dashboard ' +
+        '(Published+Live vs Removed+Refused, as a percentage), grouped by one field: proxy, ' +
+        'agent, or country. Results are sorted best-rate-first, so the top row answers ' +
+        '"which X works best". Rows whose status is pending, paused, or otherwise undecided ' +
+        'are not counted (contribute to neither live nor removed) — total may be lower than ' +
+        'raw row count for that value.',
+      parameters: {
+        type: 'object',
+        properties: {
+          field: { type: 'string', enum: ['proxy', 'agent', 'country'] },
+          tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
+        },
+        required: ['field'],
+      },
+    },
+  },
 ];
 
 // --- tool dispatch (impure: needs a supabase client) ---
@@ -283,6 +356,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const { data, error } = await q;
     if (error) throw error;
     return { brands: scoreSummary(data ?? []) };
+  }
+  if (name === 'get_success_rate_by_field') {
+    let q = supabase.from('entries').select('id, tab, data');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    const { data, error } = await q;
+    if (error) throw error;
+    return { results: successRateByField(data ?? [], args?.field) };
   }
   return { error: `unknown tool: ${name}` };
 }
