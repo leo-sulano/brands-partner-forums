@@ -10,7 +10,7 @@ import {
   PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
   computeSuccessRates, successRatePct, type SuccessRate,
 } from '../scoreSummary';
-import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
+import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands';
 import { BRAND_COLS } from '../tab-configs';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine';
@@ -22,6 +22,11 @@ export interface TabContext {
   brands: string[];
   activePlatforms: Platform[];
   entries: Entry[];
+  // Keys from platformRemovedKey(tab, brand, platform) for every brand+
+  // platform whose page was flagged removed in Brand Tabs. Optional (defaults
+  // to "nothing removed") so callers/tests that don't care about this feature
+  // don't need to thread an empty Set through everywhere.
+  removedPlatformBrandSet?: Set<string>;
 }
 
 function brandOf(entry: Entry): string {
@@ -107,6 +112,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
     fetchBrandSchedule(tab, weekStart),
   ]);
   const resumed: PinnedCombo[] = [];
+  const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
 
   // Computed once per active platform (not per brand) since each call scans
   // all of ctx.entries — reused by the success-rate pause check below.
@@ -119,6 +125,11 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
     for (const platform of ctx.activePlatforms) {
+      // A page flagged removed has nothing to pause/resume — leave any
+      // existing pause row untouched (harmless while hidden; a real resume
+      // still applies correctly if the flag is ever cleared) and never
+      // evaluate it for a new pause.
+      if (removedSet.has(platformRemovedKey(tab, brand, platform))) continue;
       const existing = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
       if (existing) {
         if (existing.paused_week_start < weekStart) {
@@ -237,6 +248,20 @@ export async function ensureWeekGenerated(
     .filter((r) => r.platform != null)
     .map((r) => ({ brandKey: r.brand_key, platform: r.platform as Platform }));
 
+  // A removed combo is treated as pinned — "already accounted for, don't
+  // touch" — so the generator never assigns it real slots. Without this, a
+  // brand whose TP page was flagged removed would keep getting a fresh
+  // Mon/Thu-style TP schedule written to brand_schedule every week even
+  // though it's hidden from the UI.
+  const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
+  const removedCombos: PinnedCombo[] = [];
+  for (const brand of ctx.brands) {
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of ctx.activePlatforms) {
+      if (removedSet.has(platformRemovedKey(tab, brand, platform))) removedCombos.push({ brandKey, platform });
+    }
+  }
+
   const pauses = await fetchActiveBrandPlatformPauses(tab);
   const pausedBrandPlatforms: PinnedCombo[] = pauses
     .filter((p) => p.paused_week_start === weekStart)
@@ -247,7 +272,7 @@ export async function ensureWeekGenerated(
   const slots = generateWeekSchedule({
     brands: ctx.brands,
     activePlatforms: ctx.activePlatforms,
-    pinnedBrandPlatforms: alreadyHasRowCombos,
+    pinnedBrandPlatforms: [...alreadyHasRowCombos, ...removedCombos],
     pausedBrandPlatforms,
     resumingBrandPlatforms: resumedThisWeek,
     carryover,

@@ -89,15 +89,21 @@ export default function SchedulePlanner() {
   // plan-chip ghosting in ScheduleCell, so it doesn't need to track the
   // actual clock across a long-lived tab.
   const todayISO = useMemo(() => toISODate(new Date()), []);
-  // Bundles brands/activePlatforms/entries together, tagged with the tab they
-  // were loaded for. This lets the schedule-loading effect below confirm the
-  // data it's about to hand to the scheduler actually belongs to the
-  // currently-selected tab — see the tabCtx.tab === tab guard there. Without
-  // that tag, a tab switch could fire the scheduler for the NEW tab using the
-  // OLD tab's brands/platforms/entries, since brands/activePlatforms/entries
-  // used to be three separate state slots that committed across multiple
-  // renders with no atomic "this batch belongs together" marker.
-  const [tabCtx, setTabCtx] = useState<{ tab: string; brands: string[]; activePlatforms: Platform[]; entries: Entry[] } | null>(null);
+  // Bundles brands/activePlatforms/entries/removedPlatformBrandSet together,
+  // tagged with the tab they were loaded for. This lets the schedule-loading
+  // effect below confirm the data it's about to hand to the scheduler
+  // actually belongs to the currently-selected tab — see the tabCtx.tab ===
+  // tab guard there. Without that tag, a tab switch could fire the scheduler
+  // for the NEW tab using the OLD tab's brands/platforms/entries, since these
+  // used to be separate state slots that committed across multiple renders
+  // with no atomic "this batch belongs together" marker.
+  // removedPlatformBrandSet is bundled in here (rather than its own
+  // independently-timed fetch/effect) for the same reason: recalculatePauses/
+  // ensureWeekGenerated below must never run with a stale/empty removed set
+  // just because that fetch hadn't resolved yet — that race would let the
+  // generator write real brand_schedule/brand_platform_pause rows for a
+  // brand+platform that was supposed to be skipped entirely.
+  const [tabCtx, setTabCtx] = useState<{ tab: string; brands: string[]; activePlatforms: Platform[]; entries: Entry[]; removedPlatformBrandSet: Set<string> } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(true);
@@ -106,26 +112,7 @@ export default function SchedulePlanner() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; day: Weekday } | null>(null);
-  const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
   const { isApproved } = useAuth();
-
-  // A brand whose platform page (e.g. TP) was flagged removed in Brand Tabs
-  // must not show that platform on the Schedule Planner either — it's
-  // already fully excluded from that platform's Score Summary view, and a
-  // page that no longer exists has nothing to schedule. Fetched once (not
-  // tab-scoped) same as BrandGroup.tsx's own fetch of this table; a failed
-  // fetch just means nothing gets filtered, same fallback BrandGroup uses.
-  useEffect(() => {
-    let canceled = false;
-    fetchRemovedPlatformBrands()
-      .then((rows) => { if (!canceled) setRemovedPlatformBrandRows(rows); })
-      .catch(() => { /* filtering is best-effort — a failed fetch just means no filtering happens */ });
-    return () => { canceled = true; };
-  }, []);
-  const removedPlatformBrandSet = useMemo(
-    () => buildRemovedPlatformBrandSet(removedPlatformBrandRows),
-    [removedPlatformBrandRows],
-  );
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
@@ -179,9 +166,10 @@ export default function SchedulePlanner() {
     setPauses([]);
     (async () => {
       try {
-        const [rawEntries, headers] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
+          fetchRemovedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
         ]);
         if (canceled) return;
         const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
@@ -193,10 +181,16 @@ export default function SchedulePlanner() {
         if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
         const platforms = getTabPlatforms(tab);
         if (canceled) return;
-        // Set all three together, tagged with the tab they were loaded for —
+        // Set all four together, tagged with the tab they were loaded for —
         // never as separate setState calls, so there's no window where one
         // has updated and the others haven't.
-        setTabCtx({ tab, brands: uniqueBrands, activePlatforms: platforms, entries: rawEntries });
+        setTabCtx({
+          tab,
+          brands: uniqueBrands,
+          activePlatforms: platforms,
+          entries: rawEntries,
+          removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
+        });
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -246,7 +240,12 @@ export default function SchedulePlanner() {
           // with "resuming" priority, and there's no way to recover it on a
           // later run). Let both complete once started; only check
           // `canceled` before touching state afterward.
-          const ctx: TabContext = { brands: tabCtx!.brands, activePlatforms: tabCtx!.activePlatforms, entries: tabCtx!.entries };
+          const ctx: TabContext = {
+            brands: tabCtx!.brands,
+            activePlatforms: tabCtx!.activePlatforms,
+            entries: tabCtx!.entries,
+            removedPlatformBrandSet: tabCtx!.removedPlatformBrandSet,
+          };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
           await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
           if (canceled) return;
@@ -283,7 +282,8 @@ export default function SchedulePlanner() {
   // but never shows TP again here, in any cell state (scheduled, confirmed,
   // removed-evidence, or addable).
   function brandPlatforms(brand: string): Platform[] {
-    return activePlatforms.filter((p) => !removedPlatformBrandSet.has(platformRemovedKey(tab, brand, p)));
+    const removedSet = tabCtx?.removedPlatformBrandSet ?? new Set<string>();
+    return activePlatforms.filter((p) => !removedSet.has(platformRemovedKey(tab, brand, p)));
   }
 
   function computeRemovedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {

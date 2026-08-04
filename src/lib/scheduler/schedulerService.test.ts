@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from './schedulerService';
 import type { PinnedCombo } from './schedulerEngine';
+import { platformRemovedKey } from '../removedPlatformBrands';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -121,6 +122,23 @@ describe('recalculatePauses', () => {
     // qualify. BrandB/tp has no existing row and still gets paused.
     expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
     expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'BrandB', 'tp', '2026-08-03', expect.any(String));
+  });
+
+  // A brand whose TP page is flagged removed in Brand Tabs has nothing to
+  // pause — it should never even be evaluated, regardless of how it would
+  // otherwise score on either pause trigger.
+  it('does not evaluate or pause a brand+platform whose page is flagged removed', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega'],
+      activePlatforms: ['tp'],
+      entries: [
+        entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+      ],
+      removedPlatformBrandSet: new Set([platformRemovedKey('BITP', 'WinMega', 'tp')]),
+    };
+    await recalculatePauses('BITP', '2026-08-03', ctx);
+    expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
   });
 
   describe('success-rate trigger', () => {
@@ -359,5 +377,24 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-10', platform: 'cg' });
+  });
+
+  // A brand+platform flagged removed must never get a fresh schedule row
+  // written, even on a week with nothing generated yet — otherwise the
+  // generator would keep quietly re-creating a schedule for a page that no
+  // longer exists, just hidden from the UI. A sibling combo without the flag
+  // still generates normally, proving the skip is scoped to that one combo.
+  it('does not generate rows for a brand+platform flagged removed, but still generates for others', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega', 'BrandB'],
+      activePlatforms: ['tp'],
+      entries: [],
+      removedPlatformBrandSet: new Set([platformRemovedKey('BITP', 'WinMega', 'tp')]),
+    };
+    await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-03', platform: 'tp' });
   });
 });
