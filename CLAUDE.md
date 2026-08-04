@@ -56,7 +56,31 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-04 (newest):* Fixed a critical post-merge bug in the `bif_review_accounts` view
+- *2026-08-04 (newest):* Fixed a Schedule Planner mismatch the user caught by comparing the
+  calendar against the Brand Tabs page directly: a TP chip showed as scheduled for Lucky7even
+  on Jul 30 with no real TP post anywhere in that brand's entry data. Root cause: `ScheduleCell`
+  (`src/lib/scheduler/calendarRenderer.tsx`) rendered a chip whenever the auto-generated
+  `brand_schedule` plan said `status === 'active'`, with no requirement that a real entry ever
+  confirm it — the confirmed/removed evidence overlay (Tasks 165/168) only added a badge on top
+  of the plan, it never gated the plan's own chip. Since `ensureWeekGenerated` only runs for the
+  current week, every past week's rows are exactly this kind of forward-looking plan, so a
+  planned post that never actually happened kept showing as if it had. Same root cause explains
+  a self-contradicting tooltip the user also flagged, "CasinoGuru: Not scheduled — Removed" — the
+  plan-status label and the real-evidence label were concatenated instead of one replacing the
+  other. Fix: for any day strictly before today, a plan-only chip (status set, no matching
+  confirmed/removed evidence) is now ghosted (`opacity-0`, revealed on hover/focus/touch, same
+  pattern as the existing "+ Add Platform" button) rather than shown at full opacity — still
+  clickable so a wrongly-planned past day stays correctable, just not visually asserting
+  something unverified by default. Today/future days are unaffected (the day hasn't concluded,
+  so there's no evidence to check the plan against yet). Tooltip now shows just "Removed" or
+  "Confirmed" when evidence exists, dropping the concatenated plan-status prefix. New `isPastDay`
+  prop threaded from `SchedulePlanner.tsx`. Full test suite (271 tests) and build both pass; no
+  schema change. Live browser verification against real Supabase data was not performed this
+  session — the shared Playwright browser profile was locked by a concurrent session, and
+  force-closing another session's browser to reclaim it was avoided; worth a follow-up look at
+  the Rooster Partners Jul 27–31 week specifically, since that's the exact week the user's
+  screenshot showed the bug on. Task 173.
+- *2026-08-04 (prior):* Fixed a critical post-merge bug in the `bif_review_accounts` view
   (Task 172, directly below) caught by that same task's own Step 5 live-verification: its
   `review_status` column read only `data->>'Review Status'`, but a direct count against all
   793 live TP Brand Injection rows found zero use that exact key — every single row stores

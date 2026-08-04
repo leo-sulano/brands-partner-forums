@@ -83,6 +83,11 @@ export default function SchedulePlanner() {
     return mondayOf(new Date());
   });
   const weekStartISO = useMemo(() => toISODate(weekStart), [weekStart]);
+  // Computed once on mount, not re-derived per render — this only needs to
+  // distinguish "day already happened" from "today or later" for the
+  // plan-chip ghosting in ScheduleCell, so it doesn't need to track the
+  // actual clock across a long-lived tab.
+  const todayISO = useMemo(() => toISODate(new Date()), []);
   // Bundles brands/activePlatforms/entries together, tagged with the tab they
   // were loaded for. This lets the schedule-loading effect below confirm the
   // data it's about to hand to the scheduler actually belongs to the
@@ -472,6 +477,7 @@ export default function SchedulePlanner() {
                               pausesByPlatform={pausesByPlatform}
                               removedByPlatform={removedByPlatform}
                               confirmedByPlatform={confirmedByPlatform}
+                              isPastDay={dayISO < todayISO}
                               // Legacy weeks (imported platform-null brand_schedule rows,
                               // pre-dating per-platform tracking) are read-only: forcing
                               // isApproved to false here (rather than threading a separate

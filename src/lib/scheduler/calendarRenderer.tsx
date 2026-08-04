@@ -17,6 +17,12 @@ interface ScheduleCellProps {
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
   removedByPlatform: Partial<Record<Platform, boolean>>;
   confirmedByPlatform: Partial<Record<Platform, boolean>>;
+  // True for any calendar day strictly before today. A plan-only chip (a
+  // brand_schedule status with no matching real-entry evidence) on a past
+  // day would otherwise look identical to a confirmed post even though the
+  // day already happened and nothing backs it up — see the ghosting logic
+  // below.
+  isPastDay: boolean;
   isApproved: boolean;
   onToggle: (platform: Platform) => void;
   onAddPlatform: () => void;
@@ -35,6 +41,18 @@ interface ScheduleCellProps {
 // are mutually exclusive per platform+date, so in real data at most one of
 // isConfirmed/isRemoved is ever true for a given chip; keeping them separate
 // preserves that.
+// A plan-only chip (status !== null with no confirmed/removed evidence) on a
+// PAST day is a claim the generator made about what should happen, not proof
+// it did — e.g. the scheduler planned a TP post for a brand on a day that
+// already passed with no matching Live/Removed entry on the Brand Tabs page.
+// Showing that identically to a confirmed post reads as "this happened" when
+// it's unverified. Such chips are ghosted (invisible until hover/focus/touch,
+// via the same opacity-0 pattern as the "+" button below) rather than removed
+// outright, so click-to-cycle editing of a wrongly-planned past day stays
+// reachable — hiding it completely would leave no click target to correct it
+// (the "+" button only offers days with no existing row at all). Today and
+// future days are unaffected — the day hasn't concluded yet, so there's no
+// "reality" to check the plan against.
 // Earlier versions of this component rendered every active platform in every
 // cell unconditionally, including a dashed "unset" placeholder chip, so every
 // cell always had a click target to create the first row for a brand/week the
@@ -47,7 +65,7 @@ interface ScheduleCellProps {
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -57,21 +75,29 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const status: DayStatus = row?.[day] ?? null;
         const isConfirmed = !!confirmedByPlatform[platform];
         const isRemoved = !!removedByPlatform[platform];
-        if (!isPaused && status == null && !isConfirmed && !isRemoved) return null;
+        const hasEvidence = isConfirmed || isRemoved;
+        if (!isPaused && status == null && !hasEvidence) return null;
         const badge = PLATFORM_BADGE[platform];
-        const isActiveLook = status === 'active' || (status == null && (isConfirmed || isRemoved));
+        const isActiveLook = status === 'active' || (status == null && hasEvidence);
         const stateClassName = isPaused
           ? `${badge.className} opacity-30`
           : isActiveLook
             ? badge.className
             : `${badge.className} opacity-40`;
         const clickable = isApproved && !isPaused;
+        const planUnverified = isPastDay && !isPaused && !hasEvidence && status != null;
+        const label = hasEvidence
+          ? (isRemoved ? 'Removed' : 'Confirmed')
+          : isPaused
+            ? 'Paused (scheduler)'
+            : statusLabel(status);
         return (
           <span
             key={platform}
+            tabIndex={clickable && planUnverified ? 0 : undefined}
             onClick={clickable ? () => onToggle(platform) : undefined}
-            title={`${PLATFORM_FULL_LABEL[platform]}: ${isPaused ? 'Paused (scheduler)' : statusLabel(status)}${isRemoved ? ' — Removed' : isConfirmed ? ' — Confirmed' : ''}`}
-            className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''}`}
+            title={`${PLATFORM_FULL_LABEL[platform]}: ${label}`}
+            className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''} ${planUnverified ? 'opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
           >
             <img
               src={PLATFORM_FAVICON[platform]}
@@ -91,7 +117,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             {isConfirmed && (
               <span
                 aria-hidden="true"
-                className="absolute -right-1 -bottom-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
+                className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
               >
                 ✓
               </span>
