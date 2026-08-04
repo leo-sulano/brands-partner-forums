@@ -226,25 +226,29 @@ Deno.test('successRateByField picks up WoO Review Status (Wizard of Odds tabs)',
   const entries: EntryRow[] = [
     { id: '1', tab: 'Wizard of Odds', data: { Agent: 'ANN', 'WoO Review Status': 'Published' } },
   ];
-  const out = successRateByField(entries, 'agent');
+  const out = successRateByField(entries, 'agent', 'wo');
   const ann = out.find((r) => r.value === 'ANN')!;
   assertEquals(ann.live, 1);
   assertEquals(ann.removed, 0);
   assertEquals(ann.total, 1);
 });
 
-Deno.test('successRateByField picks up AG Review Status and CG Review Status (multi-platform tabs)', () => {
+Deno.test('successRateByField picks up AG Review Status and CG Review Status (multi-platform tabs), scoped per platform', () => {
   const entries: EntryRow[] = [
     { id: '1', tab: 'Rooster Partners', data: { Agent: 'ANN', 'AG Review Status': 'Published' } },
     { id: '2', tab: 'Rooster Partners', data: { Agent: 'BOB', 'CG Review Status': 'Removed' } },
   ];
-  const out = successRateByField(entries, 'agent');
-  const ann = out.find((r) => r.value === 'ANN')!;
-  const bob = out.find((r) => r.value === 'BOB')!;
-  assertEquals(ann.live, 1);
-  assertEquals(ann.total, 1);
-  assertEquals(bob.removed, 1);
-  assertEquals(bob.total, 1);
+  const agOut = successRateByField(entries, 'agent', 'ag');
+  const ann = agOut.find((r) => r.value === 'ANN');
+  assertEquals(ann?.live, 1);
+  assertEquals(ann?.total, 1);
+  assertEquals(agOut.find((r) => r.value === 'BOB'), undefined);
+
+  const cgOut = successRateByField(entries, 'agent', 'cg');
+  const bob = cgOut.find((r) => r.value === 'BOB');
+  assertEquals(bob?.removed, 1);
+  assertEquals(bob?.total, 1);
+  assertEquals(cgOut.find((r) => r.value === 'ANN'), undefined);
 });
 
 Deno.test('parseScore respects a custom maxScore and floors fractional values', () => {
@@ -399,4 +403,37 @@ Deno.test('get_score_summary end-to-end excludes a removed-flagged brand via run
   const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', {});
   assertEquals(result.brands.length, 1);
   assertEquals(result.brands[0].brand, 'Zeta');
+});
+
+Deno.test('successRateByField excludes rows whose brand is flagged removed for the queried platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+  ];
+  const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
+  const out = successRateByField(entries, 'proxy', 'tp', removedSet);
+  assertEquals(out.length, 0);
+});
+
+Deno.test('successRateByField works normally when a row has no brand field at all', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'proxy', 'tp', new Set());
+  assertEquals(out.length, 1);
+  assertEquals(out[0].value, 'Enigma');
+});
+
+Deno.test('get_success_rate_by_field end-to-end excludes a removed-flagged brand via runTool', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+      { id: '2', tab: 't', data: { Brand: 'Zeta', 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+    ],
+    removed_platform_brands: [
+      { tab: 't', brand: 'Acme', platform: 'tp' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_success_rate_by_field', { field: 'proxy' });
+  const enigma = result.results.find((r: any) => r.value === 'Enigma');
+  assertEquals(enigma.live, 1);
 });

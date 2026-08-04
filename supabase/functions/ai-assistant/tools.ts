@@ -233,17 +233,6 @@ const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
   country: ['Country'],
 };
 
-// Superset of STATUS_KEYS used only by successRateByField, so it can also see
-// multi-platform tabs' real status columns (AG/CG/WO), which are not in the
-// shared STATUS_KEYS (that constant also drives get_score_summary's
-// Published-only star rollup and matchesStatus, which must stay TP-scoped).
-const SUCCESS_RATE_STATUS_KEYS = [
-  ...STATUS_KEYS,
-  'AG Review Status',
-  'CG Review Status',
-  'WoO Review Status',
-];
-
 export interface FieldSuccessRate {
   value: string;
   live: number;
@@ -255,13 +244,18 @@ export interface FieldSuccessRate {
 export function successRateByField(
   entries: EntryRow[],
   field: 'proxy' | 'agent' | 'country',
+  platform: Platform = 'tp',
+  removedPlatformBrands: Set<string> = new Set(),
 ): FieldSuccessRate[] {
-  const keys = FIELD_KEYS[field];
+  const fieldKeys = FIELD_KEYS[field];
+  const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const buckets = new Map<string, { live: number; removed: number }>();
   for (const e of entries) {
-    const value = (pick(e.data, keys) ?? '').trim();
+    const value = (pick(e.data, fieldKeys) ?? '').trim();
     if (!value) continue;
-    const status = (pick(e.data, SUCCESS_RATE_STATUS_KEYS) ?? '').trim().toLowerCase();
+    const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
+    if (brand && removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
+    const status = (pick(e.data, statusKeys) ?? '').trim().toLowerCase();
     if (!status) continue;
     let b = buckets.get(value);
     if (!b) {
@@ -448,17 +442,16 @@ export const TOOL_DEFS = [
       description:
         'Computes the same live/removed "Success Rate" shown elsewhere in the dashboard ' +
         '(Published+Live vs Removed+Refused, as a percentage), grouped by one field: proxy, ' +
-        'agent, or country. Results are sorted best-rate-first, so the top row answers ' +
-        '"which X works best". Rows whose status is pending, paused, or otherwise undecided ' +
-        'are not counted (contribute to neither live nor removed) — total may be lower than ' +
-        'raw row count for that value. ' +
-        'Note: on tabs tracking multiple platforms (TP+AG+CG), this resolves TrustPilot status ' +
-        'first, so results here may not match a platform-scoped get_score_summary query for the ' +
-        'same tab.',
+        'agent, or country, for one platform: tp (TrustPilot, default), ag (AskGamblers), ' +
+        'cg (CasinoGuru), or wo (Wizard of Odds). Results are sorted best-rate-first, so the ' +
+        'top row answers "which X works best". Rows whose status is pending, paused, or ' +
+        'otherwise undecided are not counted (contribute to neither live nor removed) — total ' +
+        'may be lower than raw row count for that value.',
       parameters: {
         type: 'object',
         properties: {
           field: { type: 'string', enum: ['proxy', 'agent', 'country'] },
+          platform: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] },
           tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
         },
         required: ['field'],
@@ -522,7 +515,10 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.tab) q = q.eq('tab', args.tab);
     const { data, error } = await q;
     if (error) throw error;
-    return { results: successRateByField(data ?? [], args?.field) };
+    const removedSet = await fetchRemovedPlatformBrandSet(supabase);
+    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+    const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
+    return { results: successRateByField(data ?? [], args?.field, platform, removedSet) };
   }
   return { error: `unknown tool: ${name}` };
 }
