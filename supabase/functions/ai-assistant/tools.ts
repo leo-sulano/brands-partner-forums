@@ -410,7 +410,9 @@ export const TOOL_DEFS = [
         'Star-rating rollup (Published reviews only) AND live/removed Success Rate ' +
         'per brand, matching the dashboard\'s Score Summary page, for one platform: ' +
         'tp (TrustPilot, default), ag (AskGamblers), cg (CasinoGuru), or wo (Wizard ' +
-        'of Odds). All-time only — no date-range filtering yet.',
+        'of Odds). All-time only — no date-range filtering yet. Brands whose page on ' +
+        'the queried platform was flagged removed (see get_removed_platform_flags) ' +
+        'are excluded from these results entirely.',
       parameters: {
         type: 'object',
         properties: {
@@ -428,7 +430,9 @@ export const TOOL_DEFS = [
         'Lists brands whose review page on a specific platform (TrustPilot, ' +
         'AskGamblers, CasinoGuru, or Wizard of Odds) was taken down entirely, ' +
         'independent of any single review\'s status. This is the direct answer to ' +
-        '"is Brand X\'s TP/AG/CG/WO page removed?". Optionally filtered to one tab.',
+        '"is Brand X\'s TP/AG/CG/WO page removed?". Optionally filtered to one tab. ' +
+        'An empty list (or a brand not present in the results) means that brand is ' +
+        'NOT removed on that platform — absence is a real answer, not missing data.',
       parameters: {
         type: 'object',
         properties: { tab: { type: 'string' } },
@@ -446,7 +450,9 @@ export const TOOL_DEFS = [
         'cg (CasinoGuru), or wo (Wizard of Odds). Results are sorted best-rate-first, so the ' +
         'top row answers "which X works best". Rows whose status is pending, paused, or ' +
         'otherwise undecided are not counted (contribute to neither live nor removed) — total ' +
-        'may be lower than raw row count for that value.',
+        'may be lower than raw row count for that value. Brands whose page on the queried ' +
+        'platform was flagged removed (see get_removed_platform_flags) are excluded from ' +
+        'these results entirely.',
       parameters: {
         type: 'object',
         properties: {
@@ -496,9 +502,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
   if (name === 'get_score_summary') {
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const { data, error } = await q;
+    const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
-    const removedSet = await fetchRemovedPlatformBrandSet(supabase);
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
     const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
     return { brands: scoreSummary(data ?? [], platform, removedSet) };
@@ -513,9 +518,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
   if (name === 'get_success_rate_by_field') {
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const { data, error } = await q;
+    const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
-    const removedSet = await fetchRemovedPlatformBrandSet(supabase);
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
     const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
     return { results: successRateByField(data ?? [], args?.field, platform, removedSet) };

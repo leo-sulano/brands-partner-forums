@@ -437,3 +437,26 @@ Deno.test('get_success_rate_by_field end-to-end excludes a removed-flagged brand
   const enigma = result.results.find((r: any) => r.value === 'Enigma');
   assertEquals(enigma.live, 1);
 });
+
+Deno.test('successRateByField does not exclude a brand flagged as removed on a different platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', Agent: 'ANN' } },
+  ];
+  const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
+  const out = successRateByField(entries, 'agent', 'ag', removedSet);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].value, 'ANN');
+});
+
+Deno.test('get_success_rate_by_field defaults to tp platform when given an invalid value', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'C', 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_success_rate_by_field', { field: 'proxy', platform: 'not-a-real-platform' });
+  assertEquals(result.results.length, 1);
+  assertEquals(result.results[0].value, 'Enigma');
+  assertEquals(result.results[0].live, 1);
+});
