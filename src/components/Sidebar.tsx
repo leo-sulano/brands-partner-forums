@@ -4,6 +4,7 @@ import {
   LayoutDashboard, ScrollText, BookOpen,
   Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
   Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
@@ -186,8 +187,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                   <ScrollText className="size-4" />
                   {!isCollapsed && 'Log'}
                 </NavLink>
-                {/* Hidden 2026-07-31 pending tomorrow's launch — re-add to go live
-                (also restore CalendarDays to the lucide-react import above)
                 <NavLink
                   to="/schedule-planner"
                   onClick={() => onClose?.()}
@@ -197,7 +196,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                   <CalendarDays className="size-4" />
                   {!isCollapsed && 'Schedule Planner'}
                 </NavLink>
-                */}
                 {isAdmin && (
                   <NavLink
                     to="/admin/users"
