@@ -24,10 +24,12 @@ export const SENSITIVE_KEYS = new Set([
   'Authenticator Backup',
 ]);
 
+const SENSITIVE_KEYS_NORM = new Set([...SENSITIVE_KEYS].map((k) => k.trim().toLowerCase()));
+
 export function redactSensitive(data: Record<string, any>): Record<string, any> {
   const out: Record<string, any> = {};
   for (const [k, v] of Object.entries(data ?? {})) {
-    if (!SENSITIVE_KEYS.has(k)) out[k] = v;
+    if (!SENSITIVE_KEYS_NORM.has(k.trim().toLowerCase())) out[k] = v;
   }
   return out;
 }
@@ -168,6 +170,17 @@ const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
   country: ['Country'],
 };
 
+// Superset of STATUS_KEYS used only by successRateByField, so it can also see
+// multi-platform tabs' real status columns (AG/CG/WO), which are not in the
+// shared STATUS_KEYS (that constant also drives get_score_summary's
+// Published-only star rollup and matchesStatus, which must stay TP-scoped).
+const SUCCESS_RATE_STATUS_KEYS = [
+  ...STATUS_KEYS,
+  'AG Review Status',
+  'CG Review Status',
+  'WoO Review Status',
+];
+
 export interface FieldSuccessRate {
   value: string;
   live: number;
@@ -185,7 +198,7 @@ export function successRateByField(
   for (const e of entries) {
     const value = (pick(e.data, keys) ?? '').trim();
     if (!value) continue;
-    const status = (pick(e.data, STATUS_KEYS) ?? '').trim().toLowerCase();
+    const status = (pick(e.data, SUCCESS_RATE_STATUS_KEYS) ?? '').trim().toLowerCase();
     if (!status) continue;
     let b = buckets.get(value);
     if (!b) {
@@ -258,10 +271,11 @@ export const TOOL_DEFS = [
         'Filter by tab (exact tab name from list_tabs), ' +
         'status — valid values are exactly: "Published" (= live/approved/active), "Removed", "Refused", "Not Done", "On Pause" — ' +
         'month (e.g. "may 2026" or "2026-05"), and/or a free-text contains match. ' +
-        'Returns summary rows and total count. ' +
+        'Returns matching rows (each with its full set of non-credential fields under `data` — ' +
+        'not just brand/status/score/date, e.g. also Proxy Used, Agent, Country, and any other ' +
+        'tracked field for that tab) and total count. ' +
         'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
-        'IMPORTANT: always pass month as "may 2026" style when user mentions a month. ' +
-        'Each returned row includes its full set of non-credential fields under `data` (not just brand/status/score/date) — e.g. Proxy Used, Agent, Country, and any other tracked field for that tab.',
+        'IMPORTANT: always pass month as "may 2026" style when user mentions a month.',
       parameters: {
         type: 'object',
         properties: {

@@ -82,6 +82,24 @@ Deno.test('redactSensitive strips all 6 known credential keys, keeps everything 
   assertEquals('Authenticator Backup' in out, false);
 });
 
+Deno.test('redactSensitive strips credential keys with different case or trailing whitespace', () => {
+  const input = {
+    Account: '123',
+    'password ': 'hunter2', // trailing space
+    PASSWORD: 'hunter3', // different case (would collide with above key in an object but test separately below)
+  };
+  const out = redactSensitive(input);
+  assertEquals(out.Account, '123');
+  assertEquals('password ' in out, false);
+  assertEquals('PASSWORD' in out, false);
+
+  const input2 = { 'AG Password ': 'agpass', 'cg password': 'cgpass', Account: 'x' };
+  const out2 = redactSensitive(input2);
+  assertEquals(out2.Account, 'x');
+  assertEquals('AG Password ' in out2, false);
+  assertEquals('cg password' in out2, false);
+});
+
 function mockSupabase(rows: EntryRow[]) {
   return {
     from(_table: string) {
@@ -175,4 +193,29 @@ Deno.test('successRateByField sorts best rate first, zero-total last', () => {
   ];
   const out = successRateByField(entries, 'country');
   assertEquals(out.map((r) => r.value), ['B', 'A', 'C']);
+});
+
+Deno.test('successRateByField picks up WoO Review Status (Wizard of Odds tabs)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 'Wizard of Odds', data: { Agent: 'ANN', 'WoO Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'agent');
+  const ann = out.find((r) => r.value === 'ANN')!;
+  assertEquals(ann.live, 1);
+  assertEquals(ann.removed, 0);
+  assertEquals(ann.total, 1);
+});
+
+Deno.test('successRateByField picks up AG Review Status and CG Review Status (multi-platform tabs)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 'Rooster Partners', data: { Agent: 'ANN', 'AG Review Status': 'Published' } },
+    { id: '2', tab: 'Rooster Partners', data: { Agent: 'BOB', 'CG Review Status': 'Removed' } },
+  ];
+  const out = successRateByField(entries, 'agent');
+  const ann = out.find((r) => r.value === 'ANN')!;
+  const bob = out.find((r) => r.value === 'BOB')!;
+  assertEquals(ann.live, 1);
+  assertEquals(ann.total, 1);
+  assertEquals(bob.removed, 1);
+  assertEquals(bob.total, 1);
 });
