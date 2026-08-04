@@ -205,6 +205,28 @@ export function isRemovedStatus(s: string): boolean {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
 
+// Ported from src/lib/removedPlatformBrands.ts — keep in sync manually if either
+// changes, same convention as this file's other ported helpers.
+export function normalizeBrandKey(brand: string): string {
+  return brand.trim().toLowerCase();
+}
+
+export function platformRemovedKey(tab: string, brand: string, platform: Platform): string {
+  return `${tab}::${normalizeBrandKey(brand)}::${platform}`;
+}
+
+export function buildRemovedPlatformBrandSet(
+  rows: { tab: string; brand: string; platform: Platform }[],
+): Set<string> {
+  return new Set(rows.map((r) => platformRemovedKey(r.tab, r.brand, r.platform)));
+}
+
+async function fetchRemovedPlatformBrandSet(supabase: any): Promise<Set<string>> {
+  const { data, error } = await supabase.from('removed_platform_brands').select('tab, brand, platform');
+  if (error) throw error;
+  return buildRemovedPlatformBrandSet(data ?? []);
+}
+
 const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
   proxy: ['Proxy Used'],
   agent: ['Agent'],
@@ -275,7 +297,11 @@ export interface BrandScoreSummary {
 // `${tab} ${brand}`, computed in one pass per platform. Mirrors
 // computeScoreSummary + computeSuccessRates in src/lib/scoreSummary.ts, merged
 // into a single result since the assistant only ever needs the combined view.
-export function scoreSummary(entries: EntryRow[], platform: Platform = 'tp'): BrandScoreSummary[] {
+export function scoreSummary(
+  entries: EntryRow[],
+  platform: Platform = 'tp',
+  removedPlatformBrands: Set<string> = new Set(),
+): BrandScoreSummary[] {
   const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const scoreKeys = PLATFORM_SCORE_KEYS[platform];
   const maxScore = PLATFORM_MAX_SCORE[platform];
@@ -293,6 +319,7 @@ export function scoreSummary(entries: EntryRow[], platform: Platform = 'tp'): Br
   for (const e of entries) {
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
     if (!brand) continue;
+    if (removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
     const status = (pick(e.data, statusKeys) ?? '').trim().toLowerCase();
     if (!status) continue;
 
@@ -402,6 +429,21 @@ export const TOOL_DEFS = [
   {
     type: 'function',
     function: {
+      name: 'get_removed_platform_flags',
+      description:
+        'Lists brands whose review page on a specific platform (TrustPilot, ' +
+        'AskGamblers, CasinoGuru, or Wizard of Odds) was taken down entirely, ' +
+        'independent of any single review\'s status. This is the direct answer to ' +
+        '"is Brand X\'s TP/AG/CG/WO page removed?". Optionally filtered to one tab.',
+      parameters: {
+        type: 'object',
+        properties: { tab: { type: 'string' } },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_success_rate_by_field',
       description:
         'Computes the same live/removed "Success Rate" shown elsewhere in the dashboard ' +
@@ -463,9 +505,17 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.tab) q = q.eq('tab', args.tab);
     const { data, error } = await q;
     if (error) throw error;
+    const removedSet = await fetchRemovedPlatformBrandSet(supabase);
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
     const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
-    return { brands: scoreSummary(data ?? [], platform) };
+    return { brands: scoreSummary(data ?? [], platform, removedSet) };
+  }
+  if (name === 'get_removed_platform_flags') {
+    let q = supabase.from('removed_platform_brands').select('tab, brand, platform');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    const { data, error } = await q;
+    if (error) throw error;
+    return { flags: data ?? [] };
   }
   if (name === 'get_success_rate_by_field') {
     let q = supabase.from('entries').select('id, tab, data');

@@ -11,6 +11,9 @@ import {
   runTool,
   successRateByField,
   ratingLabel,
+  normalizeBrandKey,
+  platformRemovedKey,
+  buildRemovedPlatformBrandSet,
   EntryRow,
 } from './tools.ts';
 
@@ -117,6 +120,29 @@ function mockSupabase(rows: EntryRow[]) {
         },
         maybeSingle() {
           return Promise.resolve({ data: filtered[0] ?? null, error: null });
+        },
+        then(resolve: any) {
+          resolve({ data: filtered, error: null });
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+// Like mockSupabase, but supports multiple tables — needed once a tool queries
+// both `entries` and `removed_platform_brands` in the same call.
+function mockSupabaseTables(tables: Record<string, any[]>) {
+  return {
+    from(table: string) {
+      let filtered = tables[table] ?? [];
+      const builder: any = {
+        select(_cols: string) {
+          return builder;
+        },
+        eq(key: string, value: string) {
+          filtered = filtered.filter((r: any) => r[key] === value);
+          return builder;
         },
         then(resolve: any) {
           resolve({ data: filtered, error: null });
@@ -273,7 +299,11 @@ Deno.test('get_score_summary defaults to tp platform when given an invalid value
   const rows: EntryRow[] = [
     { id: '1', tab: 't', data: { Brand: 'C', 'Review Status': 'Published', 'Score added': '3' } },
   ];
-  const result: any = await runTool(mockSupabase(rows), 'get_score_summary', { platform: 'not-a-real-platform' });
+  const result: any = await runTool(
+    mockSupabaseTables({ entries: rows, removed_platform_brands: [] }),
+    'get_score_summary',
+    { platform: 'not-a-real-platform' },
+  );
   assertEquals(result.brands.length, 1);
   assertEquals(result.brands[0].average, 3);
 });
@@ -303,4 +333,70 @@ Deno.test('scoreSummary attaches a rating label matching the computed average', 
   const out = scoreSummary(entries);
   assertEquals(out[0].average, 5);
   assertEquals(out[0].label, 'Excellent');
+});
+
+Deno.test('platformRemovedKey normalizes brand casing and whitespace', () => {
+  assertEquals(
+    platformRemovedKey('TP Brand Injection', ' Acme ', 'tp'),
+    platformRemovedKey('TP Brand Injection', 'ACME', 'tp'),
+  );
+  assertEquals(normalizeBrandKey(' Acme '), 'acme');
+});
+
+Deno.test('buildRemovedPlatformBrandSet builds one key per row', () => {
+  const set = buildRemovedPlatformBrandSet([
+    { tab: 'TP Brand Injection', brand: 'Acme', platform: 'tp' },
+    { tab: 'Rooster Partners', brand: 'Beta', platform: 'ag' },
+  ]);
+  assertEquals(set.size, 2);
+  assertEquals(set.has(platformRemovedKey('TP Brand Injection', 'Acme', 'tp')), true);
+  assertEquals(set.has(platformRemovedKey('Rooster Partners', 'Beta', 'ag')), true);
+});
+
+Deno.test('get_removed_platform_flags lists flagged rows, optionally filtered by tab', async () => {
+  const tables = {
+    removed_platform_brands: [
+      { tab: 'TP Brand Injection', brand: 'Acme', platform: 'tp' },
+      { tab: 'Rooster Partners', brand: 'Beta', platform: 'ag' },
+    ],
+  };
+  const all: any = await runTool(mockSupabaseTables(tables), 'get_removed_platform_flags', {});
+  assertEquals(all.flags.length, 2);
+
+  const filtered: any = await runTool(mockSupabaseTables(tables), 'get_removed_platform_flags', { tab: 'Rooster Partners' });
+  assertEquals(filtered.flags.length, 1);
+  assertEquals(filtered.flags[0].brand, 'Beta');
+});
+
+Deno.test('scoreSummary excludes a brand flagged as removed for the queried platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '5' } },
+  ];
+  const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
+  const out = scoreSummary(entries, 'tp', removedSet);
+  assertEquals(out.length, 0);
+});
+
+Deno.test('scoreSummary does not exclude a brand flagged as removed on a different platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '8' } },
+  ];
+  const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
+  const out = scoreSummary(entries, 'ag', removedSet);
+  assertEquals(out.length, 1);
+});
+
+Deno.test('get_score_summary end-to-end excludes a removed-flagged brand via runTool', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '5' } },
+      { id: '2', tab: 't', data: { Brand: 'Zeta', 'Review Status': 'Published', 'Score added': '4' } },
+    ],
+    removed_platform_brands: [
+      { tab: 't', brand: 'Acme', platform: 'tp' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', {});
+  assertEquals(result.brands.length, 1);
+  assertEquals(result.brands[0].brand, 'Zeta');
 });
