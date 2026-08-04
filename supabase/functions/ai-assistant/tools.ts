@@ -464,6 +464,44 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_schedule',
+      description:
+        'Returns the weekly per-platform posting calendar (active/paused per weekday) ' +
+        'for a tab and week. week_start MUST be the Monday of the requested week, in ' +
+        'YYYY-MM-DD format — compute it from the current-date system message; passing ' +
+        'a non-Monday date will simply match no rows, since stored weeks are always ' +
+        'keyed by their Monday. An empty result means nothing has been scheduled for ' +
+        'that week yet (the schedule is generated lazily when someone opens that week ' +
+        'in the app) — this is not an error. A null platform on a row means a legacy, ' +
+        'pre-platform-tracking week.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tab: { type: 'string' },
+          week_start: { type: 'string', description: 'Monday of the requested week, YYYY-MM-DD' },
+        },
+        required: ['tab', 'week_start'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_paused_combos',
+      description:
+        'Lists brand+platform combos currently auto-paused (2 consecutive Removed/' +
+        'Refused posts, or an all-time success rate below the pause threshold), with ' +
+        'the reason and the week the pause started. Not week-scoped — a pause is a ' +
+        'standing state, not tied to one week\'s calendar. Optionally filtered to one tab.',
+      parameters: {
+        type: 'object',
+        properties: { tab: { type: 'string' } },
+      },
+    },
+  },
 ];
 
 // --- tool dispatch (impure: needs a supabase client) ---
@@ -523,6 +561,25 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
     const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
     return { results: successRateByField(data ?? [], args?.field, platform, removedSet) };
+  }
+  if (name === 'get_schedule') {
+    let q = supabase
+      .from('brand_schedule')
+      .select('tab, brand, platform, week_start, monday, tuesday, wednesday, thursday, friday');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    if (args?.week_start) q = q.eq('week_start', args.week_start);
+    const { data, error } = await q;
+    if (error) throw error;
+    return { schedule: data ?? [] };
+  }
+  if (name === 'get_paused_combos') {
+    let q = supabase
+      .from('brand_platform_pause')
+      .select('tab, brand, platform, paused_week_start, reason');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    const { data, error } = await q;
+    if (error) throw error;
+    return { paused: data ?? [] };
   }
   return { error: `unknown tool: ${name}` };
 }

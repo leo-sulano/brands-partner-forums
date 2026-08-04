@@ -460,3 +460,54 @@ Deno.test('get_success_rate_by_field defaults to tp platform when given an inval
   assertEquals(result.results[0].value, 'Enigma');
   assertEquals(result.results[0].live, 1);
 });
+
+Deno.test('get_schedule returns the weekly grid for a tab and week, using brand not brand_key', async () => {
+  const tables = {
+    brand_schedule: [
+      {
+        tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp', week_start: '2026-08-03',
+        monday: 'active', tuesday: null, wednesday: null, thursday: 'active', friday: null,
+      },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Rooster Partners', week_start: '2026-08-03' });
+  assertEquals(result.schedule.length, 1);
+  assertEquals(result.schedule[0].brand, 'Lucky7even');
+  assertEquals(result.schedule[0].monday, 'active');
+  assertEquals(result.schedule[0].tuesday, null);
+});
+
+Deno.test('get_schedule filters by both tab and week_start', async () => {
+  const tables = {
+    brand_schedule: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp', week_start: '2026-07-27', monday: 'paused', tuesday: null, wednesday: null, thursday: null, friday: null },
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Rooster Partners', week_start: '2026-08-03' });
+  assertEquals(result.schedule.length, 1);
+  assertEquals(result.schedule[0].monday, 'active');
+});
+
+Deno.test('get_schedule returns an empty array, not an error, when nothing matches', async () => {
+  const tables = { brand_schedule: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Rooster Partners', week_start: '2099-01-05' });
+  assertEquals(result.schedule.length, 0);
+});
+
+Deno.test('get_paused_combos lists paused combos with reason, optionally filtered by tab', async () => {
+  const tables = {
+    brand_platform_pause: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'ag', paused_week_start: '2026-07-27', reason: '2 consecutive removed' },
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp', paused_week_start: '2026-08-03', reason: 'success rate below threshold' },
+    ],
+  };
+  const all: any = await runTool(mockSupabaseTables(tables), 'get_paused_combos', {});
+  assertEquals(all.paused.length, 2);
+
+  const filtered: any = await runTool(mockSupabaseTables(tables), 'get_paused_combos', { tab: 'Hanan' });
+  assertEquals(filtered.paused.length, 1);
+  assertEquals(filtered.paused[0].brand, 'Pribet.com');
+  assertEquals(filtered.paused[0].reason, 'success rate below threshold');
+});
