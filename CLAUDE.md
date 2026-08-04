@@ -542,3 +542,14 @@ Brands Partner Forum/
   fallback too). Worth a follow-up look since it makes a correctly-saved new brand look like
   the save silently failed.
 - Supabase Auth still uses the default built-in email sender, which caps auth emails (signup confirmation, password reset, magic link) project-wide at a few per hour. Hit in practice 2026-07-08 trying to recover the `sandbox@optinetsolutions.com` account — both signup and password-reset threw "email rate limit exceeded" back to back. Fix: wire up a free custom SMTP provider (e.g. Resend, free tier, no card required) under Authentication → Emails / SMTP Settings to remove the cap. Immediate unblock without waiting: Authentication → Users → select user → Reset Password sets a new password directly, no email sent.
+- `get_score_summary`'s ported `pick()` (`supabase/functions/ai-assistant/tools.ts`) trims a
+  value before checking whether it's blank, while the real frontend's `pick()`
+  (`src/lib/scoreSummary.ts`) does not — a whitespace-only value in a higher-precedence status
+  key is therefore treated differently by each, which can make the assistant's numbers disagree
+  with the Score Summary page in rare cases (TP only, since it's the only platform with a
+  multi-key precedence list). Separately, `get_score_summary`'s `successRate` is returned
+  unrounded (e.g. `67.833...`) while the dashboard displays a floored whole percent, so the
+  assistant may state a slightly different-looking number for the same underlying rate. Both
+  documented, not fixed, as of the 2026-08-04 Phase 2 review — a real fix means either changing
+  `src/lib/scoreSummary.ts`'s shared behavior (out of scope, affects the live dashboard) or
+  accepting the divergence.

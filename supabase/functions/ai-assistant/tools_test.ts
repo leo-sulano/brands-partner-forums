@@ -277,3 +277,30 @@ Deno.test('get_score_summary defaults to tp platform when given an invalid value
   assertEquals(result.brands.length, 1);
   assertEquals(result.brands[0].average, 3);
 });
+
+Deno.test('scoreSummary works for cg and wo platforms, not just tp/ag', () => {
+  const cgEntries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'D', 'CG Review Status': 'Published', 'CG Score added': '4' } },
+  ];
+  const cgOut = scoreSummary(cgEntries, 'cg');
+  assertEquals(cgOut.length, 1);
+  assertEquals(cgOut[0].rated, 1);
+  assertEquals(cgOut[0].average, 4);
+
+  const woEntries: EntryRow[] = [
+    { id: '2', tab: 't', data: { Brand: 'E', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '5' } },
+  ];
+  const woOut = scoreSummary(woEntries, 'wo');
+  assertEquals(woOut.length, 1);
+  assertEquals(woOut[0].rated, 1);
+  assertEquals(woOut[0].average, 5);
+});
+
+Deno.test('scoreSummary attaches a rating label matching the computed average', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'F', 'Review Status': 'Published', 'Score added': '5' } },
+  ];
+  const out = scoreSummary(entries);
+  assertEquals(out[0].average, 5);
+  assertEquals(out[0].label, 'Excellent');
+});

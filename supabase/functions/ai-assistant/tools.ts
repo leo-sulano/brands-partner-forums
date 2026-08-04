@@ -7,6 +7,14 @@
 // deno-lint-ignore-file no-explicit-any
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
+// KNOWN DIVERGENCE (documented, not fixed — see CLAUDE.md Known Issues): this ported
+// pick() trims a value before checking whether it's blank, but the real frontend's
+// pick() (src/lib/scoreSummary.ts) checks `v !== ''` with no trim. A whitespace-only
+// value (e.g. ' ') in a higher-precedence key is therefore dropped by the frontend
+// (excluded from that row entirely) but falls through to the next key here, sometimes
+// finding a real value the frontend never sees. Only reachable on TP, the only platform
+// with a multi-key precedence list. Not changed here to avoid altering ported behavior
+// out of scope for this fix wave.
 export function pick(data: Record<string, any>, keys: readonly string[]): string | null {
   for (const k of keys) {
     const v = data?.[k];
@@ -254,7 +262,7 @@ export interface BrandScoreSummary {
   brand: string;
   counts: Record<number, number>;
   unrated: number;
-  total: number;
+  publishedTotal: number;
   rated: number;
   average: number | null;
   label: RatingLabel | null;
@@ -313,14 +321,14 @@ export function scoreSummary(entries: EntryRow[], platform: Platform = 'tp'): Br
       rated += b.counts[i];
       weighted += i * b.counts[i];
     }
-    const total = rated + b.unrated;
+    const publishedTotal = rated + b.unrated;
     const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
     const label = ratingLabel(average, maxScore);
     const successTotal = b.live + b.removed;
     const successRate = successTotal === 0 ? null : (b.live / successTotal) * 100;
     return {
       tab: b.tab, brand: b.brand, counts: b.counts, unrated: b.unrated,
-      total, rated, average, label, live: b.live, removed: b.removed, successRate,
+      publishedTotal, rated, average, label, live: b.live, removed: b.removed, successRate,
     };
   });
 }
@@ -401,7 +409,10 @@ export const TOOL_DEFS = [
         'agent, or country. Results are sorted best-rate-first, so the top row answers ' +
         '"which X works best". Rows whose status is pending, paused, or otherwise undecided ' +
         'are not counted (contribute to neither live nor removed) — total may be lower than ' +
-        'raw row count for that value.',
+        'raw row count for that value. ' +
+        'Note: on tabs tracking multiple platforms (TP+AG+CG), this resolves TrustPilot status ' +
+        'first, so results here may not match a platform-scoped get_score_summary query for the ' +
+        'same tab.',
       parameters: {
         type: 'object',
         properties: {
