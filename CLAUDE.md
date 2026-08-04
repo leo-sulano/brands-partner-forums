@@ -56,7 +56,35 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-04 (newest):* Fixed a Schedule Planner mismatch the user caught by comparing the
+- *2026-08-04 (newest):* Extended Ask AI (`supabase/functions/ai-assistant/`, GPT-4o
+  tool-calling assistant) to full coverage of the dashboard's own metrics across 4 phases,
+  none deployed yet (`supabase functions deploy ai-assistant` still pending): (1) fixed a live
+  credential leak — `get_entry`/`query_entries` returned raw `data` jsonb including
+  `Password`/`Backup Codes`/`Authenticator Backup` until `redactSensitive()` was added — plus
+  a new `get_success_rate_by_field` tool (proxy/agent/country); (2) `get_score_summary` gained
+  a `platform` param (tp/ag/cg/wo), fixing a latent bug where AskGamblers scores of 6-10 were
+  misclassified as unrated under a hardcoded 1-5 ceiling; (3) `get_removed_platform_flags` plus
+  the same platform-removed-brand exclusion wired into both `get_score_summary` and
+  `get_success_rate_by_field`, and gave the latter the `platform` param the former already had
+  (closing a cross-tool inconsistency Phase 2's own review flagged); (4) `get_schedule`/
+  `get_paused_combos` for Schedule Planner state, plus a current-date system message that was
+  previously entirely missing — building it surfaced that this team operates in Asia/Manila
+  (UTC+8, same assumption `scheduleBrands.ts`'s `toISODate` already documents), so a bare UTC
+  date would misread "this week" for roughly a third of every day; fixed with a deliberate,
+  narrowly-scoped `+8h` offset on that one system message only. A final whole-branch review
+  (Phase 4) then caught 5 more gaps: `get_schedule`'s description didn't warn its rows are an
+  unconfirmed *plan* (the exact same gap Task 173, below, fixed on the Schedule Planner UI
+  itself); `get_paused_combos`'s description didn't warn a pause row can be stale until someone
+  reopens that tab in the app; `get_schedule` had no runtime guard against a model call omitting
+  `tab`/`week_start` despite both being schema-`required` (a real gap — `required` is a hint to
+  the model, not an enforced guarantee); the system prompt never defined WO/Wizard of Odds
+  despite every phase-2-4 tool accepting `platform: 'wo'`; and the "Tab names" vocabulary list
+  was missing 2 of the real 11 tabs (`Wizard of Odds`, `GRG - Gulf Recovery Group`), which
+  matters more than it looks since `get_schedule` treats an empty result as a legitimate
+  "nothing scheduled" answer. Full `tools_test.ts` suite (38 tests) passes; `deno check` clean.
+  Specs/plans: `docs/superpowers/specs/2026-08-04-ask-ai-full-coverage-phase{1,2,3,4}-design.md`,
+  `docs/superpowers/plans/2026-08-04-ask-ai-full-coverage-phase{1,2,3,4}.md`. Task 174.
+- *2026-08-04 (prior):* Fixed a Schedule Planner mismatch the user caught by comparing the
   calendar against the Brand Tabs page directly: a TP chip showed as scheduled for Lucky7even
   on Jul 30 with no real TP post anywhere in that brand's entry data. Root cause: `ScheduleCell`
   (`src/lib/scheduler/calendarRenderer.tsx`) rendered a chip whenever the auto-generated

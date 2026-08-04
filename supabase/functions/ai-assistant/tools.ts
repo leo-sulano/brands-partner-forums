@@ -476,7 +476,10 @@ export const TOOL_DEFS = [
         'keyed by their Monday. An empty result means nothing has been scheduled for ' +
         'that week yet (the schedule is generated lazily when someone opens that week ' +
         'in the app) — this is not an error. A null platform on a row means a legacy, ' +
-        'pre-platform-tracking week.',
+        'pre-platform-tracking week. Rows represent the plan, not confirmed history — ' +
+        'for a week that has already passed, a row does not by itself confirm a post ' +
+        'actually happened; cross-check with query_entries or get_score_summary for ' +
+        'real evidence before asserting a past post occurred.',
       parameters: {
         type: 'object',
         properties: {
@@ -495,7 +498,11 @@ export const TOOL_DEFS = [
         'Lists brand+platform combos currently auto-paused (2 consecutive Removed/' +
         'Refused posts, or an all-time success rate below the pause threshold), with ' +
         'the reason and the week the pause started. Not week-scoped — a pause is a ' +
-        'standing state, not tied to one week\'s calendar. Optionally filtered to one tab.',
+        'standing state, not tied to one week\'s calendar. Optionally filtered to one tab. ' +
+        'A pause row is only cleaned up when someone opens that tab in the app, so a ' +
+        'paused_week_start from a week before the current one may be an expired pause no ' +
+        'longer actually in effect — compare it against the current-date system message ' +
+        'before asserting a combo is still paused.',
       parameters: {
         type: 'object',
         properties: { tab: { type: 'string' } },
@@ -563,6 +570,9 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { results: successRateByField(data ?? [], args?.field, platform, removedSet) };
   }
   if (name === 'get_schedule') {
+    if (!args?.tab || !args?.week_start) {
+      return { error: 'Both tab and week_start (Monday, YYYY-MM-DD) are required.' };
+    }
     let q = supabase
       .from('brand_schedule')
       .select('tab, brand, platform, week_start, monday, tuesday, wednesday, thursday, friday');

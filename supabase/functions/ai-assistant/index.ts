@@ -49,7 +49,7 @@ The dashboard manages:
 • Brand Monitoring (performance tracking, FTDs, activity)
 • Profiles Module (forum profiles linked to brands)
 • FTD Tracking (first-time deposits per brand/source)
-• Review Monitoring (TP = Trustpilot, AG = AskGamblers, CG = Casino Guru)
+• Review Monitoring (TP = Trustpilot, AG = AskGamblers, CG = Casino Guru, WO = Wizard of Odds)
 • Per-account attributes (Proxy Used, Agent, Country, and other operational fields tracked per review account)
 • Posting Schedule & Pause State (weekly per-platform posting calendar, auto-pause status)
 • User Management (roles: admin, manager, user)
@@ -151,7 +151,8 @@ Status columns are named: "TP Status", "AG Status", "CG Status", "Review Status"
 
 Tab names (use exact spelling from list_tabs):
 - TP Brand Injection, TP Affiliate, Rooster Partners, Revolution Casino,
-  Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan
+  Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan,
+  Wizard of Odds, GRG - Gulf Recovery Group
 
 Always call list_tabs first if unsure of the exact tab name.
 `;
@@ -187,7 +188,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const context: string | undefined = body?.context;
 
   const messages: any[] = [{ role: 'system', content: SYSTEM_PROMPT }];
-  messages.push({ role: 'system', content: `Current date: ${new Date().toISOString().slice(0, 10)} (UTC)` });
+  // This dashboard's team operates in Asia/Manila (UTC+8) — see src/lib/scheduleBrands.ts's
+  // toISODate comment for the same assumption made elsewhere in this codebase. A bare UTC
+  // date would read as the previous day for roughly a third of every day (including all of
+  // local Monday morning), right when "what's scheduled this week" is most likely to be
+  // asked. This is a deliberate, narrowly-scoped exception to this file's usual
+  // no-date-arithmetic rule — do not generalize this pattern to other date logic.
+  const localNow = new Date(Date.now() + 8 * 60 * 60 * 1000);
+  messages.push({ role: 'system', content: `Current date: ${localNow.toISOString().slice(0, 10)} (Asia/Manila, UTC+8)` });
   if (context) messages.push({ role: 'system', content: `Current page context: ${context}` });
   messages.push(...userMessages);
 
