@@ -38,7 +38,7 @@ describe('recalculatePauses', () => {
       ],
     };
     await recalculatePauses('BITP', '2026-08-03', ctx);
-    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'WinMega', 'tp', '2026-08-03', expect.any(String));
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'WinMega', 'tp', '2026-08-03', expect.any(String), undefined);
   });
 
   it('does not pause when only the most recent post is Removed', async () => {
@@ -60,7 +60,7 @@ describe('recalculatePauses', () => {
     ]);
     const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['tp'], entries: [] };
     const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
-    expect(queries.deleteBrandPlatformPause).toHaveBeenCalledWith('BITP', 'winmega', 'tp');
+    expect(queries.deleteBrandPlatformPause).toHaveBeenCalledWith('BITP', 'winmega', 'tp', undefined);
     expect(resumed).toEqual([{ brandKey: 'winmega', platform: 'tp' }]);
   });
 
@@ -121,7 +121,7 @@ describe('recalculatePauses', () => {
     // in the scenario this guards) -- skipped even though it would otherwise
     // qualify. BrandB/tp has no existing row and still gets paused.
     expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
-    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'BrandB', 'tp', '2026-08-03', expect.any(String));
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'BrandB', 'tp', '2026-08-03', expect.any(String), undefined);
   });
 
   // A brand whose TP page is flagged removed in Brand Tabs has nothing to
@@ -141,6 +141,14 @@ describe('recalculatePauses', () => {
     expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
   });
 
+  it('forwards an explicitly-passed client through to the query functions', async () => {
+    const fakeClient = { marker: 'fake' } as any;
+    const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['tp'], entries: [] };
+    await recalculatePauses('BITP', '2026-08-03', ctx, fakeClient);
+    expect(queries.fetchActiveBrandPlatformPauses).toHaveBeenCalledWith('BITP', fakeClient);
+    expect(queries.fetchBrandSchedule).toHaveBeenCalledWith('BITP', '2026-08-03', fakeClient);
+  });
+
   describe('success-rate trigger', () => {
     it('pauses a brand+platform whose all-time success rate is below 40% with at least 5 decided posts', async () => {
       const ctx: TabContext = {
@@ -158,7 +166,7 @@ describe('recalculatePauses', () => {
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
-        'BITP', 'WinMega', 'tp', '2026-08-03', 'Success rate below 40% (20% over 5 posts)',
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Success rate below 40% (20% over 5 posts)', undefined,
       );
     });
 
@@ -210,7 +218,7 @@ describe('recalculatePauses', () => {
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
-        'BITP', 'WinMega', 'tp', '2026-08-03', 'Two consecutive Removed/Refused posts',
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Two consecutive Removed/Refused posts', undefined,
       );
     });
 

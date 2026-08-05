@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   isDoneStatus,
   fetchBrandSchedule,
@@ -106,10 +107,10 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
 // logic (it would look like a real pause that "expired" and get reported as
 // resumed even though it never took effect). The resume/delete path stays
 // unconditional: deleting an expired pause is always safe and idempotent.
-export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext): Promise<PinnedCombo[]> {
+export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext, client?: SupabaseClient): Promise<PinnedCombo[]> {
   const [pauses, existingRows] = await Promise.all([
-    fetchActiveBrandPlatformPauses(tab),
-    fetchBrandSchedule(tab, weekStart),
+    fetchActiveBrandPlatformPauses(tab, client),
+    fetchBrandSchedule(tab, weekStart, client),
   ]);
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
@@ -133,7 +134,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       const existing = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
       if (existing) {
         if (existing.paused_week_start < weekStart) {
-          await deleteBrandPlatformPause(tab, brandKey, platform);
+          await deleteBrandPlatformPause(tab, brandKey, platform, client);
           resumed.push({ brandKey, platform });
         }
         continue;
@@ -144,7 +145,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
       if (bothRemoved) {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Two consecutive Removed/Refused posts');
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Two consecutive Removed/Refused posts', client);
         continue;
       }
 
@@ -164,6 +165,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         await upsertBrandPlatformPause(
           tab, brand, platform, weekStart,
           `Success rate below ${PAUSE_RULES.successRateThreshold}% (${pct}% over ${decided} posts)`,
+          client,
         );
       }
     }
@@ -179,9 +181,9 @@ function shiftWeek(iso: string, days: number): string {
   return toISODate(date);
 }
 
-async function buildCarryover(tab: string, weekStart: string, ctx: TabContext): Promise<CarryoverItem[]> {
+async function buildCarryover(tab: string, weekStart: string, ctx: TabContext, client?: SupabaseClient): Promise<CarryoverItem[]> {
   const lastWeekStart = shiftWeek(weekStart, -7);
-  const lastWeekRows = (await fetchBrandSchedule(tab, lastWeekStart)).filter((r) => r.platform != null);
+  const lastWeekRows = (await fetchBrandSchedule(tab, lastWeekStart, client)).filter((r) => r.platform != null);
   if (lastWeekRows.length === 0) return [];
 
   const completedBrandPlatforms = new Set<string>();
@@ -242,8 +244,9 @@ export async function ensureWeekGenerated(
   weekStart: string,
   ctx: TabContext,
   resumedThisWeek: PinnedCombo[],
+  client?: SupabaseClient,
 ): Promise<void> {
-  const existingRows = await fetchBrandSchedule(tab, weekStart);
+  const existingRows = await fetchBrandSchedule(tab, weekStart, client);
   const alreadyHasRowCombos: PinnedCombo[] = existingRows
     .filter((r) => r.platform != null)
     .map((r) => ({ brandKey: r.brand_key, platform: r.platform as Platform }));
@@ -262,12 +265,12 @@ export async function ensureWeekGenerated(
     }
   }
 
-  const pauses = await fetchActiveBrandPlatformPauses(tab);
+  const pauses = await fetchActiveBrandPlatformPauses(tab, client);
   const pausedBrandPlatforms: PinnedCombo[] = pauses
     .filter((p) => p.paused_week_start === weekStart)
     .map((p) => ({ brandKey: p.brand_key, platform: p.platform }));
 
-  const carryover = await buildCarryover(tab, weekStart, ctx);
+  const carryover = await buildCarryover(tab, weekStart, ctx, client);
 
   const slots = generateWeekSchedule({
     brands: ctx.brands,
@@ -279,5 +282,5 @@ export async function ensureWeekGenerated(
   });
 
   if (slots.length === 0) return;
-  await bulkUpsertBrandSchedule(groupSlotsIntoRows(tab, weekStart, slots));
+  await bulkUpsertBrandSchedule(groupSlotsIntoRows(tab, weekStart, slots), client);
 }
