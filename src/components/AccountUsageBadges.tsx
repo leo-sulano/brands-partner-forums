@@ -20,15 +20,15 @@ export default function AccountUsageBadges({ counts }: { counts: Record<Platform
         <span
           key={p}
           title={`Used ${counts[p]} time${counts[p] === 1 ? '' : 's'} on ${PLATFORM_LABEL[p]} across the dashboard`}
-          className="relative inline-flex size-4 shrink-0 items-center justify-center"
+          className="relative inline-flex size-3 shrink-0 items-center justify-center"
         >
           <img
             src={PLATFORM_FAVICON[p]}
             alt={PLATFORM_LABEL[p]}
-            className="size-4 rounded-sm"
+            className="size-3 rounded-sm"
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
-          <span className="absolute -right-1.5 -bottom-1.5 flex size-3 items-center justify-center rounded-full bg-slate-700 text-[8px] font-bold leading-none text-white ring-1 ring-white">
+          <span className="absolute -right-1.5 -top-1.5 flex size-3 items-center justify-center rounded-full bg-slate-700 text-[8px] font-bold leading-none text-white ring-1 ring-white">
             {counts[p]}
           </span>
         </span>
