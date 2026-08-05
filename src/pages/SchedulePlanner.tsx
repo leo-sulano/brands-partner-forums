@@ -72,15 +72,14 @@ function RemovedPlatformIcon({ platform }: { platform: Platform }) {
       <img
         src={PLATFORM_FAVICON[platform]}
         alt={PLATFORM_BADGE[platform].label}
-        className="size-3.5 rounded-sm"
+        className="size-4 rounded-sm"
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
-      <span
+      <X
         aria-hidden="true"
-        className="absolute -right-1.5 -top-1.5 flex size-2.5 items-center justify-center rounded-full bg-rose-600"
-      >
-        <X className="size-1.5 text-white" strokeWidth={4} />
-      </span>
+        className="absolute -right-1.5 -top-1.5 size-3 text-rose-600 drop-shadow-[0_0_1.5px_white]"
+        strokeWidth={4}
+      />
     </span>
   );
 }

@@ -80,8 +80,13 @@ Brands Partner Forum/
   scheduling/exclusion logic untouched throughout. Live-verified via Playwright against real
   Supabase data (SilverPlay's "Silver Play", Hanan's several TP-flagged brands, and a live
   flag/unflag round-trip on Trybet's real "Trybet.com" brand confirming it vanishes from and
-  reappears in the Trybet tab's list with no residual state left behind). Full suite (273 tests)
-  and build both pass. Task 175.
+  reappears in the Trybet tab's list with no residual state left behind). Finally, a readability
+  pass on `RemovedPlatformIcon` itself after the user flagged a live screenshot where the red-X
+  marker read as little more than a dot: first enlarged it (favicon to `size-4`, badge circle to
+  `size-3` with a white ring), then — per a follow-up request — dropped the circle background
+  entirely in favor of a plain `size-3` red X with a small white drop-shadow for contrast, directly
+  over the favicon. `PlatformRemovedBadge` (Brand Tabs) is unaffected by any of this. Full suite
+  (273 tests) and build both pass. Task 175.
 - *2026-08-04 (prior):* Extended Ask AI (`supabase/functions/ai-assistant/`, GPT-4o
   tool-calling assistant) to full coverage of the dashboard's own metrics across 4 phases,
   none deployed yet (`supabase functions deploy ai-assistant` still pending): (1) fixed a live
