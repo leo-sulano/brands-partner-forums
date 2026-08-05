@@ -1911,3 +1911,15 @@ Extended the Ask AI assistant (`supabase/functions/ai-assistant/`, GPT-4o tool-c
 - Full `tools_test.ts` suite (38 tests) passes; `deno check` clean on both `index.ts` and `tools.ts`. No frontend code touched across any of the 4 phases.
 
 ---
+
+## Task 175: Confirmed — "Page Removed" Flag Correctly Excludes From Both Schedule Planner and Score Summary (No Code Change)
+
+**Date:** August 5, 2026
+
+A same-day back-and-forth clarified the intended scope of Brand Tabs' per-platform "page removed" flag (`removed_platform_brands`, toggled via the Edit Entry checkbox e.g. "TrustPilot page removed"). The user's first message ("Removed TrustPilot page removed must not exist on Schedule planner") was read as a request to *stop* the flag from affecting Schedule Planner, so `SchedulePlanner.tsx`'s `brandPlatforms()` filter and `schedulerService.ts`'s `removedPlatformBrandSet` skip logic (in `recalculatePauses`/`ensureWeekGenerated`) were removed, with `schedulerService.test.ts` updated to match.
+
+- The user's very next message ("every time a TP brand page is marked removed it will automatically disappear on the Schedule planner and Score Summary as well") described the opposite intent — the exclusion should apply to **both** surfaces, i.e. the original, pre-change behavior was correct all along.
+- Confirmed via `AskUserQuestion` rather than guessing a second time: user chose "hide from both — revert my last change." All three edited files (`SchedulePlanner.tsx`, `schedulerService.ts`, `schedulerService.test.ts`) were reverted via `git restore` to their pre-Task-175 state. Full suite (273 tests) re-confirmed passing.
+- Net effect: no code change. The flag continues to exclude a brand+platform from Schedule Planner's cells/scheduling *and* Score Summary/Brand Tabs' badge+aggregates, exactly as it did before this task started. Documented here (and in a memory) mainly so a future ambiguous rewording of this same request doesn't get re-implemented backwards again.
+
+---

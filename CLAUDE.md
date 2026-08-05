@@ -56,7 +56,15 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-04 (newest):* Extended Ask AI (`supabase/functions/ai-assistant/`, GPT-4o
+- *2026-08-05 (newest):* Confirmed, after an initial back-and-forth, that Brand Tabs' per-platform
+  "page removed" flag (`removed_platform_brands`, e.g. "TrustPilot page removed") is *correctly*
+  excluding a flagged brand+platform from both Schedule Planner (chip hidden in every cell via
+  `SchedulePlanner.tsx`'s `brandPlatforms()`; permanently skipped by `schedulerService.ts`'s
+  `recalculatePauses`/`ensureWeekGenerated`) and Score Summary/Brand Tabs — an ambiguous first
+  reading of the user's request led to briefly removing the Schedule Planner side of this before
+  the user's follow-up clarified they wanted it kept on both surfaces. Reverted via `git restore`;
+  no net code change. Full suite (273 tests) and build both pass. Task 175.
+- *2026-08-04 (prior):* Extended Ask AI (`supabase/functions/ai-assistant/`, GPT-4o
   tool-calling assistant) to full coverage of the dashboard's own metrics across 4 phases,
   none deployed yet (`supabase functions deploy ai-assistant` still pending): (1) fixed a live
   credential leak — `get_entry`/`query_entries` returned raw `data` jsonb including

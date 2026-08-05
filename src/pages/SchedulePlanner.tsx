@@ -18,6 +18,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
+import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 import SelectDropdown from '../components/SelectDropdown';
@@ -286,6 +287,17 @@ export default function SchedulePlanner() {
     return activePlatforms.filter((p) => !removedSet.has(platformRemovedKey(tab, brand, p)));
   }
 
+  // The inverse of brandPlatforms — every active platform actually flagged
+  // removed for this brand, so the sticky Brand column can show the same
+  // red-X badge Brand Tabs already renders next to the name, matching
+  // BrandGroup.tsx's removedPlatformsFor. Purely informational: it doesn't
+  // change which platforms get chips in the day cells (brandPlatforms above
+  // still governs that).
+  function flaggedRemovedPlatforms(brand: string): Platform[] {
+    const removedSet = tabCtx?.removedPlatformBrandSet ?? new Set<string>();
+    return activePlatforms.filter((p) => removedSet.has(platformRemovedKey(tab, brand, p)));
+  }
+
   function computeRemovedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
     const removedByPlatform: Partial<Record<Platform, boolean>> = {};
@@ -491,6 +503,7 @@ export default function SchedulePlanner() {
                         >
                           {brand}
                         </Link>
+                        {flaggedRemovedPlatforms(brand).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
                       </td>
                       {WEEKDAYS.map((day, dayIndex) => {
                         const dayISO = toISODate(addDays(weekStart, dayIndex));
