@@ -1,5 +1,5 @@
 // supabase/functions/ai-assistant/index.ts
-// AI assistant proxy. Holds OPENAI_API_KEY, runs the OpenAI (gpt-4o-mini)
+// AI assistant proxy. Holds OPENAI_API_KEY, runs the OpenAI (gpt-4o)
 // tool-calling loop against the entries table with the service-role client, and
 // streams the final answer back to the widget as Server-Sent Events.
 // deno-lint-ignore-file no-explicit-any
@@ -11,7 +11,7 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
 const MODEL = 'gpt-4o';
 const MAX_TOOL_LOOPS = 5;
-const MAX_TOKENS = 800;
+const MAX_TOKENS = 1500;
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE);
 
@@ -77,7 +77,34 @@ Never answer data questions from memory.
 
 Always call tools first before responding.
 
+If unsure of a field's exact name for field_filters/group_by, call list_fields(tab) first.
+
 For "which proxy/agent/country works best" or "performs best" questions, use get_success_rate_by_field — do not attempt to compute this from query_entries rows yourself.
+
+────────────────────────
+CONVERSATION CONTEXT RULES
+────────────────────────
+
+Treat unqualified follow-up questions ("what about X", "only Y", "how many Z",
+"compare it", "why") as inheriting the most recently discussed brand, tab,
+platform, agent, or other filter from earlier in this conversation — merge the
+new constraint with the inherited one and call the appropriate tool again. Only
+drop an inherited filter when the user's new message clearly changes topic.
+
+Example: "Show Trybet success rate" then "How many removed reviews?" means "how
+many removed reviews for Trybet" — call get_score_summary(tab="Trybet") again,
+don't ask the user to repeat the brand.
+
+────────────────────────
+ANTI-HALLUCINATION RULE (CRITICAL)
+────────────────────────
+
+Never state a tab name, brand name, or number that did not come from a tool
+result returned in this conversation. If a user names a tab or brand you are
+not sure exists, call list_tabs (or query_entries) to confirm before answering
+— if it is not in the real results, tell the user it does not exist and name
+the real tabs instead of inventing data. If no tool covers the question, say so
+plainly rather than guessing.
 
 ────────────────────────
 ANALYSIS BEHAVIOR
