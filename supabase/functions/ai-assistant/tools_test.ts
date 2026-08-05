@@ -15,6 +15,7 @@ import {
   platformRemovedKey,
   buildRemovedPlatformBrandSet,
   isSensitiveField,
+  collectFieldNames,
   EntryRow,
 } from './tools.ts';
 
@@ -528,4 +529,37 @@ Deno.test('isSensitiveField returns false for an ordinary field', () => {
   assertEquals(isSensitiveField('Agent'), false);
   assertEquals(isSensitiveField('Email Provider'), false);
   assertEquals(isSensitiveField('Brands'), false);
+});
+
+Deno.test('collectFieldNames unions field names across rows and dedupes', () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'A', Agent: 'ANN' } },
+    { id: '2', tab: 't', data: { Brands: 'B', Country: 'PH' } },
+  ];
+  assertEquals(collectFieldNames(rows), ['Agent', 'Brands', 'Country']);
+});
+
+Deno.test('collectFieldNames excludes sensitive keys, including case/whitespace variants', () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'A', Password: 'x', ' backup codes ': 'y' } },
+  ];
+  assertEquals(collectFieldNames(rows), ['Brands']);
+});
+
+Deno.test('list_fields returns field names for one tab via runTool', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 'Trybet', data: { Brands: 'Acme', 'Email Provider': 'Gmail' } },
+    { id: '2', tab: 'Hanan', data: { Brands: 'Zeta', Agent: 'ANN' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'list_fields', { tab: 'Trybet' });
+  assertEquals(result.fields, ['Brands', 'Email Provider']);
+});
+
+Deno.test('list_fields unions field names across all tabs when tab is omitted', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 'Trybet', data: { Brands: 'Acme' } },
+    { id: '2', tab: 'Hanan', data: { Agent: 'ANN' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'list_fields', {});
+  assertEquals(result.fields, ['Agent', 'Brands']);
 });

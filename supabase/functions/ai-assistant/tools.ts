@@ -46,6 +46,16 @@ export function isSensitiveField(field: string): boolean {
   return SENSITIVE_KEYS_NORM.has(field.trim().toLowerCase());
 }
 
+export function collectFieldNames(rows: EntryRow[]): string[] {
+  const set = new Set<string>();
+  for (const r of rows) {
+    for (const k of Object.keys(r.data ?? {})) {
+      if (!SENSITIVE_KEYS_NORM.has(k.trim().toLowerCase())) set.add(k);
+    }
+  }
+  return [...set].sort();
+}
+
 const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'];
 const ACCOUNT_KEYS = ['Account Name', 'account_name', 'casino', 'Casino', 'name', 'Name'];
 const STATUS_KEYS = [
@@ -363,6 +373,18 @@ export const TOOL_DEFS = [
   {
     type: 'function',
     function: {
+      name: 'list_fields',
+      description:
+        'Lists the real data field names tracked for a tab (or across all tabs if ' +
+        'tab is omitted) — call this before filtering or grouping by a field whose ' +
+        'exact name/casing you are unsure of (e.g. "Email Provider" vs "Email"). ' +
+        'Credential fields are never listed.',
+      parameters: { type: 'object', properties: { tab: { type: 'string' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'list_tabs',
       description: 'List the distinct brand-group tabs available.',
       parameters: { type: 'object', properties: {} },
@@ -521,6 +543,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const { data, error } = await supabase.from('entries').select('tab');
     if (error) throw error;
     return { tabs: [...new Set((data ?? []).map((r: any) => r.tab))].sort() };
+  }
+  if (name === 'list_fields') {
+    let q = supabase.from('entries').select('tab, data');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    const { data, error } = await q;
+    if (error) throw error;
+    return { fields: collectFieldNames(data ?? []) };
   }
   if (name === 'query_entries') {
     let q = supabase.from('entries').select('id, tab, data');
