@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
 import { inDateRange } from './dateUtils';
 import { getTabColumns, getBrandNameCol } from './tab-configs';
@@ -206,8 +207,10 @@ export async function fetchAvailableTabs(): Promise<string[]> {
   return (data ?? []).map((row) => row.tab as string);
 }
 
-export async function fetchRemovedPlatformBrands(): Promise<{ tab: string; brand: string; platform: Platform }[]> {
-  const { data, error } = await supabase
+export async function fetchRemovedPlatformBrands(
+  client: SupabaseClient = supabase,
+): Promise<{ tab: string; brand: string; platform: Platform }[]> {
+  const { data, error } = await client
     .from('removed_platform_brands')
     .select('tab, brand, platform');
   if (error) throw error;
@@ -234,7 +237,7 @@ export function invalidateTabCache(tab: string) {
 }
 
 // Fetches all rows for a tab, paginating in 1 000-row batches to bypass Supabase's default limit.
-async function fetchAllTabEntries(tab: string): Promise<Entry[]> {
+async function fetchAllTabEntries(tab: string, client: SupabaseClient = supabase): Promise<Entry[]> {
   const cached = tabEntryCache.get(tab);
   if (cached && Date.now() - cached.ts < TAB_CACHE_TTL) return cached.entries;
 
@@ -242,7 +245,7 @@ async function fetchAllTabEntries(tab: string): Promise<Entry[]> {
   const all: Entry[] = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase
+    const { data, error } = await client
       .from('entries')
       .select('*')
       .eq('tab', tab)
@@ -258,8 +261,8 @@ async function fetchAllTabEntries(tab: string): Promise<Entry[]> {
   return all;
 }
 
-export async function fetchRawEntriesByTab(tab: string): Promise<Entry[]> {
-  return fetchAllTabEntries(tab);
+export async function fetchRawEntriesByTab(tab: string, client: SupabaseClient = supabase): Promise<Entry[]> {
+  return fetchAllTabEntries(tab, client);
 }
 
 // Fetches every entry across the given tabs, paginated. When `tabs` is omitted
@@ -304,8 +307,8 @@ export async function fetchAllEntries(tabs?: readonly string[]): Promise<Entry[]
   return all;
 }
 
-export async function fetchTabHeaders(tab: string): Promise<string[]> {
-  const { data, error } = await supabase
+export async function fetchTabHeaders(tab: string, client: SupabaseClient = supabase): Promise<string[]> {
+  const { data, error } = await client
     .from('tab_schemas')
     .select('headers')
     .eq('tab', tab)
@@ -626,8 +629,8 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
   }
 }
 
-export async function fetchBrandSchedule(tab: string, weekStart: string): Promise<BrandScheduleRow[]> {
-  const { data, error } = await supabase
+export async function fetchBrandSchedule(tab: string, weekStart: string, client: SupabaseClient = supabase): Promise<BrandScheduleRow[]> {
+  const { data, error } = await client
     .from('brand_schedule')
     .select('tab, brand_key, week_start, platform, monday, tuesday, wednesday, thursday, friday')
     .eq('tab', tab)
@@ -662,9 +665,9 @@ export async function setBrandScheduleDay(
 // Bulk-writes generation output in one round trip. Each row supplies all
 // five day columns (nulls included) so a freshly-generated row is written in
 // full, unlike setBrandScheduleDay's single-column partial upsert.
-export async function bulkUpsertBrandSchedule(rows: BrandScheduleUpsertRow[]): Promise<void> {
+export async function bulkUpsertBrandSchedule(rows: BrandScheduleUpsertRow[], client: SupabaseClient = supabase): Promise<void> {
   if (rows.length === 0) return;
-  const { error } = await supabase
+  const { error } = await client
     .from('brand_schedule')
     .upsert(
       rows.map((r) => ({ ...r, updated_at: new Date().toISOString() })),
@@ -681,8 +684,8 @@ export interface BrandPlatformPause {
   reason: string;
 }
 
-export async function fetchActiveBrandPlatformPauses(tab: string): Promise<BrandPlatformPause[]> {
-  const { data, error } = await supabase
+export async function fetchActiveBrandPlatformPauses(tab: string, client: SupabaseClient = supabase): Promise<BrandPlatformPause[]> {
+  const { data, error } = await client
     .from('brand_platform_pause')
     .select('tab, brand_key, platform, paused_week_start, reason')
     .eq('tab', tab);
@@ -696,8 +699,9 @@ export async function upsertBrandPlatformPause(
   platform: Platform,
   pausedWeekStart: string,
   reason: string,
+  client: SupabaseClient = supabase,
 ): Promise<void> {
-  const { error } = await supabase
+  const { error } = await client
     .from('brand_platform_pause')
     .upsert(
       { tab, brand, platform, paused_week_start: pausedWeekStart, reason },
@@ -706,8 +710,8 @@ export async function upsertBrandPlatformPause(
   if (error) throw error;
 }
 
-export async function deleteBrandPlatformPause(tab: string, brandKey: string, platform: Platform): Promise<void> {
-  const { error } = await supabase
+export async function deleteBrandPlatformPause(tab: string, brandKey: string, platform: Platform, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
     .from('brand_platform_pause')
     .delete()
     .eq('tab', tab)
