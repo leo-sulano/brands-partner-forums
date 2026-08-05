@@ -56,6 +56,31 @@ export function collectFieldNames(rows: EntryRow[]): string[] {
   return [...set].sort();
 }
 
+export function matchesFieldFilters(e: EntryRow, filters: Record<string, string>): boolean {
+  for (const [field, value] of Object.entries(filters)) {
+    const have = String(e.data?.[field] ?? '').trim().toLowerCase();
+    if (have !== value.trim().toLowerCase()) return false;
+  }
+  return true;
+}
+
+export interface FieldGroupCount {
+  value: string;
+  count: number;
+}
+
+export function groupByField(entries: EntryRow[], field: string): FieldGroupCount[] {
+  const buckets = new Map<string, number>();
+  for (const e of entries) {
+    const value = String(e.data?.[field] ?? '').trim();
+    if (!value) continue;
+    buckets.set(value, (buckets.get(value) ?? 0) + 1);
+  }
+  return [...buckets.entries()]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
 const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'];
 const ACCOUNT_KEYS = ['Account Name', 'account_name', 'casino', 'Casino', 'name', 'Name'];
 const STATUS_KEYS = [

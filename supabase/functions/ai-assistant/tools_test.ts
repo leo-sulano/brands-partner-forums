@@ -16,6 +16,8 @@ import {
   buildRemovedPlatformBrandSet,
   isSensitiveField,
   collectFieldNames,
+  matchesFieldFilters,
+  groupByField,
   EntryRow,
 } from './tools.ts';
 
@@ -562,4 +564,43 @@ Deno.test('list_fields unions field names across all tabs when tab is omitted', 
   ];
   const result: any = await runTool(mockSupabase(rows), 'list_fields', {});
   assertEquals(result.fields, ['Agent', 'Brands']);
+});
+
+Deno.test('matchesFieldFilters requires all filters to match (AND)', () => {
+  const e: EntryRow = { id: '1', tab: 't', data: { Agent: 'ANN', Country: 'PH' } };
+  assertEquals(matchesFieldFilters(e, { Agent: 'ANN' }), true);
+  assertEquals(matchesFieldFilters(e, { Agent: 'ANN', Country: 'PH' }), true);
+  assertEquals(matchesFieldFilters(e, { Agent: 'ANN', Country: 'US' }), false);
+  assertEquals(matchesFieldFilters(e, { Agent: 'BOB' }), false);
+});
+
+Deno.test('matchesFieldFilters is case-insensitive and trims on the value comparison', () => {
+  const e: EntryRow = { id: '1', tab: 't', data: { Agent: ' ann ' } };
+  assertEquals(matchesFieldFilters(e, { Agent: 'ANN' }), true);
+});
+
+Deno.test('matchesFieldFilters returns false when the field is missing entirely', () => {
+  const e: EntryRow = { id: '1', tab: 't', data: { Country: 'PH' } };
+  assertEquals(matchesFieldFilters(e, { Agent: 'ANN' }), false);
+});
+
+Deno.test('groupByField counts and sorts most-common-first', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Brands: 'Trybet' } },
+    { id: '3', tab: 't', data: { Brands: '7Bit' } },
+  ];
+  assertEquals(groupByField(entries, 'Brands'), [
+    { value: 'Trybet', count: 2 },
+    { value: '7Bit', count: 1 },
+  ]);
+});
+
+Deno.test('groupByField excludes rows with a blank or missing value for the field', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Brands: '' } },
+    { id: '3', tab: 't', data: {} },
+  ];
+  assertEquals(groupByField(entries, 'Brands'), [{ value: 'Trybet', count: 1 }]);
 });
