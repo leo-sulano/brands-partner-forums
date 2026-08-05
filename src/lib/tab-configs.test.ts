@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix, accountUsageKey } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -30,6 +30,25 @@ describe('stripDupSuffix', () => {
 
   it('returns an empty string unchanged', () => {
     expect(stripDupSuffix('')).toBe('');
+  });
+});
+
+describe('accountUsageKey', () => {
+  it('strips a dup suffix and trims whitespace together', () => {
+    expect(accountUsageKey('358 | BI TP | Germany dup ')).toBe('358 | BI TP | Germany');
+  });
+
+  it('trims leading and trailing whitespace with no dup suffix', () => {
+    expect(accountUsageKey('  358 | BI TP | Germany  ')).toBe('358 | BI TP | Germany');
+  });
+
+  it('returns an empty string for a whitespace-only value', () => {
+    expect(accountUsageKey('   ')).toBe('');
+  });
+
+  it('returns an empty string for null or undefined', () => {
+    expect(accountUsageKey(null)).toBe('');
+    expect(accountUsageKey(undefined)).toBe('');
   });
 });
 

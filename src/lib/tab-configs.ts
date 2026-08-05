@@ -265,6 +265,19 @@ export function stripDupSuffix(account: string): string {
   return account.replace(/(?:\s+dup)+$/i, '');
 }
 
+// Normalizes an Account value for the platform-usage-badge matching rule in
+// scoreSummary.ts's computeAccountPlatformUsage: strips the dup suffix,
+// then trims leading/trailing whitespace. This is whitespace hygiene, not
+// fuzzy matching — case and the id/label/country segments' content are
+// still compared exactly. Trimming matters because this codebase has real
+// Account values with stray trailing whitespace (e.g. a historical
+// "Online Casino Deutschland " value) that would otherwise silently
+// undercount a reused account, or bucket unrelated whitespace-only Account
+// rows together under one shared badge.
+export function accountUsageKey(raw: string | null | undefined): string {
+  return stripDupSuffix((raw ?? '').trim()).trim();
+}
+
 // Account values are formatted "<id> | <label> | <Country>" (or, for rows copied
 // from Hanan-sourced accounts, "<id> l <label> l <Country>" using a literal "l").
 // Duplicate Account appends one or more " dup" suffixes (see handleDuplicate in

@@ -1,7 +1,7 @@
 import type { Entry } from '../types/entry';
 import { platformRemovedKey } from './removedPlatformBrands';
 import type { Platform } from './removedPlatformBrands';
-import { stripDupSuffix } from './tab-configs';
+import { accountUsageKey } from './tab-configs';
 
 // Re-exported (not just imported) so every existing `import type { Platform }
 // from '../lib/scoreSummary'` across the codebase (BrandGroup.tsx,
@@ -446,18 +446,17 @@ export function computeTabSuccessRates(
 // matter, only that the account was used), tallied per normalized Account
 // text across every tab, not just one. Powers AccountUsageBadges
 // (src/components/AccountUsageBadges.tsx), shown next to the Account cell
-// in BrandGroup.tsx. Matching is exact-text (via stripDupSuffix) only — see
-// stripDupSuffix in tab-configs.ts for why " dup" is the one thing safe to
-// strip; no other normalization (case, whitespace, id-only) is applied.
+// in BrandGroup.tsx. Matching is via accountUsageKey (strips the dup suffix,
+// then trims whitespace) — see accountUsageKey in tab-configs.ts for why
+// those are the only two things safe to normalize; case and the
+// id/label/country segments' content are still compared exactly.
 export function computeAccountPlatformUsage(entries: Entry[]): Map<string, Record<Platform, number>> {
   const platforms = Object.keys(PLATFORM_STATUS_KEYS) as Platform[];
   const result = new Map<string, Record<Platform, number>>();
 
   for (const e of entries) {
     const d = e.data ?? {};
-    const raw = d['Account'];
-    if (!raw) continue;
-    const account = stripDupSuffix(raw);
+    const account = accountUsageKey(d['Account']);
     if (!account) continue;
 
     let counts = result.get(account);

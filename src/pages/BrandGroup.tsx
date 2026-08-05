@@ -16,7 +16,7 @@ import AccountUsageBadges from '../components/AccountUsageBadges';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
 import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, stripDupSuffix } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
@@ -2344,7 +2344,7 @@ export default function BrandGroup() {
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
                             {h === 'Account' && (
-                              <AccountUsageBadges counts={accountUsage.get(stripDupSuffix(entry.data['Account'] ?? ''))} />
+                              <AccountUsageBadges counts={accountUsage.get(accountUsageKey(entry.data['Account']))} />
                             )}
                           </td>
                         );
@@ -2489,7 +2489,7 @@ export default function BrandGroup() {
                             tab={decodedTab}
                           />
                           {h === 'Account' && (
-                            <AccountUsageBadges counts={accountUsage.get(stripDupSuffix(entry.data['Account'] ?? ''))} />
+                            <AccountUsageBadges counts={accountUsage.get(accountUsageKey(entry.data['Account']))} />
                           )}
                         </td>
                       );

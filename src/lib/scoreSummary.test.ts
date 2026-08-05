@@ -492,4 +492,21 @@ describe('computeAccountPlatformUsage', () => {
     const result = computeAccountPlatformUsage(entries);
     expect(result.get('900 | Test | Spain')).toEqual({ tp: 0, ag: 0, cg: 0, wo: 0 });
   });
+
+  it('treats an Account differing only by leading/trailing whitespace as the same account', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'TP Brand Injection', { Account: '358 | BI TP | Germany', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'TP Affiliate', { Account: '358 | BI TP | Germany ', 'TP Review Status': 'Published' }),
+    ];
+    const result = computeAccountPlatformUsage(entries);
+    expect(result.size).toBe(1);
+    expect(result.get('358 | BI TP | Germany')).toEqual({ tp: 2, ag: 0, cg: 0, wo: 0 });
+  });
+
+  it('excludes a whitespace-only Account entirely', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'TP Brand Injection', { Account: '   ', 'TP Review Status': 'Published' }),
+    ];
+    expect(computeAccountPlatformUsage(entries).size).toBe(0);
+  });
 });

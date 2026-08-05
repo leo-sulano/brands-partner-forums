@@ -34,11 +34,24 @@ with "1". A platform with zero uses shows no badge at all.
 
 Two rows are the same account when their `data['Account']` text is
 identical after stripping a trailing `" dup"` suffix (one or more, e.g.
-`"358 | BI TP | Germany dup dup"` → `"358 | BI TP | Germany"`). This reuses
-the exact stripping regex `deriveCountryFromAccount` already applies in
-`tab-configs.ts:265` (`/(?:\s+dup)+$/i`), so the two can't drift apart.
-Comparison is otherwise an exact, case-sensitive string match — no
-normalization of the id/label/country segments, no fuzzy matching.
+`"358 | BI TP | Germany dup dup"` → `"358 | BI TP | Germany"`) and
+leading/trailing whitespace. The dup-suffix strip reuses the exact regex
+`deriveCountryFromAccount` already applies in `tab-configs.ts:265`
+(`/(?:\s+dup)+$/i`), so the two can't drift apart.
+
+**Revised during final review:** the original draft of this section called
+for byte-exact matching with no whitespace trimming at all. The final
+whole-branch review flagged that this codebase already has documented real
+Account values with stray trailing whitespace (e.g. a value recorded as
+`"Online Casino Deutschland "`, per this repo's own memory of a prior
+Trybet display bug) — untrimmed, two rows that are really the same account
+but differ only by trailing whitespace would show as two separate accounts
+each undercounted, and a whitespace-only Account (`"   "`) would bucket
+unrelated rows together under one shared badge count. Confirmed with the
+user: added a plain `.trim()` alongside the dup-suffix strip. This is
+whitespace hygiene, not fuzzy matching — comparison is still otherwise an
+exact, case-sensitive string match; no normalization of case or the
+id/label/country segments' content, and no id-only matching.
 
 ## What counts as a "use"
 
