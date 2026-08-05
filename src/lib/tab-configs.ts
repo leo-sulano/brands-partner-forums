@@ -255,6 +255,16 @@ const TAB_DEFAULT_COUNTRY: Record<string, string> = {
   'SuprPlay Limited': 'UK',
 };
 
+// Strips one or more trailing " dup" suffixes appended by handleDuplicate in
+// BrandGroup.tsx when a row is duplicated to reuse the same account
+// elsewhere. Shared by deriveCountryFromAccount below and the account
+// platform-usage matching rule in scoreSummary.ts's
+// computeAccountPlatformUsage, so the two can't drift out of sync on what
+// counts as "the same account".
+export function stripDupSuffix(account: string): string {
+  return account.replace(/(?:\s+dup)+$/i, '');
+}
+
 // Account values are formatted "<id> | <label> | <Country>" (or, for rows copied
 // from Hanan-sourced accounts, "<id> l <label> l <Country>" using a literal "l").
 // Duplicate Account appends one or more " dup" suffixes (see handleDuplicate in
@@ -262,7 +272,7 @@ const TAB_DEFAULT_COUNTRY: Record<string, string> = {
 // Returns '' if the value doesn't match either delimited shape.
 function deriveCountryFromAccount(account: string | null | undefined): string {
   if (!account) return '';
-  const cleaned = account.replace(/(?:\s+dup)+$/i, '');
+  const cleaned = stripDupSuffix(account);
   const parts = cleaned.split(/\s*\|\s*|\s+l\s+/);
   if (parts.length < 3) return '';
   return parts[parts.length - 1].trim();

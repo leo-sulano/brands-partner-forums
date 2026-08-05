@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms } from './tab-configs';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix } from './tab-configs';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -8,6 +8,28 @@ describe('TAB_COLUMN_CONFIGS', () => {
       expect(accountIdx, `${tab} has no Account column`).toBeGreaterThanOrEqual(0);
       expect(cols[accountIdx + 1], `${tab}: Country should immediately follow Account`).toBe('Country');
     }
+  });
+});
+
+describe('stripDupSuffix', () => {
+  it('strips a single trailing " dup" suffix', () => {
+    expect(stripDupSuffix('550 l Hanan l Australia dup')).toBe('550 l Hanan l Australia');
+  });
+
+  it('strips repeated " dup" suffixes from duplicating an already-duplicated row', () => {
+    expect(stripDupSuffix('1182 | Test | Norway dup dup')).toBe('1182 | Test | Norway');
+  });
+
+  it('is case-insensitive', () => {
+    expect(stripDupSuffix('358 | BI TP | Germany DUP')).toBe('358 | BI TP | Germany');
+  });
+
+  it('returns the input unchanged when there is no dup suffix', () => {
+    expect(stripDupSuffix('1303 | Test | Germany')).toBe('1303 | Test | Germany');
+  });
+
+  it('returns an empty string unchanged', () => {
+    expect(stripDupSuffix('')).toBe('');
   });
 });
 
