@@ -1,6 +1,7 @@
 import type { Entry } from '../types/entry';
 import { platformRemovedKey } from './removedPlatformBrands';
 import type { Platform } from './removedPlatformBrands';
+import { stripDupSuffix } from './tab-configs';
 
 // Re-exported (not just imported) so every existing `import type { Platform }
 // from '../lib/scoreSummary'` across the codebase (BrandGroup.tsx,
@@ -437,6 +438,38 @@ export function computeTabSuccessRates(
     const total = live + removed;
     result.set(key, { live, removed, rate: total === 0 ? null : (live / total) * 100 });
   }
+  return result;
+}
+
+// One row = one "use" of whichever platform(s) it has a non-blank status
+// value for (Live, Removed, Refused, Pending — the actual outcome doesn't
+// matter, only that the account was used), tallied per normalized Account
+// text across every tab, not just one. Powers AccountUsageBadges
+// (src/components/AccountUsageBadges.tsx), shown next to the Account cell
+// in BrandGroup.tsx. Matching is exact-text (via stripDupSuffix) only — see
+// stripDupSuffix in tab-configs.ts for why " dup" is the one thing safe to
+// strip; no other normalization (case, whitespace, id-only) is applied.
+export function computeAccountPlatformUsage(entries: Entry[]): Map<string, Record<Platform, number>> {
+  const platforms = Object.keys(PLATFORM_STATUS_KEYS) as Platform[];
+  const result = new Map<string, Record<Platform, number>>();
+
+  for (const e of entries) {
+    const d = e.data ?? {};
+    const raw = d['Account'];
+    if (!raw) continue;
+    const account = stripDupSuffix(raw);
+    if (!account) continue;
+
+    let counts = result.get(account);
+    if (!counts) {
+      counts = { tp: 0, ag: 0, cg: 0, wo: 0 };
+      result.set(account, counts);
+    }
+    for (const p of platforms) {
+      if (pick(d, PLATFORM_STATUS_KEYS[p])) counts[p] += 1;
+    }
+  }
+
   return result;
 }
 

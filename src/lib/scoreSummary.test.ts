@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus } from './scoreSummary';
 import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
@@ -440,5 +440,56 @@ describe('computeScoreSummary — removedPlatformBrands case/whitespace normaliz
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
     const result = computeScoreSummary(entries, { from: null, to: null }, [], 'tp', removed);
     expect(result.brands).toHaveLength(0);
+  });
+});
+
+describe('computeAccountPlatformUsage', () => {
+  it('counts a row once per platform that has any non-blank status value', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'TP Brand Injection', { Account: '358 | BI TP | Germany', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'Rooster Partners', {
+        Account: '358 | BI TP | Germany',
+        'TP Review Status': 'Removed',
+        'AG Review Status': 'Published',
+        'CG Review Status': 'Pending',
+      }),
+    ];
+    const result = computeAccountPlatformUsage(entries);
+    expect(result.get('358 | BI TP | Germany')).toEqual({ tp: 2, ag: 1, cg: 1, wo: 0 });
+  });
+
+  it('matches accounts across different tabs and different Account/status column name variants', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Wizard of Odds', { Account: '071 | Test | UK', 'WoO Review Status': 'Published' }),
+      makeEntry('2', 'Hanan', { Account: '071 | Test | UK', 'Review Status': 'Published' }),
+    ];
+    const result = computeAccountPlatformUsage(entries);
+    expect(result.get('071 | Test | UK')).toEqual({ tp: 1, ag: 0, cg: 0, wo: 1 });
+  });
+
+  it('treats an Account and its duplicated (" dup") copy as the same account', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'TP Brand Injection', { Account: '1182 | Test | Norway', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'TP Affiliate', { Account: '1182 | Test | Norway dup', 'TP Review Status': 'Published' }),
+    ];
+    const result = computeAccountPlatformUsage(entries);
+    expect(result.size).toBe(1);
+    expect(result.get('1182 | Test | Norway')).toEqual({ tp: 2, ag: 0, cg: 0, wo: 0 });
+  });
+
+  it('excludes entries with a blank or missing Account', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'TP Brand Injection', { Account: '', 'TP Review Status': 'Published' }),
+      makeEntry('2', 'TP Brand Injection', { 'TP Review Status': 'Published' }),
+    ];
+    expect(computeAccountPlatformUsage(entries).size).toBe(0);
+  });
+
+  it('does not count a platform whose status keys are all blank', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'TP Brand Injection', { Account: '900 | Test | Spain', 'TP Review Status': '' }),
+    ];
+    const result = computeAccountPlatformUsage(entries);
+    expect(result.get('900 | Test | Spain')).toEqual({ tp: 0, ag: 0, cg: 0, wo: 0 });
   });
 });
