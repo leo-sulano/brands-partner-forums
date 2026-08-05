@@ -62,8 +62,26 @@ Brands Partner Forum/
   `SchedulePlanner.tsx`'s `brandPlatforms()`; permanently skipped by `schedulerService.ts`'s
   `recalculatePauses`/`ensureWeekGenerated`) and Score Summary/Brand Tabs — an ambiguous first
   reading of the user's request led to briefly removing the Schedule Planner side of this before
-  the user's follow-up clarified they wanted it kept on both surfaces. Reverted via `git restore`;
-  no net code change. Full suite (273 tests) and build both pass. Task 175.
+  the user's follow-up clarified they wanted it kept on both surfaces; reverted via `git restore`.
+  Then added the one piece that was genuinely missing: for a multi-platform brand with only one
+  platform flagged (e.g. TP removed, AG/CG still active), Schedule Planner gave no visual hint why
+  that platform's chip never appears — Brand Tabs' `PlatformRemovedBadge` now also renders next to
+  the brand name in Schedule Planner's sticky Brand column (new `flaggedRemovedPlatforms()` helper,
+  `brandPlatforms()`'s inverse), then swapped for a page-local `RemovedPlatformIcon` using the
+  platform's actual favicon instead of `PlatformRemovedBadge`'s 2-letter text code, matching the
+  icon-based chips this page already uses elsewhere (Brand Tabs itself is unaffected — still shows
+  the text-code badge). Then, for the single-platform case (a brand whose only active platform is
+  flagged removed, e.g. a TP-only tab's sole brand), `filteredBrands` now drops it from Schedule
+  Planner entirely — no row at all, not just an empty one — via a new `brandPlatforms(brand).length
+  === 0` check. Fixed a real temporal-dead-zone bug this surfaced: `filteredBrands`' `useMemo` now
+  calls `brandPlatforms()` synchronously during render, which closes over `activePlatforms` — a
+  `const` that used to live safely below every function that only got called from JSX, but now
+  needed hoisting above `brandPlatforms`'s own definition to avoid a `ReferenceError`. Day-cell
+  scheduling/exclusion logic untouched throughout. Live-verified via Playwright against real
+  Supabase data (SilverPlay's "Silver Play", Hanan's several TP-flagged brands, and a live
+  flag/unflag round-trip on Trybet's real "Trybet.com" brand confirming it vanishes from and
+  reappears in the Trybet tab's list with no residual state left behind). Full suite (273 tests)
+  and build both pass. Task 175.
 - *2026-08-04 (prior):* Extended Ask AI (`supabase/functions/ai-assistant/`, GPT-4o
   tool-calling assistant) to full coverage of the dashboard's own metrics across 4 phases,
   none deployed yet (`supabase functions deploy ai-assistant` still pending): (1) fixed a live

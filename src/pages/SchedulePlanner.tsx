@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName, tabToSlug } from '../lib/tabs';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
 import {
@@ -13,12 +13,11 @@ import {
   type BrandPlatformPause,
 } from '../lib/queries';
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
-import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
+import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
-import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 import SelectDropdown from '../components/SelectDropdown';
@@ -57,6 +56,33 @@ function addDays(date: Date, days: number): Date {
   const d = new Date(date);
   d.setDate(d.getDate() + days);
   return d;
+}
+
+// Same red-X-superscript treatment as Brand Tabs' PlatformRemovedBadge, but
+// on the platform's favicon instead of its 2-letter text code — matches the
+// icon-based chips this page already uses everywhere else (ScheduleCell,
+// PausedPlatformIndicator), so a brand's Schedule Planner row stays visually
+// consistent with its own day cells.
+function RemovedPlatformIcon({ platform }: { platform: Platform }) {
+  return (
+    <span
+      className="relative ml-1.5 inline-flex shrink-0 items-center"
+      title={`${PLATFORM_FULL_LABEL[platform]} page removed`}
+    >
+      <img
+        src={PLATFORM_FAVICON[platform]}
+        alt={PLATFORM_BADGE[platform].label}
+        className="size-3.5 rounded-sm"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute -right-1.5 -top-1.5 flex size-2.5 items-center justify-center rounded-full bg-rose-600"
+      >
+        <X className="size-1.5 text-white" strokeWidth={4} />
+      </span>
+    </span>
+  );
 }
 
 export default function SchedulePlanner() {
@@ -277,6 +303,15 @@ export default function SchedulePlanner() {
     [tabCtx],
   );
 
+  // Declared here (not further down, near where it's historically lived)
+  // because brandPlatforms/filteredBrands below close over it inside a
+  // useMemo callback that runs synchronously during this render — a
+  // reference to a `const` declared later in the same render would hit the
+  // temporal dead zone the moment that memo actually executes, unlike the
+  // functions further down that only ever get called from JSX, safely after
+  // every top-level const in this component has already been assigned.
+  const activePlatforms = tabCtx?.activePlatforms ?? [];
+
   // Drops any platform whose page was flagged removed for this exact
   // (tab, brand) — same per-platform exclusion scoreSummary.ts already
   // applies to Score Summary, so a TP-removed brand keeps its AG/CG/WO chips
@@ -316,8 +351,15 @@ export default function SchedulePlanner() {
     return confirmedByPlatform;
   }
 
+  // A brand with zero remaining platforms after brandPlatforms' exclusion —
+  // on a single-platform tab, that means its only platform is flagged
+  // removed — has nothing left to show at all: no chip in any day cell, no
+  // scheduling, nothing the RemovedPlatformIcon badge alone would explain.
+  // Rather than list it as a permanently-empty row, it's dropped from
+  // Schedule Planner entirely (same rule would also drop a multi-platform
+  // brand if every one of its platforms happened to be flagged).
   const filteredBrands = useMemo(() => {
-    const brands = tabCtx?.brands ?? [];
+    const brands = (tabCtx?.brands ?? []).filter((b) => brandPlatforms(b).length > 0);
     const q = search.trim().toLowerCase();
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
@@ -372,8 +414,6 @@ export default function SchedulePlanner() {
     () => scheduleRows.length > 0 && scheduleRows.every((r) => r.platform == null),
     [scheduleRows],
   );
-
-  const activePlatforms = tabCtx?.activePlatforms ?? [];
 
   const addPlatformModalData = addPlatformTarget
     ? (() => {
@@ -503,7 +543,7 @@ export default function SchedulePlanner() {
                         >
                           {brand}
                         </Link>
-                        {flaggedRemovedPlatforms(brand).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                        {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
                       </td>
                       {WEEKDAYS.map((day, dayIndex) => {
                         const dayISO = toISODate(addDays(weekStart, dayIndex));
