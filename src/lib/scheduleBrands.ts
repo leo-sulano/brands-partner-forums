@@ -17,6 +17,15 @@ export function toISODate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+export function mondayOf(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
 export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
 export const WEEKDAYS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 export type DayStatus = 'active' | 'paused' | null;
