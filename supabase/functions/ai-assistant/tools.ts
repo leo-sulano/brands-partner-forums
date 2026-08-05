@@ -43,23 +43,24 @@ export function redactSensitive(data: Record<string, any>): Record<string, any> 
 }
 
 export function isSensitiveField(field: string): boolean {
-  return SENSITIVE_KEYS_NORM.has(field.trim().toLowerCase());
+  return SENSITIVE_KEYS_NORM.has(String(field ?? '').trim().toLowerCase());
 }
 
 export function collectFieldNames(rows: EntryRow[]): string[] {
   const set = new Set<string>();
   for (const r of rows) {
     for (const k of Object.keys(r.data ?? {})) {
-      if (!SENSITIVE_KEYS_NORM.has(k.trim().toLowerCase())) set.add(k);
+      if (!isSensitiveField(k)) set.add(k);
     }
   }
   return [...set].sort();
 }
 
-export function matchesFieldFilters(e: EntryRow, filters: Record<string, string>): boolean {
+export function matchesFieldFilters(e: EntryRow, filters: Record<string, unknown>): boolean {
   for (const [field, value] of Object.entries(filters)) {
     const have = String(e.data?.[field] ?? '').trim().toLowerCase();
-    if (have !== value.trim().toLowerCase()) return false;
+    const want = String(value ?? '').trim().toLowerCase();
+    if (have !== want) return false;
   }
   return true;
 }
@@ -430,6 +431,12 @@ export const TOOL_DEFS = [
         'values instead of raw rows — use this for "how many X by Y" or "most common Y" ' +
         'questions (e.g. group_by="Brands" with field_filters={"Agent":"ANN"} answers ' +
         '"which brands does agent ANN have accounts on"). ' +
+        'When group_by is set, the response also includes distinctValues (the true ' +
+        'number of distinct values seen, which may exceed the returned groups array if ' +
+        'the limit cap truncated it — state "top N of M" rather than presenting groups ' +
+        'as exhaustive) and ungrouped (the count of matching rows excluded from ' +
+        'grouping because that field was blank/missing for them — total equals ' +
+        'ungrouped plus the sum of every group\'s count, not just the returned page). ' +
         'Without group_by, returns matching rows (each with its full set of ' +
         'non-credential fields under `data`) and total count. ' +
         'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
@@ -443,11 +450,11 @@ export const TOOL_DEFS = [
           contains: { type: 'string' },
           field_filters: {
             type: 'object',
-            description: 'exact-match filters keyed by real field name, e.g. {"Agent": "ANN"}',
+            description: 'exact-match filters keyed by real field name, e.g. {"Agent": "ANN"} — must be an object, not a JSON string',
             additionalProperties: { type: 'string' },
           },
           group_by: { type: 'string', description: 'a real field name to group counts by, e.g. "Brands"' },
-          limit: { type: 'number', description: 'max rows to return, default 25 (ignored when group_by is set)' },
+          limit: { type: 'number', description: 'max entries to return, default 25, max 50 — applies to both raw rows and, when group_by is set, the groups array' },
         },
       },
     },
@@ -581,13 +588,24 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { tabs: [...new Set((data ?? []).map((r: any) => r.tab))].sort() };
   }
   if (name === 'list_fields') {
-    let q = supabase.from('entries').select('tab, data');
+    // Field *names* repeat heavily across rows — a capped scan is enough to
+    // discover them all without pulling every row in the table.
+    let q = supabase.from('entries').select('tab, data').limit(500);
     if (args?.tab) q = q.eq('tab', args.tab);
     const { data, error } = await q;
     if (error) throw error;
     return { fields: collectFieldNames(data ?? []) };
   }
   if (name === 'query_entries') {
+    if (args?.field_filters !== undefined) {
+      const ff = args.field_filters;
+      if (typeof ff !== 'object' || ff === null || Array.isArray(ff)) {
+        return { error: 'field_filters must be an object mapping field names to values, e.g. {"Agent": "ANN"} — not a JSON string.' };
+      }
+    }
+    if (args?.group_by !== undefined && typeof args.group_by !== 'string') {
+      return { error: 'group_by must be a single field name (string), e.g. "Brands".' };
+    }
     if (args?.group_by && isSensitiveField(args.group_by)) {
       return { error: `Cannot group by "${args.group_by}" — this field is redacted for security.` };
     }
@@ -604,11 +622,18 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.month) rows = rows.filter((e) => matchesMonth(e, args.month));
     if (args?.contains) rows = rows.filter((e) => entryMatches(e, args.contains));
     if (args?.field_filters) rows = rows.filter((e) => matchesFieldFilters(e, args.field_filters));
+    const limit = Math.min(Number(args?.limit) || 25, 50);
     if (args?.group_by) {
-      return { total: rows.length, groups: groupByField(rows, args.group_by) };
+      const allGroups = groupByField(rows, args.group_by);
+      const groupedCount = allGroups.reduce((sum, g) => sum + g.count, 0);
+      return {
+        total: rows.length,
+        groups: allGroups.slice(0, limit),
+        distinctValues: allGroups.length,
+        ungrouped: rows.length - groupedCount,
+      };
     }
     const total = rows.length;
-    const limit = Math.min(Number(args?.limit) || 25, 50);
     return {
       total,
       rows: rows.slice(0, limit).map((e) => ({ id: e.id, tab: e.tab, data: redactSensitive(e.data) })),

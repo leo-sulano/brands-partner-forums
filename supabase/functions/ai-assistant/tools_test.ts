@@ -122,6 +122,10 @@ function mockSupabase(rows: EntryRow[]) {
           );
           return builder;
         },
+        limit(n: number) {
+          filtered = filtered.slice(0, n);
+          return builder;
+        },
         maybeSingle() {
           return Promise.resolve({ data: filtered[0] ?? null, error: null });
         },
@@ -146,6 +150,10 @@ function mockSupabaseTables(tables: Record<string, any[]>) {
         },
         eq(key: string, value: string) {
           filtered = filtered.filter((r: any) => r[key] === value);
+          return builder;
+        },
+        limit(n: number) {
+          filtered = filtered.slice(0, n);
           return builder;
         },
         then(resolve: any) {
@@ -672,4 +680,98 @@ Deno.test('query_entries with no field_filters/group_by behaves exactly as befor
   assertEquals(result.total, 1);
   assertEquals(result.rows.length, 1);
   assertEquals(result.rows[0].data.Brands, 'Trybet');
+});
+
+// --- Final whole-branch review fixes (2026-08-05) ---
+
+Deno.test('query_entries group_by caps the groups array at 50 and reports the true distinct-value count', async () => {
+  const rows: EntryRow[] = [];
+  for (let i = 0; i < 60; i++) {
+    rows.push({ id: String(i), tab: 't', data: { Brands: `Brand${i}` } });
+  }
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', { group_by: 'Brands' });
+  assertEquals(result.total, 60);
+  assertEquals(result.groups.length, 25); // default limit, same ceiling as rows path
+  assertEquals(result.distinctValues, 60);
+});
+
+Deno.test('query_entries group_by honors a caller-supplied limit up to the 50 ceiling', async () => {
+  const rows: EntryRow[] = [];
+  for (let i = 0; i < 60; i++) {
+    rows.push({ id: String(i), tab: 't', data: { Brands: `Brand${i}` } });
+  }
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', { group_by: 'Brands', limit: 100 });
+  assertEquals(result.groups.length, 50); // capped even though caller asked for 100
+  assertEquals(result.distinctValues, 60);
+});
+
+Deno.test('query_entries group_by reports ungrouped rows (blank/missing field value) separately from total', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Brands: 'Trybet' } },
+    { id: '3', tab: 't', data: { Brands: '' } },
+    { id: '4', tab: 't', data: {} },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', { group_by: 'Brands' });
+  assertEquals(result.total, 4);
+  assertEquals(result.groups, [{ value: 'Trybet', count: 2 }]);
+  assertEquals(result.ungrouped, 2);
+  const summedGroups = result.groups.reduce((sum: number, g: any) => sum + g.count, 0);
+  assertEquals(result.total, result.ungrouped + summedGroups);
+});
+
+Deno.test('query_entries rejects field_filters passed as a JSON string with an explicit error, not a silent empty result', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {
+    field_filters: '{"Agent":"ANN"}' as any,
+  });
+  assertEquals(typeof result.error, 'string');
+  assertEquals('rows' in result, false);
+  assertEquals('groups' in result, false);
+});
+
+Deno.test('query_entries field_filters with a numeric value matches instead of throwing', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Score: '4', Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Score: '5', Brands: '7Bit' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {
+    field_filters: { Score: 4 } as any,
+  });
+  assertEquals(result.error, undefined);
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].data.Brands, 'Trybet');
+});
+
+Deno.test('query_entries rejects a non-string group_by with an explicit error, not a thrown exception', async () => {
+  const rows: EntryRow[] = [{ id: '1', tab: 't', data: { Brands: 'Trybet' } }];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {
+    group_by: ['Brands'] as any,
+  });
+  assertEquals(typeof result.error, 'string');
+  assertEquals('groups' in result, false);
+});
+
+Deno.test('matchesFieldFilters coerces a numeric filter value instead of throwing', () => {
+  const e: EntryRow = { id: '1', tab: 't', data: { Score: '4' } };
+  assertEquals(matchesFieldFilters(e, { Score: 4 as any }), true);
+  assertEquals(matchesFieldFilters(e, { Score: 5 as any }), false);
+});
+
+Deno.test('isSensitiveField does not throw on a non-string input', () => {
+  assertEquals(isSensitiveField(['Brands'] as any), false);
+  assertEquals(isSensitiveField(123 as any), false);
+});
+
+Deno.test('list_fields caps the underlying entries scan instead of pulling every row', async () => {
+  // Each row has its own uniquely-named field, so the cap is directly observable:
+  // an uncapped scan would find all 600 distinct field names.
+  const rows: EntryRow[] = [];
+  for (let i = 0; i < 600; i++) {
+    rows.push({ id: String(i), tab: 't', data: { [`Field${i}`]: 'x' } });
+  }
+  const result: any = await runTool(mockSupabase(rows), 'list_fields', {});
+  assertEquals(result.fields.length, 500);
 });
