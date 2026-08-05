@@ -52,24 +52,36 @@ Partners) counts as one use of each platform it has a value for.
 
 ## Data fetching
 
-New `fetchAccountPlatformUsage()` in `src/lib/queries.ts`:
+**Revised during planning:** the original draft of this section called for a
+new narrow-column Supabase query selecting individual jsonb keys via
+`data->>"TP Review Status"`-style paths, to avoid pulling the full `data`
+blob. That syntax has no existing precedent anywhere in this codebase, and
+PostgREST's `select=` string grammar is not confirmed to support JSON key
+segments containing spaces (every real status/Account key here does) —
+attempting it risked a silent runtime failure with no easy way to debug.
+Reusing the existing, already-proven `fetchAllEntries()` (which fetches
+every entry across every tab via `select('*')`, paginated) plus a pure
+client-side compute function instead is exactly the pattern every other
+cross-tab aggregate in `scoreSummary.ts` already uses (see
+`computeSuccessRates`, `computeTabSuccessRates`), including on the same
+Score Summary page approved users already use today — so this introduces no
+new exposure of the `data` column's credential fields (`Password`, `Backup
+Codes`, `Authenticator Backup`) beyond what that existing page already
+fetches for the same approved-user audience.
 
-- Runs one Supabase query against `entries` with **no** `tab` filter
-  (dashboard-wide), selecting only the columns needed for this
-  computation — `tab`, `data->>Account`, and each of the status-key
-  aliases from `PLATFORM_STATUS_KEYS` for all four platforms — not the full
-  `data` jsonb blob. This keeps the payload small and, notably, never pulls
-  the credential fields (`Password`, `Backup Codes`, `Authenticator Backup`)
-  that live in the same `data` column.
-- Paginates the same way `fetchAllEntries` already does
-  (`queries.ts:268-305`) if the row count requires it, reusing that
-  count-then-parallel-page pattern rather than inventing a new one.
-- For each row: normalize the Account text per the matching rule above,
-  skip blanks, then for each platform check `pick()` across its status-key
-  aliases and increment that platform's counter for that normalized account
-  if non-blank.
-- Returns `Map<string, Record<Platform, number>>` keyed by the normalized
-  Account text.
+New `computeAccountPlatformUsage(entries: Entry[]): Map<string,
+Record<Platform, number>>` in `src/lib/scoreSummary.ts`, a pure function
+(no I/O of its own — the caller passes it entries already fetched via
+`fetchAllEntries()`):
+
+- For each entry: normalize its Account text per the matching rule above
+  (`stripDupSuffix`), skip entries with a blank/missing Account.
+- For each platform, check `pick()` across that platform's status-key
+  aliases (`PLATFORM_STATUS_KEYS`) and increment that platform's counter
+  for the normalized account if non-blank.
+- Returns a `Map<string, Record<Platform, number>>` keyed by the normalized
+  Account text, with every value fully populated (`{ tp, ag, cg, wo }`,
+  never partial).
 
 ## Wiring into BrandGroup
 
