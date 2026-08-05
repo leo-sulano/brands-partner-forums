@@ -604,3 +604,72 @@ Deno.test('groupByField excludes rows with a blank or missing value for the fiel
   ];
   assertEquals(groupByField(entries, 'Brands'), [{ value: 'Trybet', count: 1 }]);
 });
+
+Deno.test('query_entries with field_filters narrows rows before returning them', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Agent: 'BOB', Brands: '7Bit' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', { field_filters: { Agent: 'ANN' } });
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].data.Brands, 'Trybet');
+});
+
+Deno.test('query_entries with group_by returns grouped counts instead of rows', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet' } },
+    { id: '3', tab: 't', data: { Agent: 'ANN', Brands: '7Bit' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {
+    field_filters: { Agent: 'ANN' },
+    group_by: 'Brands',
+  });
+  assertEquals(result.total, 3);
+  assertEquals(result.groups, [
+    { value: 'Trybet', count: 2 },
+    { value: '7Bit', count: 1 },
+  ]);
+  assertEquals('rows' in result, false);
+});
+
+Deno.test('query_entries combines group_by/field_filters with existing status/month/contains filters', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet', 'Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet', 'Review Status': 'Removed' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {
+    field_filters: { Agent: 'ANN' },
+    status: 'Published',
+    group_by: 'Brands',
+  });
+  assertEquals(result.total, 1);
+  assertEquals(result.groups, [{ value: 'Trybet', count: 1 }]);
+});
+
+Deno.test('query_entries rejects group_by on a sensitive field without touching the database', async () => {
+  const rows: EntryRow[] = [{ id: '1', tab: 't', data: { Password: 'hunter2' } }];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', { group_by: 'Password' });
+  assertEquals(typeof result.error, 'string');
+  assertEquals('groups' in result, false);
+  assertEquals('rows' in result, false);
+});
+
+Deno.test('query_entries rejects field_filters on a sensitive field without touching the database', async () => {
+  const rows: EntryRow[] = [{ id: '1', tab: 't', data: { 'Backup Codes': 'x', Brands: 'Trybet' } }];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {
+    field_filters: { 'Backup Codes': 'x' },
+  });
+  assertEquals(typeof result.error, 'string');
+  assertEquals('rows' in result, false);
+});
+
+Deno.test('query_entries with no field_filters/group_by behaves exactly as before (regression lock)', async () => {
+  const rows: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'Trybet', 'Review Status': 'Published' } },
+  ];
+  const result: any = await runTool(mockSupabase(rows), 'query_entries', {});
+  assertEquals(result.total, 1);
+  assertEquals(result.rows.length, 1);
+  assertEquals(result.rows[0].data.Brands, 'Trybet');
+});

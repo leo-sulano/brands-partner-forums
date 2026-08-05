@@ -423,10 +423,15 @@ export const TOOL_DEFS = [
         'Search forum entries. ' +
         'Filter by tab (exact tab name from list_tabs), ' +
         'status — valid values are exactly: "Published" (= live/approved/active), "Removed", "Refused", "Not Done", "On Pause" — ' +
-        'month (e.g. "may 2026" or "2026-05"), and/or a free-text contains match. ' +
-        'Returns matching rows (each with its full set of non-credential fields under `data` — ' +
-        'not just brand/status/score/date, e.g. also Proxy Used, Agent, Country, and any other ' +
-        'tracked field for that tab) and total count. ' +
+        'month (e.g. "may 2026" or "2026-05"), a free-text contains match, and/or ' +
+        'field_filters (exact-match on any real field name — call list_fields first ' +
+        'if unsure of a field\'s exact name/casing, e.g. "Email Provider"). ' +
+        'Pass group_by (a field name) to get counts grouped by that field\'s distinct ' +
+        'values instead of raw rows — use this for "how many X by Y" or "most common Y" ' +
+        'questions (e.g. group_by="Brands" with field_filters={"Agent":"ANN"} answers ' +
+        '"which brands does agent ANN have accounts on"). ' +
+        'Without group_by, returns matching rows (each with its full set of ' +
+        'non-credential fields under `data`) and total count. ' +
         'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
         'IMPORTANT: always pass month as "may 2026" style when user mentions a month.',
       parameters: {
@@ -436,7 +441,13 @@ export const TOOL_DEFS = [
           status: { type: 'string' },
           month: { type: 'string', description: 'filter by month, e.g. "may 2026" or "2026-05"' },
           contains: { type: 'string' },
-          limit: { type: 'number', description: 'max rows to return, default 25' },
+          field_filters: {
+            type: 'object',
+            description: 'exact-match filters keyed by real field name, e.g. {"Agent": "ANN"}',
+            additionalProperties: { type: 'string' },
+          },
+          group_by: { type: 'string', description: 'a real field name to group counts by, e.g. "Brands"' },
+          limit: { type: 'number', description: 'max rows to return, default 25 (ignored when group_by is set)' },
         },
       },
     },
@@ -577,6 +588,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { fields: collectFieldNames(data ?? []) };
   }
   if (name === 'query_entries') {
+    if (args?.group_by && isSensitiveField(args.group_by)) {
+      return { error: `Cannot group by "${args.group_by}" — this field is redacted for security.` };
+    }
+    const badFilterField = Object.keys(args?.field_filters ?? {}).find(isSensitiveField);
+    if (badFilterField) {
+      return { error: `Cannot filter by "${badFilterField}" — this field is redacted for security.` };
+    }
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
     const { data, error } = await q;
@@ -585,6 +603,10 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.status) rows = rows.filter((e) => matchesStatus(e, args.status));
     if (args?.month) rows = rows.filter((e) => matchesMonth(e, args.month));
     if (args?.contains) rows = rows.filter((e) => entryMatches(e, args.contains));
+    if (args?.field_filters) rows = rows.filter((e) => matchesFieldFilters(e, args.field_filters));
+    if (args?.group_by) {
+      return { total: rows.length, groups: groupByField(rows, args.group_by) };
+    }
     const total = rows.length;
     const limit = Math.min(Number(args?.limit) || 25, 50);
     return {
