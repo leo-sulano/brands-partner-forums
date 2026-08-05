@@ -42,6 +42,10 @@ export function redactSensitive(data: Record<string, any>): Record<string, any> 
   return out;
 }
 
+export function isSensitiveField(field: string): boolean {
+  return SENSITIVE_KEYS_NORM.has(field.trim().toLowerCase());
+}
+
 const BRAND_KEYS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE', 'URL PAGE'];
 const ACCOUNT_KEYS = ['Account Name', 'account_name', 'casino', 'Casino', 'name', 'Name'];
 const STATUS_KEYS = [

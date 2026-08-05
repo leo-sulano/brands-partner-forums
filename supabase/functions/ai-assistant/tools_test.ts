@@ -14,6 +14,7 @@ import {
   normalizeBrandKey,
   platformRemovedKey,
   buildRemovedPlatformBrandSet,
+  isSensitiveField,
   EntryRow,
 } from './tools.ts';
 
@@ -510,4 +511,21 @@ Deno.test('get_paused_combos lists paused combos with reason, optionally filtere
   assertEquals(filtered.paused.length, 1);
   assertEquals(filtered.paused[0].brand, 'Pribet.com');
   assertEquals(filtered.paused[0].reason, 'success rate below threshold');
+});
+
+Deno.test('isSensitiveField matches all known sensitive keys, case/whitespace-insensitive', () => {
+  assertEquals(isSensitiveField('Password'), true);
+  assertEquals(isSensitiveField('password'), true);
+  assertEquals(isSensitiveField(' Password '), true);
+  assertEquals(isSensitiveField('AG Password'), true);
+  assertEquals(isSensitiveField('CG Password'), true);
+  assertEquals(isSensitiveField('Casino Password'), true);
+  assertEquals(isSensitiveField('Backup Codes'), true);
+  assertEquals(isSensitiveField('Authenticator Backup'), true);
+});
+
+Deno.test('isSensitiveField returns false for an ordinary field', () => {
+  assertEquals(isSensitiveField('Agent'), false);
+  assertEquals(isSensitiveField('Email Provider'), false);
+  assertEquals(isSensitiveField('Brands'), false);
 });
