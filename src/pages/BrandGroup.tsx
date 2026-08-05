@@ -12,12 +12,13 @@ import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, type StatusCheckScope } from '../lib/queries';
+import AccountUsageBadges from '../components/AccountUsageBadges';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
 import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, stripDupSuffix } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -721,6 +722,7 @@ export default function BrandGroup() {
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
+  const [accountUsage, setAccountUsage] = useState<Map<string, Record<Platform, number>>>(new Map());
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -822,6 +824,14 @@ export default function BrandGroup() {
     fetchRemovedPlatformBrands()
       .then((rows) => { if (!canceled) setRemovedPlatformBrandRows(rows); })
       .catch(() => { /* badge is decorative — a failed fetch just means no badges render */ });
+    return () => { canceled = true; };
+  }, [reloadSeq]);
+
+  useEffect(() => {
+    let canceled = false;
+    fetchAllEntries()
+      .then((all) => { if (!canceled) setAccountUsage(computeAccountPlatformUsage(all)); })
+      .catch(() => { /* badges are decorative — a failed fetch just means no badges render */ });
     return () => { canceled = true; };
   }, [reloadSeq]);
 
@@ -2333,6 +2343,9 @@ export default function BrandGroup() {
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
+                            {h === 'Account' && (
+                              <AccountUsageBadges counts={accountUsage.get(stripDupSuffix(entry.data['Account'] ?? ''))} />
+                            )}
                           </td>
                         );
                       }
@@ -2475,6 +2488,9 @@ export default function BrandGroup() {
                             rowData={entry.data}
                             tab={decodedTab}
                           />
+                          {h === 'Account' && (
+                            <AccountUsageBadges counts={accountUsage.get(stripDupSuffix(entry.data['Account'] ?? ''))} />
+                          )}
                         </td>
                       );
                     }), (key) => <td key={key} className="w-3 p-0" />)}
