@@ -1,7 +1,7 @@
-import type { Entry } from '../types/entry';
-import { platformRemovedKey } from './removedPlatformBrands';
-import type { Platform } from './removedPlatformBrands';
-import { accountUsageKey } from './tab-configs';
+import type { Entry } from '../types/entry.ts';
+import { platformRemovedKey } from './removedPlatformBrands.ts';
+import type { Platform } from './removedPlatformBrands.ts';
+import { accountUsageKey } from './tab-configs.ts';
 
 // Re-exported (not just imported) so every existing `import type { Platform }
 // from '../lib/scoreSummary'` across the codebase (BrandGroup.tsx,

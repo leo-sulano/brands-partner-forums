@@ -1,5 +1,5 @@
-import { normalizeBrandKey } from './removedPlatformBrands';
-import type { Platform } from './removedPlatformBrands';
+import { normalizeBrandKey } from './removedPlatformBrands.ts';
+import type { Platform } from './removedPlatformBrands.ts';
 
 // NOTE: deliberately NOT `date.toISOString().slice(0, 10)` — that converts to
 // UTC first, which silently rolls the date back a day for any browser whose

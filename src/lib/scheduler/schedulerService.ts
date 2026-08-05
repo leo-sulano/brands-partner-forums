@@ -6,18 +6,18 @@ import {
   fetchActiveBrandPlatformPauses,
   upsertBrandPlatformPause,
   deleteBrandPlatformPause,
-} from '../queries';
+} from '../queries.ts';
 import {
   PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
   computeSuccessRates, successRatePct, type SuccessRate,
-} from '../scoreSummary';
-import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands';
-import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands';
-import { BRAND_COLS } from '../tab-configs';
-import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine';
-import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils';
-import { CARRYOVER_RULES, PAUSE_RULES } from './schedulerRules';
-import type { Entry } from '../../types/entry';
+} from '../scoreSummary.ts';
+import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
+import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
+import { BRAND_COLS } from '../tab-configs.ts';
+import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
+import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils.ts';
+import { CARRYOVER_RULES, PAUSE_RULES } from './schedulerRules.ts';
+import type { Entry } from '../../types/entry.ts';
 
 export interface TabContext {
   brands: string[];

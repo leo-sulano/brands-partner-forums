@@ -1,7 +1,7 @@
-import { WEEKDAYS, type Weekday } from '../scheduleBrands';
-import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
-import { PLATFORM_RULES, type PlatformRule } from './schedulerRules';
-import { leastLoadedDay } from './scheduleUtils';
+import { WEEKDAYS, type Weekday } from '../scheduleBrands.ts';
+import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
+import { PLATFORM_RULES, type PlatformRule } from './schedulerRules.ts';
+import { leastLoadedDay } from './scheduleUtils.ts';
 
 // If the least-loaded preferred day is at least this much more loaded than
 // the week's overall least-loaded day, spill over to the overall best day

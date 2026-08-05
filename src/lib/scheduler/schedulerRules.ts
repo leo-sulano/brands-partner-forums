@@ -1,5 +1,5 @@
-import type { Weekday } from '../scheduleBrands';
-import type { Platform } from '../removedPlatformBrands';
+import type { Weekday } from '../scheduleBrands.ts';
+import type { Platform } from '../removedPlatformBrands.ts';
 
 export interface PlatformRule {
   postsPerWeek: number;

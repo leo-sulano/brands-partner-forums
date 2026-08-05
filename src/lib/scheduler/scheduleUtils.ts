@@ -1,8 +1,8 @@
-import { WEEKDAYS, toISODate, type Weekday, type BrandScheduleRow } from '../scheduleBrands';
-import { normalizeBrandKey, type Platform } from '../removedPlatformBrands';
-import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, parsePostDate } from '../scoreSummary';
-import { BRAND_COLS } from '../tab-configs';
-import type { Entry } from '../../types/entry';
+import { WEEKDAYS, toISODate, type Weekday, type BrandScheduleRow } from '../scheduleBrands.ts';
+import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
+import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, parsePostDate } from '../scoreSummary.ts';
+import { BRAND_COLS } from '../tab-configs.ts';
+import type { Entry } from '../../types/entry.ts';
 
 export const PLATFORM_BADGE: Record<Platform, { label: string; className: string }> = {
   tp: { label: 'TP', className: 'bg-emerald-100 text-emerald-700' },

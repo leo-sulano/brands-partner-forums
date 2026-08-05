@@ -1,14 +1,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase';
-import { inDateRange } from './dateUtils';
-import { getTabColumns, getBrandNameCol } from './tab-configs';
-import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands';
-import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands';
-import type { Mention, MentionStatus } from '../types/mention';
-import type { Entry } from '../types/entry';
-import type { Profile } from '../types/profile';
-import type { BrandEntry, TabKpis } from '../types/brand-entry';
-import type { AuditEntityType, AuditLogEntry } from '../types/audit-log';
+import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
+import { inDateRange } from './dateUtils.ts';
+import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
+import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
+import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
+import type { Mention, MentionStatus } from '../types/mention.ts';
+import type { Entry } from '../types/entry.ts';
+import type { Profile } from '../types/profile.ts';
+import type { BrandEntry, TabKpis } from '../types/brand-entry.ts';
+import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
