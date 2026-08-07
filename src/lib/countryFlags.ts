@@ -1,3 +1,5 @@
+import { getEntryCountry } from './tab-configs';
+
 // Country is free text sourced from Account labels or manual entry (see
 // getEntryCountry in tab-configs.ts), so the same real country can appear
 // under different spellings ("UK" vs "United Kingdom"). This module gives
@@ -125,4 +127,14 @@ export function canonicalCountryName(rawCountry: string): string {
 export function countryFlagImageUrl(rawCountry: string): string | null {
   const primary = resolvePrimaryKey(rawCountry);
   return primary ? `https://flagcdn.com/${PRIMARY_COUNTRY_NAMES[primary].toLowerCase()}.svg` : null;
+}
+
+// getEntryCountry returns '' when an entry has neither a raw Country value
+// nor one derivable from its Account text. Folding that into a literal
+// "Unknown" label — rather than leaving it blank — turns "no country" into
+// a real, filterable, canonicalizable identity instead of a value every
+// country-identity consumer (breakdown buckets, dropdown options, filter
+// matching) has to separately remember to skip or fall silent on.
+export function resolveCountryLabel(data: Record<string, string | null>, tab: string): string {
+  return getEntryCountry(data, tab) || 'Unknown';
 }

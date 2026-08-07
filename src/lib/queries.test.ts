@@ -253,16 +253,34 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.live).toBe(1);
   });
 
-  it('byCountry buckets live/removed per country case-insensitively, keyed by canonical ISO2 with the canonical display name as label, and skips entries with no resolvable country (they still count toward the tab total)', () => {
+  it('byCountry buckets live/removed per country case-insensitively, keyed by canonical ISO2 with the canonical display name as label', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'germany' }),
-      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
     expect(kpis.byCountry).toEqual({ DE: { label: 'Germany', live: 1, removed: 1 } });
-    expect(kpis.live).toBe(2);
+    expect(kpis.live).toBe(1);
     expect(kpis.removed).toBe(1);
+  });
+
+  it('buckets an entry with no resolvable Country under a literal "Unknown" bucket instead of silently excluding it (regression: previously dropped from byCountry entirely)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': '' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(kpis.byCountry).toEqual({ unknown: { label: 'Unknown', live: 1, removed: 1 } });
+    expect(kpis.countries).toEqual(['Unknown']);
+  });
+
+  it('countryFilter set to "Unknown" matches entries with no resolvable Country', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Unknown');
+    expect(kpis.live).toBe(1);
   });
 
   it('byCountry merges every recognized spelling of the same real country onto one bucket (regression: UK and United Kingdom previously split into two cards)', () => {

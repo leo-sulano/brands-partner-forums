@@ -22,7 +22,7 @@ import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, type Platform } from '../lib/scoreSummary';
-import { canonicalCountryKey } from '../lib/countryFlags';
+import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -1339,7 +1339,7 @@ export default function BrandGroup() {
     : agentFiltered;
 
   const countryFiltered = countryFilter
-    ? proxyFiltered.filter((e) => canonicalCountryKey(getEntryCountry(e.data, decodedTab)) === canonicalCountryKey(countryFilter))
+    ? proxyFiltered.filter((e) => canonicalCountryKey(resolveCountryLabel(e.data, decodedTab)) === canonicalCountryKey(countryFilter))
     : proxyFiltered;
 
   // Platform filter only affects visible columns, not row filtering.

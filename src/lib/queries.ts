@@ -2,8 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
-import { getTabColumns, getBrandNameCol, getEntryCountry } from './tab-configs.ts';
-import { canonicalCountryKey, canonicalCountryName } from './countryFlags.ts';
+import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
+import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
@@ -401,13 +401,13 @@ export function computeTabKpisFromEntries(
 
   const filteredEntries = (countryFilter || proxyFilter)
     ? entries.filter((e) => {
-        if (countryFilter && canonicalCountryKey(getEntryCountry(e.data, tab)) !== canonicalCountryKey(countryFilter)) return false;
+        if (countryFilter && canonicalCountryKey(resolveCountryLabel(e.data, tab)) !== canonicalCountryKey(countryFilter)) return false;
         if (proxyFilter && (e.data['Proxy Used'] ?? '').trim().toLowerCase() !== proxyFilter.trim().toLowerCase()) return false;
         return true;
       })
     : entries;
 
-  const countries = uniqueDisplayValues(entries.map((e) => getEntryCountry(e.data, tab)), canonicalCountryKey, canonicalCountryName);
+  const countries = uniqueDisplayValues(entries.map((e) => resolveCountryLabel(e.data, tab)), canonicalCountryKey, canonicalCountryName);
   const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']));
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
@@ -472,11 +472,11 @@ export function computeTabKpisFromEntries(
     if (statuses.length > 0) {
       if (statuses.some(isLiveStatus)) {
         live++;
-        addToBreakdown(byCountry, getEntryCountry(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
+        addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
         addToBreakdown(byProxy, d['Proxy Used'], 'live');
       } else if (statuses.some(isRemovedStatus)) {
         removed++;
-        addToBreakdown(byCountry, getEntryCountry(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
+        addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
         addToBreakdown(byProxy, d['Proxy Used'], 'removed');
       }
       else if (statuses.some(isDoneStatus)) done++;

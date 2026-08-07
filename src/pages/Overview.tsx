@@ -675,14 +675,20 @@ export default function Overview() {
         ) : (
           <BreakdownRankedList
             rows={countryCards.map((card): BreakdownRow => {
-              const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
-              const flagUrl = card.isOther ? null : countryFlagImageUrl(card.label);
+              // "Unknown" (no Country value, and none derivable from the
+              // Account text) is a real, clickable bucket like any other —
+              // just given the same neutral treatment as the "Other"
+              // aggregate rather than a random categorical color, since
+              // it isn't a real country identity either.
+              const isUnknown = card.key === 'unknown';
+              const color = card.isOther || isUnknown ? '#64748b' : categoricalColorForKey(card.key);
+              const flagUrl = card.isOther || isUnknown ? null : countryFlagImageUrl(card.label);
               return {
                 key: card.key,
                 label: card.label,
                 live: card.live,
                 removed: card.removed,
-                muted: card.isOther,
+                muted: card.isOther || isUnknown,
                 icon: flagUrl
                   ? <img src={flagUrl} alt={card.label} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   : <Globe className="size-4" style={{ color }} />,
