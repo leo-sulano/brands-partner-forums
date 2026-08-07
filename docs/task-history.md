@@ -2094,3 +2094,16 @@ Follow-up to Task 184: the user asked for Proxy Breakdown specifically to be "6 
 - No new pure logic — this is presentational only, reusing `proxyCards`/`categoricalColorForKey`/`openDimensionSlice` exactly as Task 184 left them. Full suite (614 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day layout follow-up on Task 184.
 
 ---
+
+## Task 186: Proxy Breakdown — Best-Effort Real Per-Proxy Icons
+
+**Date:** August 7, 2026
+
+Follow-up to Task 185: the user asked to "use also proxy icons." Since proxy names are free-text internal service names (Proxylite, SpyderProxy, Enigma, Proxio, and occasionally a masked `*****` value) with no guaranteed real domain — unlike Country's fixed set of real countries — a quick clarifying question confirmed the user wanted a genuine best-effort logo lookup rather than just a more fitting generic icon.
+
+- New `src/lib/proxyIcons.ts` (`proxyIconUrl`) — slugifies a proxy name (lowercase, alphanumeric only) into a guessed `<slug>.com` domain and builds a URL against the same Google favicon service (`s2/favicons?domain=...`) Platform Breakdown's real logos already use. Explicitly a best-effort, unverified lookup, not a curated brand match — it can show a wrong or unrelated favicon if the guessed domain happens to be a real but different company's site, a tradeoff the user accepted when asked directly. Returns `null` for anything under 3 alphanumeric characters (covers masked/redacted values like `*****`, which strip to an empty slug) so those don't get a guess at all.
+- Both the Proxy Breakdown stat tiles and the drill-down modal's icons now try `proxyIconUrl` first, falling back to a new `Shield` icon (replacing the old generic `Network` icon, which had no remaining callers and was removed) tinted with the existing per-entity categorical color when no plausible domain exists or the image fails to load. `openDimensionSlice` was generalized to resolve an icon URL and a fallback icon component per-dimension (flag+`Globe` for country, favicon-guess+`Shield` for proxy) through one shared code path instead of two near-duplicate branches.
+- 4 new unit tests (`proxyIcons.test.ts`): correct slug-and-URL construction, whitespace/punctuation stripping, the masked-value null case, and the under-3-characters null case.
+- Full suite (618 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day icon follow-up on Task 185.
+
+---
