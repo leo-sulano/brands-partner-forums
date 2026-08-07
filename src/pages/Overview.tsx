@@ -19,6 +19,7 @@ import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
+import { getTabPlatforms } from '../lib/tab-configs';
 import type { TabKpis } from '../types/brand-entry';
 
 
@@ -114,6 +115,10 @@ interface SliceModalState {
   kind: 'live' | 'removed';
   rows: { tab: string; count: number }[];
   linkFor: (tab: string) => string;
+  // Set only when this modal was opened from Platform Breakdown — its rows
+  // are already scoped to that one platform, so the per-row platform-chip
+  // selector (Country/Proxy Breakdown only) doesn't apply.
+  platform?: 'tp' | 'ag' | 'cg' | 'wo';
 }
 
 function KpiBreakdownModal({
@@ -261,26 +266,44 @@ function SliceBreakdownModal({
             <p className="py-4 text-center text-sm text-slate-400">No data</p>
           ) : rows.map((r) => {
             const pct = grandTotal > 0 ? (r.count / grandTotal) * 100 : 0;
+            // Platform Breakdown's own modal (modal.platform set) is already
+            // scoped to one platform — a chip selector would be redundant
+            // there. Country/Proxy Breakdown's modal rows blend every
+            // platform a tab has, so a multi-platform tab needs a way to
+            // pick which one to actually view.
+            const rowPlatforms = modal.platform ? [] : getTabPlatforms(r.tab);
             return (
-              <Link
-                key={r.tab}
-                to={modal.linkFor(r.tab)}
-                onClick={onClose}
-                className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      {modal.rowIcon}
-                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{tabDisplayName(r.tab)}</span>
-                    </span>
-                    <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
+              <div key={r.tab} className="-mx-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50">
+                <Link to={modal.linkFor(r.tab)} onClick={onClose} className="group flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-1.5 flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        {modal.rowIcon}
+                        <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{tabDisplayName(r.tab)}</span>
+                      </span>
+                      <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-slate-100">
+                      <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                    </div>
                   </div>
-                  <div className="h-1.5 w-full rounded-full bg-slate-100">
-                    <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                </Link>
+                {rowPlatforms.length > 1 && (
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    <span className="text-[10px] text-slate-400">View:</span>
+                    {rowPlatforms.map((p) => (
+                      <Link
+                        key={p}
+                        to={`${modal.linkFor(r.tab)}&platform=${p}`}
+                        onClick={onClose}
+                        className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
+                      >
+                        {p.toUpperCase()}
+                      </Link>
+                    ))}
                   </div>
-                </div>
-              </Link>
+                )}
+              </div>
             );
           })}
         </div>
@@ -406,6 +429,7 @@ export default function Overview() {
       kind,
       rows: state.tabs.map((t) => ({ tab: t.tab, count: t.kpis[platformKey][kind] })),
       linkFor: (tab) => `/brands/${tabToSlug(tab)}?platform=${platformKey}&status=${kind}`,
+      platform: platformKey,
     });
   }
 
