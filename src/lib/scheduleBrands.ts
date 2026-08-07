@@ -26,6 +26,15 @@ export function mondayOf(date: Date): Date {
   return d;
 }
 
+// Always computed fresh against the real current date — never memoized —
+// so two callers can never independently drift on what "the current week"
+// means. A memoized snapshot taken once on mount would keep naming the old
+// week forever if a tab stays open across a real week boundary (e.g. left
+// open from Sunday night into Monday).
+export function isCurrentWeekStart(weekStartISO: string): boolean {
+  return weekStartISO === toISODate(mondayOf(new Date()));
+}
+
 export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
 export const WEEKDAYS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 export const WEEKDAY_LABELS: Record<Weekday, string> = {
