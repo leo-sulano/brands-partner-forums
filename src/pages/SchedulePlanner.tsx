@@ -10,10 +10,14 @@ import {
   setBrandScheduleDay,
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
+  fetchFlaggedPlatformBrands,
+  fetchBrandPlatformOverrides,
   type BrandPlatformPause,
 } from '../lib/queries';
 import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
+import { buildFlaggedPlatformBrandSet } from '../lib/flaggedPlatformBrands';
+import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
@@ -120,7 +124,15 @@ export default function SchedulePlanner() {
   // just because that fetch hadn't resolved yet — that race would let the
   // generator write real brand_schedule/brand_platform_pause rows for a
   // brand+platform that was supposed to be skipped entirely.
-  const [tabCtx, setTabCtx] = useState<{ tab: string; brands: string[]; activePlatforms: Platform[]; entries: Entry[]; removedPlatformBrandSet: Set<string> } | null>(null);
+  const [tabCtx, setTabCtx] = useState<{
+    tab: string;
+    brands: string[];
+    activePlatforms: Platform[];
+    entries: Entry[];
+    removedPlatformBrandSet: Set<string>;
+    flaggedPlatformBrandSet: Set<string>;
+    overrideMap: Map<string, OverrideState>;
+  } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(true);
@@ -183,10 +195,12 @@ export default function SchedulePlanner() {
     setPauses([]);
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, flaggedPlatformBrandRows, overrideRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           fetchRemovedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
+          fetchFlaggedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
+          fetchBrandPlatformOverrides(tab).catch(() => []),
         ]);
         if (canceled) return;
         const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
@@ -207,6 +221,8 @@ export default function SchedulePlanner() {
           activePlatforms: platforms,
           entries: rawEntries,
           removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
+          flaggedPlatformBrandSet: buildFlaggedPlatformBrandSet(flaggedPlatformBrandRows),
+          overrideMap: buildOverrideMap(overrideRows),
         });
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
@@ -262,6 +278,8 @@ export default function SchedulePlanner() {
             activePlatforms: tabCtx!.activePlatforms,
             entries: tabCtx!.entries,
             removedPlatformBrandSet: tabCtx!.removedPlatformBrandSet,
+            flaggedPlatformBrandSet: tabCtx!.flaggedPlatformBrandSet,
+            overrideMap: tabCtx!.overrideMap,
           };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
           await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);

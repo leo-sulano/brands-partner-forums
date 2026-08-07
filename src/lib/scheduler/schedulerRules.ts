@@ -15,32 +15,47 @@ export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
   tp: { postsPerWeek: 2, preferredDayPairs: [['monday', 'thursday'], ['tuesday', 'friday']] },
   ag: { postsPerWeek: 2 },
   cg: { postsPerWeek: 1 },
-  wo: { postsPerWeek: 3, preferredDays: ['monday', 'wednesday', 'friday'] },
+  // Reduced from 3/wk to 1/wk per the 2026-08-07 rules update (see
+  // docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md).
+  // No preferredDays — load-balanced across the week, same as cg's 1/wk.
+  wo: { postsPerWeek: 1 },
 };
 
 export const PAUSE_RULES = {
   consecutiveRemovedThreshold: 2,
   pauseDurationWeeks: 1,
-  // A brand+platform combo also pauses when its all-time success rate
-  // (see computeSuccessRates in scoreSummary.ts) is strictly below this
+  // A brand+platform combo also pauses when its success rate over a
+  // ROLLING 30-DAY WINDOW ending on weekStart (see computeSuccessRates in
+  // scoreSummary.ts, called with a last30DaysRange DateRange from
+  // recalculatePauses in schedulerService.ts) is strictly below this
   // percentage, once it has at least minDecidedPostsForRateCheck decided
-  // (live+removed) posts on that platform. Independent of, and lower-
-  // priority than, the consecutiveRemovedThreshold rule above — see
-  // recalculatePauses in schedulerService.ts.
-  //
-  // Note: this uses an all-time, unwindowed rate paired with a fixed
-  // 1-week pause. A chronically underperforming brand+platform will
-  // pause, auto-resume after 1 week, post once or twice, but its
-  // all-time rate barely moves (e.g., 20% over 200 posts needs ~150
-  // straight live posts to climb back over 40%) — so it pauses again
-  // next cycle, indefinitely, at roughly half normal cadence. This is
-  // an accepted, deliberate tradeoff (not a bug), matching how
-  // CARRYOVER_RULES.completionThreshold was disabled for a related
-  // unbounded-compounding shape (see comment above that block). Do not
-  // "fix" this oscillation without a product conversation first.
+  // (live+removed) posts within that window. Independent of, and
+  // lower-priority than, the consecutiveRemovedThreshold rule above and the
+  // flagged-via-email check -- see recalculatePauses in
+  // schedulerService.ts. Originally shipped 2026-08-07 (see
+  // docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md)
+  // as a calendar-month-to-date window (fixing the previously-known-broken
+  // all-time oscillation issue), but a final whole-branch review on that
+  // same date found the calendar-month window combined with Wizard of
+  // Odds' new 1-post/week cadence (and Casino Guru's, already 1/wk) made
+  // this trigger mathematically unreachable for both platforms -- neither
+  // can accumulate 5 dated posts within a single calendar month. Switched
+  // to rolling 30 days per product-owner decision, so every platform has a
+  // continuously-available chance to reach the threshold instead of
+  // resetting to zero on the 1st of each month.
   successRateThreshold: 40,
   minDecidedPostsForRateCheck: 5,
 };
+
+// Reason strings for the two pause triggers that persist until manually
+// cleared, rather than auto-expiring after a week like the automatic
+// triggers do. Shared between schedulerService.ts (which produces them)
+// and calendarRenderer.tsx (which compares against them to decide the
+// pause tooltip's wording) so the two can't drift out of sync.
+export const PERSISTENT_PAUSE_REASONS = {
+  manual: 'Manually paused',
+  flagged: 'Flagged via email notification',
+} as const;
 
 export const CARRYOVER_RULES = {
   // Deliberately disabled (0 instead of 0.40) for this initial ship.

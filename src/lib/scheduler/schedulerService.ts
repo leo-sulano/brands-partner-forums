@@ -9,14 +9,16 @@ import {
 } from '../queries.ts';
 import {
   PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
-  computeSuccessRates, successRatePct, type SuccessRate,
+  computeSuccessRates, successRatePct, type SuccessRate, type DateRange,
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
+import { platformFlaggedKey } from '../flaggedPlatformBrands.ts';
+import { overrideKey, type OverrideState } from '../scheduleOverrides.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
 import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils.ts';
-import { CARRYOVER_RULES, PAUSE_RULES } from './schedulerRules.ts';
+import { CARRYOVER_RULES, PAUSE_RULES, PERSISTENT_PAUSE_REASONS } from './schedulerRules.ts';
 import type { Entry } from '../../types/entry.ts';
 
 export interface TabContext {
@@ -28,6 +30,18 @@ export interface TabContext {
   // to "nothing removed") so callers/tests that don't care about this feature
   // don't need to thread an empty Set through everywhere.
   removedPlatformBrandSet?: Set<string>;
+  // Every (tab, brand, platform) manually flagged via the "flagged via
+  // email" toggle -- a third OR-condition in the automatic pause check,
+  // alongside two-consecutive-removed and the monthly success-rate
+  // threshold. Optional, same "defaults to nothing flagged" convention as
+  // removedPlatformBrandSet.
+  flaggedPlatformBrandSet?: Set<string>;
+  // Every (tab, brand_key, platform) with a manually-set override, beating
+  // whatever the automatic checks below would otherwise compute. 'active'
+  // forces continued posting (deletes/skips any pause); 'pause' forces a
+  // pause unconditionally. Optional, same "defaults to nothing overridden"
+  // convention as the other two sets.
+  overrideMap?: Map<string, OverrideState>;
 }
 
 function brandOf(entry: Entry): string {
@@ -107,6 +121,30 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
 // logic (it would look like a real pause that "expired" and get reported as
 // resumed even though it never took effect). The resume/delete path stays
 // unconditional: deleting an expired pause is always safe and idempotent.
+// The success-rate pause check uses a rolling 30-day window ending on
+// `weekStart`, not a calendar month. Originally shipped as a
+// calendar-month-to-date window, but a final whole-branch review found
+// that combined with Wizard of Odds' 1-post/week cadence (and Casino
+// Guru's, which was already 1/wk), a calendar-month window made this
+// trigger mathematically unreachable for both platforms -- neither can
+// accumulate minDecidedPostsForRateCheck (5) dated posts within a single
+// calendar month, especially in the first half of it. A rolling 30-day
+// window gives every platform a real, continuously-available chance to
+// reach the threshold instead of resetting to zero on the 1st.
+// recalculatePauses is only ever invoked for the actual current week in
+// production (both call sites gate on that), so this is equivalent to
+// "trailing 30 days as of now" there, while also making the check
+// deterministic for a fixed weekStart in tests. Parses weekStart as a
+// local date the same way shiftWeek below does, to avoid the
+// UTC-conversion bug documented on toISODate in scheduleBrands.ts.
+function last30DaysRange(weekStart: string): DateRange {
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const to = new Date(y, m - 1, d);
+  const from = new Date(y, m - 1, d);
+  from.setDate(from.getDate() - 29);
+  return { from, to };
+}
+
 export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext, client?: SupabaseClient): Promise<PinnedCombo[]> {
   const [pauses, existingRows] = await Promise.all([
     fetchActiveBrandPlatformPauses(tab, client),
@@ -114,13 +152,16 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   ]);
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
+  const flaggedSet = ctx.flaggedPlatformBrandSet ?? new Set<string>();
+  const overrideMap = ctx.overrideMap ?? new Map<string, OverrideState>();
 
   // Computed once per active platform (not per brand) since each call scans
   // all of ctx.entries — reused by the success-rate pause check below.
   // normalizedRates re-buckets by normalized brand keys so case variants
   // (e.g. "WinMega" / "winmega") merge correctly.
+  const rateRange = last30DaysRange(weekStart);
   const ratesByPlatform = new Map(
-    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform), tab)]),
+    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform, new Set(), rateRange), tab)]),
   );
 
   for (const brand of ctx.brands) {
@@ -131,6 +172,32 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // still applies correctly if the flag is ever cleared) and never
       // evaluate it for a new pause.
       if (removedSet.has(platformRemovedKey(tab, brand, platform))) continue;
+
+      // Manual override beats every automatic check below -- checked before
+      // the existing/alreadyHasRow/flagged/consecutive-removed/success-rate
+      // chain entirely, not merged into it, since it's an explicit operator
+      // decision rather than a background computation. 'pause' deliberately
+      // does NOT respect the alreadyHasRow guard the auto path uses below
+      // (that guard exists to protect the auto-detection heuristic from a
+      // race with a week that's already been generated; a manual override
+      // is an intentional action that should always take effect, even for
+      // an already-generated week -- the pause row's mere existence dims
+      // that week's cells regardless of whether brand_schedule already has
+      // a row for it).
+      const override = overrideMap.get(overrideKey(tab, brandKey, platform));
+      const existingPause = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
+      if (override === 'active') {
+        if (existingPause) {
+          await deleteBrandPlatformPause(tab, brandKey, platform, client);
+          resumed.push({ brandKey, platform });
+        }
+        continue;
+      }
+      if (override === 'pause') {
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, PERSISTENT_PAUSE_REASONS.manual, client);
+        continue;
+      }
+
       const existing = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
       if (existing) {
         if (existing.paused_week_start < weekStart) {
@@ -141,6 +208,14 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       }
       const alreadyHasRow = existingRows.some((r) => r.platform === platform && r.brand_key === brandKey);
       if (alreadyHasRow) continue;
+
+      // Highest-priority automatic trigger -- an explicit, human-verified
+      // email notification outranks the inferred consecutive-removed and
+      // success-rate signals below.
+      if (flaggedSet.has(platformFlaggedKey(tab, brand, platform))) {
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, PERSISTENT_PAUSE_REASONS.flagged, client);
+        continue;
+      }
 
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
@@ -164,7 +239,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         const pct = successRatePct(sr!.rate);
         await upsertBrandPlatformPause(
           tab, brand, platform, weekStart,
-          `Success rate below ${PAUSE_RULES.successRateThreshold}% (${pct}% over ${decided} posts)`,
+          `Success rate below ${PAUSE_RULES.successRateThreshold}% in the last 30 days (${pct}% over ${decided} posts)`,
           client,
         );
       }

@@ -664,6 +664,71 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
   }
 }
 
+export async function fetchFlaggedPlatformBrands(
+  client: SupabaseClient = supabase,
+): Promise<{ tab: string; brand: string; platform: Platform }[]> {
+  const { data, error } = await client
+    .from('flagged_platform_brands')
+    .select('tab, brand, platform');
+  if (error) throw error;
+  return (data ?? []) as { tab: string; brand: string; platform: Platform }[];
+}
+
+// Mirrors setBrandPlatformRemoved exactly: matches/deletes via the
+// generated brand_key column so a stored brand value that differs only in
+// case/whitespace from the one passed in here still matches the existing
+// row instead of silently no-oping.
+export async function setBrandPlatformFlagged(tab: string, brand: string, platform: Platform, flagged: boolean): Promise<void> {
+  const brandKey = normalizeBrandKey(brand);
+  if (flagged) {
+    const { error } = await supabase
+      .from('flagged_platform_brands')
+      .upsert({ tab, brand, platform, flagged_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('flagged_platform_brands')
+      .delete()
+      .eq('tab', tab)
+      .eq('brand_key', brandKey)
+      .eq('platform', platform);
+    if (error) throw error;
+  }
+}
+
+export interface BrandPlatformOverride {
+  tab: string;
+  brand_key: string;
+  platform: Platform;
+  override_state: 'pause' | 'active';
+}
+
+export async function fetchBrandPlatformOverrides(tab: string, client: SupabaseClient = supabase): Promise<BrandPlatformOverride[]> {
+  const { data, error } = await client
+    .from('brand_platform_override')
+    .select('tab, brand_key, platform, override_state')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as BrandPlatformOverride[];
+}
+
+export async function setBrandPlatformOverride(tab: string, brand: string, platform: Platform, state: 'pause' | 'active'): Promise<void> {
+  const { error } = await supabase
+    .from('brand_platform_override')
+    .upsert({ tab, brand, platform, override_state: state, set_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
+  if (error) throw error;
+}
+
+export async function clearBrandPlatformOverride(tab: string, brandKey: string, platform: Platform): Promise<void> {
+  const { error } = await supabase
+    .from('brand_platform_override')
+    .delete()
+    .eq('tab', tab)
+    .eq('brand_key', brandKey)
+    .eq('platform', platform);
+  if (error) throw error;
+}
+
 export async function fetchBrandSchedule(tab: string, weekStart: string, client: SupabaseClient = supabase): Promise<BrandScheduleRow[]> {
   const { data, error } = await client
     .from('brand_schedule')

@@ -44,6 +44,8 @@ Deno.test('buildTabContext derives brands from raw entries, deduped and sorted, 
     ],
     tab_schemas: [{ headers: ['Brands'] }],
     removed_platform_brands: [],
+    flagged_platform_brands: [],
+    brand_platform_override: [],
   });
   const ctx = await buildTabContext('Wizard of Odds', client);
   assertEquals(ctx.brands, ['BrandB', 'WinMega']);
@@ -56,9 +58,24 @@ Deno.test('buildTabContext falls back to TAB_DEFAULT_BRAND when no entry has a b
     entries: [entry('Trybet', '1', {})],
     tab_schemas: [{ headers: [] }],
     removed_platform_brands: [],
+    flagged_platform_brands: [],
+    brand_platform_override: [],
   });
   const ctx = await buildTabContext('Trybet', client);
   assertEquals(ctx.brands, ['Trybet']);
+});
+
+Deno.test('buildTabContext populates flaggedPlatformBrandSet and overrideMap from their tables', async () => {
+  const client = fakeClient({
+    entries: [entry('Hanan', '1', { Brands: 'WinMega' })],
+    tab_schemas: [{ headers: ['Brands'] }],
+    removed_platform_brands: [],
+    flagged_platform_brands: [{ tab: 'Hanan', brand: 'WinMega', platform: 'tp' }],
+    brand_platform_override: [{ tab: 'Hanan', brand_key: 'winmega', platform: 'tp', override_state: 'pause' }],
+  });
+  const ctx = await buildTabContext('Hanan', client);
+  assertEquals(ctx.flaggedPlatformBrandSet?.size, 1);
+  assertEquals(ctx.overrideMap?.get('Hanan::winmega::tp'), 'pause');
 });
 
 Deno.test('generateAllTabs continues past a single tab failure', async () => {

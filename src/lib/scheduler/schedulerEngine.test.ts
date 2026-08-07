@@ -21,10 +21,9 @@ describe('generateWeekSchedule', () => {
     expect(days).toEqual(['monday', 'thursday']);
   });
 
-  it('assigns WO its 3 posts on Monday/Wednesday/Friday when the week is empty', () => {
+  it('assigns WO exactly 1 post, load-balanced with no fixed preferred day', () => {
     const input: SchedulerInput = { ...baseInput, activePlatforms: ['wo'] };
-    const days = slotsFor(generateWeekSchedule(input), 'WinMega', 'wo').map((s) => s.day).sort();
-    expect(days).toEqual(['friday', 'monday', 'wednesday']);
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'wo')).toHaveLength(1);
   });
 
   it('assigns CG exactly 1 post', () => {

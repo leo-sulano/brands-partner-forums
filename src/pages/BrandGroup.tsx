@@ -13,8 +13,10 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import AccountUsageBadges from '../components/AccountUsageBadges';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
-import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchFlaggedPlatformBrands, setBrandPlatformFlagged, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
+import { platformRemovedKey, buildRemovedPlatformBrandSet, normalizeBrandKey } from '../lib/removedPlatformBrands';
+import { platformFlaggedKey, buildFlaggedPlatformBrandSet } from '../lib/flaggedPlatformBrands';
+import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
@@ -722,6 +724,8 @@ export default function BrandGroup() {
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
+  const [flaggedPlatformBrandRows, setFlaggedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
+  const [overrideRows, setOverrideRows] = useState<{ tab: string; brand_key: string; platform: Platform; override_state: OverrideState }[]>([]);
   const [accountUsage, setAccountUsage] = useState<Map<string, Record<Platform, number>>>(new Map());
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
@@ -824,8 +828,14 @@ export default function BrandGroup() {
     fetchRemovedPlatformBrands()
       .then((rows) => { if (!canceled) setRemovedPlatformBrandRows(rows); })
       .catch(() => { /* badge is decorative — a failed fetch just means no badges render */ });
+    fetchFlaggedPlatformBrands()
+      .then((rows) => { if (!canceled) setFlaggedPlatformBrandRows(rows); })
+      .catch(() => { /* same — decorative */ });
+    fetchBrandPlatformOverrides(decodedTab)
+      .then((rows) => { if (!canceled) setOverrideRows(rows); })
+      .catch(() => { /* same — decorative */ });
     return () => { canceled = true; };
-  }, [reloadSeq]);
+  }, [reloadSeq, decodedTab]);
 
   useEffect(() => {
     let canceled = false;
@@ -1145,6 +1155,27 @@ export default function BrandGroup() {
   function removedPlatformsFor(brandName: string | null | undefined): Platform[] {
     if (!brandName) return [];
     return getTabPlatforms(decodedTab).filter((p) => isPlatformRemoved(brandName, p));
+  }
+
+  const flaggedPlatformBrandSet = useMemo(() => buildFlaggedPlatformBrandSet(flaggedPlatformBrandRows), [flaggedPlatformBrandRows]);
+  function isPlatformFlagged(brandName: string | null | undefined, platform: Platform): boolean {
+    return !!brandName && flaggedPlatformBrandSet.has(platformFlaggedKey(decodedTab, brandName, platform));
+  }
+  function flaggedPlatformsFor(brandName: string | null | undefined): Platform[] {
+    if (!brandName) return [];
+    return getTabPlatforms(decodedTab).filter((p) => isPlatformFlagged(brandName, p));
+  }
+
+  const overrideMap = useMemo(() => buildOverrideMap(overrideRows), [overrideRows]);
+  function overridesFor(brandName: string | null | undefined): Partial<Record<Platform, OverrideState>> {
+    if (!brandName) return {};
+    const brandKey = normalizeBrandKey(brandName);
+    const out: Partial<Record<Platform, OverrideState>> = {};
+    for (const p of getTabPlatforms(decodedTab)) {
+      const state = overrideMap.get(overrideKey(decodedTab, brandKey, p));
+      if (state) out[p] = state;
+    }
+    return out;
   }
 
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
@@ -1751,6 +1782,10 @@ export default function BrandGroup() {
   // reason.
   const initialRemovedPlatformsForEditEntry: Platform[] =
     editEntry && brandCol ? removedPlatformsFor(editEntry.data[brandCol]) : [];
+  const initialFlaggedPlatformsForEditEntry: Platform[] =
+    editEntry && brandCol ? flaggedPlatformsFor(editEntry.data[brandCol]) : [];
+  const initialOverridesForEditEntry: Partial<Record<Platform, OverrideState>> =
+    editEntry && brandCol ? overridesFor(editEntry.data[brandCol]) : {};
 
   if (error) {
     return (
@@ -2619,8 +2654,10 @@ export default function BrandGroup() {
           brandCol={brandCol}
           brandProfiles={brandProfiles}
           initialRemovedPlatforms={initialRemovedPlatformsForEditEntry}
+          initialFlaggedPlatforms={initialFlaggedPlatformsForEditEntry}
+          initialOverrides={initialOverridesForEditEntry}
           onClose={() => setEditEntry(null)}
-          onSave={async (fields, newTab, removedPlatforms) => {
+          onSave={async (fields, newTab, removedPlatforms, flaggedPlatforms, overrides) => {
             if (newTab && newTab !== editEntry.tab) {
               await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
             }
@@ -2628,27 +2665,64 @@ export default function BrandGroup() {
             setEntries((prev) =>
               prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
-            // Only write a platform's flag when that platform's checkbox
-            // actually changed — not on every save of an already-flagged
-            // brand's row (see the comment on
-            // initialRemovedPlatformsForEditEntry above). Diffed
-            // independently per platform so toggling one platform never
-            // touches another's flag/removed_by/removed_at.
-            if (brandCol && removedPlatforms !== undefined) {
+            // Three independent, sibling persistence blocks below — each
+            // gated only on its own param's `!== undefined` check, not on
+            // any of the others'. (Previously flaggedPlatforms/overrides were
+            // nested inside removedPlatforms' undefined-check, coupling their
+            // persistence to a parameter that has nothing to do with what
+            // they write — a latent bug that only worked because the modal
+            // always happens to pass removedPlatforms too. Pure structural
+            // fix; no behavior change, since the modal still always passes
+            // all three.)
+            if (brandCol) {
               const targetTab = newTab ?? editEntry.tab;
               const brandName = fields[brandCol] ?? editEntry.data[brandCol];
               if (brandName) {
-                const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
-                const nowRemoved = new Set(removedPlatforms);
-                // Diff over decodedTab's platforms (the tab the checkboxes were
-                // actually rendered for), not targetTab's — a brand-tab-move
-                // changing which platforms apply mid-save is an edge case this
-                // doesn't attempt to reconcile further (matches the existing
-                // brand-rename-during-save limitation documented near
-                // setBrandPlatformRemoved in src/lib/queries.ts).
-                for (const p of getTabPlatforms(decodedTab)) {
-                  if (wasRemoved.has(p) !== nowRemoved.has(p)) {
-                    await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
+                // Only write a platform's flag when that platform's checkbox
+                // actually changed — not on every save of an already-flagged
+                // brand's row (see the comment on
+                // initialRemovedPlatformsForEditEntry above). Diffed
+                // independently per platform so toggling one platform never
+                // touches another's flag/removed_by/removed_at.
+                if (removedPlatforms !== undefined) {
+                  const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
+                  const nowRemoved = new Set(removedPlatforms);
+                  // Diff over decodedTab's platforms (the tab the checkboxes were
+                  // actually rendered for), not targetTab's — a brand-tab-move
+                  // changing which platforms apply mid-save is an edge case this
+                  // doesn't attempt to reconcile further (matches the existing
+                  // brand-rename-during-save limitation documented near
+                  // setBrandPlatformRemoved in src/lib/queries.ts).
+                  for (const p of getTabPlatforms(decodedTab)) {
+                    if (wasRemoved.has(p) !== nowRemoved.has(p)) {
+                      await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
+                    }
+                  }
+                }
+
+                // Same diff-and-write-only-what-changed pattern as removedPlatforms
+                // above — avoids re-firing flagged_by/flagged_at (or set_by/
+                // created_at) on every routine save of an already-flagged/
+                // overridden brand's row.
+                if (flaggedPlatforms !== undefined) {
+                  const wasFlagged = new Set(initialFlaggedPlatformsForEditEntry);
+                  const nowFlagged = new Set(flaggedPlatforms);
+                  for (const p of getTabPlatforms(decodedTab)) {
+                    if (wasFlagged.has(p) !== nowFlagged.has(p)) {
+                      await setBrandPlatformFlagged(targetTab, brandName, p, nowFlagged.has(p));
+                    }
+                  }
+                }
+                if (overrides !== undefined) {
+                  for (const p of getTabPlatforms(decodedTab)) {
+                    const was = initialOverridesForEditEntry[p];
+                    const now = overrides[p];
+                    if (was === now) continue;
+                    if (now === undefined) {
+                      await clearBrandPlatformOverride(targetTab, normalizeBrandKey(brandName), p);
+                    } else {
+                      await setBrandPlatformOverride(targetTab, brandName, p, now);
+                    }
                   }
                 }
               }

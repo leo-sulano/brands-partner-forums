@@ -93,12 +93,20 @@ interface Props {
   entry: Entry;
   headers: string[];
   onClose: () => void;
-  onSave: (fields: Record<string, string | null>, newTab?: string, removedPlatforms?: Platform[]) => Promise<void>;
+  onSave: (
+    fields: Record<string, string | null>,
+    newTab?: string,
+    removedPlatforms?: Platform[],
+    flaggedPlatforms?: Platform[],
+    overrides?: Partial<Record<Platform, 'pause' | 'active'>>,
+  ) => Promise<void>;
   currentTab?: string;
   availableBrands?: string[];
   brandCol?: string | null;
   brandProfiles?: Record<string, Record<string, string>>;
   initialRemovedPlatforms?: Platform[];
+  initialFlaggedPlatforms?: Platform[];
+  initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -106,8 +114,10 @@ const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) =>
   { col: 'CG Review Link', fallback: getBrandCgUrl },
 ];
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms, initialFlaggedPlatforms, initialOverrides }: Props) {
   const [removedPlatforms, setRemovedPlatforms] = useState<Set<Platform>>(new Set(initialRemovedPlatforms ?? []));
+  const [flaggedPlatforms, setFlaggedPlatforms] = useState<Set<Platform>>(new Set(initialFlaggedPlatforms ?? []));
+  const [overrides, setOverrides] = useState<Partial<Record<Platform, 'pause' | 'active'>>>(initialOverrides ?? {});
   const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -135,7 +145,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
       const out: Record<string, string | null> = {};
       for (const h of headers) out[h] = fields[h] || null;
       const tabChanged = selectedTab && selectedTab !== currentTab ? selectedTab : undefined;
-      await onSave(out, tabChanged, [...removedPlatforms]);
+      await onSave(out, tabChanged, [...removedPlatforms], [...flaggedPlatforms], overrides);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -344,6 +354,46 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                         className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
                       />
                       {PLATFORM_LABEL[p]} page removed
+                    </label>
+                  ))}
+                  {tabPlatforms.map((p) => (
+                    <label key={`flag-${p}`} className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={flaggedPlatforms.has(p)}
+                        disabled={saving}
+                        onChange={(e) =>
+                          setFlaggedPlatforms((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(p); else next.delete(p);
+                            return next;
+                          })
+                        }
+                        className="rounded border-slate-300 text-amber-600 focus:ring-amber-400"
+                      />
+                      {PLATFORM_LABEL[p]} flagged via email
+                    </label>
+                  ))}
+                  {tabPlatforms.map((p) => (
+                    <label key={`override-${p}`} className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                      {PLATFORM_LABEL[p]} scheduling:
+                      <select
+                        value={overrides[p] ?? 'auto'}
+                        disabled={saving}
+                        onChange={(e) => {
+                          const v = e.target.value as 'auto' | 'pause' | 'active';
+                          setOverrides((prev) => {
+                            const next = { ...prev };
+                            if (v === 'auto') delete next[p]; else next[p] = v;
+                            return next;
+                          });
+                        }}
+                        className="rounded-md border border-slate-200 px-1.5 py-0.5 text-xs text-slate-700 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
+                      >
+                        <option value="auto">Auto</option>
+                        <option value="pause">Force Paused</option>
+                        <option value="active">Force Active</option>
+                      </select>
                     </label>
                   ))}
                 </div>

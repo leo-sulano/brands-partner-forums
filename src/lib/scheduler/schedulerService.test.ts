@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from './schedulerService';
 import type { PinnedCombo } from './schedulerEngine';
 import { platformRemovedKey } from '../removedPlatformBrands';
+import { platformFlaggedKey } from '../flaggedPlatformBrands';
+import { overrideKey } from '../scheduleOverrides';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -149,38 +151,40 @@ describe('recalculatePauses', () => {
     expect(queries.fetchBrandSchedule).toHaveBeenCalledWith('BITP', '2026-08-03', fakeClient);
   });
 
-  describe('success-rate trigger', () => {
-    it('pauses a brand+platform whose all-time success rate is below 40% with at least 5 decided posts', async () => {
+  describe('success-rate trigger (rolling 30-day window)', () => {
+    it('pauses a brand+platform whose rolling-30-day success rate is below 40% with at least 5 decided posts', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
           // Most recent post is Published, so the consecutive-removed check
           // (top 2 by date) never fires here — isolates the success-rate path.
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-15' }),
+          // weekStart below is 2026-08-17, so the rolling 30-day window is
+          // 2026-07-19 through 2026-08-17 -- every date here falls inside it.
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-08' }),
         ],
       };
-      await recalculatePauses('BITP', '2026-08-03', ctx);
+      await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
-        'BITP', 'WinMega', 'tp', '2026-08-03', 'Success rate below 40% (20% over 5 posts)', undefined,
+        'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% in the last 30 days (20% over 5 posts)', undefined,
       );
     });
 
-    it('does not pause on a low success rate with fewer than 5 decided posts', async () => {
+    it('does not pause on a low rolling-30-day rate with fewer than 5 decided posts', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
         ],
       };
-      await recalculatePauses('BITP', '2026-08-03', ctx);
+      await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
     });
 
@@ -189,14 +193,14 @@ describe('recalculatePauses', () => {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-07-24' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-15' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-08' }),
         ],
       };
-      await recalculatePauses('BITP', '2026-08-03', ctx);
+      await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
     });
 
@@ -206,70 +210,273 @@ describe('recalculatePauses', () => {
         activePlatforms: ['tp'],
         entries: [
           // Top 2 most recent are both Removed (fires consecutive-removed)
-          // AND overall rate is 1/5 = 20% with 5 decided posts (would also
-          // fire success-rate) -- only one pause row/reason should result.
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-01' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-07-15' }),
+          // AND the rolling-30-day rate is 1/5 = 20% (would also fire
+          // success-rate) -- only one pause row/reason should result.
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-08' }),
         ],
       };
-      await recalculatePauses('BITP', '2026-08-03', ctx);
+      await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
-        'BITP', 'WinMega', 'tp', '2026-08-03', 'Two consecutive Removed/Refused posts', undefined,
+        'BITP', 'WinMega', 'tp', '2026-08-17', 'Two consecutive Removed/Refused posts', undefined,
       );
     });
 
-    // Regression test: a success-rate pause is only meaningful if it's inserted
-    // before the target combo's schedule is generated. If a brand+platform combo
-    // already has a row for week W (platform-tagged), the success-rate check must
-    // NOT insert a pause for W — it would never affect W's already-written
-    // row and would corrupt week W+1's resume logic (see the per-combo
-    // alreadyHasRow check in recalculatePauses).
     it('does not insert a success-rate pause for a combo that already has a row for the week', async () => {
+      queries.fetchBrandSchedule.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-17', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-08' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-17', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('merges success rates across different brand casings within the rolling 30-day window', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'winmega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'winmega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'winmega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-08' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-17', ctx);
+      // 2 live + 3 removed = 5 decided, rate exactly 40% -> no pause (boundary)
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('does not pause when the all-time rate is low but the rolling-30-day rate is at or above 40%', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          // 10 old, out-of-window (early July, before the 2026-07-19 window
+          // start) Removed posts -- would tank an all-time rate, but must be
+          // excluded entirely from the rolling 30-day window.
+          ...Array.from({ length: 10 }, (_, i) =>
+            entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': `2026-07-${String(i + 1).padStart(2, '0')}` })),
+          // Within the window: 4 live + 1 removed = 5 decided, 80% -- top 2 by
+          // date (Aug16, Aug14) are both Published, so consecutive-removed
+          // doesn't fire either.
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-08' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-17', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('pauses when the rolling-30-day rate is low even though the all-time rate looks fine', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          // 10 old, out-of-window (early July, before the 2026-07-19 window
+          // start) Published posts -- would make an all-time rate look
+          // healthy, but must be excluded from the rolling 30-day window.
+          ...Array.from({ length: 10 }, (_, i) =>
+            entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': `2026-07-${String(i + 1).padStart(2, '0')}` })),
+          // Within the window: 1 live + 4 removed = 5 decided, 20% -- top 2 by
+          // date (Aug16 Published, Aug14 Removed) are not both removed, so
+          // this isolates the success-rate trigger from consecutive-removed.
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-10' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-08' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-17', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% in the last 30 days (20% over 5 posts)', undefined,
+      );
+    });
+  });
+
+  describe('flagged-via-email trigger', () => {
+    it('pauses a brand+platform flagged via email even with a healthy record', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
+        ],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Flagged via email notification', undefined,
+      );
+    });
+
+    it('does not pause a brand+platform absent from the flagged set', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'SomeoneElse', 'tp')]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('does not insert a flagged-via-email pause for a combo that already has a row for the week', async () => {
       queries.fetchBrandSchedule.mockResolvedValue([
         { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
       ]);
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
-        entries: [
-          // 1 live + 4 removed = 5 decided, rate 20% — would normally trigger
-          // success-rate pause, but this combo already has a row so no insert should occur.
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-24' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
-          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-15' }),
-        ],
+        entries: [],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
     });
 
-    it('merges success rates across different brand casings (e.g., WinMega and winmega)', async () => {
+    it('prefers the flagged-via-email reason over consecutive-removed when both apply', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
-          // Different casing variants of the same brand contribute to a
-          // combined decided-post count that only crosses the 5-post minimum
-          // when merged. With case-insensitive bucketing, these should combine:
-          // 2 published + 3 removed = 5 decided, rate 40% → no pause
-          // But if they stayed split: 1/2 = 50% and 1/3 = 33%, neither hits
-          // the threshold alone, so rate lookup would miss them.
-          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
-          entry({ Brands: 'winmega', 'TP Review Status': 'published', 'Trust Pilot': '2026-07-24' }),
-          entry({ Brands: 'winmega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-20' }),
-          entry({ Brands: 'winmega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-15' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
         ],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
-      // 2 live + 3 removed = 5 decided, rate exactly 40% → no pause (boundary)
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Flagged via email notification', undefined,
+      );
+    });
+  });
+
+  describe('manual override', () => {
+    it("override 'active' clears an existing pause, reports it resumed, and skips auto-detection even with two consecutive removed posts", async () => {
+      queries.fetchActiveBrandPlatformPauses.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', platform: 'tp', paused_week_start: '2026-08-03', reason: 'Two consecutive Removed/Refused posts' },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+      };
+      const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.deleteBrandPlatformPause).toHaveBeenCalledWith('BITP', 'winmega', 'tp', undefined);
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+      expect(resumed).toEqual([{ brandKey: 'winmega', platform: 'tp' }]);
+    });
+
+    it("override 'active' with no existing pause is a no-op that skips auto-detection", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+      };
+      const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+      expect(resumed).toEqual([]);
+    });
+
+    it("override 'pause' unconditionally pauses even with a perfect record", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
+      );
+    });
+
+    it("override 'pause' bypasses the already-has-a-row-for-the-week guard (unlike auto-detection)", async () => {
+      queries.fetchBrandSchedule.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
+      );
+    });
+
+    it('a removed-platform-flagged combo is skipped even when it has an active override', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        removedPlatformBrandSet: new Set([platformRemovedKey('BITP', 'WinMega', 'tp')]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+      expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it("override 'active' wins even when the combo is also flagged via email", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it("override 'pause' wins over consecutive-removed, with the manual reason not the auto one", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
+      );
     });
   });
 });
