@@ -19,6 +19,7 @@ import {
   computeTabKpisFromEntries,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
+import { platformRemovedKey } from './removedPlatformBrands.ts';
 import type { Entry } from '../types/entry.ts';
 
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
@@ -128,5 +129,33 @@ describe('computeTabKpisFromEntries', () => {
     // (entry 3 only; entry 2 is excluded, not counted as removed).
     expect(kpis.tp).toEqual({ live: scoreSummaryTp.live, removed: scoreSummaryTp.removed });
     expect(kpis.tp).toEqual({ live: 2, removed: 1 });
+  });
+
+  it('does NOT exclude a platform-flagged brand from the tab-level aggregate, even though it excludes it from that platform\'s own breakdown (regression: the aggregate must keep its pre-existing, non-platform-scoped exclusion behavior)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+    ];
+    const flagged = new Set([platformRemovedKey('TP Affiliate', 'Flagged Brand', 'tp')]);
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged);
+    expect(kpis.tp).toEqual({ live: 0, removed: 0 });
+    expect(kpis.removed).toBe(1);
+  });
+
+  it('counts a multi-platform row in the aggregate via whichever platform is in range, even when another platform on the same row is out of range', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const multiEntry = {
+      id: '1', tab: 'Rooster Partners', sheet_row_id: '1',
+      data: {
+        'Brands': 'Multi Brand',
+        'Trust Pilot': '10/01/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      },
+      updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
+    };
+    const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set());
+    expect(kpis.tp).toEqual({ live: 0, removed: 0 });
+    expect(kpis.cg).toEqual({ live: 1, removed: 0 });
+    expect(kpis.live).toBe(1);
+    expect(kpis.removed).toBe(0);
   });
 });

@@ -384,37 +384,43 @@ export function computeTabKpisFromEntries(
     const isPlatformFlagged = (platform: Platform) =>
       brand !== '' && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform));
 
-    // Each platform's status is only tallied — for that platform's own
-    // breakdown AND for the tab-level aggregate below — when it falls inside
-    // the selected range according to THAT platform's own date column
-    // (passesPlatformDateFilter), exactly like Score Summary. A row with no
-    // date for a platform still counts (undated rows are always included —
-    // same reasoning as scoreSummary.ts's passesDateFilter). This replaces the
-    // old behavior of picking one date per row from an unrelated cross-tab
-    // fallback chain (dateUtils.ts's inDateRange) and using it to gate every
-    // platform's tally at once, which is what let Overview and Score Summary
-    // disagree on the same tab/platform/range.
-    const tpInRange = !!tp && !isPlatformFlagged('tp') && passesPlatformDateFilter(d, 'tp', dateFrom, dateTo);
-    const agInRange = !!ag && !isPlatformFlagged('ag') && passesPlatformDateFilter(d, 'ag', dateFrom, dateTo);
-    const cgInRange = !!cg && !isPlatformFlagged('cg') && passesPlatformDateFilter(d, 'cg', dateFrom, dateTo);
-    const woInRange = !!wo && !isPlatformFlagged('wo') && passesPlatformDateFilter(d, 'wo', dateFrom, dateTo);
+    // Date-gating is per-platform (passesPlatformDateFilter), independent of
+    // any other platform's date on the same row — this is the actual fix for
+    // the Overview vs Score Summary mismatch. It is deliberately split from
+    // the platform-flag exclusion below: the per-platform breakdown counters
+    // (tpLive/tpRemoved, etc.) exclude a platform-flagged brand, but the
+    // tab-level aggregate (live/removed/done/pending/onPause/notDone) does
+    // NOT — matching the pre-existing aggregate behavior (a flagged brand's
+    // other-platform data still counts toward the tab total; there's no
+    // single "the platform" to exclude against at the aggregate level).
+    // Folding the flag check into these date flags would silently change
+    // that pre-existing exclusion semantics, which this fix is not meant to
+    // touch.
+    const tpDateOk = !!tp && passesPlatformDateFilter(d, 'tp', dateFrom, dateTo);
+    const agDateOk = !!ag && passesPlatformDateFilter(d, 'ag', dateFrom, dateTo);
+    const cgDateOk = !!cg && passesPlatformDateFilter(d, 'cg', dateFrom, dateTo);
+    const woDateOk = !!wo && passesPlatformDateFilter(d, 'wo', dateFrom, dateTo);
     // No per-platform date key exists for a bare/unresolved generic status
-    // column (genericCol only fires when none of tp/ag/cg/wo resolved on this
-    // tab at all) — keep the old cross-platform-fallback behavior for this one
-    // narrow, currently-unused-by-any-real-tab case rather than inventing a
-    // new policy for it.
+    // column. `generic` above is only ever non-empty for a ROW whose own
+    // tp/ag/cg/wo values are all blank (not a tab-wide condition — a tab that
+    // resolves e.g. tpCol can still have individual rows fall through to this
+    // path if that row's tp value happens to be blank). Whether any of this
+    // repo's 11 real tabs currently has rows that take this path has not been
+    // verified against live Supabase headers/data in this session — keep the
+    // old cross-platform-fallback behavior for it rather than inventing a new
+    // policy for an unverified case.
     const genericInRange = !!generic && ((!dateFrom && !dateTo) || inDateRange(d, dateFrom ?? '', dateTo ?? ''));
 
-    if (tpInRange) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
-    if (agInRange) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
-    if (cgInRange) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
-    if (woInRange) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
+    if (tpDateOk && !isPlatformFlagged('tp')) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
+    if (agDateOk && !isPlatformFlagged('ag')) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
+    if (cgDateOk && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
+    if (woDateOk && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
 
     const statuses = [
-      tpInRange ? tp : '',
-      agInRange ? ag : '',
-      cgInRange ? cg : '',
-      woInRange ? wo : '',
+      tpDateOk ? tp : '',
+      agDateOk ? ag : '',
+      cgDateOk ? cg : '',
+      woDateOk ? wo : '',
       genericInRange ? generic : '',
     ].filter(Boolean);
 

@@ -1458,16 +1458,23 @@ export default function BrandGroup() {
         if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
         return true;
       }
+      // Known, deliberately deferred gap: this 'all'-platform branch still
+      // uses the old cross-platform date-column fallback (inDateRangeInclusive)
+      // rather than checking each of the tab's active platforms via
+      // passesPlatformDateFilter like the KPI cards above (countPlatform,
+      // displayTotals) now do. On a multi-platform tab with platformFilter
+      // === 'all' and a date range set, the visible table rows here can
+      // therefore disagree with the KPI cards. Not the bug this branch fixes
+      // (Overview vs Score Summary) — a separate follow-up.
       return inDateRangeInclusive(e.data, dateFrom, dateTo);
     });
   }
 
   const filtered = applyDateFilter(statusFiltered);
-  // kpiBase skips status filter so platform card counts always show full live/removed totals.
-  const kpiBase = applyDateFilter(ratingFiltered);
 
-
-  // Platform card counts — computed from kpiBase so they always reflect active filters.
+  // Platform card counts — computed from ratingFiltered with each platform's
+  // own date-range check (passesPlatformDateFilter) so they always reflect
+  // active filters without double-applying a second, coarser date filter.
   const displayKpis = (() => {
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
       const statusCol = key === 'tp'
@@ -1529,8 +1536,9 @@ export default function BrandGroup() {
     // counting, instead of assuming 'tp'.
     const soloPlatform: Platform = getTabPlatforms(decodedTab)[0] ?? 'tp';
     let live = 0, removed = 0;
-    for (const e of kpiBase) {
+    for (const e of ratingFiltered) {
       if (brandCol && isPlatformRemoved(e.data[brandCol], soloPlatform)) continue;
+      if (dateActive && !passesPlatformDateFilter(e.data, soloPlatform, dateFrom, dateTo)) continue;
       const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
       if (statuses.some(isLive)) live++;
       else if (statuses.some(isRemoved)) removed++;
