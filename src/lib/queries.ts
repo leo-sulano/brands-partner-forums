@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
+import { passesPlatformDateFilter } from './scoreSummary.ts';
 import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
@@ -335,23 +336,15 @@ function isPendingStatus(s: string) { return s.includes('pending') || s === 'not
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
-export async function fetchTabKpis(
+export function computeTabKpisFromEntries(
+  entries: Entry[],
+  rawHeaders: string[],
   tab: string,
-  dateFrom?: string,
-  dateTo?: string,
-  removedPlatformBrands: Set<string> = new Set(),
-): Promise<TabKpis> {
-  const [allEntries, rawHeaders] = await Promise.all([
-    fetchAllTabEntries(tab),
-    fetchTabHeaders(tab),
-  ]);
-
-  const brandCol = getBrandNameCol(tab);
-
-  const entries = (dateFrom || dateTo)
-    ? allEntries.filter(e => inDateRange(e.data, dateFrom ?? '', dateTo ?? ''))
-    : allEntries;
-
+  brandCol: string,
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+  removedPlatformBrands: Set<string>,
+): TabKpis {
   // Resolve the actual sheet column name case-insensitively so minor casing
   // differences between tabs don't cause zeroed-out counts.
   function resolveHeader(...variants: string[]): string | null {
@@ -391,19 +384,41 @@ export async function fetchTabKpis(
     const isPlatformFlagged = (platform: Platform) =>
       brand !== '' && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform));
 
-    if (tp && !isPlatformFlagged('tp')) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
-    if (ag && !isPlatformFlagged('ag')) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
-    if (cg && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
-    if (wo && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
+    // Each platform's status is only tallied — for that platform's own
+    // breakdown AND for the tab-level aggregate below — when it falls inside
+    // the selected range according to THAT platform's own date column
+    // (passesPlatformDateFilter), exactly like Score Summary. A row with no
+    // date for a platform still counts (undated rows are always included —
+    // same reasoning as scoreSummary.ts's passesDateFilter). This replaces the
+    // old behavior of picking one date per row from an unrelated cross-tab
+    // fallback chain (dateUtils.ts's inDateRange) and using it to gate every
+    // platform's tally at once, which is what let Overview and Score Summary
+    // disagree on the same tab/platform/range.
+    const tpInRange = !!tp && !isPlatformFlagged('tp') && passesPlatformDateFilter(d, 'tp', dateFrom, dateTo);
+    const agInRange = !!ag && !isPlatformFlagged('ag') && passesPlatformDateFilter(d, 'ag', dateFrom, dateTo);
+    const cgInRange = !!cg && !isPlatformFlagged('cg') && passesPlatformDateFilter(d, 'cg', dateFrom, dateTo);
+    const woInRange = !!wo && !isPlatformFlagged('wo') && passesPlatformDateFilter(d, 'wo', dateFrom, dateTo);
+    // No per-platform date key exists for a bare/unresolved generic status
+    // column (genericCol only fires when none of tp/ag/cg/wo resolved on this
+    // tab at all) — keep the old cross-platform-fallback behavior for this one
+    // narrow, currently-unused-by-any-real-tab case rather than inventing a
+    // new policy for it.
+    const genericInRange = !!generic && ((!dateFrom && !dateTo) || inDateRange(d, dateFrom ?? '', dateTo ?? ''));
 
-    // Unlike the tp/ag/cg/wo-specific counters above, the tab-level aggregate
-    // counters below deliberately do NOT apply per-platform exclusion — the
-    // aggregate isn't platform-specific, so there's no single "the platform"
-    // to exclude against, and a flagged brand's *other* platform data should
-    // still count toward the tab's overall totals.
-    const agg = tp || ag || cg || wo || generic;
-    if (agg) {
-      const statuses = [tp, ag, cg, wo, generic].filter(Boolean);
+    if (tpInRange) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
+    if (agInRange) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
+    if (cgInRange) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
+    if (woInRange) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
+
+    const statuses = [
+      tpInRange ? tp : '',
+      agInRange ? ag : '',
+      cgInRange ? cg : '',
+      woInRange ? wo : '',
+      genericInRange ? generic : '',
+    ].filter(Boolean);
+
+    if (statuses.length > 0) {
       if (statuses.some(isLiveStatus)) live++;
       else if (statuses.some(isRemovedStatus)) removed++;
       else if (statuses.some(isDoneStatus)) done++;
@@ -433,6 +448,20 @@ export async function fetchTabKpis(
     wo: { live: woLive, removed: woRemoved },
     activePlatforms,
   };
+}
+
+export async function fetchTabKpis(
+  tab: string,
+  dateFrom?: string,
+  dateTo?: string,
+  removedPlatformBrands: Set<string> = new Set(),
+): Promise<TabKpis> {
+  const [allEntries, rawHeaders] = await Promise.all([
+    fetchAllTabEntries(tab),
+    fetchTabHeaders(tab),
+  ]);
+  const brandCol = getBrandNameCol(tab);
+  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands);
 }
 
 // ---------------------------------------------------------------------------

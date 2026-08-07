@@ -16,7 +16,10 @@ import {
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
   bulkUpsertBrandSchedule,
+  computeTabKpisFromEntries,
 } from './queries';
+import { computeTabSuccessRates } from './scoreSummary.ts';
+import type { Entry } from '../types/entry.ts';
 
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
 // method returns the same builder, and awaiting it anywhere in the chain
@@ -73,5 +76,57 @@ describe('queries.ts injectable Supabase client', () => {
     expect(fakeFrom).toHaveBeenCalledWith('brand_schedule');
     expect(upsert).toHaveBeenCalled();
     expect(singletonFrom).not.toHaveBeenCalled();
+  });
+});
+
+function entry(id: string, data: Record<string, string | null>): Entry {
+  return { id, tab: 'TP Affiliate', sheet_row_id: id, data, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard', last_sync_tag: null };
+}
+
+describe('computeTabKpisFromEntries', () => {
+  const rawHeaders = ['URL PAGE', 'Trust Pilot', 'TP Review Status'];
+
+  it('excludes a row whose TP date falls outside the range, and includes one whose TP date falls inside it', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('2', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/01/2026', 'TP Review Status': 'Removed' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(kpis.tp).toEqual({ live: 1, removed: 0 });
+    expect(kpis).toMatchObject({ live: 1, removed: 0, total: 1 });
+  });
+
+  it('always counts a Removed row with no TP date at all, regardless of the selected range (regression: previously dropped entirely)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': null, 'TP Review Status': 'Removed' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(kpis.tp).toEqual({ live: 0, removed: 1 });
+    expect(kpis.removed).toBe(1);
+  });
+
+  it('agrees with Score Summary\'s computeTabSuccessRates on the same entries, platform, and range', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('2', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/01/2026', 'TP Review Status': 'Removed' }),
+      entry('3', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': null, 'TP Review Status': 'Removed' }),
+      entry('4', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '15/07/2026', 'TP Review Status': 'Live' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+
+    const rates = computeTabSuccessRates(
+      entries.map((e) => ({ tab: e.tab, data: e.data })) as Parameters<typeof computeTabSuccessRates>[0],
+      'tp',
+      new Set(),
+      { from: new Date(2026, 4, 1), to: new Date(2026, 6, 31) },
+    );
+    const scoreSummaryTp = rates.get('TP Affiliate') ?? { live: 0, removed: 0 };
+
+    // Entry 2's TP date (Jan) is genuinely outside the range, so both
+    // implementations correctly exclude it — only entry 3 (undated) and
+    // entries 1/4 (in-range) should count: live 2 (entries 1, 4), removed 1
+    // (entry 3 only; entry 2 is excluded, not counted as removed).
+    expect(kpis.tp).toEqual({ live: scoreSummaryTp.live, removed: scoreSummaryTp.removed });
+    expect(kpis.tp).toEqual({ live: 2, removed: 1 });
   });
 });
