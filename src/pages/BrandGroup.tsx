@@ -22,6 +22,7 @@ import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, type Platform } from '../lib/scoreSummary';
+import { canonicalCountryKey } from '../lib/countryFlags';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -787,7 +788,7 @@ export default function BrandGroup() {
       // the sidebar's tab links, which never carry a query string — restores
       // the last view instead of always reopening blank.
       const saved = readFiltersFromStorage(decodedTab);
-      const hasDeepLinkParams = ['brand', 'platform', 'status', 'rating'].some((p) => searchParams.has(p));
+      const hasDeepLinkParams = ['brand', 'platform', 'status', 'rating', 'country'].some((p) => searchParams.has(p));
 
       setSearch(saved.search ?? '');
       setBrandFilter(hasDeepLinkParams ? (searchParams.get('brand') ?? '') : (saved.brandFilter ?? ''));
@@ -808,7 +809,7 @@ export default function BrandGroup() {
         : (saved.ratingFilter ?? null));
       setAgentFilter(saved.agentFilter ?? '');
       setProxyFilter(saved.proxyFilter ?? '');
-      setCountryFilter(saved.countryFilter ?? '');
+      setCountryFilter(hasDeepLinkParams ? (searchParams.get('country') ?? '') : (saved.countryFilter ?? ''));
       setDateFrom(saved.dateFrom ?? '');
       setDateTo(saved.dateTo ?? '');
       setPage(1);
@@ -974,6 +975,7 @@ export default function BrandGroup() {
     const s = searchParams.get('status');
     setStatusFilter(STATUS_FILTER_VALUES.includes(s as typeof STATUS_FILTER_VALUES[number]) ? (s as typeof STATUS_FILTER_VALUES[number]) : 'all');
     setBrandFilter(searchParams.get('brand') ?? '');
+    setCountryFilter(searchParams.get('country') ?? '');
     const raw = searchParams.get('rating');
     if (raw === 'unrated') {
       setRatingFilter('unrated');
@@ -1337,7 +1339,7 @@ export default function BrandGroup() {
     : agentFiltered;
 
   const countryFiltered = countryFilter
-    ? proxyFiltered.filter((e) => getEntryCountry(e.data, decodedTab).toLowerCase() === countryFilter.toLowerCase())
+    ? proxyFiltered.filter((e) => canonicalCountryKey(getEntryCountry(e.data, decodedTab)) === canonicalCountryKey(countryFilter))
     : proxyFiltered;
 
   // Platform filter only affects visible columns, not row filtering.
