@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, passesPlatformDateFilter } from './scoreSummary';
 import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
@@ -508,5 +508,38 @@ describe('computeAccountPlatformUsage', () => {
       makeEntry('1', 'TP Brand Injection', { Account: '   ', 'TP Review Status': 'Published' }),
     ];
     expect(computeAccountPlatformUsage(entries).size).toBe(0);
+  });
+});
+
+describe('passesPlatformDateFilter', () => {
+  it('includes a row whose platform-specific date falls inside the range', () => {
+    const data = { 'Trust Pilot': '10/06/2026' };
+    expect(passesPlatformDateFilter(data, 'tp', '2026-05-01', '2026-07-31')).toBe(true);
+  });
+
+  it('excludes a row whose platform-specific date falls outside the range', () => {
+    const data = { 'Trust Pilot': '10/01/2026' };
+    expect(passesPlatformDateFilter(data, 'tp', '2026-05-01', '2026-07-31')).toBe(false);
+  });
+
+  it('always includes a row with no date for that platform, even when the range would otherwise exclude it', () => {
+    const data: Record<string, string | null> = { 'Trust Pilot': null };
+    expect(passesPlatformDateFilter(data, 'tp', '2026-05-01', '2026-07-31')).toBe(true);
+  });
+
+  it('checks only the requested platform\'s own date key, not another platform\'s', () => {
+    // Ask Gambler's date is outside the range, but we're asking about 'cg',
+    // whose own key ('Casino Guru review added') is unset on this row — must
+    // not fall back to AG's value or any other column.
+    const data = {
+      'Ask Gambler review added': '10/01/2026',
+      'Casino Guru review added': null,
+    };
+    expect(passesPlatformDateFilter(data, 'cg', '2026-05-01', '2026-07-31')).toBe(true);
+  });
+
+  it('includes everything when no range is set', () => {
+    const data = { 'Trust Pilot': '10/01/2020' };
+    expect(passesPlatformDateFilter(data, 'tp', undefined, undefined)).toBe(true);
   });
 });

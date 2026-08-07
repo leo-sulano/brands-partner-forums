@@ -213,6 +213,25 @@ function passesDateFilter(
   return true;
 }
 
+// Ranged, ISO-string-based sibling of passesDateFilter, for callers that hold
+// plain 'YYYY-MM-DD' strings (Overview's fetchTabKpis, BrandGroup.tsx's KPI
+// cards) rather than pre-parsed Date bounds — the single source of truth for
+// "is this row, for THIS platform, inside the selected date range", so
+// Overview/BrandGroup/Score Summary can no longer each answer that question
+// their own slightly-different way.
+export function passesPlatformDateFilter(
+  data: Record<string, string | null>,
+  platform: Platform,
+  fromISO?: string,
+  toISO?: string,
+): boolean {
+  const fromDate = fromISO ? isoToDate(fromISO) : null;
+  const toDate = toISO ? isoToDate(toISO) : null;
+  const fromBound = fromDate ? startOfDay(fromDate) : null;
+  const toBound = toDate ? endOfDay(toDate) : null;
+  return passesDateFilter(data, PLATFORM_DATE_KEYS[platform], fromBound, toBound);
+}
+
 export function computeScoreSummary(
   entries: Entry[],
   range: DateRange,
