@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex } from './scheduleUtils';
-import type { BrandScheduleRow } from '../scheduleBrands';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays } from './scheduleUtils';
+import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
 describe('leastLoadedDay', () => {
@@ -91,6 +91,46 @@ describe('unscheduledPlatforms', () => {
   it('excludes a platform with a manually-paused status for that day', () => {
     const rowsByPlatform = { tp: rowWith('tp', { monday: 'paused' }) };
     expect(unscheduledPlatforms(['tp'], 'monday', rowsByPlatform, {})).toEqual([]);
+  });
+});
+
+describe('trailingManualPauseDays', () => {
+  const row = (days: Partial<Record<Weekday, 'active' | 'paused'>>): BrandScheduleRow => ({
+    tab: 'BITP', brand_key: 'x', week_start: '2026-08-03', platform: 'tp',
+    monday: days.monday ?? null, tuesday: days.tuesday ?? null, wednesday: days.wednesday ?? null,
+    thursday: days.thursday ?? null, friday: days.friday ?? null,
+  });
+
+  it('returns the full week when all 5 days are paused', () => {
+    expect(trailingManualPauseDays(row({
+      monday: 'paused', tuesday: 'paused', wednesday: 'paused', thursday: 'paused', friday: 'paused',
+    }))).toEqual(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
+  });
+
+  it('returns the trailing run when Wed-Fri are paused and Mon/Tue are active', () => {
+    expect(trailingManualPauseDays(row({
+      monday: 'active', tuesday: 'active', wednesday: 'paused', thursday: 'paused', friday: 'paused',
+    }))).toEqual(['wednesday', 'thursday', 'friday']);
+  });
+
+  it('returns the trailing run when only Thu-Fri are paused', () => {
+    expect(trailingManualPauseDays(row({ thursday: 'paused', friday: 'paused' }))).toEqual(['thursday', 'friday']);
+  });
+
+  it('returns empty when only Friday is paused (run length 1)', () => {
+    expect(trailingManualPauseDays(row({ friday: 'paused' }))).toEqual([]);
+  });
+
+  it('returns empty when Mon+Tue are paused but the run does not reach Friday', () => {
+    expect(trailingManualPauseDays(row({ monday: 'paused', tuesday: 'paused' }))).toEqual([]);
+  });
+
+  it('returns empty for a scattered/alternating pause pattern', () => {
+    expect(trailingManualPauseDays(row({ monday: 'paused', wednesday: 'paused', friday: 'active' }))).toEqual([]);
+  });
+
+  it('returns empty for an undefined row', () => {
+    expect(trailingManualPauseDays(undefined)).toEqual([]);
   });
 });
 
