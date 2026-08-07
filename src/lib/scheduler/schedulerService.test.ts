@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from './schedulerService';
 import type { PinnedCombo } from './schedulerEngine';
 import { platformRemovedKey } from '../removedPlatformBrands';
+import { platformFlaggedKey } from '../flaggedPlatformBrands';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -306,6 +307,65 @@ describe('recalculatePauses', () => {
       await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
         'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% this month (20% over 5 posts)', undefined,
+      );
+    });
+  });
+
+  describe('flagged-via-email trigger', () => {
+    it('pauses a brand+platform flagged via email even with a healthy record', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' }),
+        ],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Flagged via email notification', undefined,
+      );
+    });
+
+    it('does not pause a brand+platform absent from the flagged set', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'SomeoneElse', 'tp')]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('does not insert a flagged-via-email pause for a combo that already has a row for the week', async () => {
+      queries.fetchBrandSchedule.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it('prefers the flagged-via-email reason over consecutive-removed when both apply', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Flagged via email notification', undefined,
       );
     });
   });

@@ -12,6 +12,7 @@ import {
   computeSuccessRates, successRatePct, type SuccessRate, type DateRange,
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
+import { platformFlaggedKey } from '../flaggedPlatformBrands.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
@@ -28,6 +29,12 @@ export interface TabContext {
   // to "nothing removed") so callers/tests that don't care about this feature
   // don't need to thread an empty Set through everywhere.
   removedPlatformBrandSet?: Set<string>;
+  // Every (tab, brand, platform) manually flagged via the "flagged via
+  // email" toggle -- a third OR-condition in the automatic pause check,
+  // alongside two-consecutive-removed and the monthly success-rate
+  // threshold. Optional, same "defaults to nothing flagged" convention as
+  // removedPlatformBrandSet.
+  flaggedPlatformBrandSet?: Set<string>;
 }
 
 function brandOf(entry: Entry): string {
@@ -127,6 +134,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   ]);
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
+  const flaggedSet = ctx.flaggedPlatformBrandSet ?? new Set<string>();
 
   // Computed once per active platform (not per brand) since each call scans
   // all of ctx.entries — reused by the success-rate pause check below.
@@ -155,6 +163,14 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       }
       const alreadyHasRow = existingRows.some((r) => r.platform === platform && r.brand_key === brandKey);
       if (alreadyHasRow) continue;
+
+      // Highest-priority automatic trigger -- an explicit, human-verified
+      // email notification outranks the inferred consecutive-removed and
+      // success-rate signals below.
+      if (flaggedSet.has(platformFlaggedKey(tab, brand, platform))) {
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Flagged via email notification', client);
+        continue;
+      }
 
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
