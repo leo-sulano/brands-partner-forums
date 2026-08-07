@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+// @ts-expect-error -- ReactNode is unused until Task 5 wires in real usage; kept per plan, remove this directive when Task 5 adds a usage
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
@@ -9,6 +10,8 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
+import BrandFilterDropdown from '../components/BrandFilterDropdown';
+import { mergeDistinctValues } from '../lib/overviewBreakdown';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -298,9 +301,11 @@ export default function Overview() {
   const [state, setState] = useState<State>(initial);
   const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
   const [platformSliceModal, setPlatformSliceModal] = useState<PlatformSliceModalState | null>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
+  const countryFilter = searchParams.get('country') ?? '';
+  const proxyFilter   = searchParams.get('proxy')   ?? '';
 
   const loadData = useCallback(async () => {
     setState(s => ({ ...s, loading: true }));
@@ -310,7 +315,7 @@ export default function Overview() {
         .catch(() => new Set<string>());
       const tabResults = await Promise.all(
         OPERATIONAL_TABS.map((tab) =>
-          fetchTabKpis(tab, dateFrom || undefined, dateTo || undefined, removedPlatformBrands)
+          fetchTabKpis(tab, dateFrom || undefined, dateTo || undefined, removedPlatformBrands, countryFilter || undefined, proxyFilter || undefined)
             .then((kpis): TabSummary => ({ tab, kpis }))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
         )
@@ -319,7 +324,7 @@ export default function Overview() {
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, countryFilter, proxyFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -334,6 +339,26 @@ export default function Overview() {
   const totalAccounts = state.tabs.reduce((s, t) => s + t.kpis.live + t.kpis.removed, 0);
   const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.live,    0);
   const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
+
+  const allCountries = mergeDistinctValues(state.tabs.map((t) => t.kpis.countries));
+  const allProxies   = mergeDistinctValues(state.tabs.map((t) => t.kpis.proxies));
+
+  function updateFilterParam(key: 'country' | 'proxy', value: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (value) next.set(key, value); else next.delete(key);
+      return next;
+    }, { replace: true });
+  }
+
+  function clearCountryProxyFilters() {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete('country');
+      next.delete('proxy');
+      return next;
+    }, { replace: true });
+  }
 
 
   const platformData = [
@@ -361,6 +386,37 @@ export default function Overview() {
 
   return (
     <div className="space-y-8">
+
+      {(allCountries.length > 1 || allProxies.length > 1) && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-slate-500">Filters</span>
+          {allCountries.length > 1 && (
+            <BrandFilterDropdown
+              noun="countrie"
+              value={countryFilter}
+              onChange={(v) => updateFilterParam('country', v)}
+              brands={allCountries}
+            />
+          )}
+          {allProxies.length > 1 && (
+            <BrandFilterDropdown
+              noun="proxie"
+              value={proxyFilter}
+              onChange={(v) => updateFilterParam('proxy', v)}
+              brands={allProxies}
+            />
+          )}
+          {(countryFilter || proxyFilter) && (
+            <button
+              type="button"
+              onClick={clearCountryProxyFilters}
+              className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Global KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
