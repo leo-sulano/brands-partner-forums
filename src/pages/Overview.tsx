@@ -11,6 +11,7 @@ import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import BrandFilterDropdown from '../components/BrandFilterDropdown';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
+import { categoricalColorForKey } from '../lib/categoricalColor';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
@@ -616,17 +617,21 @@ export default function Overview() {
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No country data</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {countryCards.map((card) => (
-              <BreakdownDonutCard
-                key={card.key}
-                title={card.label}
-                icon={<Globe className="size-5 text-slate-500" />}
-                accentColor="#6366f1"
-                live={card.live}
-                removed={card.removed}
-                onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'country', kind)}
-              />
-            ))}
+            {countryCards.map((card) => {
+              const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
+              return (
+                <BreakdownDonutCard
+                  key={card.key}
+                  title={card.label}
+                  icon={<Globe className="size-5" style={{ color }} />}
+                  iconBgClass={card.isOther ? 'bg-slate-100 ring-1 ring-slate-200' : undefined}
+                  accentColor={color}
+                  live={card.live}
+                  removed={card.removed}
+                  onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'country', kind)}
+                />
+              );
+            })}
           </div>
         )}
       </section>
@@ -650,17 +655,21 @@ export default function Overview() {
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No proxy data</p>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {proxyCards.map((card) => (
-              <BreakdownDonutCard
-                key={card.key}
-                title={card.label}
-                icon={<Network className="size-5 text-slate-500" />}
-                accentColor="#0891b2"
-                live={card.live}
-                removed={card.removed}
-                onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind)}
-              />
-            ))}
+            {proxyCards.map((card) => {
+              const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
+              return (
+                <BreakdownDonutCard
+                  key={card.key}
+                  title={card.label}
+                  icon={<Network className="size-5" style={{ color }} />}
+                  iconBgClass={card.isOther ? 'bg-slate-100 ring-1 ring-slate-200' : undefined}
+                  accentColor={color}
+                  live={card.live}
+                  removed={card.removed}
+                  onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind)}
+                />
+              );
+            })}
           </div>
         )}
       </section>

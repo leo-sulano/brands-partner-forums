@@ -14,7 +14,7 @@ export interface BreakdownDonutCardProps {
 export default function BreakdownDonutCard({
   title,
   icon,
-  iconBgClass = 'bg-slate-100 ring-1 ring-slate-200',
+  iconBgClass,
   accentColor,
   live,
   removed,
@@ -36,7 +36,10 @@ export default function BreakdownDonutCard({
       title={onSliceClick ? undefined : 'Aggregate of remaining values — not individually broken out'}
     >
       <div className="mb-4 flex items-center gap-2.5">
-        <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${iconBgClass}`}>
+        <div
+          className={`flex size-8 shrink-0 items-center justify-center rounded-full ${iconBgClass ?? ''}`}
+          style={iconBgClass ? undefined : { backgroundColor: `${accentColor}1a`, boxShadow: `inset 0 0 0 1px ${accentColor}4d` }}
+        >
           {icon}
         </div>
         <span className="truncate text-sm font-semibold text-slate-800" title={title}>{title}</span>
