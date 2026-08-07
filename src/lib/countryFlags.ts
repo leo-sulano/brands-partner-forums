@@ -1,16 +1,23 @@
-// Maps a free-text Country value (as stored per-entry — see getEntryCountry
-// in tab-configs.ts) to its flag emoji. Country is free text sourced from
-// Account labels or manual entry, so this is deliberately permissive: it
-// normalizes case/whitespace and recognizes common aliases (UK, USA, UAE)
-// alongside full country names, and returns null for anything unrecognized
-// so the caller can fall back to a generic icon rather than showing nothing.
-const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
+// Country is free text sourced from Account labels or manual entry (see
+// getEntryCountry in tab-configs.ts), so the same real country can appear
+// under different spellings ("UK" vs "United Kingdom"). This module gives
+// every recognized spelling one canonical identity — an ISO 3166-1 alpha-2
+// code — used to merge them for filtering, breakdown bucketing, and display,
+// plus a real flag icon and a single canonical display name.
+//
+// PRIMARY_COUNTRY_NAMES holds one entry per real country, keyed by its most
+// common full English name. ALIASES maps every other recognized spelling to
+// its primary key, so "UK", "England", and "Great Britain" all resolve to
+// the same "United Kingdom" identity. Unrecognized input falls back to the
+// raw trimmed/lowercased text (still deduped case-insensitively, just not
+// merged with any other spelling — the best we can do for free text).
+const PRIMARY_COUNTRY_NAMES: Record<string, string> = {
   'afghanistan': 'AF', 'albania': 'AL', 'algeria': 'DZ', 'andorra': 'AD',
   'angola': 'AO', 'argentina': 'AR', 'armenia': 'AM', 'australia': 'AU',
   'austria': 'AT', 'azerbaijan': 'AZ', 'bahamas': 'BS', 'bahrain': 'BH',
   'bangladesh': 'BD', 'barbados': 'BB', 'belarus': 'BY', 'belgium': 'BE',
   'belize': 'BZ', 'benin': 'BJ', 'bhutan': 'BT', 'bolivia': 'BO',
-  'bosnia': 'BA', 'bosnia and herzegovina': 'BA', 'botswana': 'BW',
+  'bosnia and herzegovina': 'BA', 'botswana': 'BW',
   'brazil': 'BR', 'brunei': 'BN', 'bulgaria': 'BG', 'burkina faso': 'BF',
   'burundi': 'BI', 'cambodia': 'KH', 'cameroon': 'CM', 'canada': 'CA',
   'cape verde': 'CV', 'chad': 'TD', 'chile': 'CL', 'china': 'CN',
@@ -20,14 +27,14 @@ const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
   'czechia': 'CZ', 'denmark': 'DK', 'djibouti': 'DJ', 'dominica': 'DM',
   'dominican republic': 'DO', 'ecuador': 'EC', 'egypt': 'EG',
   'el salvador': 'SV', 'equatorial guinea': 'GQ', 'eritrea': 'ER',
-  'estonia': 'EE', 'eswatini': 'SZ', 'swaziland': 'SZ', 'ethiopia': 'ET',
+  'estonia': 'EE', 'eswatini': 'SZ', 'ethiopia': 'ET',
   'fiji': 'FJ', 'finland': 'FI', 'france': 'FR', 'gabon': 'GA',
   'gambia': 'GM', 'georgia': 'GE', 'germany': 'DE', 'ghana': 'GH',
   'greece': 'GR', 'grenada': 'GD', 'guatemala': 'GT', 'guinea': 'GN',
   'guinea-bissau': 'GW', 'guyana': 'GY', 'haiti': 'HT', 'honduras': 'HN',
   'hungary': 'HU', 'iceland': 'IS', 'india': 'IN', 'indonesia': 'ID',
   'iran': 'IR', 'iraq': 'IQ', 'ireland': 'IE', 'israel': 'IL',
-  'italy': 'IT', 'ivory coast': 'CI', "cote d'ivoire": 'CI', 'jamaica': 'JM',
+  'italy': 'IT', 'ivory coast': 'CI', 'jamaica': 'JM',
   'japan': 'JP', 'jordan': 'JO', 'kazakhstan': 'KZ', 'kenya': 'KE',
   'kiribati': 'KI', 'kosovo': 'XK', 'kuwait': 'KW', 'kyrgyzstan': 'KG',
   'laos': 'LA', 'latvia': 'LV', 'lebanon': 'LB', 'lesotho': 'LS',
@@ -36,11 +43,11 @@ const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
   'maldives': 'MV', 'mali': 'ML', 'malta': 'MT', 'marshall islands': 'MH',
   'mauritania': 'MR', 'mauritius': 'MU', 'mexico': 'MX', 'micronesia': 'FM',
   'moldova': 'MD', 'monaco': 'MC', 'mongolia': 'MN', 'montenegro': 'ME',
-  'morocco': 'MA', 'mozambique': 'MZ', 'myanmar': 'MM', 'burma': 'MM',
+  'morocco': 'MA', 'mozambique': 'MZ', 'myanmar': 'MM',
   'namibia': 'NA', 'nauru': 'NR', 'nepal': 'NP', 'netherlands': 'NL',
-  'holland': 'NL', 'new zealand': 'NZ', 'nicaragua': 'NI', 'niger': 'NE',
+  'new zealand': 'NZ', 'nicaragua': 'NI', 'niger': 'NE',
   'nigeria': 'NG', 'north korea': 'KP', 'north macedonia': 'MK',
-  'macedonia': 'MK', 'norway': 'NO', 'oman': 'OM', 'pakistan': 'PK',
+  'norway': 'NO', 'oman': 'OM', 'pakistan': 'PK',
   'palau': 'PW', 'palestine': 'PS', 'panama': 'PA', 'papua new guinea': 'PG',
   'paraguay': 'PY', 'peru': 'PE', 'philippines': 'PH', 'poland': 'PL',
   'portugal': 'PT', 'qatar': 'QA', 'romania': 'RO', 'russia': 'RU',
@@ -48,33 +55,74 @@ const COUNTRY_NAME_TO_ISO2: Record<string, string> = {
   'saudi arabia': 'SA', 'senegal': 'SN', 'serbia': 'RS', 'seychelles': 'SC',
   'sierra leone': 'SL', 'singapore': 'SG', 'slovakia': 'SK',
   'slovenia': 'SI', 'solomon islands': 'SB', 'somalia': 'SO',
-  'south africa': 'ZA', 'south korea': 'KR', 'korea': 'KR',
+  'south africa': 'ZA', 'south korea': 'KR',
   'south sudan': 'SS', 'spain': 'ES', 'sri lanka': 'LK', 'sudan': 'SD',
   'suriname': 'SR', 'sweden': 'SE', 'switzerland': 'CH', 'syria': 'SY',
   'taiwan': 'TW', 'tajikistan': 'TJ', 'tanzania': 'TZ', 'thailand': 'TH',
   'timor-leste': 'TL', 'togo': 'TG', 'tonga': 'TO',
   'trinidad and tobago': 'TT', 'tunisia': 'TN', 'turkey': 'TR',
   'turkmenistan': 'TM', 'tuvalu': 'TV', 'uganda': 'UG', 'ukraine': 'UA',
+  'united arab emirates': 'AE', 'united kingdom': 'GB',
+  'united states': 'US',
   'uruguay': 'UY', 'uzbekistan': 'UZ', 'vanuatu': 'VU', 'vatican city': 'VA',
   'venezuela': 'VE', 'vietnam': 'VN', 'yemen': 'YE', 'zambia': 'ZM',
   'zimbabwe': 'ZW',
-  // Common aliases seen in this dataset's free-text Account/Country values.
-  'uk': 'GB', 'u.k.': 'GB', 'united kingdom': 'GB', 'great britain': 'GB',
-  'england': 'GB', 'scotland': 'GB', 'wales': 'GB',
-  'usa': 'US', 'u.s.a.': 'US', 'us': 'US', 'u.s.': 'US',
-  'united states': 'US', 'united states of america': 'US', 'america': 'US',
-  'uae': 'AE', 'u.a.e.': 'AE', 'united arab emirates': 'AE',
-  'emirates': 'AE',
 };
 
-function isoToFlagEmoji(iso2: string): string {
-  return String.fromCodePoint(
-    ...iso2.toUpperCase().split('').map((c) => 0x1f1e6 + c.charCodeAt(0) - 65),
-  );
+const ALIASES: Record<string, string> = {
+  'bosnia': 'bosnia and herzegovina',
+  'swaziland': 'eswatini',
+  "cote d'ivoire": 'ivory coast',
+  'burma': 'myanmar',
+  'holland': 'netherlands',
+  'macedonia': 'north macedonia',
+  'korea': 'south korea',
+  'uk': 'united kingdom', 'u.k.': 'united kingdom',
+  'great britain': 'united kingdom', 'england': 'united kingdom',
+  'scotland': 'united kingdom', 'wales': 'united kingdom',
+  'usa': 'united states', 'u.s.a.': 'united states', 'us': 'united states',
+  'u.s.': 'united states', 'united states of america': 'united states',
+  'america': 'united states',
+  'uae': 'united arab emirates', 'u.a.e.': 'united arab emirates',
+  'emirates': 'united arab emirates',
+};
+
+function resolvePrimaryKey(rawCountry: string): string | null {
+  const key = rawCountry.trim().toLowerCase();
+  if (!key) return null;
+  if (PRIMARY_COUNTRY_NAMES[key]) return key;
+  if (ALIASES[key]) return ALIASES[key];
+  return null;
 }
 
-export function countryFlagEmoji(rawCountry: string): string | null {
-  const key = rawCountry.trim().toLowerCase();
-  const iso2 = COUNTRY_NAME_TO_ISO2[key];
-  return iso2 ? isoToFlagEmoji(iso2) : null;
+const TITLE_CASE_LOWERCASE_WORDS = new Set(['and', 'of', 'the']);
+
+function titleCase(name: string): string {
+  return name.replace(/[a-z]+/gi, (word, offset: number) => {
+    if (offset !== 0 && TITLE_CASE_LOWERCASE_WORDS.has(word.toLowerCase())) return word.toLowerCase();
+    return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  });
+}
+
+// The key every "same real country" merges on — an ISO2 code for anything
+// recognized, else the raw trimmed/lowercased text (unrecognized values
+// still dedupe against themselves, just can't merge with other spellings).
+export function canonicalCountryKey(rawCountry: string): string {
+  const primary = resolvePrimaryKey(rawCountry);
+  return primary ? PRIMARY_COUNTRY_NAMES[primary] : rawCountry.trim().toLowerCase();
+}
+
+// The display name to show for a country — always the canonical full name
+// for anything recognized (so "UK" and "United Kingdom" both display as
+// "United Kingdom"), else the raw value as typed (trimmed only).
+export function canonicalCountryName(rawCountry: string): string {
+  const primary = resolvePrimaryKey(rawCountry);
+  return primary ? titleCase(primary) : rawCountry.trim();
+}
+
+// A real flag image URL (flagcdn.com, SVG) for a recognized country, else
+// null so the caller can fall back to a generic icon.
+export function countryFlagImageUrl(rawCountry: string): string | null {
+  const primary = resolvePrimaryKey(rawCountry);
+  return primary ? `https://flagcdn.com/${PRIMARY_COUNTRY_NAMES[primary].toLowerCase()}.svg` : null;
 }

@@ -253,16 +253,36 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.live).toBe(1);
   });
 
-  it('byCountry buckets live/removed per country case-insensitively, keeping first-seen display casing, and skips entries with no resolvable country (they still count toward the tab total)', () => {
+  it('byCountry buckets live/removed per country case-insensitively, keyed by canonical ISO2 with the canonical display name as label, and skips entries with no resolvable country (they still count toward the tab total)', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'germany' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
-    expect(kpis.byCountry).toEqual({ germany: { label: 'Germany', live: 1, removed: 1 } });
+    expect(kpis.byCountry).toEqual({ DE: { label: 'Germany', live: 1, removed: 1 } });
     expect(kpis.live).toBe(2);
     expect(kpis.removed).toBe(1);
+  });
+
+  it('byCountry merges every recognized spelling of the same real country onto one bucket (regression: UK and United Kingdom previously split into two cards)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'UK' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'United Kingdom' }),
+      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'England' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(kpis.byCountry).toEqual({ GB: { label: 'United Kingdom', live: 2, removed: 1 } });
+    expect(kpis.countries).toEqual(['United Kingdom']);
+  });
+
+  it('countryFilter set to one spelling matches entries recorded under any other alias of the same country', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'UK' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'United Kingdom');
+    expect(kpis.live).toBe(1);
   });
 
   it('byProxy buckets live/removed per proxy and skips entries with a blank Proxy Used value', () => {

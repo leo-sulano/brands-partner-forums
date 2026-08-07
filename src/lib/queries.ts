@@ -3,6 +3,7 @@ import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, C
 import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
 import { getTabColumns, getBrandNameCol, getEntryCountry } from './tab-configs.ts';
+import { canonicalCountryKey, canonicalCountryName } from './countryFlags.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
@@ -336,22 +337,32 @@ function isPendingStatus(s: string) { return s.includes('pending') || s === 'not
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
-function uniqueDisplayValues(raw: (string | null | undefined)[]): string[] {
+function uniqueDisplayValues(
+  raw: (string | null | undefined)[],
+  keyFn: (v: string) => string = (v) => v.toLowerCase(),
+  labelFn: (v: string) => string = (v) => v,
+): string[] {
   const seen = new Map<string, string>();
   for (const v of raw) {
     const trimmed = (v ?? '').trim();
     if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (!seen.has(key)) seen.set(key, trimmed);
+    const key = keyFn(trimmed);
+    if (!seen.has(key)) seen.set(key, labelFn(trimmed));
   }
   return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 }
 
-function addToBreakdown(map: Record<string, CountBreakdown>, rawValue: string | null | undefined, kind: 'live' | 'removed') {
+function addToBreakdown(
+  map: Record<string, CountBreakdown>,
+  rawValue: string | null | undefined,
+  kind: 'live' | 'removed',
+  keyFn: (v: string) => string = (v) => v.toLowerCase(),
+  labelFn: (v: string) => string = (v) => v,
+) {
   const trimmed = (rawValue ?? '').trim();
   if (!trimmed) return;
-  const key = trimmed.toLowerCase();
-  if (!map[key]) map[key] = { label: trimmed, live: 0, removed: 0 };
+  const key = keyFn(trimmed);
+  if (!map[key]) map[key] = { label: labelFn(trimmed), live: 0, removed: 0 };
   map[key][kind]++;
 }
 
@@ -390,13 +401,13 @@ export function computeTabKpisFromEntries(
 
   const filteredEntries = (countryFilter || proxyFilter)
     ? entries.filter((e) => {
-        if (countryFilter && getEntryCountry(e.data, tab).toLowerCase() !== countryFilter.trim().toLowerCase()) return false;
+        if (countryFilter && canonicalCountryKey(getEntryCountry(e.data, tab)) !== canonicalCountryKey(countryFilter)) return false;
         if (proxyFilter && (e.data['Proxy Used'] ?? '').trim().toLowerCase() !== proxyFilter.trim().toLowerCase()) return false;
         return true;
       })
     : entries;
 
-  const countries = uniqueDisplayValues(entries.map((e) => getEntryCountry(e.data, tab)));
+  const countries = uniqueDisplayValues(entries.map((e) => getEntryCountry(e.data, tab)), canonicalCountryKey, canonicalCountryName);
   const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']));
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
@@ -461,11 +472,11 @@ export function computeTabKpisFromEntries(
     if (statuses.length > 0) {
       if (statuses.some(isLiveStatus)) {
         live++;
-        addToBreakdown(byCountry, getEntryCountry(d, tab), 'live');
+        addToBreakdown(byCountry, getEntryCountry(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
         addToBreakdown(byProxy, d['Proxy Used'], 'live');
       } else if (statuses.some(isRemovedStatus)) {
         removed++;
-        addToBreakdown(byCountry, getEntryCountry(d, tab), 'removed');
+        addToBreakdown(byCountry, getEntryCountry(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
         addToBreakdown(byProxy, d['Proxy Used'], 'removed');
       }
       else if (statuses.some(isDoneStatus)) done++;

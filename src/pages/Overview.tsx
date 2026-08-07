@@ -10,9 +10,10 @@ import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import BrandFilterDropdown from '../components/BrandFilterDropdown';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
+import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
 import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
-import { countryFlagEmoji } from '../lib/countryFlags';
+import { countryFlagImageUrl } from '../lib/countryFlags';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
@@ -347,14 +348,14 @@ export default function Overview() {
     kind: 'live' | 'removed',
   ) {
     if (card.isOther) return;
-    const flag = dimension === 'country' ? countryFlagEmoji(card.label) : null;
-    const icon = flag
-      ? <span className="text-base leading-none" role="img" aria-label={card.label}>{flag}</span>
+    const flagUrl = dimension === 'country' ? countryFlagImageUrl(card.label) : null;
+    const icon = flagUrl
+      ? <img src={flagUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       : dimension === 'country'
         ? <Globe className="size-4 text-slate-500" />
         : <Network className="size-4 text-slate-500" />;
-    const rowIcon = flag
-      ? <span className="text-sm leading-none shrink-0" role="img" aria-label={card.label}>{flag}</span>
+    const rowIcon = flagUrl
+      ? <img src={flagUrl} alt={card.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       : dimension === 'country'
         ? <Globe className="size-3.5 shrink-0 text-slate-400" />
         : <Network className="size-3.5 shrink-0 text-slate-400" />;
@@ -614,35 +615,27 @@ export default function Overview() {
           </p>
         </div>
         {state.loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
+          <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
         ) : countryCards.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No country data</p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {countryCards.map((card) => {
+          <BreakdownRankedList
+            rows={countryCards.map((card): BreakdownRow => {
               const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
-              const flag = card.isOther ? null : countryFlagEmoji(card.label);
-              return (
-                <BreakdownDonutCard
-                  key={card.key}
-                  title={card.label}
-                  icon={flag
-                    ? <span className="text-xl leading-none" role="img" aria-label={card.label}>{flag}</span>
-                    : <Globe className="size-5" style={{ color }} />
-                  }
-                  iconBgClass={card.isOther ? 'bg-slate-100 ring-1 ring-slate-200' : undefined}
-                  accentColor={color}
-                  live={card.live}
-                  removed={card.removed}
-                  onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'country', kind)}
-                />
-              );
+              const flagUrl = card.isOther ? null : countryFlagImageUrl(card.label);
+              return {
+                key: card.key,
+                label: card.label,
+                live: card.live,
+                removed: card.removed,
+                muted: card.isOther,
+                icon: flagUrl
+                  ? <img src={flagUrl} alt={card.label} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  : <Globe className="size-4" style={{ color }} />,
+                onRowClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'country', kind),
+              };
             })}
-          </div>
+          />
         )}
       </section>
 
@@ -656,31 +649,24 @@ export default function Overview() {
           </p>
         </div>
         {state.loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
+          <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
         ) : proxyCards.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No proxy data</p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {proxyCards.map((card) => {
+          <BreakdownRankedList
+            rows={proxyCards.map((card): BreakdownRow => {
               const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
-              return (
-                <BreakdownDonutCard
-                  key={card.key}
-                  title={card.label}
-                  icon={<Network className="size-5" style={{ color }} />}
-                  iconBgClass={card.isOther ? 'bg-slate-100 ring-1 ring-slate-200' : undefined}
-                  accentColor={color}
-                  live={card.live}
-                  removed={card.removed}
-                  onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind)}
-                />
-              );
+              return {
+                key: card.key,
+                label: card.label,
+                live: card.live,
+                removed: card.removed,
+                muted: card.isOther,
+                icon: <Network className="size-4" style={{ color }} />,
+                onRowClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind),
+              };
             })}
-          </div>
+          />
         )}
       </section>
 
