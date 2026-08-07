@@ -533,7 +533,7 @@ export default function SchedulePlanner() {
                 filteredBrands.map((brand) => {
                   const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
                   const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
-                  const manualPausedPlatforms = activePlatforms
+                  const manualPausedPlatforms = brandPlatforms(brand)
                     .filter((p) => !pausesByPlatform[p])
                     .map((p) => ({ platform: p, days: trailingManualPauseDays(rowsByPlatform[p]) }))
                     .filter((x) => x.days.length > 0);
