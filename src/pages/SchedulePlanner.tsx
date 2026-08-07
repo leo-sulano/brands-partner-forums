@@ -20,7 +20,7 @@ import { buildFlaggedPlatformBrandSet } from '../lib/flaggedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
@@ -533,6 +533,10 @@ export default function SchedulePlanner() {
                 filteredBrands.map((brand) => {
                   const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
                   const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
+                  const manualPausedPlatforms = activePlatforms
+                    .filter((p) => !pausesByPlatform[p])
+                    .map((p) => ({ platform: p, days: trailingManualPauseDays(rowsByPlatform[p]) }))
+                    .filter((x) => x.days.length > 0);
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
@@ -583,10 +587,13 @@ export default function SchedulePlanner() {
                         );
                       })}
                       <td className="px-3 py-2 text-left">
-                        {pausedPlatforms.length > 0 && (
+                        {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0) && (
                           <div className="flex flex-wrap gap-1">
                             {pausedPlatforms.map((p) => (
-                              <PausedPlatformIndicator key={p} platform={p} pause={pausesByPlatform[p] as BrandPlatformPause} />
+                              <PausedPlatformIndicator key={p} platform={p} source="system" pause={pausesByPlatform[p] as BrandPlatformPause} />
+                            ))}
+                            {manualPausedPlatforms.map(({ platform, days }) => (
+                              <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} />
                             ))}
                           </div>
                         )}

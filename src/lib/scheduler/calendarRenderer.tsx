@@ -1,4 +1,5 @@
 import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
+import { WEEKDAY_LABELS } from '../scheduleBrands';
 import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms } from './scheduleUtils';
@@ -141,10 +142,9 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
   );
 }
 
-interface PausedPlatformIndicatorProps {
-  platform: Platform;
-  pause: BrandPlatformPause;
-}
+type PausedPlatformIndicatorProps =
+  | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
+  | { platform: Platform; source: 'manual'; days: Weekday[] };
 
 function resumeWeekLabel(pausedWeekStart: string): string {
   const [y, m, d] = pausedWeekStart.split('-').map(Number);
@@ -153,21 +153,34 @@ function resumeWeekLabel(pausedWeekStart: string): string {
   return resume.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-export function PausedPlatformIndicator({ platform, pause }: PausedPlatformIndicatorProps) {
-  // "Manually paused" (Task 7) and "Flagged via email notification" (Task 6)
-  // both persist for as long as the override/flag stays set -- their
-  // paused_week_start gets re-upserted to the current week on every
-  // recalculatePauses run, so unlike a real auto-detected pause they don't
-  // actually auto-resume next week. Showing "Resumes week of ..." for them
-  // would be misleading.
-  const autoExpires = pause.reason !== PERSISTENT_PAUSE_REASONS.manual && pause.reason !== PERSISTENT_PAUSE_REASONS.flagged;
-  const title = autoExpires
-    ? `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`
-    : `Reason: ${pause.reason}\nStays paused until manually cleared`;
+// The manual branch is deliberately terse with no resume/expiry line: unlike
+// a brand_platform_pause row, a manual per-day pause isn't a tracked,
+// auto-expiring state — it's just this week's brand_schedule row. A future
+// week starts fresh with its own independently-clicked or freshly-generated
+// days, so there's nothing accurate to claim about when it "ends."
+function titleFor(props: PausedPlatformIndicatorProps): string {
+  if (props.source === 'system') {
+    const { pause } = props;
+    // "Manually paused" (Task 7) and "Flagged via email notification" (Task 6)
+    // both persist for as long as the override/flag stays set -- their
+    // paused_week_start gets re-upserted to the current week on every
+    // recalculatePauses run, so unlike a real auto-detected pause they don't
+    // actually auto-resume next week. Showing "Resumes week of ..." for them
+    // would be misleading.
+    const autoExpires = pause.reason !== PERSISTENT_PAUSE_REASONS.manual && pause.reason !== PERSISTENT_PAUSE_REASONS.flagged;
+    return autoExpires
+      ? `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`
+      : `Reason: ${pause.reason}\nStays paused until manually cleared`;
+  }
+  return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;
+}
+
+export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
+  const { platform } = props;
   return (
     <span
       className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500"
-      title={title}
+      title={titleFor(props)}
     >
       ⛔
       <img
