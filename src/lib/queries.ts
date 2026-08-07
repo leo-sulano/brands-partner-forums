@@ -9,7 +9,7 @@ import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } fro
 import type { Mention, MentionStatus } from '../types/mention.ts';
 import type { Entry } from '../types/entry.ts';
 import type { Profile } from '../types/profile.ts';
-import type { BrandEntry, TabKpis, CountBreakdown, BrandStatusList } from '../types/brand-entry.ts';
+import type { BrandEntry, TabKpis, CountBreakdown } from '../types/brand-entry.ts';
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 
 // ---------------------------------------------------------------------------
@@ -366,21 +366,6 @@ function addToBreakdown(
   map[key][kind]++;
 }
 
-// Records which brand+tab contributed to a given key's live/removed count,
-// so a slice-detail modal can list individual brands rather than only a
-// per-tab total. Skips entries with no resolvable brand name.
-function addBrandEntry(
-  map: Record<string, BrandStatusList>,
-  key: string,
-  tab: string,
-  brand: string,
-  kind: 'live' | 'removed',
-) {
-  if (!brand) return;
-  if (!map[key]) map[key] = { live: [], removed: [] };
-  map[key][kind].push({ tab, brand });
-}
-
 export function computeTabKpisFromEntries(
   entries: Entry[],
   rawHeaders: string[],
@@ -426,14 +411,6 @@ export function computeTabKpisFromEntries(
   const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']));
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
-  const platformBrands: Record<'tp' | 'ag' | 'cg' | 'wo', BrandStatusList> = {
-    tp: { live: [], removed: [] },
-    ag: { live: [], removed: [] },
-    cg: { live: [], removed: [] },
-    wo: { live: [], removed: [] },
-  };
-  const byCountryBrands: Record<string, BrandStatusList> = {};
-  const byProxyBrands: Record<string, BrandStatusList> = {};
 
   for (const entry of filteredEntries) {
     const d = entry.data;
@@ -479,22 +456,10 @@ export function computeTabKpisFromEntries(
     // policy for an unverified case.
     const genericInRange = !!generic && ((!dateFrom && !dateTo) || inDateRange(d, dateFrom ?? '', dateTo ?? ''));
 
-    if (tpDateOk && !isPlatformFlagged('tp')) {
-      if (isLiveStatus(tp)) { tpLive++; addBrandEntry(platformBrands, 'tp', tab, brand, 'live'); }
-      else if (isRemovedStatus(tp)) { tpRemoved++; addBrandEntry(platformBrands, 'tp', tab, brand, 'removed'); }
-    }
-    if (agDateOk && !isPlatformFlagged('ag')) {
-      if (isLiveStatus(ag)) { agLive++; addBrandEntry(platformBrands, 'ag', tab, brand, 'live'); }
-      else if (isRemovedStatus(ag)) { agRemoved++; addBrandEntry(platformBrands, 'ag', tab, brand, 'removed'); }
-    }
-    if (cgDateOk && !isPlatformFlagged('cg')) {
-      if (isLiveStatus(cg)) { cgLive++; addBrandEntry(platformBrands, 'cg', tab, brand, 'live'); }
-      else if (isRemovedStatus(cg)) { cgRemoved++; addBrandEntry(platformBrands, 'cg', tab, brand, 'removed'); }
-    }
-    if (woDateOk && !isPlatformFlagged('wo')) {
-      if (isLiveStatus(wo)) { woLive++; addBrandEntry(platformBrands, 'wo', tab, brand, 'live'); }
-      else if (isRemovedStatus(wo)) { woRemoved++; addBrandEntry(platformBrands, 'wo', tab, brand, 'removed'); }
-    }
+    if (tpDateOk && !isPlatformFlagged('tp')) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
+    if (agDateOk && !isPlatformFlagged('ag')) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
+    if (cgDateOk && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
+    if (woDateOk && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
 
     const statuses = [
       tpDateOk ? tp : '',
@@ -507,18 +472,12 @@ export function computeTabKpisFromEntries(
     if (statuses.length > 0) {
       if (statuses.some(isLiveStatus)) {
         live++;
-        const countryRaw = getEntryCountry(d, tab);
-        addToBreakdown(byCountry, countryRaw, 'live', canonicalCountryKey, canonicalCountryName);
-        if (countryRaw.trim()) addBrandEntry(byCountryBrands, canonicalCountryKey(countryRaw), tab, brand, 'live');
+        addToBreakdown(byCountry, getEntryCountry(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
         addToBreakdown(byProxy, d['Proxy Used'], 'live');
-        if ((d['Proxy Used'] ?? '').trim()) addBrandEntry(byProxyBrands, (d['Proxy Used'] ?? '').trim().toLowerCase(), tab, brand, 'live');
       } else if (statuses.some(isRemovedStatus)) {
         removed++;
-        const countryRaw = getEntryCountry(d, tab);
-        addToBreakdown(byCountry, countryRaw, 'removed', canonicalCountryKey, canonicalCountryName);
-        if (countryRaw.trim()) addBrandEntry(byCountryBrands, canonicalCountryKey(countryRaw), tab, brand, 'removed');
+        addToBreakdown(byCountry, getEntryCountry(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
         addToBreakdown(byProxy, d['Proxy Used'], 'removed');
-        if ((d['Proxy Used'] ?? '').trim()) addBrandEntry(byProxyBrands, (d['Proxy Used'] ?? '').trim().toLowerCase(), tab, brand, 'removed');
       }
       else if (statuses.some(isDoneStatus)) done++;
       else if (statuses.some(isPendingStatus)) pending++;
@@ -550,9 +509,6 @@ export function computeTabKpisFromEntries(
     byProxy,
     countries,
     proxies,
-    platformBrands,
-    byCountryBrands,
-    byProxyBrands,
   };
 }
 

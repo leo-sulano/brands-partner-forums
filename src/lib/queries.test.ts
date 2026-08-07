@@ -303,37 +303,4 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.countries).toEqual(['France', 'Germany']);
     expect(kpis.proxies).toEqual(['Enigma-US1', 'Enigma-US2']);
   });
-
-  it('platformBrands records which brand+tab contributed to each platform\'s live/removed count, for the drill-down modal', () => {
-    const entries = [
-      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
-      entry('2', { 'URL PAGE': 'Lucky7even', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
-    ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
-    expect(kpis.platformBrands.tp.live).toEqual([{ tab: 'TP Affiliate', brand: 'Aussie Online Pokies' }]);
-    expect(kpis.platformBrands.tp.removed).toEqual([{ tab: 'TP Affiliate', brand: 'Lucky7even' }]);
-    expect(kpis.platformBrands.ag).toEqual({ live: [], removed: [] });
-  });
-
-  it('byCountryBrands records which brand+tab contributed to a country\'s live/removed count, keyed by the same canonical key as byCountry', () => {
-    const entries = [
-      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'UK' }),
-      entry('2', { 'URL PAGE': 'Lucky7even', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'United Kingdom' }),
-    ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
-    expect(kpis.byCountryBrands.GB.live).toEqual([
-      { tab: 'TP Affiliate', brand: 'Aussie Online Pokies' },
-      { tab: 'TP Affiliate', brand: 'Lucky7even' },
-    ]);
-  });
-
-  it('byProxyBrands records which brand+tab contributed to a proxy\'s live/removed count, and skips entries with no brand name', () => {
-    const entries = [
-      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'Enigma-US1' }),
-      entry('2', { 'URL PAGE': '', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'Enigma-US1' }),
-    ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
-    expect(kpis.byProxyBrands['enigma-us1'].removed).toEqual([{ tab: 'TP Affiliate', brand: 'Aussie Online Pokies' }]);
-    expect(kpis.byProxy['enigma-us1'].removed).toBe(2);
-  });
 });
