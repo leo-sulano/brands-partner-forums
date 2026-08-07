@@ -2055,3 +2055,16 @@ The user caught, live, that Task 181's new Country/Proxy Breakdown sections look
 - Full suite (347 tests) and build both pass. Pushed directly to `main`, per this repo's standing Vercel-deployment-tagging rule. No spec/plan written — a small, same-day visual follow-up fix on Task 181, not a new feature.
 
 ---
+
+## Task 183: Country Breakdown Cards — Real Flag Emoji Icons
+
+**Date:** August 7, 2026
+
+Follow-up to Task 182: the user asked for each Country Breakdown card's icon to be that country's actual flag instead of the generic globe icon.
+
+- Added `src/lib/countryFlags.ts` (`countryFlagEmoji`), a free-text country-name → flag-emoji lookup covering ~190 country names plus common aliases seen in this dataset's Account-derived Country values (UK/United Kingdom, USA/United States/America, UAE/United Arab Emirates, etc.) — case-insensitive, whitespace-trimmed, returns `null` for anything unrecognized so callers can fall back rather than render nothing. Flags are generated from ISO 3166-1 alpha-2 codes via the standard regional-indicator-symbol Unicode technique, not an image/icon-font dependency.
+- `Overview.tsx`'s Country Breakdown cards now render the matched flag emoji as the card icon when `countryFlagEmoji(card.label)` resolves, falling back to the existing color-tinted `Globe` icon (Task 182) when it doesn't — so an unrecognized or malformed Country value still gets a sensible icon rather than breaking. The "Other" aggregate card is excluded from flag lookup entirely (no single country to represent). The Country drill-down modal (`openDimensionSlice`) got the same flag-or-fallback treatment for its header/row icons, so a card and its modal always show the same icon. Proxy Breakdown is untouched — proxies have no natural flag equivalent.
+- 4 new unit tests (`countryFlags.test.ts`): full-name lookup, case/whitespace insensitivity, the three aliased names, and the null fallback for unrecognized input.
+- Full suite (351 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a small, same-day icon follow-up, not a new feature.
+
+---
