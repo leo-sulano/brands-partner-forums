@@ -48,7 +48,7 @@ Deno.test('buildTabContext derives brands from raw entries, deduped and sorted, 
   const ctx = await buildTabContext('Wizard of Odds', client);
   assertEquals(ctx.brands, ['BrandB', 'WinMega']);
   assertEquals(ctx.activePlatforms, ['wo']);
-  assertEquals(ctx.removedPlatformBrandSet.size, 0);
+  assertEquals(ctx.removedPlatformBrandSet?.size ?? 0, 0);
 });
 
 Deno.test('buildTabContext falls back to TAB_DEFAULT_BRAND when no entry has a brand value', async () => {
