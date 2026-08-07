@@ -1,8 +1,18 @@
 /// <reference path="./vite-env-shim.d.ts" />
+// This repo is a monorepo checkout with a root node_modules present, so a
+// plain `deno check supabase/functions/generate-weekly-schedule/index.ts`
+// run from the repo can silently resolve `@supabase/supabase-js` via
+// node_modules instead of via this directory's deno.json import map (npm:
+// specifier) — a typo'd or missing deno.json would go undetected by that
+// form even though it would break at actual deploy time, where no
+// node_modules exists. The form that genuinely exercises the import map is:
+//   deno check --no-lock --node-modules-dir=none \
+//     --config supabase/functions/generate-weekly-schedule/deno.json \
+//     supabase/functions/generate-weekly-schedule/index.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { OPERATIONAL_TABS } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, invalidateTabCache } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
@@ -65,6 +75,17 @@ export async function generateAllTabs(
     } catch (err) {
       console.error(`[generate-weekly-schedule] ${tab} failed:`, err);
       results[tab] = `error: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      // fetchAllTabEntries (src/lib/queries.ts) caches every tab's full
+      // entry list — heavy `data` jsonb, up to ~2000+ rows per tab — in a
+      // module-level Map for 60s with no write-side eviction. This loop
+      // runs all 11 OPERATIONAL_TABS in one invocation, so without an
+      // explicit evict here the isolate would hold every tab's cached
+      // entries simultaneously by the time the loop finishes (a plausible
+      // OOM risk), and since Edge isolates get reused across invocations, a
+      // second invocation within that 60s window could read another tab's
+      // stale cached entries. Evict after every tab, success or failure.
+      invalidateTabCache(tab);
     }
   }
   return results;
@@ -72,6 +93,13 @@ export async function generateAllTabs(
 
 Deno.serve(async (_req: Request): Promise<Response> => {
   const client = createClient(SUPABASE_URL, SERVICE_ROLE);
+  // Computed in the runtime's local zone (UTC on Supabase Edge). This is
+  // only correct because the migration's cron
+  // (supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql)
+  // is scheduled at `0 1 * * 1` UTC = 09:00 Asia/Manila Monday, safely past
+  // local midnight. Changing the cron time, or manually invoking this
+  // function before 09:00 Manila on a Monday (00:00-08:00 Manila = 16:00-24:00
+  // UTC Sunday), will silently compute the *previous* week instead.
   const weekStart = toISODate(mondayOf(new Date()));
   const results = await generateAllTabs(OPERATIONAL_TABS, weekStart, client);
   return new Response(JSON.stringify({ weekStart, results }), {

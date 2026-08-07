@@ -294,6 +294,25 @@ describe('ensureWeekGenerated', () => {
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'cg' });
   });
 
+  // Regression test for the Edge Function's service-role client: a real
+  // write only lands in the right place if the client explicitly passed
+  // into ensureWeekGenerated actually reaches bulkUpsertBrandSchedule,
+  // not just fetchBrandSchedule/fetchActiveBrandPlatformPauses (already
+  // covered by recalculatePauses's own "forwards an explicitly-passed
+  // client" test above). This is the one write that produces this
+  // feature's actual output, so a future edit that forgets to thread
+  // `client` through to bulkUpsertBrandSchedule needs a test to catch it.
+  it('forwards an explicitly-passed client through to bulkUpsertBrandSchedule', async () => {
+    const fakeClient = { marker: 'fake' } as any;
+    // beforeEach already sets fetchBrandSchedule to resolve [] for any week,
+    // and a single brand/platform with no existing rows guarantees at least
+    // one slot is generated, so bulkUpsertBrandSchedule is genuinely called.
+    const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['cg'], entries: [] };
+    await ensureWeekGenerated('BITP', '2026-08-03', ctx, [], fakeClient);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledWith(expect.any(Array), fakeClient);
+  });
+
   // End-to-end check that `resumedThisWeek` (as produced by recalculatePauses)
   // actually reaches the engine as `resumingBrandPlatforms` and influences the
   // written schedule, rather than only being verified by reading the code.
