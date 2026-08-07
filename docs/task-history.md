@@ -2134,3 +2134,17 @@ The user caught, live via screenshot, that Task 187's brand-level modal was wron
 - Full suite (370 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day correction of Task 187.
 
 ---
+
+## Task 189: Country Breakdown — Single-Row Layout with In-Bar Counts
+
+**Date:** August 7, 2026
+
+The user asked, from a mockup + screenshot, to collapse each Country Breakdown row back to one line, show the actual published/removed count numbers directly on the bar's two segments (not just color), then the total, then the rate — in that order, at the end of the row.
+
+- `BreakdownRankedList.tsx` (Country Breakdown) dropped the second-line Published/Removed legend added in Task 187 — each country is a single row again: icon, name, bar, total, rate.
+- The bar grew from a decorative `h-2.5` strip to `h-6`, tall enough to render each segment's own count as centered white text directly on that segment (e.g. the green segment shows its Published count, the red segment its Removed count) — a segment hides its own number rather than showing it clipped/overflowing when its share is under ~12% of the bar's width. Segments stay independently clickable (Published/Removed), unchanged from before.
+- Row order after the bar: total count, then the published rate percentage — matching the requested "total ... then before the rate."
+- Proxy Breakdown (`BreakdownStatGrid`) is untouched — this request was scoped to Country Breakdown only.
+- Full suite (637 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day layout follow-up on Task 187/188.
+
+---
