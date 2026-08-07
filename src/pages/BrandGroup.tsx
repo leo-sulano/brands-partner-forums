@@ -18,7 +18,7 @@ import { platformRemovedKey, buildRemovedPlatformBrandSet } from '../lib/removed
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, type Platform } from '../lib/scoreSummary';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -1475,11 +1475,12 @@ export default function BrandGroup() {
         : (headers.find((h) => h.toLowerCase() === PLATFORM_STATUS_COL[key].toLowerCase()) ?? null);
       if (!statusCol) return { live: 0, removed: 0 };
       let live = 0, removed = 0;
-      for (const e of kpiBase) {
+      for (const e of ratingFiltered) {
         // A brand whose page on THIS platform has been delisted entirely
         // shouldn't count toward this card's Live/Removed totals — independent
         // per platform, matching the same exclusion applied in Score Summary.
         if (brandCol && isPlatformRemoved(e.data[brandCol], key)) continue;
+        if (dateActive && !passesPlatformDateFilter(e.data, key, dateFrom, dateTo)) continue;
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
         else if (isRemoved(v)) removed++;
