@@ -3,13 +3,14 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
   Syringe, Link2, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, Star,
+  Globe, Network,
   type LucideIcon,
 } from 'lucide-react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import BrandFilterDropdown from '../components/BrandFilterDropdown';
-import { mergeDistinctValues } from '../lib/overviewBreakdown';
+import BreakdownDonutCard from '../components/BreakdownDonutCard';
+import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
@@ -332,6 +333,35 @@ export default function Overview() {
   const allCountries = mergeDistinctValues(state.tabs.map((t) => t.kpis.countries));
   const allProxies   = mergeDistinctValues(state.tabs.map((t) => t.kpis.proxies));
 
+  const BREAKDOWN_TOP_N = 8;
+  const countryCards = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry)), BREAKDOWN_TOP_N);
+  const proxyCards   = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy)),   BREAKDOWN_TOP_N);
+
+  function openDimensionSlice(
+    card: { key: string; label: string; isOther: boolean },
+    dimension: 'country' | 'proxy',
+    kind: 'live' | 'removed',
+  ) {
+    if (card.isOther) return;
+    const icon = dimension === 'country'
+      ? <Globe className="size-4 text-slate-500" />
+      : <Network className="size-4 text-slate-500" />;
+    const rowIcon = dimension === 'country'
+      ? <Globe className="size-3.5 shrink-0 text-slate-400" />
+      : <Network className="size-3.5 shrink-0 text-slate-400" />;
+    setSliceModal({
+      title: card.label,
+      headerIcon: icon,
+      rowIcon,
+      kind,
+      rows: state.tabs.map((t) => ({
+        tab: t.tab,
+        count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
+      })),
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}`,
+    });
+  }
+
   function updateFilterParam(key: 'country' | 'proxy', value: string) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -542,100 +572,87 @@ export default function Overview() {
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {platformData.map((p) => {
-              const total = p.Live + p.Removed;
-              const color = PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS];
-              const slices = total > 0
-                ? [
-                    { label: 'Published', value: p.Live,    fill: '#10b981' },
-                    { label: 'Removed',   value: p.Removed, fill: '#f43f5e' },
-                  ]
-                : [{ label: 'No data', value: 1, fill: '#e2e8f0' }];
-              const livePct    = total > 0 ? ((p.Live    / total) * 100).toFixed(1) : '0.0';
-              const removedPct = total > 0 ? ((p.Removed / total) * 100).toFixed(1) : '0.0';
-              return (
-                <div key={p.name} className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
-                  {/* Platform header */}
-                  <div className="mb-4 flex items-center gap-2.5">
-                    <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${PLATFORM_ICON_BG[p.name] ?? 'bg-slate-100 ring-1 ring-slate-200'}`}>
-                      <img
-                        src={PLATFORM_LOGOS[p.name]}
-                        alt={p.name}
-                        className="size-5 rounded-sm object-contain"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
-                    </div>
-                    <span className="text-sm font-semibold text-slate-800">
-                      {p.name === 'WizardOfOdds' ? 'Wizard of Odds' : p.name}
-                    </span>
-                  </div>
+            {platformData.map((p) => (
+              <BreakdownDonutCard
+                key={p.name}
+                title={p.name === 'WizardOfOdds' ? 'Wizard of Odds' : p.name}
+                icon={
+                  <img
+                    src={PLATFORM_LOGOS[p.name]}
+                    alt={p.name}
+                    className="size-5 rounded-sm object-contain"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                }
+                iconBgClass={PLATFORM_ICON_BG[p.name] ?? 'bg-slate-100 ring-1 ring-slate-200'}
+                accentColor={PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS]}
+                live={p.Live}
+                removed={p.Removed}
+                onSliceClick={(kind) => openPlatformSlice(p.name, kind)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-                  {/* Body: donut + legend */}
-                  <div className="flex items-center gap-3">
-                    <div className="relative shrink-0">
-                      <ResponsiveContainer width={120} height={120}>
-                        <PieChart>
-                          <Pie
-                            data={slices}
-                            cx="50%"
-                            cy="50%"
-                            innerRadius={38}
-                            outerRadius={56}
-                            dataKey="value"
-                            startAngle={90}
-                            endAngle={-270}
-                            stroke="#fff"
-                            strokeWidth={2}
-                            labelLine={false}
-                            style={{ cursor: total > 0 ? 'pointer' : 'default' }}
-                            onClick={(data) => {
-                              if (total === 0 || data.label === 'No data') return;
-                              openPlatformSlice(p.name, data.label === 'Published' ? 'live' : 'removed');
-                            }}
-                          >
-                            {slices.map((s) => (
-                              <Cell key={s.label} fill={s.fill} />
-                            ))}
-                          </Pie>
-                          <Tooltip
-                            formatter={(value: number, name: string) => [value.toLocaleString(), name]}
-                            contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                      <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-base font-bold font-mono tabular-nums leading-tight" style={{ color }}>{livePct}%</span>
-                        <span className="text-[10px] font-medium text-slate-400">published</span>
-                      </div>
-                    </div>
+      {/* Country breakdown */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-800">Country Breakdown</h2>
+          <p className="mt-0.5 text-xs text-slate-400">Published vs. removed by country</p>
+        </div>
+        {state.loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
+        ) : countryCards.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No country data</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {countryCards.map((card) => (
+              <BreakdownDonutCard
+                key={card.key}
+                title={card.label}
+                icon={<Globe className="size-5 text-slate-500" />}
+                accentColor="#6366f1"
+                live={card.live}
+                removed={card.removed}
+                onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'country', kind)}
+              />
+            ))}
+          </div>
+        )}
+      </section>
 
-                    {/* Legend */}
-                    <div className="flex flex-1 flex-col gap-2.5 text-xs">
-                      <button
-                        type="button"
-                        disabled={total === 0}
-                        onClick={() => openPlatformSlice(p.name, 'live')}
-                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
-                      >
-                        <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" />
-                        <span className="text-slate-500">Published</span>
-                        <span className="ml-auto font-semibold text-slate-800">{livePct}%</span>
-                      </button>
-                      <button
-                        type="button"
-                        disabled={total === 0}
-                        onClick={() => openPlatformSlice(p.name, 'removed')}
-                        className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
-                      >
-                        <span className="size-2.5 shrink-0 rounded-full bg-rose-400" />
-                        <span className="text-slate-500">Removed</span>
-                        <span className="ml-auto font-semibold text-slate-800">{removedPct}%</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+      {/* Proxy breakdown */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-800">Proxy Breakdown</h2>
+          <p className="mt-0.5 text-xs text-slate-400">Published vs. removed by proxy</p>
+        </div>
+        {state.loading ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
+        ) : proxyCards.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No proxy data</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {proxyCards.map((card) => (
+              <BreakdownDonutCard
+                key={card.key}
+                title={card.label}
+                icon={<Network className="size-5 text-slate-500" />}
+                accentColor="#0891b2"
+                live={card.live}
+                removed={card.removed}
+                onSliceClick={card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind)}
+              />
+            ))}
           </div>
         )}
       </section>
