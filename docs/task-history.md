@@ -2174,3 +2174,16 @@ The user pointed out that a multi-platform tab's row in the Country/Proxy Breakd
 - Full suite (643 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day interaction follow-up on Task 190.
 
 ---
+
+## Task 192: Surface "No Country" Entries as an Unknown Bucket
+
+**Date:** August 7, 2026
+
+The user noticed Country Breakdown's coverage caption read less than 100% and asked, after a round of clarifying questions, whether entries with a blank Country were being silently dropped. They were: `getEntryCountry` already falls back to deriving a country from the Account field's embedded text when the raw Country column is blank, but the small remainder that fails even that derivation was excluded from every country bucket, the dropdown option list, and country-filter matching — present in every other total on the page, invisible only here (the same spec-sanctioned gap the Task 181 final review had flagged and the coverage caption itself was only ever a mitigation for, not a fix).
+
+- New shared `resolveCountryLabel(data, tab)` (`src/lib/countryFlags.ts`) folds a blank `getEntryCountry` result into a literal `'Unknown'` label. Applied everywhere country identity is derived from an entry: `computeTabKpisFromEntries`'s `byCountry` bucketing and `countries` distinct-value list (`queries.ts`), its `countryFilter` pre-filter comparison, and — critically, so a Country Breakdown deep link to "Unknown" actually finds matching rows instead of showing none — `BrandGroup.tsx`'s own `countryFiltered` comparison, which previously had no equivalent fallback at all.
+- `Overview.tsx`'s Country Breakdown gives the "Unknown" row the same neutral gray treatment as the "Other" aggregate (not a real country, no flag, no categorical color) — but keeps it independently clickable, since unlike "Other" it's one specific, well-defined bucket (key `'unknown'`) with a real per-tab breakdown behind it, not an aggregate of many different keys.
+- 2 new regression tests (`queries.test.ts`): a blank-Country entry buckets under `{ unknown: { label: 'Unknown', ... } }` and appears in `countries`; `countryFilter: 'Unknown'` matches exactly those entries. One existing test's expectation was corrected to match the new behavior (a blank-Country entry no longer silently excluded from `byCountry`).
+- Full suite (645 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day data-completeness fix, closing a gap Task 181's own final review had already identified.
+
+---
