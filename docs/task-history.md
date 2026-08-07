@@ -2082,3 +2082,15 @@ The user reported three problems live, from a screenshot: "UK" and "United Kingd
 - Full suite (614 tests, including sibling worktrees' own tests swept in by Vitest's un-excluded `.worktrees/` glob — a known quirk, not a regression) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day bug-fix-plus-redesign follow-up on Tasks 181–183, not a new feature.
 
 ---
+
+## Task 185: Proxy Breakdown — Distinct 6-Column Stat-Tile Grid
+
+**Date:** August 7, 2026
+
+Follow-up to Task 184: the user asked for Proxy Breakdown specifically to be "6 column and a different graph also" — confirmed via a quick 2-question clarification to mean a 6-column grid layout, visually distinct from Country Breakdown's new ranked bar list (not just a reapplication of it).
+
+- New `src/components/BreakdownStatGrid.tsx` — a dense `grid-cols-2 sm:grid-cols-3 lg:grid-cols-6` grid of compact tiles: colored icon, name, a large published-percentage number as the tile's primary visual (not a ring or a bar), a thin published/removed accent bar underneath (each segment independently clickable, opening the same drill-down modal as the other two sections), and a total count. Deliberately a third distinct chart form — Platform Breakdown's donut-with-legend, Country Breakdown's horizontal ranked bar list, and now Proxy Breakdown's hero-number stat tile — rather than reusing either existing shape a third time.
+- `Overview.tsx`'s Proxy Breakdown section swaps `BreakdownRankedList` for the new `BreakdownStatGrid`; Country Breakdown is unchanged. The loading skeleton became a 6-tile grid of pulse placeholders to match.
+- No new pure logic — this is presentational only, reusing `proxyCards`/`categoricalColorForKey`/`openDimensionSlice` exactly as Task 184 left them. Full suite (614 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day layout follow-up on Task 184.
+
+---
