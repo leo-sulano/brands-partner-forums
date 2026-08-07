@@ -47,7 +47,7 @@ describe('topNWithOther', () => {
     expect(cards.map((c) => c.key)).toEqual(['big', 'small']);
   });
 
-  it('collapses the remainder past topN into a single non-"Other"-flagged-false-elsewhere "Other" card, summed correctly', () => {
+  it('collapses the remainder past topN into a single non-"Other"-flagged-false-elsewhere "Other" card, summed correctly, and attaches the folded-in members', () => {
     const merged: Record<string, CountBreakdown> = {
       a: { label: 'A', live: 10, removed: 0 },
       b: { label: 'B', live: 9, removed: 0 },
@@ -58,8 +58,20 @@ describe('topNWithOther', () => {
     expect(cards).toEqual([
       { key: 'a', label: 'A', live: 10, removed: 0, isOther: false },
       { key: 'b', label: 'B', live: 9, removed: 0, isOther: false },
-      { key: '__other__', label: 'Other', live: 2, removed: 1, isOther: true },
+      {
+        key: '__other__', label: 'Other', live: 2, removed: 1, isOther: true,
+        members: [
+          { key: 'c', label: 'C', live: 1, removed: 1, isOther: false },
+          { key: 'd', label: 'D', live: 1, removed: 0, isOther: false },
+        ],
+      },
     ]);
+  });
+
+  it('does not attach a members field to a real (non-"Other") card', () => {
+    const merged: Record<string, CountBreakdown> = { germany: { label: 'Germany', live: 1, removed: 0 } };
+    const cards = topNWithOther(merged, 8);
+    expect(cards[0].members).toBeUndefined();
   });
 
   it('returns an empty array for an empty input map', () => {

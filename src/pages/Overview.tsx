@@ -13,7 +13,7 @@ import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
 import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGrid';
-import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
+import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownCard } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
@@ -312,6 +312,99 @@ function SliceBreakdownModal({
   );
 }
 
+interface OtherModalState {
+  dimension: 'country' | 'proxy';
+  kind: 'live' | 'removed';
+  members: BreakdownCard[];
+}
+
+// Shows what's actually inside the non-interactive "Other" card/tile — the
+// individual countries/proxies folded into it once there were more than
+// the top-N shown as their own row. Selecting one hands off to the normal
+// per-identity drill-down (SliceBreakdownModal) for that specific member.
+function OtherBreakdownModal({
+  modal,
+  onSelectMember,
+  onClose,
+}: {
+  modal: OtherModalState;
+  onSelectMember: (member: BreakdownCard) => void;
+  onClose: () => void;
+}) {
+  const overlayRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose(); }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
+  const isLive = modal.kind === 'live';
+  const kindLabel = isLive ? 'Published' : 'Removed';
+  const barColor = isLive ? 'bg-emerald-500' : 'bg-rose-500';
+  const valueColor = isLive ? 'text-emerald-600' : 'text-rose-600';
+  const dimensionNoun = modal.dimension === 'country' ? 'countries' : 'proxies';
+
+  const rows = modal.members
+    .map((member) => ({ member, count: isLive ? member.live : member.removed }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count);
+
+  const grandTotal = rows.reduce((s, r) => s + r.count, 0);
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+    >
+      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl mx-4">
+        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
+              Other {dimensionNoun} — {kindLabel}
+            </p>
+            <p className={`mt-0.5 text-2xl font-bold font-mono tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
+            <p className="mt-1 text-xs text-slate-400">{rows.length.toLocaleString()} {dimensionNoun} folded into "Other"</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-2">
+          {rows.length === 0 ? (
+            <p className="py-4 text-center text-sm text-slate-400">No data</p>
+          ) : rows.map(({ member, count }) => {
+            const pct = grandTotal > 0 ? (count / grandTotal) * 100 : 0;
+            return (
+              <button
+                key={member.key}
+                type="button"
+                onClick={() => onSelectMember(member)}
+                className="group -mx-3 flex w-[calc(100%+1.5rem)] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-blue-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1.5 flex items-center justify-between">
+                    <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{member.label}</span>
+                    <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{count.toLocaleString()}</span>
+                  </div>
+                  <div className="h-1.5 w-full rounded-full bg-slate-100">
+                    <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const initial: State = { loading: true, error: null, tabs: [] };
 
 
@@ -320,6 +413,7 @@ export default function Overview() {
   const [state, setState] = useState<State>(initial);
   const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
   const [sliceModal, setSliceModal] = useState<SliceModalState | null>(null);
+  const [otherModal, setOtherModal] = useState<OtherModalState | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
@@ -393,6 +487,10 @@ export default function Overview() {
       })),
       linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}`,
     });
+  }
+
+  function openOtherBreakdown(members: BreakdownCard[], dimension: 'country' | 'proxy', kind: 'live' | 'removed') {
+    setOtherModal({ dimension, kind, members });
   }
 
   function updateFilterParam(key: 'country' | 'proxy', value: string) {
@@ -692,7 +790,9 @@ export default function Overview() {
                 icon: flagUrl
                   ? <img src={flagUrl} alt={card.label} className="h-full w-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   : <Globe className="size-4" style={{ color }} />,
-                onRowClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'country', kind),
+                onRowClick: card.isOther
+                  ? (kind) => openOtherBreakdown(card.members ?? [], 'country', kind)
+                  : (kind) => openDimensionSlice(card, 'country', kind),
               };
             })}
           />
@@ -731,7 +831,9 @@ export default function Overview() {
                 icon: iconUrl
                   ? <img src={iconUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   : <Shield className="size-4" style={{ color }} />,
-                onTileClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind),
+                onTileClick: card.isOther
+                  ? (kind) => openOtherBreakdown(card.members ?? [], 'proxy', kind)
+                  : (kind) => openDimensionSlice(card, 'proxy', kind),
               };
             })}
           />
@@ -750,6 +852,17 @@ export default function Overview() {
         <SliceBreakdownModal
           modal={sliceModal}
           onClose={() => setSliceModal(null)}
+        />
+      )}
+
+      {otherModal && (
+        <OtherBreakdownModal
+          modal={otherModal}
+          onSelectMember={(member) => {
+            setOtherModal(null);
+            openDimensionSlice(member, otherModal.dimension, otherModal.kind);
+          }}
+          onClose={() => setOtherModal(null)}
         />
       )}
     </div>

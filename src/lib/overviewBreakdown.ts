@@ -18,6 +18,10 @@ export interface BreakdownCard {
   live: number;
   removed: number;
   isOther: boolean;
+  // Only present on the synthetic "Other" card — the individual real cards
+  // that were folded into it, so the UI can offer a way to see what's
+  // actually inside "Other" rather than just an unexplained total.
+  members?: BreakdownCard[];
 }
 
 export function topNWithOther(merged: Record<string, CountBreakdown>, topN: number): BreakdownCard[] {
@@ -35,6 +39,7 @@ export function topNWithOther(merged: Record<string, CountBreakdown>, topN: numb
     live: rest.reduce((s, r) => s + r.live, 0),
     removed: rest.reduce((s, r) => s + r.removed, 0),
     isOther: true,
+    members: rest,
   };
   return [...top, other];
 }
