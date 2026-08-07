@@ -20,6 +20,16 @@ export interface CountBreakdown {
   removed: number;
 }
 
+export interface BrandStatusEntry {
+  tab: string;
+  brand: string;
+}
+
+export interface BrandStatusList {
+  live: BrandStatusEntry[];
+  removed: BrandStatusEntry[];
+}
+
 export interface TabKpis {
   total: number;
   live: number;
@@ -37,4 +47,7 @@ export interface TabKpis {
   byProxy: Record<string, CountBreakdown>;
   countries: string[];
   proxies: string[];
+  platformBrands: Record<'tp' | 'ag' | 'cg' | 'wo', BrandStatusList>;
+  byCountryBrands: Record<string, BrandStatusList>;
+  byProxyBrands: Record<string, BrandStatusList>;
 }

@@ -30,6 +30,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
         const livePct = total > 0 ? (tile.live / total) * 100 : 0;
         const removedPct = total > 0 ? (tile.removed / total) * 100 : 0;
         const livePctLabel = total > 0 ? livePct.toFixed(1) : '0.0';
+        const removedPctLabel = total > 0 ? removedPct.toFixed(1) : '0.0';
         return (
           <div
             key={tile.key}
@@ -74,6 +75,28 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
               )}
             </div>
             <span className="mt-1.5 text-[10px] text-slate-400">{total.toLocaleString()} total</span>
+            <div className="mt-2 flex w-full flex-col gap-1 text-[11px]">
+              <button
+                type="button"
+                disabled={!tile.onTileClick}
+                onClick={() => tile.onTileClick?.('live')}
+                className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
+              >
+                <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+                <span className="text-slate-500">Published</span>
+                <span className="ml-auto font-semibold text-slate-800">{livePctLabel}%</span>
+              </button>
+              <button
+                type="button"
+                disabled={!tile.onTileClick}
+                onClick={() => tile.onTileClick?.('removed')}
+                className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
+              >
+                <span className="size-2 shrink-0 rounded-full bg-rose-400" />
+                <span className="text-slate-500">Removed</span>
+                <span className="ml-auto font-semibold text-slate-800">{removedPctLabel}%</span>
+              </button>
+            </div>
           </div>
         );
       })}

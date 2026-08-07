@@ -18,7 +18,7 @@ import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
-import type { TabKpis } from '../types/brand-entry';
+import type { TabKpis, BrandStatusEntry } from '../types/brand-entry';
 
 
 interface TabSummary {
@@ -66,6 +66,14 @@ const EMPTY_KPIS: TabKpis = {
   byProxy: {},
   countries: [],
   proxies: [],
+  platformBrands: {
+    tp: { live: [], removed: [] },
+    ag: { live: [], removed: [] },
+    cg: { live: [], removed: [] },
+    wo: { live: [], removed: [] },
+  },
+  byCountryBrands: {},
+  byProxyBrands: {},
 };
 
 const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: string; icon: string }> = {
@@ -109,10 +117,9 @@ const PLATFORM_KEY: Record<string, PlatformKey> = {
 interface SliceModalState {
   title: string;
   headerIcon: ReactNode;
-  rowIcon: ReactNode;
   kind: 'live' | 'removed';
-  rows: { tab: string; count: number }[];
-  linkFor: (tab: string) => string;
+  brands: BrandStatusEntry[];
+  platform?: 'tp' | 'ag' | 'cg' | 'wo';
 }
 
 function KpiBreakdownModal({
@@ -219,14 +226,12 @@ function SliceBreakdownModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const rows = modal.rows
-    .filter((r) => r.count > 0)
-    .sort((a, b) => b.count - a.count);
-
-  const grandTotal = rows.reduce((s, r) => s + r.count, 0);
+  const brands = [...modal.brands].sort((a, b) =>
+    a.brand.localeCompare(b.brand) || a.tab.localeCompare(b.tab)
+  );
   const isLive = modal.kind === 'live';
-  const barColor = isLive ? 'bg-emerald-500' : 'bg-rose-500';
   const valueColor = isLive ? 'text-emerald-600' : 'text-rose-600';
+  const statusBadgeClass = isLive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600';
   const kindLabel = isLive ? 'Published' : 'Removed';
 
   return (
@@ -244,8 +249,8 @@ function SliceBreakdownModal({
                 {modal.title} — {kindLabel}
               </p>
             </div>
-            <p className={`text-2xl font-bold font-mono tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
-            <p className="mt-1 text-xs text-slate-400">{kindLabel} reviews by brand tab</p>
+            <p className={`text-2xl font-bold font-mono tabular-nums ${valueColor}`}>{brands.length.toLocaleString()}</p>
+            <p className="mt-1 text-xs text-slate-400">{kindLabel} brands</p>
           </div>
           <button
             onClick={onClose}
@@ -255,33 +260,25 @@ function SliceBreakdownModal({
           </button>
         </div>
 
-        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-3">
-          {rows.length === 0 ? (
+        <div className="max-h-[60vh] overflow-y-auto px-6 py-4 space-y-1">
+          {brands.length === 0 ? (
             <p className="py-4 text-center text-sm text-slate-400">No data</p>
-          ) : rows.map((r) => {
-            const pct = grandTotal > 0 ? (r.count / grandTotal) * 100 : 0;
-            return (
-              <Link
-                key={r.tab}
-                to={modal.linkFor(r.tab)}
-                onClick={onClose}
-                className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 min-w-0">
-                      {modal.rowIcon}
-                      <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{tabDisplayName(r.tab)}</span>
-                    </span>
-                    <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
-                  </div>
-                  <div className="h-1.5 w-full rounded-full bg-slate-100">
-                    <div className={`h-1.5 rounded-full ${barColor} transition-all`} style={{ width: `${pct}%` }} />
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+          ) : brands.map((entry, i) => (
+            <Link
+              key={`${entry.tab}-${entry.brand}-${i}`}
+              to={`/brands/${tabToSlug(entry.tab)}?brand=${encodeURIComponent(entry.brand)}&status=${modal.kind}${modal.platform ? `&platform=${modal.platform}` : ''}`}
+              onClick={onClose}
+              className="group -mx-3 flex items-center justify-between gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-blue-50"
+            >
+              <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">
+                {entry.brand}
+              </span>
+              <span className="shrink-0 text-xs text-slate-400">{tabDisplayName(entry.tab)}</span>
+              <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold ${statusBadgeClass}`}>
+                {kindLabel}
+              </span>
+            </Link>
+          ))}
         </div>
       </div>
     </div>
@@ -355,19 +352,12 @@ export default function Overview() {
     const icon = iconUrl
       ? <img src={iconUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
       : <FallbackIcon className="size-4 text-slate-500" />;
-    const rowIcon = iconUrl
-      ? <img src={iconUrl} alt={card.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-      : <FallbackIcon className="size-3.5 shrink-0 text-slate-400" />;
+    const brandsMap = dimension === 'country' ? 'byCountryBrands' : 'byProxyBrands';
     setSliceModal({
       title: card.label,
       headerIcon: icon,
-      rowIcon,
       kind,
-      rows: state.tabs.map((t) => ({
-        tab: t.tab,
-        count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
-      })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}`,
+      brands: state.tabs.flatMap((t) => t.kpis[brandsMap][card.key]?.[kind] ?? []),
     });
   }
 
@@ -394,10 +384,9 @@ export default function Overview() {
     setSliceModal({
       title: displayName,
       headerIcon: <img src={PLATFORM_LOGOS[platformName]} alt={platformName} className="size-4 rounded" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />,
-      rowIcon: <img src={PLATFORM_LOGOS[platformName]} alt={platformName} className="size-3.5 shrink-0 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />,
       kind,
-      rows: state.tabs.map((t) => ({ tab: t.tab, count: t.kpis[platformKey][kind] })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}?platform=${platformKey}&status=${kind}`,
+      brands: state.tabs.flatMap((t) => t.kpis.platformBrands[platformKey][kind]),
+      platform: platformKey,
     });
   }
 
