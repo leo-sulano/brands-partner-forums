@@ -1,5 +1,4 @@
-// @ts-expect-error -- ReactNode is unused until Task 5 wires in real usage; kept per plan, remove this directive when Task 5 adds a usage
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
@@ -9,9 +8,9 @@ import {
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
-import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import BrandFilterDropdown from '../components/BrandFilterDropdown';
 import { mergeDistinctValues } from '../lib/overviewBreakdown';
+import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
 
