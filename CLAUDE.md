@@ -56,7 +56,23 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-05 (newest):* Confirmed, after an initial back-and-forth, that Brand Tabs' per-platform
+- *2026-08-06 (newest):* Added automatic weekly Schedule Planner generation via a new
+  `generate-weekly-schedule` Supabase Edge Function + `pg_cron` job (Mondays 01:00 UTC = 09:00
+  Asia/Manila), so a tab's schedule generates even if nobody opens that tab's Schedule Planner
+  page that week. Imports the real, unmodified `schedulerService.ts` scheduling logic rather
+  than a ported copy — `queries.ts`'s 8 scheduler-used functions and `schedulerService.ts`'s
+  `recalculatePauses`/`ensureWeekGenerated` gained an optional injected Supabase client (default
+  = existing browser singleton, zero call-site changes), `supabase.ts` was made import-safe
+  outside Vite, and the whole dependency chain got explicit `.ts` extensions for Deno. Built via
+  9-task Subagent-Driven Development; final whole-branch review caught and fixed 5 more issues
+  (unbounded per-isolate entry-cache growth across all 11 tabs, an unverified `deno.json` import
+  map, a missing test on the write path, an incomplete plan command, an undocumented
+  Manila-timezone dependency). **Not yet live:** the migration hasn't been applied
+  (`supabase db push`) and the function hasn't been deployed (`supabase functions deploy
+  generate-weekly-schedule`) — both require explicit confirmation against production and were
+  deliberately left pending. Spec: `docs/superpowers/specs/2026-08-05-schedule-planner-weekly-cron-design.md`.
+  Plan: `docs/superpowers/plans/2026-08-05-schedule-planner-weekly-cron.md`. Task 178.
+- *2026-08-05:* Confirmed, after an initial back-and-forth, that Brand Tabs' per-platform
   "page removed" flag (`removed_platform_brands`, e.g. "TrustPilot page removed") is *correctly*
   excluding a flagged brand+platform from both Schedule Planner (chip hidden in every cell via
   `SchedulePlanner.tsx`'s `brandPlatforms()`; permanently skipped by `schedulerService.ts`'s
@@ -552,6 +568,16 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **Pending manual deploy (2026-08-06):** the `generate-weekly-schedule` migration
+  (`supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql`) has not been
+  applied to the live database, and the Edge Function has not been deployed. Until both are
+  done, no Monday cron job actually exists in the live project — Schedule Planner generation
+  still only happens via the pre-existing page-visit trigger. To finish: `supabase db push`,
+  then `supabase functions deploy generate-weekly-schedule`, then confirm via `select * from
+  cron.job where jobname = 'generate-weekly-schedule-monday';`. See Task 9 of
+  `docs/superpowers/plans/2026-08-05-schedule-planner-weekly-cron.md` for the full manual
+  deploy checklist, including a one-time manual invocation to confirm it writes real
+  `brand_schedule` rows before waiting for the first real Monday.
 - `entries` is fully public-readable via the `anon` key across **all** tabs, not just TP Brand
   Injection, and its `data` jsonb contains credential fields (`Password`, `Backup Codes`,
   `Authenticator Backup` — see `AddReviewAccountModal.tsx`). This is a pre-existing condition,
