@@ -15,7 +15,10 @@ export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
   tp: { postsPerWeek: 2, preferredDayPairs: [['monday', 'thursday'], ['tuesday', 'friday']] },
   ag: { postsPerWeek: 2 },
   cg: { postsPerWeek: 1 },
-  wo: { postsPerWeek: 3, preferredDays: ['monday', 'wednesday', 'friday'] },
+  // Reduced from 3/wk to 1/wk per the 2026-08-07 rules update (see
+  // docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md).
+  // No preferredDays — load-balanced across the week, same as cg's 1/wk.
+  wo: { postsPerWeek: 1 },
 };
 
 export const PAUSE_RULES = {
