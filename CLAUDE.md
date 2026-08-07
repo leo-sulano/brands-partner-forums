@@ -56,7 +56,32 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-06 (newest):* Added automatic weekly Schedule Planner generation via a new
+- *2026-08-07 (newest):* Fixed a data-accuracy bug the user caught via a live screenshot:
+  Overview's per-tab card and Score Summary reported different Live/Removed/Total counts for the
+  same tab/platform/date-range (FTP/TrustPilot, 01/05–31/07/2026: 281 total on Overview vs. 190 on
+  Score Summary). Root cause: three independently-written date-range-inclusion checks disagreed on
+  which date column(s) to consult per platform and whether an undated row should count —
+  `dateUtils.ts`'s `inDateRange` (Overview's `fetchTabKpis`) picked one date per row from an
+  8-column cross-platform fallback chain and excluded undated rows, gating all 4 platforms' tallies
+  off that one shared date; `scoreSummary.ts`'s `passesDateFilter` (Score Summary) checked only the
+  platform's own date column and always included undated rows; `BrandGroup.tsx`'s
+  `inDateRangeInclusive` (Brand Tabs' own cards) used the same fallback chain as Overview but
+  included undated rows like Score Summary. Added one shared `passesPlatformDateFilter`
+  (`scoreSummary.ts`) and pointed `fetchTabKpis` (via a new pure, testable `computeTabKpisFromEntries`
+  export) and `BrandGroup.tsx`'s per-platform and single-platform KPI cards at it. A final
+  whole-branch review then caught 2 more Important gaps a per-task review couldn't see: the
+  aggregate had silently started excluding platform-flagged brands (violating this task's own
+  constraint), and `BrandGroup.tsx`'s single-platform totals (the exact FTP/BITP tabs from the
+  report) were still on the old unfixed logic — both fixed, with 2 new regression tests. One real
+  gap deliberately parked, not fixed: on a multi-platform tab's `platformFilter === 'all'` view,
+  the visible table rows still use the old date logic while the KPI cards above them are now fixed,
+  so they can disagree — a separate, documented follow-up (see Known Issues). Built in a worktree
+  that forked before Task 179 (below) landed; both touched `queries.ts`/`BrandGroup.tsx`, merged
+  cleanly (one textual import-list conflict, zero semantic conflicts, confirmed by reading the
+  merged functions, not just trusting git). Full suite (225 tests) and build pass; `deno check`
+  clean. Plan: `docs/superpowers/plans/2026-08-07-overview-score-summary-date-filter-parity.md`.
+  Task 180.
+- *2026-08-06 (prior):* Added automatic weekly Schedule Planner generation via a new
   `generate-weekly-schedule` Supabase Edge Function + `pg_cron` job (Mondays 01:00 UTC = 09:00
   Asia/Manila), so a tab's schedule generates even if nobody opens that tab's Schedule Planner
   page that week. Imports the real, unmodified `schedulerService.ts` scheduling logic rather
@@ -568,6 +593,26 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- On a multi-platform brand tab (Rooster Partners, Revolution Casino, SilverPlay, Hanan) with
+  `platformFilter === 'all'` and a date range set, `BrandGroup.tsx`'s visible **table rows**
+  (`applyDateFilter`, around the `platformFilter === 'all'` branch) still use the old
+  cross-platform date-column fallback (`inDateRangeInclusive`) rather than checking each active
+  platform's own date via `passesPlatformDateFilter` like the KPI cards above them now do (fixed
+  2026-08-07, Task 180). This means the table's visible rows can disagree with what the cards
+  imply. Real, but deliberately deferred — a different question (what "in range" means for a
+  table row mixing multiple platforms' data) from the Overview/Score-Summary bug Task 180 fixed,
+  and `BrandGroup.tsx` has no test coverage to safely verify a deeper change to `applyDateFilter`
+  in one pass. Fix direction: extend that branch to check `getTabPlatforms(tab).some(p =>
+  passesPlatformDateFilter(e.data, p, dateFrom, dateTo))`, matching the aggregate logic
+  `computeTabKpisFromEntries` (`queries.ts`) already uses.
+- `queries.ts`'s `computeTabKpisFromEntries` has a `genericInRange` fallback (kept on the old,
+  unfixed `inDateRange` cross-platform-fallback date logic, since no platform-specific date key
+  applies to a bare/unresolved status column) for rows whose tp/ag/cg/wo values are all blank.
+  Whether any of the 11 real operational tabs currently has rows that take this path has not been
+  verified against live Supabase headers/data — no DB credential was available in the 2026-08-07
+  session that added this comment. If it turns out to be live on a real tab, that tab's undated
+  rows in this fallback path would still be excluded rather than always-included, reintroducing a
+  narrower version of the bug Task 180 fixed.
 - **Pending manual deploy (2026-08-06):** the `generate-weekly-schedule` migration
   (`supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql`) has not been
   applied to the live database, and the Edge Function has not been deployed. Until both are
