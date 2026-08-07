@@ -13,6 +13,7 @@ import {
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
 import { platformFlaggedKey } from '../flaggedPlatformBrands.ts';
+import { overrideKey, type OverrideState } from '../scheduleOverrides.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
@@ -35,6 +36,12 @@ export interface TabContext {
   // threshold. Optional, same "defaults to nothing flagged" convention as
   // removedPlatformBrandSet.
   flaggedPlatformBrandSet?: Set<string>;
+  // Every (tab, brand_key, platform) with a manually-set override, beating
+  // whatever the automatic checks below would otherwise compute. 'active'
+  // forces continued posting (deletes/skips any pause); 'pause' forces a
+  // pause unconditionally. Optional, same "defaults to nothing overridden"
+  // convention as the other two sets.
+  overrideMap?: Map<string, OverrideState>;
 }
 
 function brandOf(entry: Entry): string {
@@ -135,6 +142,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
   const flaggedSet = ctx.flaggedPlatformBrandSet ?? new Set<string>();
+  const overrideMap = ctx.overrideMap ?? new Map<string, OverrideState>();
 
   // Computed once per active platform (not per brand) since each call scans
   // all of ctx.entries — reused by the success-rate pause check below.
@@ -153,6 +161,32 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // still applies correctly if the flag is ever cleared) and never
       // evaluate it for a new pause.
       if (removedSet.has(platformRemovedKey(tab, brand, platform))) continue;
+
+      // Manual override beats every automatic check below -- checked before
+      // the existing/alreadyHasRow/flagged/consecutive-removed/success-rate
+      // chain entirely, not merged into it, since it's an explicit operator
+      // decision rather than a background computation. 'pause' deliberately
+      // does NOT respect the alreadyHasRow guard the auto path uses below
+      // (that guard exists to protect the auto-detection heuristic from a
+      // race with a week that's already been generated; a manual override
+      // is an intentional action that should always take effect, even for
+      // an already-generated week -- the pause row's mere existence dims
+      // that week's cells regardless of whether brand_schedule already has
+      // a row for it).
+      const override = overrideMap.get(overrideKey(tab, brandKey, platform));
+      const existingPause = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
+      if (override === 'active') {
+        if (existingPause) {
+          await deleteBrandPlatformPause(tab, brandKey, platform, client);
+          resumed.push({ brandKey, platform });
+        }
+        continue;
+      }
+      if (override === 'pause') {
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Manually paused', client);
+        continue;
+      }
+
       const existing = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
       if (existing) {
         if (existing.paused_week_start < weekStart) {

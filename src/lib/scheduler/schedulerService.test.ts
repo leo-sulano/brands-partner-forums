@@ -3,6 +3,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from './sched
 import type { PinnedCombo } from './schedulerEngine';
 import { platformRemovedKey } from '../removedPlatformBrands';
 import { platformFlaggedKey } from '../flaggedPlatformBrands';
+import { overrideKey } from '../scheduleOverrides';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -367,6 +368,85 @@ describe('recalculatePauses', () => {
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
         'BITP', 'WinMega', 'tp', '2026-08-03', 'Flagged via email notification', undefined,
       );
+    });
+  });
+
+  describe('manual override', () => {
+    it("override 'active' clears an existing pause, reports it resumed, and skips auto-detection even with two consecutive removed posts", async () => {
+      queries.fetchActiveBrandPlatformPauses.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', platform: 'tp', paused_week_start: '2026-08-03', reason: 'Two consecutive Removed/Refused posts' },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+      };
+      const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.deleteBrandPlatformPause).toHaveBeenCalledWith('BITP', 'winmega', 'tp', undefined);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+      expect(resumed).toEqual([{ brandKey: 'winmega', platform: 'tp' }]);
+    });
+
+    it("override 'active' with no existing pause is a no-op that skips auto-detection", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+      };
+      const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+      expect(resumed).toEqual([]);
+    });
+
+    it("override 'pause' unconditionally pauses even with a perfect record", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
+      );
+    });
+
+    it("override 'pause' bypasses the already-has-a-row-for-the-week guard (unlike auto-detection)", async () => {
+      queries.fetchBrandSchedule.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
+      );
+    });
+
+    it('a removed-platform-flagged combo is skipped even when it has an active override', async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        removedPlatformBrandSet: new Set([platformRemovedKey('BITP', 'WinMega', 'tp')]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+      expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
     });
   });
 });
