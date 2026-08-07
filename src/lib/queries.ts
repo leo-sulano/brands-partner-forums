@@ -2,13 +2,13 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
-import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
+import { getTabColumns, getBrandNameCol, getEntryCountry } from './tab-configs.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
 import type { Entry } from '../types/entry.ts';
 import type { Profile } from '../types/profile.ts';
-import type { BrandEntry, TabKpis } from '../types/brand-entry.ts';
+import type { BrandEntry, TabKpis, CountBreakdown } from '../types/brand-entry.ts';
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 
 // ---------------------------------------------------------------------------
@@ -336,6 +336,25 @@ function isPendingStatus(s: string) { return s.includes('pending') || s === 'not
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
 function isNotDoneStatus(s: string) { return s === 'not done' || s.includes('not done'); }
 
+function uniqueDisplayValues(raw: (string | null | undefined)[]): string[] {
+  const seen = new Map<string, string>();
+  for (const v of raw) {
+    const trimmed = (v ?? '').trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (!seen.has(key)) seen.set(key, trimmed);
+  }
+  return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+}
+
+function addToBreakdown(map: Record<string, CountBreakdown>, rawValue: string | null | undefined, kind: 'live' | 'removed') {
+  const trimmed = (rawValue ?? '').trim();
+  if (!trimmed) return;
+  const key = trimmed.toLowerCase();
+  if (!map[key]) map[key] = { label: trimmed, live: 0, removed: 0 };
+  map[key][kind]++;
+}
+
 export function computeTabKpisFromEntries(
   entries: Entry[],
   rawHeaders: string[],
@@ -344,6 +363,8 @@ export function computeTabKpisFromEntries(
   dateFrom: string | undefined,
   dateTo: string | undefined,
   removedPlatformBrands: Set<string>,
+  countryFilter?: string,
+  proxyFilter?: string,
 ): TabKpis {
   // Resolve the actual sheet column name case-insensitively so minor casing
   // differences between tabs don't cause zeroed-out counts.
@@ -367,7 +388,20 @@ export function computeTabKpisFromEntries(
   let cgLive = 0, cgRemoved = 0;
   let woLive = 0, woRemoved = 0;
 
-  for (const entry of entries) {
+  const filteredEntries = (countryFilter || proxyFilter)
+    ? entries.filter((e) => {
+        if (countryFilter && getEntryCountry(e.data, tab).toLowerCase() !== countryFilter.toLowerCase()) return false;
+        if (proxyFilter && (e.data['Proxy Used'] ?? '').trim().toLowerCase() !== proxyFilter.toLowerCase()) return false;
+        return true;
+      })
+    : entries;
+
+  const countries = uniqueDisplayValues(entries.map((e) => getEntryCountry(e.data, tab)));
+  const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']));
+  const byCountry: Record<string, CountBreakdown> = {};
+  const byProxy: Record<string, CountBreakdown> = {};
+
+  for (const entry of filteredEntries) {
     const d = entry.data;
     const tp = tpCol ? (d[tpCol] ?? '').toLowerCase() : '';
     const ag = agCol ? (d[agCol] ?? '').toLowerCase() : '';
@@ -425,8 +459,15 @@ export function computeTabKpisFromEntries(
     ].filter(Boolean);
 
     if (statuses.length > 0) {
-      if (statuses.some(isLiveStatus)) live++;
-      else if (statuses.some(isRemovedStatus)) removed++;
+      if (statuses.some(isLiveStatus)) {
+        live++;
+        addToBreakdown(byCountry, getEntryCountry(d, tab), 'live');
+        addToBreakdown(byProxy, d['Proxy Used'], 'live');
+      } else if (statuses.some(isRemovedStatus)) {
+        removed++;
+        addToBreakdown(byCountry, getEntryCountry(d, tab), 'removed');
+        addToBreakdown(byProxy, d['Proxy Used'], 'removed');
+      }
       else if (statuses.some(isDoneStatus)) done++;
       else if (statuses.some(isPendingStatus)) pending++;
       else if (statuses.some(isOnPauseStatus)) onPause++;
@@ -453,6 +494,10 @@ export function computeTabKpisFromEntries(
     cg: { live: cgLive, removed: cgRemoved },
     wo: { live: woLive, removed: woRemoved },
     activePlatforms,
+    byCountry,
+    byProxy,
+    countries,
+    proxies,
   };
 }
 
@@ -461,13 +506,15 @@ export async function fetchTabKpis(
   dateFrom?: string,
   dateTo?: string,
   removedPlatformBrands: Set<string> = new Set(),
+  countryFilter?: string,
+  proxyFilter?: string,
 ): Promise<TabKpis> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
   const brandCol = getBrandNameCol(tab);
-  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands);
+  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter);
 }
 
 // ---------------------------------------------------------------------------

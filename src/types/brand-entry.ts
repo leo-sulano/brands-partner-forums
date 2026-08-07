@@ -14,6 +14,12 @@ export interface PlatformKpis {
   removed: number;
 }
 
+export interface CountBreakdown {
+  label: string;
+  live: number;
+  removed: number;
+}
+
 export interface TabKpis {
   total: number;
   live: number;
@@ -27,4 +33,8 @@ export interface TabKpis {
   cg: PlatformKpis;
   wo: PlatformKpis;
   activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[];
+  byCountry: Record<string, CountBreakdown>;
+  byProxy: Record<string, CountBreakdown>;
+  countries: string[];
+  proxies: string[];
 }

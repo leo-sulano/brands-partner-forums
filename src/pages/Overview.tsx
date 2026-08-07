@@ -54,6 +54,10 @@ const EMPTY_KPIS: TabKpis = {
   cg: { live: 0, removed: 0 },
   wo: { live: 0, removed: 0 },
   activePlatforms: [],
+  byCountry: {},
+  byProxy: {},
+  countries: [],
+  proxies: [],
 };
 
 const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: string; icon: string }> = {
