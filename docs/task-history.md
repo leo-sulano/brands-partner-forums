@@ -2161,3 +2161,16 @@ The user asked that clicking a tab row inside the Country Breakdown modal (e.g. 
 - No new tests: `BrandGroup.tsx` has no existing unit test coverage (a known, pre-existing gap for this large page component, documented in earlier task entries); `canonicalCountryKey`'s own correctness is already covered by Task 184's tests. Full suite (637 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day deep-link follow-up on Task 189.
 
 ---
+
+## Task 191: Platform Selector for Multi-Platform Rows in Country/Proxy Modal
+
+**Date:** August 7, 2026
+
+The user pointed out that a multi-platform tab's row in the Country/Proxy Breakdown drill-down modal (e.g. "Rooster Partners: 45" under Germany — Published) blends that tab's TP+AG+CG counts together with no way to pick which one to actually view — clarified via 2 rounds of questions (which modal, then which of 2 concrete fixes) to "add a platform selector."
+
+- `SliceBreakdownModal` (`Overview.tsx`) now renders small TP/AG/CG (or WO) chips below any row whose tab has more than one active platform (`getTabPlatforms(tab).length > 1`) — Trybet/SuprPlay/HazEmirates/TP-only tabs never show chips, since there's nothing to choose between. Clicking a chip appends `&platform=<key>` onto the exact same link the row's own click already uses, so a chip click carries whatever the row already carried (status, and — for Country Breakdown — the country) plus the chosen platform, all at once.
+- Platform Breakdown's own modal is unaffected: its rows are already scoped to one specific platform, so a selector there would be redundant. Distinguished via a new optional `platform` field on `SliceModalState`, set only by `openPlatformSlice` — its presence means "skip the chip selector," matching how the modal already knows it's platform-scoped.
+- The row itself had to move from one big clickable `<Link>` to a `<div>` containing an inner `<Link>` (the name/count/bar) plus the sibling chip `<Link>`s below — nesting a `<Link>` inside another `<Link>` isn't valid HTML/React Router usage.
+- Full suite (643 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day interaction follow-up on Task 190.
+
+---
