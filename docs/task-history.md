@@ -2187,3 +2187,16 @@ The user noticed Country Breakdown's coverage caption read less than 100% and as
 - Full suite (645 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day data-completeness fix, closing a gap Task 181's own final review had already identified.
 
 ---
+
+## Task 193: "Other" Is Now Clickable — Shows Which Values Got Folded In
+
+**Date:** August 7, 2026
+
+The user asked "where is this from, the Other on the country" — after a clarifying question, confirmed they wanted a way to actually see which countries/proxies got folded into the non-interactive "Other" card/tile, not just an explanation of the top-8-cutoff rule.
+
+- `topNWithOther` (`src/lib/overviewBreakdown.ts`) now attaches the folded-in cards to the synthetic "Other" card as a new optional `members: BreakdownCard[]` field (present only on "Other" — a real card's `members` stays `undefined`).
+- New `OtherBreakdownModal` (`Overview.tsx`): clicking "Other"'s Published or Removed segment (both Country Breakdown's row and Proxy Breakdown's tile) opens a modal listing each folded-in member — name, its count for the clicked kind, a proportional bar — sorted by volume, with the same visual language as the existing per-identity drill-down. Selecting a member closes this modal and opens the existing `SliceBreakdownModal` for that specific country/proxy instead, so "Other" is now a genuine entry point into the same per-tab breakdown every real country/proxy already has, rather than a dead end.
+- 2 new tests (`overviewBreakdown.test.ts`): the "Other" card's `members` array holds exactly the cards pushed past the top-N cutoff; a real (non-"Other") card's `members` stays `undefined`.
+- Full suite (381 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day interaction follow-up on Task 189.
+
+---
