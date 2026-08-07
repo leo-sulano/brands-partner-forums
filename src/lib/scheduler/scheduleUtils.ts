@@ -37,6 +37,24 @@ export function unscheduledPlatforms(
   return platforms.filter((p) => !pausedPlatforms[p] && rowsByPlatform[p]?.[day] == null);
 }
 
+// Walks a week's day statuses backward from Friday, collecting the
+// consecutive trailing run of 'paused' days. A run shorter than 2 days
+// (including a lone paused Friday) doesn't count — it reads as an ordinary
+// single clicked-then-reconsidered day, not "the team decided to stop for
+// the rest of the week." Used to flag a manually-paused platform in the
+// Paused column even when no system-detected brand_platform_pause row
+// exists for it.
+export function trailingManualPauseDays(row: BrandScheduleRow | undefined): Weekday[] {
+  if (!row) return [];
+  const days: Weekday[] = [];
+  for (let i = WEEKDAYS.length - 1; i >= 0; i--) {
+    const day = WEEKDAYS[i];
+    if (row[day] !== 'paused') break;
+    days.unshift(day);
+  }
+  return days.length >= 2 ? days : [];
+}
+
 // Deterministic: ties break by `candidates`' own order, so callers control
 // tie-breaking by the order they pass in (schedulerEngine relies on this).
 export function leastLoadedDay(dayCounts: Record<Weekday, number>, candidates: Weekday[]): Weekday {
