@@ -2200,3 +2200,15 @@ The user asked "where is this from, the Other on the country" — after a clarif
 - Full suite (381 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day interaction follow-up on Task 189.
 
 ---
+
+## Task 194: Remove the Top-8 Cap on Country Breakdown
+
+**Date:** August 7, 2026
+
+The user asked, after Task 193 made "Other" inspectable, to remove it entirely for Country Breakdown — "move to the designated countries what is inside on other" and, restated directly, "so other not exist instead on the country overview it must parse in every countries." Confirmed via 2 clarifying questions: show every distinct country as its own row (no aggregate), and keep "Unknown" (Task 192) as its own ordinary row rather than any special treatment.
+
+- `Overview.tsx`'s `countryCards` computation now calls `topNWithOther(..., Infinity)` instead of the shared `BREAKDOWN_TOP_N = 8` — `topNWithOther`'s existing slice-based logic already returns every card with none folded together when the cap exceeds the count, so no change was needed to `overviewBreakdown.ts` itself. Proxy Breakdown is untouched and keeps its top-8-plus-Other cap.
+- 1 new test (`overviewBreakdown.test.ts`) locks in this `Infinity` behavior specifically, since Overview.tsx now depends on it in production: every card is returned individually and none is ever flagged `isOther`.
+- Full suite (381 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day follow-up on Task 193.
+
+---
