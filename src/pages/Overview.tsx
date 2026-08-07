@@ -336,6 +336,8 @@ export default function Overview() {
   const BREAKDOWN_TOP_N = 8;
   const countryCards = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry)), BREAKDOWN_TOP_N);
   const proxyCards   = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy)),   BREAKDOWN_TOP_N);
+  const countryCoverage = countryCards.reduce((s, c) => s + c.live + c.removed, 0);
+  const proxyCoverage   = proxyCards.reduce((s, c) => s + c.live + c.removed, 0);
 
   function openDimensionSlice(
     card: { key: string; label: string; isOther: boolean },
@@ -358,7 +360,7 @@ export default function Overview() {
         tab: t.tab,
         count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
       })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}`,
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}`,
     });
   }
 
@@ -419,7 +421,7 @@ export default function Overview() {
   return (
     <div className="space-y-8">
 
-      {(allCountries.length > 1 || allProxies.length > 1) && (
+      {(allCountries.length > 1 || allProxies.length > 1 || countryFilter || proxyFilter) && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-slate-500">Filters</span>
           {allCountries.length > 1 && (
@@ -599,7 +601,10 @@ export default function Overview() {
       <section>
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-800">Country Breakdown</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Published vs. removed by country</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Published vs. removed by country
+            {!state.loading && countryCards.length > 0 && ` — ${countryCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a country recorded`}
+          </p>
         </div>
         {state.loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -630,7 +635,10 @@ export default function Overview() {
       <section>
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-800">Proxy Breakdown</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Published vs. removed by proxy</p>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Published vs. removed by proxy
+            {!state.loading && proxyCards.length > 0 && ` — ${proxyCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a proxy recorded`}
+          </p>
         </div>
         {state.loading ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

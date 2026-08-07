@@ -390,8 +390,8 @@ export function computeTabKpisFromEntries(
 
   const filteredEntries = (countryFilter || proxyFilter)
     ? entries.filter((e) => {
-        if (countryFilter && getEntryCountry(e.data, tab).toLowerCase() !== countryFilter.toLowerCase()) return false;
-        if (proxyFilter && (e.data['Proxy Used'] ?? '').trim().toLowerCase() !== proxyFilter.toLowerCase()) return false;
+        if (countryFilter && getEntryCountry(e.data, tab).toLowerCase() !== countryFilter.trim().toLowerCase()) return false;
+        if (proxyFilter && (e.data['Proxy Used'] ?? '').trim().toLowerCase() !== proxyFilter.trim().toLowerCase()) return false;
         return true;
       })
     : entries;

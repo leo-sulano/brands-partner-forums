@@ -31,12 +31,15 @@ export default function BreakdownDonutCard({
   const removedPct = total > 0 ? ((removed / total) * 100).toFixed(1) : '0.0';
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div
+      className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
+      title={onSliceClick ? undefined : 'Aggregate of remaining values — not individually broken out'}
+    >
       <div className="mb-4 flex items-center gap-2.5">
         <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${iconBgClass}`}>
           {icon}
         </div>
-        <span className="truncate text-sm font-semibold text-slate-800">{title}</span>
+        <span className="truncate text-sm font-semibold text-slate-800" title={title}>{title}</span>
       </div>
 
       <div className="flex items-center gap-3">
