@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
   Syringe, Link2, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, Star,
-  Globe, Network,
+  Globe, Shield,
   type LucideIcon,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
@@ -15,6 +15,7 @@ import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGri
 import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
+import { proxyIconUrl } from '../lib/proxyIcons';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
@@ -349,17 +350,14 @@ export default function Overview() {
     kind: 'live' | 'removed',
   ) {
     if (card.isOther) return;
-    const flagUrl = dimension === 'country' ? countryFlagImageUrl(card.label) : null;
-    const icon = flagUrl
-      ? <img src={flagUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-      : dimension === 'country'
-        ? <Globe className="size-4 text-slate-500" />
-        : <Network className="size-4 text-slate-500" />;
-    const rowIcon = flagUrl
-      ? <img src={flagUrl} alt={card.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-      : dimension === 'country'
-        ? <Globe className="size-3.5 shrink-0 text-slate-400" />
-        : <Network className="size-3.5 shrink-0 text-slate-400" />;
+    const iconUrl = dimension === 'country' ? countryFlagImageUrl(card.label) : proxyIconUrl(card.label);
+    const FallbackIcon = dimension === 'country' ? Globe : Shield;
+    const icon = iconUrl
+      ? <img src={iconUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      : <FallbackIcon className="size-4 text-slate-500" />;
+    const rowIcon = iconUrl
+      ? <img src={iconUrl} alt={card.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      : <FallbackIcon className="size-3.5 shrink-0 text-slate-400" />;
     setSliceModal({
       title: card.label,
       headerIcon: icon,
@@ -661,6 +659,7 @@ export default function Overview() {
           <BreakdownStatGrid
             tiles={proxyCards.map((card): StatTile => {
               const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
+              const iconUrl = card.isOther ? null : proxyIconUrl(card.label);
               return {
                 key: card.key,
                 label: card.label,
@@ -668,7 +667,9 @@ export default function Overview() {
                 removed: card.removed,
                 muted: card.isOther,
                 accentColor: color,
-                icon: <Network className="size-4" style={{ color }} />,
+                icon: iconUrl
+                  ? <img src={iconUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  : <Shield className="size-4" style={{ color }} />,
                 onTileClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind),
               };
             })}
