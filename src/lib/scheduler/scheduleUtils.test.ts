@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek } from './scheduleUtils';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
@@ -131,6 +131,42 @@ describe('trailingManualPauseDays', () => {
 
   it('returns empty for an undefined row', () => {
     expect(trailingManualPauseDays(undefined)).toEqual([]);
+  });
+});
+
+describe('hasNoScheduleThisWeek', () => {
+  const row = (days: Partial<Record<Weekday, 'active' | 'paused'>>): BrandScheduleRow => ({
+    tab: 'BITP', brand_key: 'x', week_start: '2026-08-03', platform: 'tp',
+    monday: days.monday ?? null, tuesday: days.tuesday ?? null, wednesday: days.wednesday ?? null,
+    thursday: days.thursday ?? null, friday: days.friday ?? null,
+  });
+
+  it('returns true when all 5 days are null', () => {
+    expect(hasNoScheduleThisWeek(row({}))).toBe(true);
+  });
+
+  it('returns true for an undefined row', () => {
+    expect(hasNoScheduleThisWeek(undefined)).toBe(true);
+  });
+
+  it('returns false when a single day is active', () => {
+    expect(hasNoScheduleThisWeek(row({ wednesday: 'active' }))).toBe(false);
+  });
+
+  it('returns false when a single day is paused', () => {
+    expect(hasNoScheduleThisWeek(row({ friday: 'paused' }))).toBe(false);
+  });
+
+  it('returns false for a fully active week', () => {
+    expect(hasNoScheduleThisWeek(row({
+      monday: 'active', tuesday: 'active', wednesday: 'active', thursday: 'active', friday: 'active',
+    }))).toBe(false);
+  });
+
+  it('returns false for a fully paused week (this is the manual-trailing-pause case, not no-schedule)', () => {
+    expect(hasNoScheduleThisWeek(row({
+      monday: 'paused', tuesday: 'paused', wednesday: 'paused', thursday: 'paused', friday: 'paused',
+    }))).toBe(false);
   });
 });
 

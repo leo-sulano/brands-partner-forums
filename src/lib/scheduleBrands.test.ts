@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scheduleFor, nextStatus, withDayStatus, toISODate, type BrandScheduleRow } from './scheduleBrands';
+import { scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, isCurrentWeekStart, type BrandScheduleRow } from './scheduleBrands';
 
 // No @types/node in this project (browser-only lib set in tsconfig.app.json)
 // — declare just enough of the real Node `process` global, which vitest runs
@@ -41,6 +41,17 @@ describe('toISODate', () => {
       if (originalTZ === undefined) delete process.env.TZ;
       else process.env.TZ = originalTZ;
     }
+  });
+});
+
+describe('isCurrentWeekStart', () => {
+  it('returns true when the given ISO date is the Monday of the real current week', () => {
+    const realMonday = toISODate(mondayOf(new Date()));
+    expect(isCurrentWeekStart(realMonday)).toBe(true);
+  });
+
+  it('returns false for a week start that is not the real current week', () => {
+    expect(isCurrentWeekStart('2020-01-06')).toBe(false);
   });
 });
 

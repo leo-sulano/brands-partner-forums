@@ -144,7 +144,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 
 type PausedPlatformIndicatorProps =
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
-  | { platform: Platform; source: 'manual'; days: Weekday[] };
+  | { platform: Platform; source: 'manual'; days: Weekday[] }
+  | { platform: Platform; source: 'no-schedule' };
 
 function resumeWeekLabel(pausedWeekStart: string): string {
   const [y, m, d] = pausedWeekStart.split('-').map(Number);
@@ -153,11 +154,12 @@ function resumeWeekLabel(pausedWeekStart: string): string {
   return resume.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
-// The manual branch is deliberately terse with no resume/expiry line: unlike
-// a brand_platform_pause row, a manual per-day pause isn't a tracked,
-// auto-expiring state — it's just this week's brand_schedule row. A future
-// week starts fresh with its own independently-clicked or freshly-generated
-// days, so there's nothing accurate to claim about when it "ends."
+// The manual and no-schedule branches are both deliberately terse with no
+// resume/expiry line: unlike a brand_platform_pause row, neither is a
+// tracked, auto-expiring state — they're just this week's brand_schedule
+// row. A future week starts fresh with its own independently-clicked or
+// freshly-generated days, so there's nothing accurate to claim about when
+// either "ends."
 function titleFor(props: PausedPlatformIndicatorProps): string {
   if (props.source === 'system') {
     const { pause } = props;
@@ -172,7 +174,10 @@ function titleFor(props: PausedPlatformIndicatorProps): string {
       ? `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`
       : `Reason: ${pause.reason}\nStays paused until manually cleared`;
   }
-  return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;
+  if (props.source === 'manual') {
+    return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;
+  }
+  return 'Reason: No schedule this week';
 }
 
 export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {

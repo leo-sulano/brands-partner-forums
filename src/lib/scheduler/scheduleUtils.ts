@@ -55,6 +55,17 @@ export function trailingManualPauseDays(row: BrandScheduleRow | undefined): Week
   return days.length >= 2 ? days : [];
 }
 
+// True when a platform has nothing scheduled at all this week: the row is
+// missing entirely, or every one of its 5 weekday fields is null. A row
+// with even one 'paused' day does NOT qualify — that's either the
+// trailingManualPauseDays case (2+ trailing paused days) or simply not a
+// run yet; "no schedule" is specifically the fully-blank case, distinct
+// from both the active and the paused states.
+export function hasNoScheduleThisWeek(row: BrandScheduleRow | undefined): boolean {
+  if (!row) return true;
+  return WEEKDAYS.every((day) => row[day] == null);
+}
+
 // Deterministic: ties break by `candidates`' own order, so callers control
 // tie-breaking by the order they pass in (schedulerEngine relies on this).
 export function leastLoadedDay(dayCounts: Record<Weekday, number>, candidates: Weekday[]): Weekday {

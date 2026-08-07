@@ -14,13 +14,13 @@ import {
   fetchBrandPlatformOverrides,
   type BrandPlatformPause,
 } from '../lib/queries';
-import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, isCurrentWeekStart, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildFlaggedPlatformBrandSet } from '../lib/flaggedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from '../components/AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
@@ -254,7 +254,7 @@ export default function SchedulePlanner() {
     setScheduleLoading(true);
     (async () => {
       try {
-        const isCurrentWeek = weekStartISO === toISODate(mondayOf(new Date()));
+        const isCurrentWeek = isCurrentWeekStart(weekStartISO);
         const ctxReadyForTab = tabCtx !== null && tabCtx.tab === tab;
         if (isCurrentWeek && isApproved && ctxReadyForTab && tabCtx!.brands.length > 0 && tabCtx!.activePlatforms.length > 0) {
           // recalculatePauses and ensureWeekGenerated are a paired backend
@@ -415,6 +415,24 @@ export default function SchedulePlanner() {
     [scheduleRows],
   );
 
+  // Gates the "no schedule this week" badge below to the actual current
+  // week, for two independent reasons. First, a future week is legitimately
+  // blank until it becomes current and the scheduler generates it, so this
+  // trigger must never fire for a past or future week. Second, a legacy
+  // (pre-platform-tracking, `platform: null`) week's rows are never keyed
+  // by platform, so `rowsByPlatform` is always empty for them — without this
+  // gate, every legacy week would render a false wall of "no schedule"
+  // badges for every platform (currently unreachable in practice, since all
+  // legacy weeks are historical and new code can never write another
+  // platform-null row, but still worth excluding explicitly). Computed
+  // directly here rather than memoized: it's a cheap, pure computation, so
+  // recomputing it on every render can't go stale the way the previous
+  // mount-only snapshot could if this tab stayed open across a real week
+  // boundary — see isCurrentWeekStart in scheduleBrands.ts for the shared,
+  // always-fresh helper both this and the scheduler-invocation effect above
+  // now use, so the two can never independently drift again.
+  const isCurrentWeek = isCurrentWeekStart(weekStartISO);
+
   const addPlatformModalData = addPlatformTarget
     ? (() => {
         const { rowsByPlatform, pausesByPlatform } = computeCellData(addPlatformTarget.brand);
@@ -537,6 +555,12 @@ export default function SchedulePlanner() {
                     .filter((p) => !pausesByPlatform[p])
                     .map((p) => ({ platform: p, days: trailingManualPauseDays(rowsByPlatform[p]) }))
                     .filter((x) => x.days.length > 0);
+                  const manuallyPausedPlatformSet = new Set(manualPausedPlatforms.map((x) => x.platform));
+                  const noSchedulePlatforms = isCurrentWeek
+                    ? brandPlatforms(brand).filter(
+                        (p) => !pausesByPlatform[p] && !manuallyPausedPlatformSet.has(p) && hasNoScheduleThisWeek(rowsByPlatform[p]),
+                      )
+                    : [];
                   return (
                     <tr key={brand} className="border-t border-slate-100 group">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
@@ -587,13 +611,16 @@ export default function SchedulePlanner() {
                         );
                       })}
                       <td className="px-3 py-2 text-left">
-                        {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0) && (
+                        {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0 || noSchedulePlatforms.length > 0) && (
                           <div className="flex flex-wrap gap-1">
                             {pausedPlatforms.map((p) => (
                               <PausedPlatformIndicator key={p} platform={p} source="system" pause={pausesByPlatform[p] as BrandPlatformPause} />
                             ))}
                             {manualPausedPlatforms.map(({ platform, days }) => (
                               <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} />
+                            ))}
+                            {noSchedulePlatforms.map((platform) => (
+                              <PausedPlatformIndicator key={platform} platform={platform} source="no-schedule" />
                             ))}
                           </div>
                         )}
