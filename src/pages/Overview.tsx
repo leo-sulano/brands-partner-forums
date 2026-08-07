@@ -12,6 +12,7 @@ import BrandFilterDropdown from '../components/BrandFilterDropdown';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
+import { countryFlagEmoji } from '../lib/countryFlags';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { TabKpis } from '../types/brand-entry';
@@ -346,12 +347,17 @@ export default function Overview() {
     kind: 'live' | 'removed',
   ) {
     if (card.isOther) return;
-    const icon = dimension === 'country'
-      ? <Globe className="size-4 text-slate-500" />
-      : <Network className="size-4 text-slate-500" />;
-    const rowIcon = dimension === 'country'
-      ? <Globe className="size-3.5 shrink-0 text-slate-400" />
-      : <Network className="size-3.5 shrink-0 text-slate-400" />;
+    const flag = dimension === 'country' ? countryFlagEmoji(card.label) : null;
+    const icon = flag
+      ? <span className="text-base leading-none" role="img" aria-label={card.label}>{flag}</span>
+      : dimension === 'country'
+        ? <Globe className="size-4 text-slate-500" />
+        : <Network className="size-4 text-slate-500" />;
+    const rowIcon = flag
+      ? <span className="text-sm leading-none shrink-0" role="img" aria-label={card.label}>{flag}</span>
+      : dimension === 'country'
+        ? <Globe className="size-3.5 shrink-0 text-slate-400" />
+        : <Network className="size-3.5 shrink-0 text-slate-400" />;
     setSliceModal({
       title: card.label,
       headerIcon: icon,
@@ -619,11 +625,15 @@ export default function Overview() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {countryCards.map((card) => {
               const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
+              const flag = card.isOther ? null : countryFlagEmoji(card.label);
               return (
                 <BreakdownDonutCard
                   key={card.key}
                   title={card.label}
-                  icon={<Globe className="size-5" style={{ color }} />}
+                  icon={flag
+                    ? <span className="text-xl leading-none" role="img" aria-label={card.label}>{flag}</span>
+                    : <Globe className="size-5" style={{ color }} />
+                  }
                   iconBgClass={card.isOther ? 'bg-slate-100 ring-1 ring-slate-200' : undefined}
                   accentColor={color}
                   live={card.live}
