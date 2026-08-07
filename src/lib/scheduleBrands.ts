@@ -28,6 +28,13 @@ export function mondayOf(date: Date): Date {
 
 export type Weekday = 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday';
 export const WEEKDAYS: Weekday[] = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
+export const WEEKDAY_LABELS: Record<Weekday, string> = {
+  monday: 'Mon',
+  tuesday: 'Tue',
+  wednesday: 'Wed',
+  thursday: 'Thu',
+  friday: 'Fri',
+};
 export type DayStatus = 'active' | 'paused' | null;
 
 export interface BrandScheduleRow {

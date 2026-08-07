@@ -14,7 +14,7 @@ import {
   fetchBrandPlatformOverrides,
   type BrandPlatformPause,
 } from '../lib/queries';
-import { WEEKDAYS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildFlaggedPlatformBrandSet } from '../lib/flaggedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
@@ -28,14 +28,6 @@ import SelectDropdown from '../components/SelectDropdown';
 import type { Entry } from '../types/entry';
 
 const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
-
-const WEEKDAY_LABELS: Record<Weekday, string> = {
-  monday: 'Mon',
-  tuesday: 'Tue',
-  wednesday: 'Wed',
-  thursday: 'Thu',
-  friday: 'Fri',
-};
 
 const TAB_STORAGE_KEY = 'schedulePlanner.tab';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
