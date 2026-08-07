@@ -24,21 +24,38 @@ export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
 export const PAUSE_RULES = {
   consecutiveRemovedThreshold: 2,
   pauseDurationWeeks: 1,
-  // A brand+platform combo also pauses when its CURRENT-MONTH-TO-DATE
-  // success rate (see computeSuccessRates in scoreSummary.ts, called with a
-  // month-to-date DateRange from recalculatePauses in schedulerService.ts)
-  // is strictly below this percentage, once it has at least
-  // minDecidedPostsForRateCheck decided (live+removed) posts within that
-  // window. Independent of, and lower-priority than, the
-  // consecutiveRemovedThreshold rule above and the flagged-via-email check
-  // -- see recalculatePauses in schedulerService.ts. Changed from an
-  // all-time to a monthly window 2026-08-07 (see
+  // A brand+platform combo also pauses when its success rate over a
+  // ROLLING 30-DAY WINDOW ending on weekStart (see computeSuccessRates in
+  // scoreSummary.ts, called with a last30DaysRange DateRange from
+  // recalculatePauses in schedulerService.ts) is strictly below this
+  // percentage, once it has at least minDecidedPostsForRateCheck decided
+  // (live+removed) posts within that window. Independent of, and
+  // lower-priority than, the consecutiveRemovedThreshold rule above and the
+  // flagged-via-email check -- see recalculatePauses in
+  // schedulerService.ts. Originally shipped 2026-08-07 (see
   // docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md)
-  // -- this was the previously-known-broken all-time oscillation issue's
-  // fix, not a new one being introduced.
+  // as a calendar-month-to-date window (fixing the previously-known-broken
+  // all-time oscillation issue), but a final whole-branch review on that
+  // same date found the calendar-month window combined with Wizard of
+  // Odds' new 1-post/week cadence (and Casino Guru's, already 1/wk) made
+  // this trigger mathematically unreachable for both platforms -- neither
+  // can accumulate 5 dated posts within a single calendar month. Switched
+  // to rolling 30 days per product-owner decision, so every platform has a
+  // continuously-available chance to reach the threshold instead of
+  // resetting to zero on the 1st of each month.
   successRateThreshold: 40,
   minDecidedPostsForRateCheck: 5,
 };
+
+// Reason strings for the two pause triggers that persist until manually
+// cleared, rather than auto-expiring after a week like the automatic
+// triggers do. Shared between schedulerService.ts (which produces them)
+// and calendarRenderer.tsx (which compares against them to decide the
+// pause tooltip's wording) so the two can't drift out of sync.
+export const PERSISTENT_PAUSE_REASONS = {
+  manual: 'Manually paused',
+  flagged: 'Flagged via email notification',
+} as const;
 
 export const CARRYOVER_RULES = {
   // Deliberately disabled (0 instead of 0.40) for this initial ship.

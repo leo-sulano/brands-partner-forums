@@ -18,7 +18,7 @@ import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBra
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
 import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils.ts';
-import { CARRYOVER_RULES, PAUSE_RULES } from './schedulerRules.ts';
+import { CARRYOVER_RULES, PAUSE_RULES, PERSISTENT_PAUSE_REASONS } from './schedulerRules.ts';
 import type { Entry } from '../../types/entry.ts';
 
 export interface TabContext {
@@ -121,17 +121,28 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
 // logic (it would look like a real pause that "expired" and get reported as
 // resumed even though it never took effect). The resume/delete path stays
 // unconditional: deleting an expired pause is always safe and idempotent.
-// The success-rate pause check uses the calendar month containing
-// `weekStart`, not real wall-clock "now" -- recalculatePauses is only ever
-// invoked for the actual current week in production (both call sites gate
-// on that), so this is equivalent to "this month" there, while also making
-// the check deterministic for a fixed weekStart in tests, and correct if
-// this is ever invoked for a non-current week. Parses weekStart as a local
-// date the same way shiftWeek below does, to avoid the UTC-conversion bug
-// documented on toISODate in scheduleBrands.ts.
-function monthToDateRange(weekStart: string): DateRange {
+// The success-rate pause check uses a rolling 30-day window ending on
+// `weekStart`, not a calendar month. Originally shipped as a
+// calendar-month-to-date window, but a final whole-branch review found
+// that combined with Wizard of Odds' 1-post/week cadence (and Casino
+// Guru's, which was already 1/wk), a calendar-month window made this
+// trigger mathematically unreachable for both platforms -- neither can
+// accumulate minDecidedPostsForRateCheck (5) dated posts within a single
+// calendar month, especially in the first half of it. A rolling 30-day
+// window gives every platform a real, continuously-available chance to
+// reach the threshold instead of resetting to zero on the 1st.
+// recalculatePauses is only ever invoked for the actual current week in
+// production (both call sites gate on that), so this is equivalent to
+// "trailing 30 days as of now" there, while also making the check
+// deterministic for a fixed weekStart in tests. Parses weekStart as a
+// local date the same way shiftWeek below does, to avoid the
+// UTC-conversion bug documented on toISODate in scheduleBrands.ts.
+function last30DaysRange(weekStart: string): DateRange {
   const [y, m, d] = weekStart.split('-').map(Number);
-  return { from: new Date(y, m - 1, 1), to: new Date(y, m - 1, d) };
+  const to = new Date(y, m - 1, d);
+  const from = new Date(y, m - 1, d);
+  from.setDate(from.getDate() - 29);
+  return { from, to };
 }
 
 export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext, client?: SupabaseClient): Promise<PinnedCombo[]> {
@@ -148,9 +159,9 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   // all of ctx.entries — reused by the success-rate pause check below.
   // normalizedRates re-buckets by normalized brand keys so case variants
   // (e.g. "WinMega" / "winmega") merge correctly.
-  const monthRange = monthToDateRange(weekStart);
+  const rateRange = last30DaysRange(weekStart);
   const ratesByPlatform = new Map(
-    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform, new Set(), monthRange), tab)]),
+    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform, new Set(), rateRange), tab)]),
   );
 
   for (const brand of ctx.brands) {
@@ -183,7 +194,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         continue;
       }
       if (override === 'pause') {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Manually paused', client);
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, PERSISTENT_PAUSE_REASONS.manual, client);
         continue;
       }
 
@@ -202,7 +213,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // email notification outranks the inferred consecutive-removed and
       // success-rate signals below.
       if (flaggedSet.has(platformFlaggedKey(tab, brand, platform))) {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Flagged via email notification', client);
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, PERSISTENT_PAUSE_REASONS.flagged, client);
         continue;
       }
 
@@ -228,7 +239,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         const pct = successRatePct(sr!.rate);
         await upsertBrandPlatformPause(
           tab, brand, platform, weekStart,
-          `Success rate below ${PAUSE_RULES.successRateThreshold}% this month (${pct}% over ${decided} posts)`,
+          `Success rate below ${PAUSE_RULES.successRateThreshold}% in the last 30 days (${pct}% over ${decided} posts)`,
           client,
         );
       }

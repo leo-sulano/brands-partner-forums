@@ -590,15 +590,21 @@ Brands Partner Forum/
   column-filtered publication) rather than staying an implicit side effect. Not fixed as part
   of that task; documentation only.
 - The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
-  in `src/lib/scheduler/schedulerRules.ts`) uses an all-time, unwindowed rate paired with a fixed
-  1-week pause. A chronically underperforming brand+platform will pause, auto-resume after 1
-  week, post once or twice, but its all-time rate barely moves — so it pauses again next cycle,
-  indefinitely, at roughly half normal cadence rather than eventually stabilizing. This is an
-  accepted, deliberate tradeoff (not a bug), matching how completion-based carryover (below) was
-  disabled for a related unbounded-compounding shape. If this becomes a real problem in practice,
-  the fix would be windowing the rate (e.g. last N posts, or a trailing date range —
-  `computeSuccessRates` already supports a `DateRange` param) or adding a re-pause cooldown after
-  resume.
+  in `src/lib/scheduler/schedulerRules.ts`) now windows the rate to a rolling 30 days ending on
+  `weekStart` (`recalculatePauses`' `last30DaysRange` in `schedulerService.ts`), not all-time —
+  changed 2026-08-07 per a final whole-branch review of the Schedule Planner rules update: a
+  calendar-month-to-date window (that task's first attempt) made the check mathematically
+  unreachable for Wizard of Odds (dropped to 1 post/wk that same task) and Casino Guru (already
+  1/wk), since neither can accumulate `minDecidedPostsForRateCheck` (5) dated posts within a
+  single calendar month. Still requires at least 5 decided posts within the 30-day window, paired
+  with a fixed 1-week auto-pause — the same "chronically underperforming brand oscillates in and
+  out of pause indefinitely" tradeoff as before still applies, just on a rolling rather than
+  calendar-month basis, and is still accepted/deliberate. That same task also added a manual
+  override layer (`brand_platform_override` table, checked first in `recalculatePauses`) that can
+  force a brand+platform `'active'` regardless of what this or any other auto-check computes, or
+  force it `'pause'` unconditionally — ops sets/clears it via a control on the Schedule Planner
+  grid, and it persists until explicitly cleared (no auto-expiry, unlike an auto-detected pause).
+  Spec: `docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md`.
 - Intelligent Schedule Planner's completion-based carryover is implemented but disabled
   (`CARRYOVER_RULES.completionThreshold = 0` in `src/lib/scheduler/schedulerRules.ts`) — the
   formula as originally specified compounds unbounded (see 2026-07-31 entry above). Needs a

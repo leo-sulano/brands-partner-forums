@@ -2,6 +2,7 @@ import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
 import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms } from './scheduleUtils';
+import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
 
 function statusLabel(status: DayStatus): string {
   if (status === 'active') return 'Scheduled';
@@ -159,7 +160,7 @@ export function PausedPlatformIndicator({ platform, pause }: PausedPlatformIndic
   // recalculatePauses run, so unlike a real auto-detected pause they don't
   // actually auto-resume next week. Showing "Resumes week of ..." for them
   // would be misleading.
-  const autoExpires = pause.reason !== 'Manually paused' && pause.reason !== 'Flagged via email notification';
+  const autoExpires = pause.reason !== PERSISTENT_PAUSE_REASONS.manual && pause.reason !== PERSISTENT_PAUSE_REASONS.flagged;
   const title = autoExpires
     ? `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`
     : `Reason: ${pause.reason}\nStays paused until manually cleared`;

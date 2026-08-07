@@ -151,16 +151,16 @@ describe('recalculatePauses', () => {
     expect(queries.fetchBrandSchedule).toHaveBeenCalledWith('BITP', '2026-08-03', fakeClient);
   });
 
-  describe('success-rate trigger (monthly window)', () => {
-    it('pauses a brand+platform whose current-month-to-date success rate is below 40% with at least 5 decided posts', async () => {
+  describe('success-rate trigger (rolling 30-day window)', () => {
+    it('pauses a brand+platform whose rolling-30-day success rate is below 40% with at least 5 decided posts', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
           // Most recent post is Published, so the consecutive-removed check
           // (top 2 by date) never fires here — isolates the success-rate path.
-          // weekStart below is 2026-08-17, so the month-to-date window is
-          // Aug 1-17 -- every date here falls inside it.
+          // weekStart below is 2026-08-17, so the rolling 30-day window is
+          // 2026-07-19 through 2026-08-17 -- every date here falls inside it.
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
@@ -170,11 +170,11 @@ describe('recalculatePauses', () => {
       };
       await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
-        'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% this month (20% over 5 posts)', undefined,
+        'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% in the last 30 days (20% over 5 posts)', undefined,
       );
     });
 
-    it('does not pause on a low current-month rate with fewer than 5 decided posts', async () => {
+    it('does not pause on a low rolling-30-day rate with fewer than 5 decided posts', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
@@ -210,7 +210,7 @@ describe('recalculatePauses', () => {
         activePlatforms: ['tp'],
         entries: [
           // Top 2 most recent are both Removed (fires consecutive-removed)
-          // AND the month-to-date rate is 1/5 = 20% (would also fire
+          // AND the rolling-30-day rate is 1/5 = 20% (would also fire
           // success-rate) -- only one pause row/reason should result.
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-16' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
@@ -245,7 +245,7 @@ describe('recalculatePauses', () => {
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
     });
 
-    it('merges success rates across different brand casings within the month window', async () => {
+    it('merges success rates across different brand casings within the rolling 30-day window', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
@@ -262,18 +262,19 @@ describe('recalculatePauses', () => {
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
     });
 
-    it('does not pause when the all-time rate is low but the current-month rate is at or above 40%', async () => {
+    it('does not pause when the all-time rate is low but the rolling-30-day rate is at or above 40%', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
-          // 10 old, out-of-window (July) Removed posts -- would tank an
-          // all-time rate, but must be excluded entirely from the month-to-
-          // date window (Aug 1-17).
+          // 10 old, out-of-window (early July, before the 2026-07-19 window
+          // start) Removed posts -- would tank an all-time rate, but must be
+          // excluded entirely from the rolling 30-day window.
           ...Array.from({ length: 10 }, (_, i) =>
             entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': `2026-07-${String(i + 1).padStart(2, '0')}` })),
-          // This month: 4 live + 1 removed = 5 decided, 80% -- top 2 by date
-          // (Aug16, Aug14) are both Published, so consecutive-removed doesn't fire either.
+          // Within the window: 4 live + 1 removed = 5 decided, 80% -- top 2 by
+          // date (Aug16, Aug14) are both Published, so consecutive-removed
+          // doesn't fire either.
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-14' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-12' }),
@@ -285,19 +286,19 @@ describe('recalculatePauses', () => {
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
     });
 
-    it('pauses when the current-month rate is low even though the all-time rate looks fine', async () => {
+    it('pauses when the rolling-30-day rate is low even though the all-time rate looks fine', async () => {
       const ctx: TabContext = {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [
-          // 10 old, out-of-window (July) Published posts -- would make an
-          // all-time rate look healthy, but must be excluded from the
-          // month-to-date window.
+          // 10 old, out-of-window (early July, before the 2026-07-19 window
+          // start) Published posts -- would make an all-time rate look
+          // healthy, but must be excluded from the rolling 30-day window.
           ...Array.from({ length: 10 }, (_, i) =>
             entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': `2026-07-${String(i + 1).padStart(2, '0')}` })),
-          // This month: 1 live + 4 removed = 5 decided, 20% -- top 2 by date
-          // (Aug16 Published, Aug14 Removed) are not both removed, so this
-          // isolates the success-rate trigger from consecutive-removed.
+          // Within the window: 1 live + 4 removed = 5 decided, 20% -- top 2 by
+          // date (Aug16 Published, Aug14 Removed) are not both removed, so
+          // this isolates the success-rate trigger from consecutive-removed.
           entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-16' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-14' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-08-12' }),
@@ -307,7 +308,7 @@ describe('recalculatePauses', () => {
       };
       await recalculatePauses('BITP', '2026-08-17', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
-        'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% this month (20% over 5 posts)', undefined,
+        'BITP', 'WinMega', 'tp', '2026-08-17', 'Success rate below 40% in the last 30 days (20% over 5 posts)', undefined,
       );
     });
   });
@@ -447,6 +448,35 @@ describe('recalculatePauses', () => {
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
       expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it("override 'active' wins even when the combo is also flagged via email", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
+        flaggedPlatformBrandSet: new Set([platformFlaggedKey('BITP', 'WinMega', 'tp')]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+    });
+
+    it("override 'pause' wins over consecutive-removed, with the manual reason not the auto one", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [
+          entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        ],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
+      );
     });
   });
 });

@@ -2656,27 +2656,38 @@ export default function BrandGroup() {
             setEntries((prev) =>
               prev.map((e) => (e.id === editEntry.id ? { ...e, data: { ...e.data, ...fields }, tab: newTab ?? e.tab } : e)),
             );
-            // Only write a platform's flag when that platform's checkbox
-            // actually changed — not on every save of an already-flagged
-            // brand's row (see the comment on
-            // initialRemovedPlatformsForEditEntry above). Diffed
-            // independently per platform so toggling one platform never
-            // touches another's flag/removed_by/removed_at.
-            if (brandCol && removedPlatforms !== undefined) {
+            // Three independent, sibling persistence blocks below — each
+            // gated only on its own param's `!== undefined` check, not on
+            // any of the others'. (Previously flaggedPlatforms/overrides were
+            // nested inside removedPlatforms' undefined-check, coupling their
+            // persistence to a parameter that has nothing to do with what
+            // they write — a latent bug that only worked because the modal
+            // always happens to pass removedPlatforms too. Pure structural
+            // fix; no behavior change, since the modal still always passes
+            // all three.)
+            if (brandCol) {
               const targetTab = newTab ?? editEntry.tab;
               const brandName = fields[brandCol] ?? editEntry.data[brandCol];
               if (brandName) {
-                const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
-                const nowRemoved = new Set(removedPlatforms);
-                // Diff over decodedTab's platforms (the tab the checkboxes were
-                // actually rendered for), not targetTab's — a brand-tab-move
-                // changing which platforms apply mid-save is an edge case this
-                // doesn't attempt to reconcile further (matches the existing
-                // brand-rename-during-save limitation documented near
-                // setBrandPlatformRemoved in src/lib/queries.ts).
-                for (const p of getTabPlatforms(decodedTab)) {
-                  if (wasRemoved.has(p) !== nowRemoved.has(p)) {
-                    await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
+                // Only write a platform's flag when that platform's checkbox
+                // actually changed — not on every save of an already-flagged
+                // brand's row (see the comment on
+                // initialRemovedPlatformsForEditEntry above). Diffed
+                // independently per platform so toggling one platform never
+                // touches another's flag/removed_by/removed_at.
+                if (removedPlatforms !== undefined) {
+                  const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
+                  const nowRemoved = new Set(removedPlatforms);
+                  // Diff over decodedTab's platforms (the tab the checkboxes were
+                  // actually rendered for), not targetTab's — a brand-tab-move
+                  // changing which platforms apply mid-save is an edge case this
+                  // doesn't attempt to reconcile further (matches the existing
+                  // brand-rename-during-save limitation documented near
+                  // setBrandPlatformRemoved in src/lib/queries.ts).
+                  for (const p of getTabPlatforms(decodedTab)) {
+                    if (wasRemoved.has(p) !== nowRemoved.has(p)) {
+                      await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
+                    }
                   }
                 }
 
