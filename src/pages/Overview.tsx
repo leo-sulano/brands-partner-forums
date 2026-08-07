@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
@@ -100,10 +100,13 @@ const PLATFORM_KEY: Record<string, PlatformKey> = {
   WizardOfOdds: 'wo',
 };
 
-interface PlatformSliceModalState {
-  platform: string;
-  platformKey: PlatformKey;
+interface SliceModalState {
+  title: string;
+  headerIcon: ReactNode;
+  rowIcon: ReactNode;
   kind: 'live' | 'removed';
+  rows: { tab: string; count: number }[];
+  linkFor: (tab: string) => string;
 }
 
 function KpiBreakdownModal({
@@ -195,13 +198,11 @@ function KpiBreakdownModal({
   );
 }
 
-function PlatformBreakdownModal({
+function SliceBreakdownModal({
   modal,
-  tabs,
   onClose,
 }: {
-  modal: PlatformSliceModalState;
-  tabs: TabSummary[];
+  modal: SliceModalState;
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -212,8 +213,7 @@ function PlatformBreakdownModal({
     return () => document.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const rows = tabs
-    .map((t) => ({ tab: t.tab, count: t.kpis[modal.platformKey][modal.kind] }))
+  const rows = modal.rows
     .filter((r) => r.count > 0)
     .sort((a, b) => b.count - a.count);
 
@@ -233,14 +233,9 @@ function PlatformBreakdownModal({
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <img
-                src={PLATFORM_LOGOS[modal.platform]}
-                alt={modal.platform}
-                className="size-4 rounded"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              />
+              {modal.headerIcon}
               <p className="text-xs font-semibold uppercase tracking-widest text-slate-400">
-                {modal.platform} — {kindLabel}
+                {modal.title} — {kindLabel}
               </p>
             </div>
             <p className={`text-2xl font-bold font-mono tabular-nums ${valueColor}`}>{grandTotal.toLocaleString()}</p>
@@ -262,19 +257,14 @@ function PlatformBreakdownModal({
             return (
               <Link
                 key={r.tab}
-                to={`/brands/${tabToSlug(r.tab)}?platform=${modal.platformKey}&status=${modal.kind}`}
+                to={modal.linkFor(r.tab)}
                 onClick={onClose}
                 className="group -mx-3 flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50"
               >
                 <div className="min-w-0 flex-1">
                   <div className="mb-1.5 flex items-center justify-between">
                     <span className="flex items-center gap-1.5 min-w-0">
-                      <img
-                        src={PLATFORM_LOGOS[modal.platform]}
-                        alt={modal.platform}
-                        className="size-3.5 shrink-0 rounded-sm"
-                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                      />
+                      {modal.rowIcon}
                       <span className="truncate text-sm font-medium text-slate-700 transition-colors group-hover:text-blue-700">{tabDisplayName(r.tab)}</span>
                     </span>
                     <span className={`ml-2 shrink-0 text-sm font-bold font-mono tabular-nums ${valueColor}`}>{r.count.toLocaleString()}</span>
@@ -299,7 +289,7 @@ const initial: State = { loading: true, error: null, tabs: [] };
 export default function Overview() {
   const [state, setState] = useState<State>(initial);
   const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
-  const [platformSliceModal, setPlatformSliceModal] = useState<PlatformSliceModalState | null>(null);
+  const [sliceModal, setSliceModal] = useState<SliceModalState | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
@@ -357,6 +347,19 @@ export default function Overview() {
       next.delete('proxy');
       return next;
     }, { replace: true });
+  }
+
+  function openPlatformSlice(platformName: string, kind: 'live' | 'removed') {
+    const platformKey = PLATFORM_KEY[platformName];
+    const displayName = platformName === 'WizardOfOdds' ? 'Wizard of Odds' : platformName;
+    setSliceModal({
+      title: displayName,
+      headerIcon: <img src={PLATFORM_LOGOS[platformName]} alt={platformName} className="size-4 rounded" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />,
+      rowIcon: <img src={PLATFORM_LOGOS[platformName]} alt={platformName} className="size-3.5 shrink-0 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />,
+      kind,
+      rows: state.tabs.map((t) => ({ tab: t.tab, count: t.kpis[platformKey][kind] })),
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}?platform=${platformKey}&status=${kind}`,
+    });
   }
 
 
@@ -587,9 +590,7 @@ export default function Overview() {
                             style={{ cursor: total > 0 ? 'pointer' : 'default' }}
                             onClick={(data) => {
                               if (total === 0 || data.label === 'No data') return;
-                              const platformKey = PLATFORM_KEY[p.name];
-                              const kind: 'live' | 'removed' = data.label === 'Published' ? 'live' : 'removed';
-                              setPlatformSliceModal({ platform: p.name, platformKey, kind });
+                              openPlatformSlice(p.name, data.label === 'Published' ? 'live' : 'removed');
                             }}
                           >
                             {slices.map((s) => (
@@ -613,7 +614,7 @@ export default function Overview() {
                       <button
                         type="button"
                         disabled={total === 0}
-                        onClick={() => setPlatformSliceModal({ platform: p.name, platformKey: PLATFORM_KEY[p.name], kind: 'live' })}
+                        onClick={() => openPlatformSlice(p.name, 'live')}
                         className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
                       >
                         <span className="size-2.5 shrink-0 rounded-full bg-emerald-500" />
@@ -623,7 +624,7 @@ export default function Overview() {
                       <button
                         type="button"
                         disabled={total === 0}
-                        onClick={() => setPlatformSliceModal({ platform: p.name, platformKey: PLATFORM_KEY[p.name], kind: 'removed' })}
+                        onClick={() => openPlatformSlice(p.name, 'removed')}
                         className="flex items-center gap-1.5 rounded-md px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
                       >
                         <span className="size-2.5 shrink-0 rounded-full bg-rose-400" />
@@ -647,11 +648,10 @@ export default function Overview() {
         />
       )}
 
-      {platformSliceModal && (
-        <PlatformBreakdownModal
-          modal={platformSliceModal}
-          tabs={state.tabs}
-          onClose={() => setPlatformSliceModal(null)}
+      {sliceModal && (
+        <SliceBreakdownModal
+          modal={sliceModal}
+          onClose={() => setSliceModal(null)}
         />
       )}
     </div>
