@@ -11,6 +11,7 @@ import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import BrandFilterDropdown from '../components/BrandFilterDropdown';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
+import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGrid';
 import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
@@ -649,12 +650,16 @@ export default function Overview() {
           </p>
         </div>
         {state.loading ? (
-          <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-32 animate-pulse rounded-xl bg-slate-100" />
+            ))}
+          </div>
         ) : proxyCards.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No proxy data</p>
         ) : (
-          <BreakdownRankedList
-            rows={proxyCards.map((card): BreakdownRow => {
+          <BreakdownStatGrid
+            tiles={proxyCards.map((card): StatTile => {
               const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
               return {
                 key: card.key,
@@ -662,8 +667,9 @@ export default function Overview() {
                 live: card.live,
                 removed: card.removed,
                 muted: card.isOther,
+                accentColor: color,
                 icon: <Network className="size-4" style={{ color }} />,
-                onRowClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind),
+                onTileClick: card.isOther ? undefined : (kind) => openDimensionSlice(card, 'proxy', kind),
               };
             })}
           />
