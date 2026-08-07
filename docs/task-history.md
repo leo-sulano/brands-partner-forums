@@ -2107,3 +2107,17 @@ Follow-up to Task 185: the user asked to "use also proxy icons." Since proxy nam
 - Full suite (618 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day icon follow-up on Task 185.
 
 ---
+
+## Task 187: Brand-Level Drill-Down Modal + Explicit Published/Removed Legends
+
+**Date:** August 7, 2026
+
+The user asked for three related things, clarified via 2 quick questions: (1) make Country/Proxy Breakdown "also clickable like Platform Breakdown both published and removed," (2) add explicit Published/Removed labels to both sections, and (3) — confirmed as "brand tabs" — have the click-through modal (on all three sections, matching how Platform Breakdown's already works) list individual brands with their tab and status, not just a per-tab total.
+
+- **Data layer:** `computeTabKpisFromEntries` (`queries.ts`) now also records, in the same pass that builds every other count, which brand+tab contributed to each live/removed bucket — three new `TabKpis` fields: `platformBrands` (keyed `tp`/`ag`/`cg`/`wo`), `byCountryBrands` (keyed by the same canonical ISO2 as `byCountry`), and `byProxyBrands` (keyed the same as `byProxy`). New shared helper `addBrandEntry` pushes a `{tab, brand}` entry alongside each existing scalar increment; entries with no resolvable brand name are skipped (they already don't count toward anything brand-identifiable). No second scan over entries — this piggybacks on the loop that already exists.
+- **Modal redesign:** `SliceBreakdownModal` (`Overview.tsx`) no longer lists one row per tab with a count and a proportional bar — it now lists one row per individual brand, each showing the brand name, its tab, and a "Published"/"Removed" status badge, and deep-links to that exact brand via `BrandGroup.tsx`'s existing `?brand=` exact-match filter (`Task 167`) plus `?status=`, and `?platform=` when the slice originated from Platform Breakdown. `openPlatformSlice`/`openDimensionSlice` now build a flat `brands: BrandStatusEntry[]` (via `state.tabs.flatMap(...)`) instead of a per-tab `rows`/`linkFor` pair; the now-redundant `rowIcon` field was removed from `SliceModalState` since brand rows show text only, no icon.
+- **Explicit legends:** `BreakdownRankedList` (Country) and `BreakdownStatGrid` (Proxy) each gained an independently clickable "● Published X%" / "● Removed X%" legend, styled like Platform Breakdown's existing donut-card legend — added alongside the existing bar/tile visuals per the user's explicit choice, not replacing them, so all three sections now offer the same two click targets in the same visual language.
+- 3 new regression tests (`queries.test.ts`): `platformBrands` records the right brand+tab per platform and kind; `byCountryBrands` merges onto the same canonical key as `byCountry` (UK + United Kingdom → one `GB` bucket, both brands present); `byProxyBrands` skips a blank-brand row while the scalar `byProxy` count still includes it.
+- Full suite (373 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day interaction/data follow-up on Tasks 181–186.
+
+---
