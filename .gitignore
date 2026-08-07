@@ -56,3 +56,7 @@ csv/
 
 # Stray temp files
 *.tmp.*
+
+# Separate project's checkout that happens to live inside this repo's
+# directory tree — its own git repo, not a submodule of this one.
+/BIF-Dashboard/
