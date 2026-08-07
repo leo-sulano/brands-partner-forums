@@ -77,6 +77,17 @@ describe('topNWithOther', () => {
   it('returns an empty array for an empty input map', () => {
     expect(topNWithOther({}, 8)).toEqual([]);
   });
+
+  it('with topN=Infinity, returns every card individually and never produces an "Other" card (Overview.tsx relies on this for Country Breakdown)', () => {
+    const merged: Record<string, CountBreakdown> = {
+      a: { label: 'A', live: 10, removed: 0 },
+      b: { label: 'B', live: 9, removed: 0 },
+      c: { label: 'C', live: 1, removed: 1 },
+    };
+    const cards = topNWithOther(merged, Infinity);
+    expect(cards).toHaveLength(3);
+    expect(cards.every((c) => !c.isOther)).toBe(true);
+  });
 });
 
 describe('mergeDistinctValues', () => {

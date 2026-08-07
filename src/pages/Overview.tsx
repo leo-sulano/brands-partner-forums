@@ -457,7 +457,10 @@ export default function Overview() {
   const allProxies   = mergeDistinctValues(state.tabs.map((t) => t.kpis.proxies));
 
   const BREAKDOWN_TOP_N = 8;
-  const countryCards = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry)), BREAKDOWN_TOP_N);
+  // Country Breakdown shows every distinct country as its own row — no
+  // "Other" aggregate — so a value never has to be looked up inside a
+  // folded-together bucket. Proxy Breakdown keeps the top-8-plus-Other cap.
+  const countryCards = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry)), Infinity);
   const proxyCards   = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy)),   BREAKDOWN_TOP_N);
   const countryCoverage = countryCards.reduce((s, c) => s + c.live + c.removed, 0);
   const proxyCoverage   = proxyCards.reduce((s, c) => s + c.live + c.removed, 0);
