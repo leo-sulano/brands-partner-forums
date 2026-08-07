@@ -9,7 +9,7 @@ import {
 } from '../queries.ts';
 import {
   PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
-  computeSuccessRates, successRatePct, type SuccessRate,
+  computeSuccessRates, successRatePct, type SuccessRate, type DateRange,
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
@@ -107,6 +107,19 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
 // logic (it would look like a real pause that "expired" and get reported as
 // resumed even though it never took effect). The resume/delete path stays
 // unconditional: deleting an expired pause is always safe and idempotent.
+// The success-rate pause check uses the calendar month containing
+// `weekStart`, not real wall-clock "now" -- recalculatePauses is only ever
+// invoked for the actual current week in production (both call sites gate
+// on that), so this is equivalent to "this month" there, while also making
+// the check deterministic for a fixed weekStart in tests, and correct if
+// this is ever invoked for a non-current week. Parses weekStart as a local
+// date the same way shiftWeek below does, to avoid the UTC-conversion bug
+// documented on toISODate in scheduleBrands.ts.
+function monthToDateRange(weekStart: string): DateRange {
+  const [y, m, d] = weekStart.split('-').map(Number);
+  return { from: new Date(y, m - 1, 1), to: new Date(y, m - 1, d) };
+}
+
 export async function recalculatePauses(tab: string, weekStart: string, ctx: TabContext, client?: SupabaseClient): Promise<PinnedCombo[]> {
   const [pauses, existingRows] = await Promise.all([
     fetchActiveBrandPlatformPauses(tab, client),
@@ -119,8 +132,9 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   // all of ctx.entries — reused by the success-rate pause check below.
   // normalizedRates re-buckets by normalized brand keys so case variants
   // (e.g. "WinMega" / "winmega") merge correctly.
+  const monthRange = monthToDateRange(weekStart);
   const ratesByPlatform = new Map(
-    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform), tab)]),
+    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform, new Set(), monthRange), tab)]),
   );
 
   for (const brand of ctx.brands) {
@@ -164,7 +178,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
         const pct = successRatePct(sr!.rate);
         await upsertBrandPlatformPause(
           tab, brand, platform, weekStart,
-          `Success rate below ${PAUSE_RULES.successRateThreshold}% (${pct}% over ${decided} posts)`,
+          `Success rate below ${PAUSE_RULES.successRateThreshold}% this month (${pct}% over ${decided} posts)`,
           client,
         );
       }
