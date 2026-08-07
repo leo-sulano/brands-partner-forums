@@ -2121,3 +2121,16 @@ The user asked for three related things, clarified via 2 quick questions: (1) ma
 - Full suite (373 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day interaction/data follow-up on Tasks 181–186.
 
 ---
+
+## Task 188: Revert Brand-Level Modal Back to Per-Tab (Task 187 Misread)
+
+**Date:** August 7, 2026
+
+The user caught, live via screenshot, that Task 187's brand-level modal was wrong: clicking "Canada — Published" showed 543 rows all reading the identical "Best Online Casino in Canada 2026 | Top ..." title. Root cause of the misread: Task 187's clarifying question asked whether the modal should list individual brands "within" a tab, and the user answered "Brand tabs" — but "Brand Tabs" is this app's own established term for its per-tab pages (the sidebar section literally renamed "Brands" → "Brand Tabs" back in Task 61), not "brand name plus tab" as implemented. The screenshot also exposed a second, independent problem with the per-brand approach even if the wording had been read correctly: for tabs like FTP (TP Affiliate-style, many reviewer accounts pointed at one shared review page), the resolved "brand" column holds that shared page title, so hundreds of rows are genuinely identical — not a bug in the new code, just proof the per-brand grouping doesn't fit this tab's data shape.
+
+- Reverted `SliceBreakdownModal`, `openPlatformSlice`, and `openDimensionSlice` (`Overview.tsx`) to Task 181's original per-tab design — one row per tab with its count, a proportional bar, and a link — undoing Task 187's brand-row rewrite entirely.
+- Removed the now-unused data-layer additions from Task 187: `TabKpis.platformBrands`/`byCountryBrands`/`byProxyBrands`, the `addBrandEntry` helper and its call sites in `computeTabKpisFromEntries` (`queries.ts`), and the 3 regression tests that covered them — no orphaned code or dead types left behind.
+- **Kept from Task 187:** the explicit, independently clickable "● Published X%" / "● Removed X%" legend rows on `BreakdownRankedList` (Country) and `BreakdownStatGrid` (Proxy) — that part of the request was correct and unrelated to this revert.
+- Full suite (370 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day correction of Task 187.
+
+---
