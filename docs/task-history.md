@@ -2148,3 +2148,16 @@ The user asked, from a mockup + screenshot, to collapse each Country Breakdown r
 - Full suite (637 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day layout follow-up on Task 187/188.
 
 ---
+
+## Task 190: Country Breakdown Drill-Down Carries the Country Filter Through
+
+**Date:** August 7, 2026
+
+The user asked that clicking a tab row inside the Country Breakdown modal (e.g. "Germany — Removed" → Rooster Partners) land on that Brand Tab pre-filtered to both the clicked status AND the clicked country — previously the deep link only carried `?status=`, dropping the country entirely.
+
+- `BrandGroup.tsx` now reads a `country` URL param the same way it already reads `brand`/`platform`/`status`/`rating` — added to the `hasDeepLinkParams` check (an explicit deep link wins over any remembered per-tab filter state) in the tab-change effect, and to the same-tab URL-resync effect that handles navigating between two deep links without a tab change.
+- The actual country-filter comparison (`countryFiltered`) now matches via `canonicalCountryKey` (Task 184) instead of a raw case-insensitive string match — so a URL alias like `?country=UK` still matches rows recorded as "United Kingdom" in a given tab's data, and vice versa; without this, the fix would work for non-aliased countries (Germany, France, ...) but silently fail for the exact aliased-country case the underlying feature exists to handle.
+- `Overview.tsx`'s `openDimensionSlice` now appends `&country=<canonical name>` to the modal's per-tab links, but only for the `country` dimension — Proxy Breakdown's links are unchanged.
+- No new tests: `BrandGroup.tsx` has no existing unit test coverage (a known, pre-existing gap for this large page component, documented in earlier task entries); `canonicalCountryKey`'s own correctness is already covered by Task 184's tests. Full suite (637 tests) and build both pass. Pushed directly to `main`. No spec/plan written — a same-day deep-link follow-up on Task 189.
+
+---
