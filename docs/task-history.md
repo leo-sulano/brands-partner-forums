@@ -2041,3 +2041,17 @@ Added Country and Proxy as a second and third global filter on the Overview page
 - Spec: `docs/superpowers/specs/2026-08-07-overview-country-proxy-filter-design.md`. Plan: `docs/superpowers/plans/2026-08-07-overview-country-proxy-filter.md`.
 
 ---
+
+## Task 182: Country/Proxy Breakdown Cards — Distinct Per-Entity Colors
+
+**Date:** August 7, 2026
+
+The user caught, live, that Task 181's new Country/Proxy Breakdown sections looked visually flat compared to Platform Breakdown: every card in a section shared the same plain gray icon and one section-wide accent color (indigo for Country, teal for Proxy), unlike Platform Breakdown's distinct real favicon + per-platform color per card.
+
+- Added `src/lib/categoricalColor.ts` (`categoricalColorForKey`), using the validated 8-slot colorblind-safe categorical palette from this session's dataviz skill reference (`palette.md`) — blue/orange/aqua/yellow/magenta/green/violet/red, the same order that clears the CVD/normal-vision adjacent-pair floors in both light and dark mode. Colors are assigned by a stable string hash of each card's normalized key rather than by its rank in the top-8 list, so a country/proxy keeps the same color across re-renders even as filters reorder or change which values are visible ("color follows the entity, never its rank").
+- `BreakdownDonutCard.tsx`'s icon circle now derives a soft tinted background from `accentColor` via inline style when no explicit `iconBgClass` is passed — Platform Breakdown is unaffected (it always passes an explicit Tailwind `iconBgClass`); Country/Proxy cards now get this automatically.
+- `Overview.tsx`'s Country/Proxy card render loops now compute `categoricalColorForKey(card.key)` per card for both the icon glyph color and `accentColor` (the donut's center percentage text) — the "Other" aggregate card is explicitly excluded and kept neutral slate-gray, consistent with the palette's own guidance that a 9th/overflow series should never take a generated category hue.
+- 4 new unit tests (`categoricalColor.test.ts`): deterministic per key, stable across repeated calls, draws only from the fixed 8-hex set, and produces more than one distinct color across a small sample of country names.
+- Full suite (347 tests) and build both pass. Pushed directly to `main`, per this repo's standing Vercel-deployment-tagging rule. No spec/plan written — a small, same-day visual follow-up fix on Task 181, not a new feature.
+
+---
