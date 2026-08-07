@@ -9,6 +9,7 @@ import {
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import BrandFilterDropdown from '../components/BrandFilterDropdown';
+import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
 import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGrid';
@@ -379,6 +380,13 @@ export default function Overview() {
     }, { replace: true });
   }
 
+  function setDateFrom(v: string) {
+    setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('from', v); else n.delete('from'); return n; }, { replace: true });
+  }
+  function setDateTo(v: string) {
+    setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('to', v); else n.delete('to'); return n; }, { replace: true });
+  }
+
   function clearCountryProxyFilters() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -425,39 +433,62 @@ export default function Overview() {
     },
   ];
 
+  const dateActive = !!(dateFrom || dateTo);
+
   return (
     <div className="space-y-8">
 
-      {(allCountries.length > 1 || allProxies.length > 1 || countryFilter || proxyFilter) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-slate-500">Filters</span>
-          {allCountries.length > 1 && (
-            <BrandFilterDropdown
-              noun="countrie"
-              value={countryFilter}
-              onChange={(v) => updateFilterParam('country', v)}
-              brands={allCountries}
-            />
-          )}
-          {allProxies.length > 1 && (
-            <BrandFilterDropdown
-              noun="proxie"
-              value={proxyFilter}
-              onChange={(v) => updateFilterParam('proxy', v)}
-              brands={allProxies}
-            />
-          )}
-          {(countryFilter || proxyFilter) && (
-            <button
-              type="button"
-              onClick={clearCountryProxyFilters}
-              className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
-            >
-              Clear
-            </button>
-          )}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-slate-500 shrink-0">Date Range</span>
+        <DatePicker
+          value={dateFrom}
+          onChange={setDateFrom}
+          placeholder="From date"
+          max={dateTo || undefined}
+          align="left"
+        />
+        <span className="text-xs text-slate-400">→</span>
+        <DatePicker
+          value={dateTo}
+          onChange={setDateTo}
+          placeholder="To date"
+          min={dateFrom || undefined}
+          align="left"
+        />
+
+        {(allCountries.length > 1 || allProxies.length > 1) && (
+          <>
+            <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
+            <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
+            {allCountries.length > 1 && (
+              <BrandFilterDropdown
+                noun="countrie"
+                value={countryFilter}
+                onChange={(v) => updateFilterParam('country', v)}
+                brands={allCountries}
+              />
+            )}
+            {allProxies.length > 1 && (
+              <BrandFilterDropdown
+                noun="proxie"
+                value={proxyFilter}
+                onChange={(v) => updateFilterParam('proxy', v)}
+                brands={allProxies}
+              />
+            )}
+          </>
+        )}
+
+        {(dateActive || countryFilter || proxyFilter) && (
+          <button
+            type="button"
+            onClick={() => { setDateFrom(''); setDateTo(''); clearCountryProxyFilters(); }}
+            className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
+          >
+            Clear
+          </button>
+        )}
+      </div>
 
       {/* Global KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">

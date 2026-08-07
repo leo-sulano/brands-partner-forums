@@ -1,8 +1,7 @@
-import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { LogOut, LogIn, Menu } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
-import DatePicker from './DatePicker';
 import { slugToTab, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { avatarColor, initials } from '../lib/avatar';
@@ -38,19 +37,6 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const { session, profile, signOut } = useAuth();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const isOverview = pathname === '/';
-  const dateFrom = isOverview ? (searchParams.get('from') ?? '') : '';
-  const dateTo   = isOverview ? (searchParams.get('to')   ?? '') : '';
-  const dateActive = !!(dateFrom || dateTo);
-
-  function setDateFrom(v: string) {
-    setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('from', v); else n.delete('from'); return n; }, { replace: true });
-  }
-  function setDateTo(v: string) {
-    setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('to', v); else n.delete('to'); return n; }, { replace: true });
-  }
 
   const onlineUsers = usePresence(
     session?.user.email ?? null,
@@ -125,35 +111,6 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
             </div>
           )}
         </div>
-        {isOverview && (
-          <div className="flex items-center gap-2">
-            <span className="hidden sm:inline text-xs font-medium text-slate-500 shrink-0">Date Range</span>
-            <DatePicker
-              value={dateFrom}
-              onChange={setDateFrom}
-              placeholder="From date"
-              max={dateTo || undefined}
-              align="left"
-            />
-            <span className="text-xs text-slate-400">→</span>
-            <DatePicker
-              value={dateTo}
-              onChange={setDateTo}
-              placeholder="To date"
-              min={dateFrom || undefined}
-              align="left"
-            />
-            {dateActive && (
-              <button
-                type="button"
-                onClick={() => { setDateFrom(''); setDateTo(''); }}
-                className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
-              >
-                Clear
-              </button>
-            )}
-          </div>
-        )}
       </div>
 
       {session ? (
