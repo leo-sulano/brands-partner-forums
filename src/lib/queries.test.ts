@@ -16,6 +16,8 @@ import {
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
   bulkUpsertBrandSchedule,
+  fetchFlaggedPlatformBrands,
+  fetchBrandPlatformOverrides,
 } from './queries';
 
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
@@ -72,6 +74,20 @@ describe('queries.ts injectable Supabase client', () => {
     );
     expect(fakeFrom).toHaveBeenCalledWith('brand_schedule');
     expect(upsert).toHaveBeenCalled();
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchFlaggedPlatformBrands uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
+    await fetchFlaggedPlatformBrands({ from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('flagged_platform_brands');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchBrandPlatformOverrides uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
+    await fetchBrandPlatformOverrides('X', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('brand_platform_override');
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 });
