@@ -24,7 +24,7 @@ export interface BreakdownStatGridProps {
 // than precise ratio comparison across many rows.
 export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
       {tiles.map((tile) => {
         const total = tile.live + tile.removed;
         const livePct = total > 0 ? (tile.live / total) * 100 : 0;
