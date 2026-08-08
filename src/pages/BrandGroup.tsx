@@ -23,6 +23,7 @@ import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPla
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, type Platform } from '../lib/scoreSummary';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
+import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -1290,8 +1291,8 @@ export default function BrandGroup() {
         for (const e of entries) {
           const v = e.data['Proxy Used'];
           if (v && v.trim()) {
-            const key = v.trim().toLowerCase();
-            if (!seen.has(key)) seen.set(key, v.trim());
+            const key = canonicalProxyKey(v);
+            if (!seen.has(key)) seen.set(key, canonicalProxyName(v));
           }
         }
         return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
@@ -1335,7 +1336,7 @@ export default function BrandGroup() {
     : brandFiltered;
 
   const proxyFiltered = proxyFilter
-    ? agentFiltered.filter((e) => e.data['Proxy Used']?.trim().toLowerCase() === proxyFilter.toLowerCase())
+    ? agentFiltered.filter((e) => canonicalProxyKey(e.data['Proxy Used'] ?? '') === canonicalProxyKey(proxyFilter))
     : agentFiltered;
 
   const countryFiltered = countryFilter

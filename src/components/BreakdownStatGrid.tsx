@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, KeyboardEvent, MouseEvent } from 'react';
 
 export interface StatTile {
   key: string;
@@ -31,10 +31,23 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
         const removedPct = total > 0 ? (tile.removed / total) * 100 : 0;
         const livePctLabel = total > 0 ? livePct.toFixed(1) : '0.0';
         const removedPctLabel = total > 0 ? removedPct.toFixed(1) : '0.0';
+        // The whole tile is a click target (defaulting to "live") on top of
+        // the bar/legend's own explicit live-vs-removed choice — inner
+        // interactive elements stop propagation so a legend/bar click
+        // isn't immediately overridden by the tile's own default handler.
         return (
           <div
             key={tile.key}
-            className={`flex flex-col items-center rounded-xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm ${tile.muted ? 'bg-slate-50/60' : ''}`}
+            role={tile.onTileClick ? 'button' : undefined}
+            tabIndex={tile.onTileClick ? 0 : undefined}
+            onClick={() => tile.onTileClick?.('live')}
+            onKeyDown={(e: KeyboardEvent<HTMLDivElement>) => {
+              if (tile.onTileClick && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                tile.onTileClick('live');
+              }
+            }}
+            className={`flex flex-col items-center rounded-xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm transition-colors ${tile.muted ? 'bg-slate-50/60' : ''} ${tile.onTileClick ? 'cursor-pointer hover:border-blue-300 hover:shadow-md' : ''}`}
           >
             <div
               className="mb-2 flex size-8 shrink-0 items-center justify-center rounded-full"
@@ -58,7 +71,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
                   <button
                     type="button"
                     disabled={!tile.onTileClick}
-                    onClick={() => tile.onTileClick?.('live')}
+                    onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('live'); }}
                     title={`Published: ${tile.live.toLocaleString()}`}
                     className="h-full bg-emerald-500 transition-[filter] hover:brightness-110 disabled:cursor-default"
                     style={{ width: `${livePct}%` }}
@@ -66,7 +79,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
                   <button
                     type="button"
                     disabled={!tile.onTileClick}
-                    onClick={() => tile.onTileClick?.('removed')}
+                    onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('removed'); }}
                     title={`Removed: ${tile.removed.toLocaleString()}`}
                     className="h-full bg-rose-400 transition-[filter] hover:brightness-110 disabled:cursor-default"
                     style={{ width: `${removedPct}%` }}
@@ -79,7 +92,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
               <button
                 type="button"
                 disabled={!tile.onTileClick}
-                onClick={() => tile.onTileClick?.('live')}
+                onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('live'); }}
                 className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
               >
                 <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
@@ -89,7 +102,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
               <button
                 type="button"
                 disabled={!tile.onTileClick}
-                onClick={() => tile.onTileClick?.('removed')}
+                onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('removed'); }}
                 className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
               >
                 <span className="size-2 shrink-0 rounded-full bg-rose-400" />

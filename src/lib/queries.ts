@@ -4,6 +4,7 @@ import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
 import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
 import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
+import { canonicalProxyKey, canonicalProxyName } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
@@ -402,13 +403,13 @@ export function computeTabKpisFromEntries(
   const filteredEntries = (countryFilter || proxyFilter)
     ? entries.filter((e) => {
         if (countryFilter && canonicalCountryKey(resolveCountryLabel(e.data, tab)) !== canonicalCountryKey(countryFilter)) return false;
-        if (proxyFilter && (e.data['Proxy Used'] ?? '').trim().toLowerCase() !== proxyFilter.trim().toLowerCase()) return false;
+        if (proxyFilter && canonicalProxyKey(e.data['Proxy Used'] ?? '') !== canonicalProxyKey(proxyFilter)) return false;
         return true;
       })
     : entries;
 
   const countries = uniqueDisplayValues(entries.map((e) => resolveCountryLabel(e.data, tab)), canonicalCountryKey, canonicalCountryName);
-  const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']));
+  const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']), canonicalProxyKey, canonicalProxyName);
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
 
@@ -473,11 +474,11 @@ export function computeTabKpisFromEntries(
       if (statuses.some(isLiveStatus)) {
         live++;
         addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
-        addToBreakdown(byProxy, d['Proxy Used'], 'live');
+        addToBreakdown(byProxy, d['Proxy Used'], 'live', canonicalProxyKey, canonicalProxyName);
       } else if (statuses.some(isRemovedStatus)) {
         removed++;
         addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
-        addToBreakdown(byProxy, d['Proxy Used'], 'removed');
+        addToBreakdown(byProxy, d['Proxy Used'], 'removed', canonicalProxyKey, canonicalProxyName);
       }
       else if (statuses.some(isDoneStatus)) done++;
       else if (statuses.some(isPendingStatus)) pending++;
