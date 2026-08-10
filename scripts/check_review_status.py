@@ -25,7 +25,7 @@ import tempfile
 import time
 import zipfile
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Iterable, Optional, Union
 
 import requests
 from dotenv import load_dotenv
@@ -171,7 +171,10 @@ def _xpath_literal(value: str) -> str:
     return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
 
 
-def _as_tuple(class_or_classes) -> tuple:
+_ClassNameArg = Union[str, Iterable[str], None]
+
+
+def _as_tuple(class_or_classes: _ClassNameArg) -> tuple:
     """Normalize (None, a single class name, or an iterable of class names)
     to a tuple for uniform iteration."""
     if not class_or_classes:
@@ -223,6 +226,10 @@ def _strip_last_descendant_with_class(node, class_names: tuple, text: str) -> st
             continue
         if not d_text:
             continue
+        # Assumes a descendant's own .text is a literal, findable substring of
+        # its ancestor's .text — true for Selenium's rendered-text extraction
+        # in every case observed live, but not guaranteed if a site renders
+        # whitespace differently at different DOM depths.
         idx = text.find(d_text)
         if idx != -1 and (rightmost is None or idx > rightmost):
             rightmost = idx
@@ -234,8 +241,8 @@ def _strip_last_descendant_with_class(node, class_names: tuple, text: str) -> st
 def extract_review_card_text(
     driver: uc.Chrome,
     user_lower: str,
-    exclude_class=None,
-    strip_class=None,
+    exclude_class: _ClassNameArg = None,
+    strip_class: _ClassNameArg = None,
     min_len: int = 40,
     max_len: int = 4000,
     max_ancestors: int = 6,
