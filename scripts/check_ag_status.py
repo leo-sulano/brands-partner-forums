@@ -72,6 +72,14 @@ AG_SCORE_COLS  = ["AG Score added"]
 # (or Removed), it's left alone rather than re-checked on future runs.
 CHECKABLE_STATUSES = {"done", "pending", "refused"}
 
+# AskGamblers nests a casino's reply to a review inside the same review-card
+# container as the review itself — confirmed live: `review__list-item` (the
+# card `extract_review_card_text`'s ancestor-walk lands on) always contains a
+# nested `review__reply` whenever the casino has replied, with no ancestor
+# level containing the review text without also containing the reply. Passed
+# as `strip_class` so the reply's text is trimmed out of what gets stored.
+_AG_REPLY_MARKER = "review__reply"
+
 # ─── Column helpers ───────────────────────────────────────────────────────────
 
 def _col(data: dict, candidates: list) -> Optional[str]:
@@ -245,7 +253,7 @@ def fetch_ag_review(
             context = html[max(0, idx - 500) : idx + 1500]
             rating = _extract_rating_from_context(context)
             try:
-                review_text = extract_review_card_text(driver, ag_user_lower)
+                review_text = extract_review_card_text(driver, ag_user_lower, strip_class=_AG_REPLY_MARKER)
             except Exception as exc:
                 print(f"    [text] extraction error: {exc}")
                 review_text = None
