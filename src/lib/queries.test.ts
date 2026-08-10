@@ -127,7 +127,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
       entry('2', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/01/2026', 'TP Review Status': 'Removed' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.tp).toEqual({ live: 1, removed: 0 });
     expect(kpis).toMatchObject({ live: 1, removed: 0, total: 1 });
   });
@@ -136,7 +136,7 @@ describe('computeTabKpisFromEntries', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': null, 'TP Review Status': 'Removed' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.tp).toEqual({ live: 0, removed: 1 });
     expect(kpis.removed).toBe(1);
   });
@@ -148,7 +148,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('3', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': null, 'TP Review Status': 'Removed' }),
       entry('4', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '15/07/2026', 'TP Review Status': 'Live' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
 
     const rates = computeTabSuccessRates(
       entries.map((e) => ({ tab: e.tab, data: e.data })) as Parameters<typeof computeTabSuccessRates>[0],
@@ -171,7 +171,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
     ];
     const flagged = new Set([platformRemovedKey('TP Affiliate', 'Flagged Brand', 'tp')]);
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged);
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged)!;
     expect(kpis.tp).toEqual({ live: 0, removed: 0 });
     expect(kpis.removed).toBe(0);
   });
@@ -187,7 +187,7 @@ describe('computeTabKpisFromEntries', () => {
       },
       updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
     };
-    const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.tp).toEqual({ live: 0, removed: 0 });
     expect(kpis.cg).toEqual({ live: 1, removed: 0 });
     expect(kpis.live).toBe(1);
@@ -206,7 +206,7 @@ describe('computeTabKpisFromEntries', () => {
       updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
     };
     const flagged = new Set([platformRemovedKey('Rooster Partners', 'Multi Brand', 'tp')]);
-    const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', flagged);
+    const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', flagged)!;
     expect(kpis.tp).toEqual({ live: 0, removed: 0 });
     expect(kpis.cg).toEqual({ live: 1, removed: 0 });
     expect(kpis.live).toBe(1);
@@ -219,7 +219,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'germany' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'France' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany')!;
     expect(kpis.live).toBe(2);
     expect(kpis.removed).toBe(0);
   });
@@ -230,7 +230,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'enigma-us1' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'Enigma-US2' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, 'Enigma-US1');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, 'Enigma-US1')!;
     expect(kpis.live).toBe(2);
     expect(kpis.removed).toBe(0);
   });
@@ -241,7 +241,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US2' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France', 'Proxy Used': 'Enigma-US1' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany', 'Enigma-US1');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany', 'Enigma-US1')!;
     expect(kpis.live).toBe(1);
   });
 
@@ -250,7 +250,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'germany' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.byCountry).toEqual({ DE: { label: 'Germany', live: 1, removed: 1 } });
     expect(kpis.live).toBe(1);
     expect(kpis.removed).toBe(1);
@@ -261,7 +261,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': '' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.byCountry).toEqual({ unknown: { label: 'Unknown', live: 1, removed: 1 } });
     expect(kpis.countries).toEqual(['Unknown']);
   });
@@ -271,7 +271,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Unknown');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Unknown')!;
     expect(kpis.live).toBe(1);
   });
 
@@ -281,7 +281,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'United Kingdom' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'England' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.byCountry).toEqual({ GB: { label: 'United Kingdom', live: 2, removed: 1 } });
     expect(kpis.countries).toEqual(['United Kingdom']);
   });
@@ -291,7 +291,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'UK' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'United Kingdom');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'United Kingdom')!;
     expect(kpis.live).toBe(1);
   });
 
@@ -300,7 +300,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': '' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.byProxy).toEqual({ 'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 } });
   });
 
@@ -309,7 +309,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US1' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'France', 'Proxy Used': 'Enigma-US2' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany')!;
     expect(kpis.countries).toEqual(['France', 'Germany']);
     expect(kpis.proxies).toEqual(['Enigma-US1', 'Enigma-US2']);
   });
@@ -362,7 +362,7 @@ describe('computeTabKpisFromEntries', () => {
 
   it('platformFilter scopes byCountry/byProxy to only rows that have a value on that platform', () => {
     const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status', 'Country'];
-    const entries = [
+    const entries: Entry[] = [
       {
         id: '1', tab: 'Rooster Partners', sheet_row_id: '1',
         data: { 'Brands': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'Germany' },
