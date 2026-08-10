@@ -2504,6 +2504,15 @@ export default function BrandGroup() {
               if (brandIdx !== -1) hdrs.splice(brandIdx + 1, 0, 'Brand Link');
               else hdrs.push('Brand Link');
             }
+            // Review text (TP/AG/CG/WO Review Text) has no Sheet/tab_schemas origin at all —
+            // it's written only by the Selenium scrapers into entries.data. Force it into
+            // headers for every platform this tab actually tracks, whether or not the current
+            // entry has a value yet, so EditEntryModal's fields/handleSave (which only ever
+            // touches whatever's in headers) can display AND save a manually-typed value.
+            for (const p of getTabPlatforms(decodedTab)) {
+              const reviewTextKey = PLATFORM_REVIEW_TEXT_KEYS[p][0];
+              if (!hdrs.includes(reviewTextKey)) hdrs.push(reviewTextKey);
+            }
             for (const [afterCol, field] of DASHBOARD_ONLY_MODAL_FIELDS) {
               const dupIdx = hdrs.indexOf(field);
               if (dupIdx !== -1) hdrs.splice(dupIdx, 1);

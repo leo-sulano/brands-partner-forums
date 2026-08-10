@@ -8,7 +8,9 @@ import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
-import { PLATFORM_LABEL, getReviewText, type Platform } from '../lib/scoreSummary';
+import { PLATFORM_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+
+const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
 const STATUS_OPTS = [
   { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
@@ -182,9 +184,12 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const title =
     fields['Account Name'] || fields['Account'] || fields['Brand Name'] || fields['Brand'] || 'Edit Entry';
 
-  // Bucket headers into sections (skip brandCol — shown in the top bar)
+  // Bucket headers into sections (skip brandCol — shown in the top bar; skip the four
+  // review-text keys — they're rendered explicitly via ReviewTextBlock below, not the
+  // generic per-header loop, so they'd otherwise render a second time as a plain input)
   const visibleHeaders = headers.filter(
     (h) => !(brandCol && h === brandCol && currentTab && availableBrands && availableBrands.length > 0)
+      && !REVIEW_TEXT_KEY_NAMES.has(h)
   );
 
   const sections: Record<'account' | 'tp' | 'ag' | 'cg' | 'yesno', string[]> = {
@@ -401,7 +406,9 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               {(tabPlatforms.includes('tp') || tabPlatforms.includes('wo')) && (
                 <div className="mt-3">
                   <ReviewTextBlock
-                    text={getReviewText(entry.data, tabPlatforms.includes('wo') ? 'wo' : 'tp')}
+                    value={fields[tabPlatforms.includes('wo') ? 'WO Review Text' : 'TP Review Text'] ?? ''}
+                    onChange={(v) => setFields((f) => ({ ...f, [tabPlatforms.includes('wo') ? 'WO Review Text' : 'TP Review Text']: v }))}
+                    disabled={saving}
                   />
                 </div>
               )}
@@ -417,7 +424,11 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               </div>
               {tabPlatforms.includes('ag') && (
                 <div className="mt-3">
-                  <ReviewTextBlock text={getReviewText(entry.data, 'ag')} />
+                  <ReviewTextBlock
+                    value={fields['AG Review Text'] ?? ''}
+                    onChange={(v) => setFields((f) => ({ ...f, ['AG Review Text']: v }))}
+                    disabled={saving}
+                  />
                 </div>
               )}
             </>
@@ -432,7 +443,11 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               </div>
               {tabPlatforms.includes('cg') && (
                 <div className="mt-3">
-                  <ReviewTextBlock text={getReviewText(entry.data, 'cg')} />
+                  <ReviewTextBlock
+                    value={fields['CG Review Text'] ?? ''}
+                    onChange={(v) => setFields((f) => ({ ...f, ['CG Review Text']: v }))}
+                    disabled={saving}
+                  />
                 </div>
               )}
             </>
