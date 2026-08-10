@@ -5,26 +5,32 @@ import { shouldShowTranslateButton, translateReviewText } from '../lib/reviewTra
 const TRANSLATE_FAILURE_MESSAGE = 'Unable to translate this review at the moment. Please try again later.';
 
 interface Props {
-  text: string | null;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
 }
 
-export default function ReviewTextBlock({ text }: Props) {
+export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
   const [translated, setTranslated] = useState<string | null>(null);
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const showButton = useMemo(() => (text ? shouldShowTranslateButton(text) : false), [text]);
+  const showButton = useMemo(() => (value ? shouldShowTranslateButton(value) : false), [value]);
 
-  if (!text?.trim()) {
-    return <p className="text-xs text-slate-400 italic">No review content available.</p>;
+  function handleChange(next: string) {
+    onChange(next);
+    // The shown translation (and any error) no longer corresponds to the edited
+    // text — clear both so nothing stale sits next to the new original.
+    setTranslated(null);
+    setError(null);
   }
 
   async function handleTranslate() {
-    if (!text) return;
+    if (!value) return;
     setTranslating(true);
     setError(null);
     try {
-      const result = await translateReviewText(text);
+      const result = await translateReviewText(value);
       if (!result?.trim()) {
         setError(TRANSLATE_FAILURE_MESSAGE);
         setTranslated(null);
@@ -41,15 +47,20 @@ export default function ReviewTextBlock({ text }: Props) {
   return (
     <div className="space-y-2">
       <label className="mb-1.5 block text-xs font-medium text-slate-500">Original Review</label>
-      <div className="whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-        {text}
-      </div>
+      <textarea
+        value={value}
+        disabled={disabled}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder="No review content yet — type one here"
+        rows={4}
+        className="w-full whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
+      />
 
       {showButton && !translated && (
         <button
           type="button"
           onClick={handleTranslate}
-          disabled={translating}
+          disabled={translating || disabled}
           className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
         >
           {translating ? <Loader2 className="size-3.5 animate-spin" /> : <Languages className="size-3.5" />}
