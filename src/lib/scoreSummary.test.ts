@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, passesPlatformDateFilter } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, PLATFORM_REVIEW_TEXT_KEYS, pick, getReviewText, isRemovedStatus, passesPlatformDateFilter } from './scoreSummary';
 import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
@@ -256,6 +256,28 @@ describe('exported platform helpers (scheduler module reuse)', () => {
   it('pick returns the first non-empty value across the given keys', () => {
     expect(pick({ a: null, b: 'x' }, ['a', 'b'])).toBe('x');
     expect(pick({ a: null }, ['a'])).toBeNull();
+  });
+
+  it('PLATFORM_REVIEW_TEXT_KEYS has one canonical key per platform', () => {
+    expect(PLATFORM_REVIEW_TEXT_KEYS.tp).toEqual(['TP Review Text']);
+    expect(PLATFORM_REVIEW_TEXT_KEYS.ag).toEqual(['AG Review Text']);
+    expect(PLATFORM_REVIEW_TEXT_KEYS.cg).toEqual(['CG Review Text']);
+    expect(PLATFORM_REVIEW_TEXT_KEYS.wo).toEqual(['WO Review Text']);
+  });
+
+  it('getReviewText reads the platform-specific key', () => {
+    expect(getReviewText({ 'TP Review Text': 'Great casino!' }, 'tp')).toBe('Great casino!');
+    expect(getReviewText({ 'AG Review Text': 'Fast payouts' }, 'ag')).toBe('Fast payouts');
+  });
+
+  it('getReviewText returns null when the key is missing, null, or empty', () => {
+    expect(getReviewText({}, 'tp')).toBeNull();
+    expect(getReviewText({ 'TP Review Text': null }, 'tp')).toBeNull();
+    expect(getReviewText({ 'TP Review Text': '' }, 'tp')).toBeNull();
+  });
+
+  it('getReviewText does not cross-read another platform\'s text', () => {
+    expect(getReviewText({ 'AG Review Text': 'wrong platform' }, 'tp')).toBeNull();
   });
 
   it('isRemovedStatus matches removed, refused, and rejected', () => {

@@ -76,6 +76,13 @@ export const PLATFORM_DATE_KEYS: Record<Platform, readonly string[]> = {
   wo: ['Wizard of Odds'],
 };
 
+export const PLATFORM_REVIEW_TEXT_KEYS: Record<Platform, readonly string[]> = {
+  tp: ['TP Review Text'],
+  ag: ['AG Review Text'],
+  cg: ['CG Review Text'],
+  wo: ['WO Review Text'],
+};
+
 const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
   tp: ['TP Score added', 'Score added', 'Score Added', 'Score'],
   ag: ['AG Score added'],
@@ -89,6 +96,10 @@ export function pick(data: Record<string, string | null>, keys: readonly string[
     if (v != null && v !== '') return v;
   }
   return null;
+}
+
+export function getReviewText(data: Record<string, string | null>, platform: Platform): string | null {
+  return pick(data, PLATFORM_REVIEW_TEXT_KEYS[platform]);
 }
 
 // Floors fractional scores to their whole-star bucket (e.g. a recorded 4.5
