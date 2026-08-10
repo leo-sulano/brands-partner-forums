@@ -2319,3 +2319,69 @@ exclusion of the four review-text keys from the table/duplicate-entry paths).
   verify without a DB credential).
 
 ---
+
+## Task 199: Manual Review Text Entry in Edit Modal
+
+**Date:** August 10, 2026
+
+Requested as a prerequisite before actually running the Selenium scrapers live against real production
+data (the user's own explicit ordering: "before you pull the review content can make this first that
+content can also manually added on the modal"). Extends Task 198's read-only review-text display so a
+human can type or correct review text directly, giving the team a way to fill in or fix a value even when
+a scrape comes back empty or wrong.
+
+- **The scraper always wins** — the one consequential product decision this task resolved. A manual edit
+  is a stopgap, not a lock: no new "manual"/"locked" flag, no scraper-side change at all. `update_entry()`'s
+  existing merge-PATCH already overwrites any field (review text included) whenever a later scrape
+  successfully extracts a different value — this task adds no new logic to preserve that behavior, it was
+  already exactly right.
+- `BrandGroup.tsx` now pushes each active platform's canonical review-text key onto `EditEntryModal`'s
+  `headers` prop (reusing the existing `DASHBOARD_ONLY_MODAL_FIELDS`-style "always show this column"
+  pattern), which is what actually makes the modal's existing save mechanism pick the key up — previously
+  these four keys were deliberately excluded from every code path that could write them. `ReviewTextBlock.tsx`
+  changed from a read-only `{text}` display to a controlled `{value, onChange, disabled}` textarea; editing
+  clears any previously-shown translation so a stale translation can never sit next to edited original text.
+  `EditEntryModal.tsx` excludes the four keys from its generic per-header input loop (they now render only
+  via `ReviewTextBlock`) and wires all three call sites (TP/WO, AG, CG) to its own `fields` state.
+- Built via 3 subagent-driven-development tasks, each individually reviewed clean. The final whole-branch
+  review then caught 2 real bugs neither per-task review could see as a whole-feature behavior: (1) a
+  stale in-flight translation request could resolve *after* a user started editing the original text and
+  render a translation of the pre-edit version underneath the new text — violates this task's own "editing
+  clears translation" decision; fixed with a request-generation counter (`useRef`) that discards any
+  response that arrives after a newer edit or a newer translate click. (2) The modal's existing tab-row
+  paste shortcut (`handlePaste`, intended for pasting a spreadsheet row across the single-line account
+  fields) is bound to the modal root and so also fired for pastes landing inside the new textarea — pasting
+  real review text copied from a live review page could, if the clipboard content happened to contain a tab
+  character with 3+ tab-separated segments on its first line, get silently swallowed and scatter fragments
+  across `Account`/`Country`/`Email`/`Password` fields instead, corrupting real credential fields on save.
+  Fixed by stopping paste-event propagation on the textarea itself. Also fixed in the same pass: the
+  textarea had kept its old read-only div's `bg-slate-50`/pre-wrap styling, visually reading as non-editable
+  even though it now was (now matches every other editable field's white background); `EditEntryModal.tsx`
+  had a second, hand-typed copy of the four review-text key strings (`REVIEW_TEXT_KEY_NAMES`) re-allocated
+  on every render instead of deriving from `scoreSummary.ts`'s canonical `PLATFORM_REVIEW_TEXT_KEYS` — the
+  exact "independently-written logic silently diverging" shape this project has shipped real bugs from
+  before (Tasks 180/174/173/197) — now derived from the one source of truth, matching `BrandGroup.tsx`'s
+  existing pattern.
+- Full suite (289 tests) and build both pass after the fix wave.
+- Spec: `docs/superpowers/specs/2026-08-10-manual-review-text-entry-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-10-manual-review-text-entry.md`.
+
+### Known Issues / Backlog (added by this task)
+- **Parked, not fixed — out of scope for this branch (Python side untouched):** the scrapers' `update_entry()`
+  writes a full-object merge-PATCH from a snapshot taken at batch-run start (`load_entries`), not a
+  fresh read immediately before each row's write. A scraper run processes many rows with sleeps between
+  them, so by the time a given row is actually written its in-memory snapshot of that row's `data` can be
+  stale. If a human manually types review text after the snapshot was taken but before that row's write
+  fires, and the scraper's own extraction for that field is empty/unchanged, the PATCH still restores the
+  old snapshot's `data` for every key it isn't explicitly updating — silently reverting the manual edit to
+  whatever it was before, with no relation to "scraper found real different text" (the accepted, intentional
+  overwrite case). Worth a real fix (re-read the row immediately before writing it, not once per batch) if
+  manual entry sees real use before the scrapers are next touched.
+- Pre-existing, not introduced here: Escape-to-close on this modal has no unsaved-changes confirmation
+  (tracked separately as the "Modal Escape-Key Bug") — now a higher-cost trap than before, since a user may
+  type several paragraphs of manually-corrected review text before an accidental Escape discards it.
+- Live browser verification (typing in the textarea, saving, confirming the value round-trips) was not
+  performed this session for the same reason as Task 198 — no login credentials available in this
+  environment.
+
+---

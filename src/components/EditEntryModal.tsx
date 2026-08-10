@@ -8,7 +8,9 @@ import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
-import { PLATFORM_LABEL, type Platform } from '../lib/scoreSummary';
+import { PLATFORM_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+
+const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
 const STATUS_OPTS = [
   { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
@@ -185,7 +187,6 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   // Bucket headers into sections (skip brandCol — shown in the top bar; skip the four
   // review-text keys — they're rendered explicitly via ReviewTextBlock below, not the
   // generic per-header loop, so they'd otherwise render a second time as a plain input)
-  const REVIEW_TEXT_KEY_NAMES = new Set(['TP Review Text', 'AG Review Text', 'CG Review Text', 'WO Review Text']);
   const visibleHeaders = headers.filter(
     (h) => !(brandCol && h === brandCol && currentTab && availableBrands && availableBrands.length > 0)
       && !REVIEW_TEXT_KEY_NAMES.has(h)

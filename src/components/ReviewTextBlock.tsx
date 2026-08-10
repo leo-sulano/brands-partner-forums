@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Loader2, Languages } from 'lucide-react';
 import { shouldShowTranslateButton, translateReviewText } from '../lib/reviewTranslation';
 
@@ -16,8 +16,12 @@ export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
   const [error, setError] = useState<string | null>(null);
 
   const showButton = useMemo(() => (value ? shouldShowTranslateButton(value) : false), [value]);
+  // Invalidates any in-flight translation request when the original text changes
+  // mid-request, so a late response can't render a translation of stale text.
+  const requestSeq = useRef(0);
 
   function handleChange(next: string) {
+    requestSeq.current += 1;
     onChange(next);
     // The shown translation (and any error) no longer corresponds to the edited
     // text — clear both so nothing stale sits next to the new original.
@@ -27,10 +31,12 @@ export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
 
   async function handleTranslate() {
     if (!value) return;
+    const seq = ++requestSeq.current;
     setTranslating(true);
     setError(null);
     try {
       const result = await translateReviewText(value);
+      if (seq !== requestSeq.current) return;
       if (!result?.trim()) {
         setError(TRANSLATE_FAILURE_MESSAGE);
         setTranslated(null);
@@ -38,6 +44,7 @@ export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
         setTranslated(result);
       }
     } catch (err) {
+      if (seq !== requestSeq.current) return;
       setError(err instanceof Error ? err.message : TRANSLATE_FAILURE_MESSAGE);
     } finally {
       setTranslating(false);
@@ -51,9 +58,10 @@ export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
         value={value}
         disabled={disabled}
         onChange={(e) => handleChange(e.target.value)}
+        onPaste={(e) => e.stopPropagation()}
         placeholder="No review content yet — type one here"
         rows={4}
-        className="w-full whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
+        className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
       />
 
       {showButton && !translated && (
