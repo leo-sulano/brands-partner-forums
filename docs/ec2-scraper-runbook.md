@@ -43,7 +43,7 @@ ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.1
 ```bash
 df -h /                                                # disk usage — investigate if over ~80%
 ps aux | grep -E 'status_server|check_review_status'   # is the API server up? anything stuck running?
-crontab -l                                             # should show 3 jobs: daily scraper, tmp sweep, weekly dnf clean
+crontab -l                                             # should show 3 jobs: weekly all-platform scraper, tmp sweep, weekly dnf clean
 tail -30 ~/scraper.log                                 # last scraper run — any errors?
 tail -30 ~/server.log                                  # status server — any errors?
 ```
@@ -105,6 +105,41 @@ ps aux | grep check_review_status
 kill <PID>
 # or kill all at once:
 pkill -f check_review_status
+```
+
+---
+
+## Weekly All-Platform Cron Job
+
+Added 2026-08-10/11 alongside the review-text fetch/store feature. AG/CG/WO previously had no
+schedule at all — they only ran when someone clicked "Check Status" in the dashboard. TP's original
+job was a **daily** cron; it was deliberately merged into this same weekly job so all 4 platforms
+share one cadence, rather than TP staying daily while the other three run weekly. Net effect:
+TrustPilot review status/text now refreshes weekly, not daily — a real, intentional cadence change.
+
+**Crontab entry (replaces the old daily TP job and the short-lived AG/CG/WO-only weekly job):**
+```
+0 1 * * 1 /home/ec2-user/run_weekly_all_platforms.sh >> /home/ec2-user/weekly_all_platforms.log 2>&1
+```
+Mondays at 01:00 UTC (09:00 Asia/Manila — same convention as the Schedule Planner's weekly
+generation cron). Weekly rather than daily by design: AG/CG involve per-country residential proxies
+and Cloudflare-clearing waits, so running all 4 platforms daily at full scale would mean
+significantly more Selenium load and more bot-detection exposure than this team's existing ops
+cadence (Review Success Rate, Brand Forum Weekly Monitoring — both Monday) needs.
+
+**Script (`~/run_weekly_all_platforms.sh`):** runs TP → AG → CG → WO sequentially across all tabs
+(no `--tab` filter) — sequential, not concurrent, since concurrent Chrome instances have crashed
+this box before (Task 128). TP uses `--headless` (matches production); AG/CG use `--no-headless`
+(matches production's Cloudflare-clearing Xvfb setup — their CLI default is headless, which would
+silently produce blocked/garbage results); WO's CLI default already matches production
+(non-headless) with no flag needed. Before starting, it waits for any other `check_*.py` process to
+finish first (in case a manual Check Status click is still running). Logs: `~/scraper_tp_weekly.log`,
+`~/scraper_ag_weekly.log`, `~/scraper_cg_weekly.log`, `~/scraper_wo_weekly.log`.
+
+**Check last week's run:**
+```bash
+tail -40 ~/weekly_all_platforms.log
+tail -40 ~/scraper_tp_weekly.log ~/scraper_ag_weekly.log ~/scraper_cg_weekly.log ~/scraper_wo_weekly.log
 ```
 
 ---

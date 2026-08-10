@@ -2380,9 +2380,73 @@ a scrape comes back empty or wrong.
 - Pre-existing, not introduced here: Escape-to-close on this modal has no unsaved-changes confirmation
   (tracked separately as the "Modal Escape-Key Bug") — now a higher-cost trap than before, since a user may
   type several paragraphs of manually-corrected review text before an accidental Escape discards it.
-- Live browser verification (typing in the textarea, saving, confirming the value round-trips) was not
-  performed this session for the same reason as Task 198 — no login credentials available in this
-  environment.
+- Live browser verification: the user shared a screenshot of the live production modal (Rooster
+  Partners, an entry named "Burke") confirming the AG and CG "Original Review" textareas render
+  correctly with the empty-state placeholder — the display side is confirmed live. The full
+  type-and-save round trip (typing text, clicking Save Changes, reopening to confirm it persisted)
+  has not been separately confirmed yet.
+
+---
+
+## Task 201: First Full-Scope Live Review-Text Pull + Unified Weekly Cron for All 4 Platforms
+
+**Date:** August 10-11, 2026
+
+The second half of the two-part request that started Tasks 197-199 (manual entry was explicitly
+built first as a fallback before this): actually running the four Selenium checkers against real
+production data, across every brand tab, to populate `TP/AG/CG/WO Review Text` at scale for the
+first time — Task 197's live validation had only ever exercised the extraction logic on a handful
+of individual test accounts, never a full tab or all tabs.
+
+- **The one-time pull:** TrustPilot needed no manual run — the existing daily cron job happened to
+  already be mid-run (started 14:00 UTC, ~1533 submitted-review URLs across all tabs) using the
+  Aug 10 11:43 deploy that already includes review-text extraction, confirmed via `grep
+  REVIEW_TEXT_KEYS ~/check_review_status.py` on the live EC2 box before relying on it. AskGamblers/
+  CasinoGuru/Wizard of Odds were triggered manually via SSH — a fully detached orchestration script
+  (`nohup setsid ... disown`, survives SSH disconnect, doesn't depend on the controller's machine
+  staying on) that waited for the in-progress TP run to clear, then ran AG → CG → WO sequentially
+  across all tabs (no `--tab` filter). Sequential, not concurrent, per this box's known limit (Task
+  128 — concurrent Chrome instances crash the t2.small instance). Explicitly passed `--no-headless`
+  to the AG/CG CLI invocations — their argparse defaults to headless Chrome, but production
+  (`status_server.py`'s `PLATFORM_HEADLESS`) always runs them non-headless under Xvfb because
+  Cloudflare's challenge page blocks headless Chrome entirely; running with CLI defaults would have
+  silently produced blocked/garbage results instead of an error. WO's CLI default already matches
+  production (non-headless) with no flag needed.
+- **Recurring schedule, decided in two steps.** AG/CG/WO had never had a schedule at all
+  (`crontab -l` showed only the daily TP job, a tmp sweep, and a weekly `dnf clean` — they
+  previously only ran on a manual "Check Status" click); first added a weekly-only job for just
+  those three (Mondays 01:00 UTC = 09:00 Asia/Manila, reusing the Schedule Planner's weekly cron
+  convention), reasoning that AG/CG's proxy/Cloudflare overhead makes a daily cadence costlier and
+  riskier (more bot-detection exposure) than this team's existing Monday ops cadence needs. The user
+  then asked for all 4 platforms to share one schedule rather than TP staying daily while the other
+  three went weekly, and picked weekly-for-all over daily-for-all. Final state: TP's original daily
+  crontab entry was removed, and a single combined `~/run_weekly_all_platforms.sh` now runs
+  TP → AG → CG → WO sequentially every Monday 01:00 UTC, replacing both the old daily TP job and the
+  short-lived AG/CG/WO-only weekly job (crontab now has exactly one platform-check line instead of
+  two). The script still waits for any other `check_*.py` process to clear before starting, in case
+  a manual Check Status click is running long into Monday 01:00 UTC.
+- Both the one-time pull and the new weekly job run all tabs/all platforms with no scope
+  restriction — this is the first time review-text extraction has run at that scale; results
+  (accuracy of the field-priority/DOM-extraction heuristics from Task 197 against real production
+  data volume, not just the handful of test accounts already validated) should be spot-checked
+  once complete.
+- Runbook updated: `docs/ec2-scraper-runbook.md` gained a "Weekly All-Platform Cron Job" section
+  documenting the unified schedule, script behavior, and log locations; the health-check checklist's
+  `crontab -l` comment updated to reflect one combined weekly job instead of a separate daily TP job.
+
+### Known Issues / Backlog (added by this task)
+- **TrustPilot review data now refreshes weekly instead of daily** — a real, deliberate cadence
+  change (not a side effect), explicitly chosen by the user when unifying the schedule. Revisit if
+  weekly turns out too infrequent for TP specifically once the team sees a week's data staleness in
+  practice.
+- The one-time full pull's actual results (entries updated per platform, any extraction failures at
+  scale, run duration) were not yet reviewed as of this write-up — check `~/scraper_ag_manual.log`,
+  `~/scraper_cg_manual.log`, `~/scraper_wo_manual.log` on the EC2 box once the orchestration
+  completes.
+- No dashboard-side visibility into the new weekly cron's health (success/failure, last-run time) —
+  currently requires SSH + `tail ~/weekly_all_platforms.log` to check, same gap as the old daily TP
+  job had. Worth a follow-up if this needs to be surfaced without SSH access (e.g. writing a row to
+  `sync_runs` or a similar status table each run).
 
 ---
 
