@@ -492,6 +492,43 @@ def parse_review_rating(html: str) -> Optional[int]:
     return _rating_from_next_data(html) or _rating_from_html(html)
 
 
+def _review_text_from_next_data(html: str) -> Optional[str]:
+    match = re.search(
+        r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+        html, re.DOTALL,
+    )
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    page_props = data.get("props", {}).get("pageProps", {})
+    review = (
+        page_props.get("review")
+        or page_props.get("correlatedReview")
+        or page_props.get("reviewData")
+    )
+    if not review:
+        return None
+    # Tried in this priority order; confirmed against a real live TP page's
+    # __NEXT_DATA__ blob during this task's validation pass (Task 7) since
+    # TP's JSON shape isn't publicly documented — reorder here if a real page
+    # turns out to use a different key than the first match found live.
+    text = review.get("text") or review.get("body") or review.get("reviewBody") or review.get("title")
+    if not text or not str(text).strip():
+        return None
+    return str(text).strip()
+
+
+def parse_review_text(html: str) -> Optional[str]:
+    """Extract the written review body from a Trustpilot review/confirmation
+    page, if the page's __NEXT_DATA__ blob is present. Returns None (not an
+    error) when the page falls back to i18n text-signal detection instead —
+    that path has no structured review object to read text from."""
+    return _review_text_from_next_data(html)
+
+
 # ─── Supabase REST helpers (no heavy SDK needed) ─────────────────────────────
 
 def _headers() -> dict:
@@ -692,9 +729,9 @@ def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
     return driver
 
 
-def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Optional[int]]:
-    """Load the TP page and return (status, rating). Either may be None.
-    Rating is the 1-5 star count when visible on the page."""
+def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Optional[int], Optional[str]]:
+    """Load the TP page and return (status, rating, review_text). Any may be
+    None. Rating is the 1-5 star count when visible on the page."""
     url = raw_url.strip()
     if not url.startswith("http"):
         url = f"https://{url}"
@@ -707,15 +744,20 @@ def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Option
         time.sleep(POST_LOAD_SLEEP)
         if "trustpilot.com" not in driver.current_url:
             print(f"    redirected off-site -> {driver.current_url}")
-            return ("Removed", None)
+            return ("Removed", None, None)
         html = driver.page_source
         status = parse_review_status(html) or "Published"
         rating = parse_review_rating(html)
-        return (status, rating)
+        try:
+            review_text = parse_review_text(html)
+        except Exception as exc:
+            print(f"    [text] extraction error: {exc}")
+            review_text = None
+        return (status, rating, review_text)
     except Exception as exc:
         print(f"    ERROR: {exc}")
         log_check_error("TP", url, exc)
-        return (None, None)
+        return (None, None, None)
 
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
@@ -764,7 +806,7 @@ def main() -> None:
                 url: str = data["Link to the profile"]
 
                 print(f"[{checked}/{total}] {url}")
-                new_status, new_rating = fetch_status(driver, url)
+                new_status, new_rating, new_review_text = fetch_status(driver, url)
 
                 if new_status is None:
                     print(f"    -> could not determine status (skipped)")
@@ -779,6 +821,9 @@ def main() -> None:
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                current_review_text = data.get("TP Review Text") or ""
+                if new_review_text and new_review_text != current_review_text:
+                    updates["TP Review Text"] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")

@@ -190,7 +190,7 @@ def check_status():
                     url: str = data['Link to the profile']
 
                     print(f'  [{checked}/{total}] {url}')
-                    new_status, new_rating = fetch_status(driver, url)
+                    new_status, new_rating, new_review_text = fetch_status(driver, url)
 
                     if new_status is None:
                         print(f'    -> could not determine (skipped)')
@@ -204,6 +204,9 @@ def check_status():
                     is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                     if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                         updates[score_col] = new_score_str
+                    current_review_text = data.get('TP Review Text') or ''
+                    if new_review_text and new_review_text != current_review_text:
+                        updates['TP Review Text'] = new_review_text
 
                     if not updates:
                         print(f'    -> {current!r} *{current_score or "-"} (no change)')
