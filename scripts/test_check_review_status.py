@@ -261,8 +261,7 @@ def test_xpath_literal_uses_concat_when_value_has_both_quote_types():
     # single quotes and rejoin with an escaped single-quote literal.
     value = '''o'br"ien'''
     result = crs._xpath_literal(value)
-    assert result.startswith('concat(')
-    assert "'" in result and '"' in result
+    assert result == 'concat(\'o\', "\'", \'br"ien\')'
 
 
 def test_resolve_status_not_found_from_published_is_removed():
@@ -371,3 +370,12 @@ def test_parse_review_text_none_when_review_object_has_no_text_field():
 
 def test_parse_review_text_none_without_next_data_blob():
     assert crs.parse_review_text(_NO_NEXT_DATA) is None
+
+
+def test_review_text_keys_are_stable():
+    assert crs.REVIEW_TEXT_KEYS == {
+        "tp": "TP Review Text",
+        "ag": "AG Review Text",
+        "cg": "CG Review Text",
+        "wo": "WO Review Text",
+    }

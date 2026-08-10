@@ -32,6 +32,11 @@ import type { Entry } from '../types/entry';
 const HIDDEN_COLS = new Set(['id', 'last_sync_tag', 'score added', 'review status']);
 const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 
+// Populated by the Selenium status checkers, not user-editable — never
+// surface as a raw Edit Entry modal field (a purpose-built display belongs
+// to a separate task). Also excluded from duplication in CLEAR_ON_DUPLICATE.
+const REVIEW_TEXT_KEYS = new Set(['TP Review Text', 'AG Review Text', 'CG Review Text', 'WO Review Text']);
+
 // Dashboard-only fields with no Sheet column — never come from tab_schemas, so they're
 // force-inserted into the edit modal right after their paired "User"/"Status" field.
 const DASHBOARD_ONLY_MODAL_FIELDS: Array<[string, string]> = [
@@ -1200,6 +1205,10 @@ export default function BrandGroup() {
       'CG Review Link',
       'AG User',
       'CG User',
+      'TP Review Text',
+      'AG Review Text',
+      'CG Review Text',
+      'WO Review Text',
     ]);
     try {
       const targetTab = duplicateTargetTab || decodedTab;
@@ -2495,7 +2504,7 @@ export default function BrandGroup() {
             // as extras so they don't render as a second, duplicate field — EditEntryModal
             // falls back to the whitespace-variant value when the canonical key is empty.
             const extras = Object.keys(editEntry.data).filter(
-              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !base.has(k) && !trimmedBase.has(k.trim()),
+              (k) => k && k.trim() !== '' && k.toLowerCase() !== 'id' && k !== 'last_sync_tag' && k !== 'Casino Password' && !REVIEW_TEXT_KEYS.has(k) && !base.has(k) && !trimmedBase.has(k.trim()),
             );
             const hdrs = [...filteredFull, ...extras];
             // Ensure a tab-configured column always shows, even on entries saved

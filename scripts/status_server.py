@@ -30,6 +30,7 @@ from check_review_status import (
     load_entries, build_driver, fetch_status,
     find_status_col, find_score_col, update_entry,
     BATCH_SIZE, DELAY_BETWEEN_BATCHES, CHROME_RESTART_EVERY,
+    REVIEW_TEXT_KEYS,
 )
 from check_ag_status import check_ag_for_tab
 from check_cg_status import check_cg_for_tab
@@ -204,9 +205,9 @@ def check_status():
                     is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                     if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                         updates[score_col] = new_score_str
-                    current_review_text = data.get('TP Review Text') or ''
+                    current_review_text = data.get(REVIEW_TEXT_KEYS['tp']) or ''
                     if new_review_text and new_review_text != current_review_text:
-                        updates['TP Review Text'] = new_review_text
+                        updates[REVIEW_TEXT_KEYS['tp']] = new_review_text
 
                     if not updates:
                         print(f'    -> {current!r} *{current_score or "-"} (no change)')

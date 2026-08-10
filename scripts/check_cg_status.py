@@ -52,6 +52,7 @@ from check_review_status import (
     STATUS_FILTER_MAP,
     matches_scope_filters,
     extract_review_card_text,
+    REVIEW_TEXT_KEYS,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -365,9 +366,9 @@ def check_cg_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
-                current_review_text = data.get("CG Review Text") or ""
+                current_review_text = data.get(REVIEW_TEXT_KEYS["cg"]) or ""
                 if new_review_text and new_review_text != current_review_text:
-                    updates["CG Review Text"] = new_review_text
+                    updates[REVIEW_TEXT_KEYS["cg"]] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")
