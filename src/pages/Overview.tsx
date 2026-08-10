@@ -17,7 +17,7 @@ import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownC
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
-import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
+import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import type { TabKpis } from '../types/brand-entry';
@@ -69,6 +69,8 @@ const EMPTY_KPIS: TabKpis = {
   countries: [],
   proxies: [],
 };
+
+const PLATFORM_VALUES = new Set<string>(['tp', 'ag', 'cg', 'wo']);
 
 const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: string; icon: string }> = {
   tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200',     icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16' },
@@ -124,10 +126,12 @@ interface SliceModalState {
 function KpiBreakdownModal({
   modal,
   tabs,
+  platformFilter,
   onClose,
 }: {
   modal: KpiModalState;
   tabs: TabSummary[];
+  platformFilter: 'all' | Platform;
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -140,6 +144,11 @@ function KpiBreakdownModal({
 
   function getCount(kpis: TabKpis): number {
     if (modal.kind === 'total') return kpis.total;
+    // kpis.live/kpis.removed are already scoped to platformFilter (see
+    // computeTabKpisFromEntries), and kpis[platformFilter] carries the same
+    // scoped number — summing all 4 platforms' unfiltered sub-counts here
+    // would disagree with the KPI card that opened this modal.
+    if (platformFilter !== 'all') return kpis[platformFilter][modal.kind];
     if (modal.kind === 'live') return kpis.tp.live + kpis.ag.live + kpis.cg.live + kpis.wo.live;
     return kpis.tp.removed + kpis.ag.removed + kpis.cg.removed + kpis.wo.removed;
   }
@@ -212,9 +221,11 @@ function KpiBreakdownModal({
 
 function SliceBreakdownModal({
   modal,
+  platformFilter,
   onClose,
 }: {
   modal: SliceModalState;
+  platformFilter: 'all' | Platform;
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -270,8 +281,10 @@ function SliceBreakdownModal({
             // scoped to one platform — a chip selector would be redundant
             // there. Country/Proxy Breakdown's modal rows blend every
             // platform a tab has, so a multi-platform tab needs a way to
-            // pick which one to actually view.
-            const rowPlatforms = modal.platform ? [] : getTabPlatforms(r.tab);
+            // pick which one to actually view — unless a global platform
+            // filter is already active, in which case every row is already
+            // scoped and the chip selector would be redundant too.
+            const rowPlatforms = (modal.platform || platformFilter !== 'all') ? [] : getTabPlatforms(r.tab);
             return (
               <div key={r.tab} className="-mx-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50">
                 <Link to={modal.linkFor(r.tab)} onClick={onClose} className="group flex items-center gap-3">
@@ -419,6 +432,8 @@ export default function Overview() {
   const dateTo   = searchParams.get('to')   ?? '';
   const countryFilter = searchParams.get('country') ?? '';
   const proxyFilter   = searchParams.get('proxy')   ?? '';
+  const platformParam = searchParams.get('platform');
+  const platformFilter: 'all' | Platform = PLATFORM_VALUES.has(platformParam ?? '') ? (platformParam as Platform) : 'all';
 
   const loadData = useCallback(async () => {
     setState(s => ({ ...s, loading: true }));
@@ -426,18 +441,26 @@ export default function Overview() {
       const removedPlatformBrands = await fetchRemovedPlatformBrands()
         .then(buildRemovedPlatformBrandSet)
         .catch(() => new Set<string>());
-      const tabResults = await Promise.all(
+      const tabResults = (await Promise.all(
         OPERATIONAL_TABS.map((tab) =>
-          fetchTabKpis(tab, dateFrom || undefined, dateTo || undefined, removedPlatformBrands, countryFilter || undefined, proxyFilter || undefined)
-            .then((kpis): TabSummary => ({ tab, kpis }))
+          fetchTabKpis(
+            tab,
+            dateFrom || undefined,
+            dateTo || undefined,
+            removedPlatformBrands,
+            countryFilter || undefined,
+            proxyFilter || undefined,
+            platformFilter === 'all' ? undefined : platformFilter,
+          )
+            .then((kpis): TabSummary | null => (kpis ? { tab, kpis } : null))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
         )
-      );
+      )).filter((r): r is TabSummary => r !== null);
       setState({ loading: false, error: null, tabs: tabResults });
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
-  }, [dateFrom, dateTo, countryFilter, proxyFilter]);
+  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -488,7 +511,7 @@ export default function Overview() {
         tab: t.tab,
         count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
       })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}`,
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter !== 'all' ? `&platform=${platformFilter}` : ''}`,
     });
   }
 
@@ -504,20 +527,19 @@ export default function Overview() {
     }, { replace: true });
   }
 
+  function setPlatformFilter(v: string) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (v) next.set('platform', v); else next.delete('platform');
+      return next;
+    }, { replace: true });
+  }
+
   function setDateFrom(v: string) {
     setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('from', v); else n.delete('from'); return n; }, { replace: true });
   }
   function setDateTo(v: string) {
     setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('to', v); else n.delete('to'); return n; }, { replace: true });
-  }
-
-  function clearCountryProxyFilters() {
-    setSearchParams((prev) => {
-      const next = new URLSearchParams(prev);
-      next.delete('country');
-      next.delete('proxy');
-      return next;
-    }, { replace: true });
   }
 
   function openPlatformSlice(platformName: string, kind: 'live' | 'removed') {
@@ -564,6 +586,15 @@ export default function Overview() {
     <div className="space-y-8">
 
       <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium text-slate-500 shrink-0">Platform</span>
+        <BrandFilterDropdown
+          noun="platform"
+          value={platformFilter === 'all' ? '' : platformFilter.toUpperCase()}
+          onChange={(v) => setPlatformFilter(v.toLowerCase())}
+          brands={['TP', 'AG', 'CG', 'WO']}
+        />
+        <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
+
         <span className="text-xs font-medium text-slate-500 shrink-0">Date Range</span>
         <DatePicker
           value={dateFrom}
@@ -604,10 +635,14 @@ export default function Overview() {
           </>
         )}
 
-        {(dateActive || countryFilter || proxyFilter) && (
+        {(dateActive || countryFilter || proxyFilter || platformFilter !== 'all') && (
           <button
             type="button"
-            onClick={() => { setDateFrom(''); setDateTo(''); clearCountryProxyFilters(); }}
+            onClick={() => setSearchParams((prev) => {
+              const next = new URLSearchParams(prev);
+              ['from', 'to', 'country', 'proxy', 'platform'].forEach((k) => next.delete(k));
+              return next;
+            }, { replace: true })}
             className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
           >
             Clear
@@ -664,6 +699,11 @@ export default function Overview() {
       {/* Tab summary grid */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Brands Performance</h2>
+        {!state.loading && state.tabs.length === 0 && platformFilter !== 'all' ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
+            No brand tabs track {PLATFORM_BADGE[platformFilter].label}
+          </p>
+        ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {state.loading
             ? Array.from({ length: 9 }).map((_, i) => (
@@ -682,7 +722,7 @@ export default function Overview() {
                 return (
                   <Link
                     key={tab}
-                    to={`/brands/${tabToSlug(tab)}`}
+                    to={`/brands/${tabToSlug(tab)}${platformFilter !== 'all' ? `?platform=${platformFilter}` : ''}`}
                     style={{ height: 80 }}
                     className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                   >
@@ -721,44 +761,47 @@ export default function Overview() {
                 );
               })}
         </div>
-      </section>
-
-      {/* Platform breakdown chart */}
-      <section>
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
-          <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform</p>
-        </div>
-        {state.loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => (
-              <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {platformData.map((p) => (
-              <BreakdownDonutCard
-                key={p.name}
-                title={p.name === 'WizardOfOdds' ? 'Wizard of Odds' : p.name}
-                icon={
-                  <img
-                    src={PLATFORM_LOGOS[p.name]}
-                    alt={p.name}
-                    className="size-5 rounded-sm object-contain"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                }
-                iconBgClass={PLATFORM_ICON_BG[p.name] ?? 'bg-slate-100 ring-1 ring-slate-200'}
-                accentColor={PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS]}
-                live={p.Live}
-                removed={p.Removed}
-                onSliceClick={(kind) => openPlatformSlice(p.name, kind)}
-              />
-            ))}
-          </div>
         )}
       </section>
+
+      {/* Platform breakdown chart -- redundant once scoped to one platform */}
+      {platformFilter === 'all' && (
+        <section>
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
+            <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform</p>
+          </div>
+          {state.loading ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i} className="h-64 animate-pulse rounded-xl bg-slate-100" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {platformData.map((p) => (
+                <BreakdownDonutCard
+                  key={p.name}
+                  title={p.name === 'WizardOfOdds' ? 'Wizard of Odds' : p.name}
+                  icon={
+                    <img
+                      src={PLATFORM_LOGOS[p.name]}
+                      alt={p.name}
+                      className="size-5 rounded-sm object-contain"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  }
+                  iconBgClass={PLATFORM_ICON_BG[p.name] ?? 'bg-slate-100 ring-1 ring-slate-200'}
+                  accentColor={PLATFORM_COLORS[p.name as keyof typeof PLATFORM_COLORS]}
+                  live={p.Live}
+                  removed={p.Removed}
+                  onSliceClick={(kind) => openPlatformSlice(p.name, kind)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Country breakdown */}
       <section>
@@ -847,6 +890,7 @@ export default function Overview() {
         <KpiBreakdownModal
           modal={kpiModal}
           tabs={state.tabs}
+          platformFilter={platformFilter}
           onClose={() => setKpiModal(null)}
         />
       )}
@@ -854,6 +898,7 @@ export default function Overview() {
       {sliceModal && (
         <SliceBreakdownModal
           modal={sliceModal}
+          platformFilter={platformFilter}
           onClose={() => setSliceModal(null)}
         />
       )}
