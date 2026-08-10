@@ -20,7 +20,7 @@ import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/schedu
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,7 +34,9 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 // Populated by the Selenium status checkers, not user-editable — never
 // surface as a raw Edit Entry modal field (a purpose-built display belongs
 // to a separate task). Also excluded from duplication in CLEAR_ON_DUPLICATE.
-const REVIEW_TEXT_KEYS = new Set(['TP Review Text', 'AG Review Text', 'CG Review Text', 'WO Review Text']);
+// Derived from scoreSummary.ts's PLATFORM_REVIEW_TEXT_KEYS (not a second
+// hardcoded literal) so the two can't silently drift apart.
+const REVIEW_TEXT_KEYS = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
 // Dashboard-only fields with no Sheet column — never come from tab_schemas, so they're
 // force-inserted into the edit modal right after their paired "User"/"Status" field.
@@ -1191,10 +1193,7 @@ export default function BrandGroup() {
       'CG Review Link',
       'AG User',
       'CG User',
-      'TP Review Text',
-      'AG Review Text',
-      'CG Review Text',
-      'WO Review Text',
+      ...REVIEW_TEXT_KEYS,
     ]);
     try {
       const targetTab = duplicateTargetTab || decodedTab;
