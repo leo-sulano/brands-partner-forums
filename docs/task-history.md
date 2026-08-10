@@ -2385,3 +2385,77 @@ a scrape comes back empty or wrong.
   environment.
 
 ---
+
+## Task 200: Platform Filter on Overview Tab
+
+**Date:** August 10, 2026
+
+Added a Platform filter (TP / AG / CG / WO) to the Overview tab's top filter row, alongside the existing
+Country/Proxy/Date Range filters, so the 3 global KPI cards, "Brands Performance" per-tab grid, "Platform
+Breakdown" donut chart, and Country/Proxy breakdown sections can all be scoped to a single review platform.
+The task description also mentioned scoping "the recent-mentions table" — dropped from scope during
+brainstorming, since Overview has no mentions table today (`MentionsTable.tsx` exists but isn't wired into
+any route, leftover scaffolding from an earlier design).
+
+- `computeTabKpisFromEntries`/`fetchTabKpis` (`src/lib/queries.ts`) gained an optional `platformFilter?:
+  Platform` parameter and a nullable return (`TabKpis | null`) — `null` means the tab structurally doesn't
+  track that platform (checked via the function's own locally-resolved `activePlatforms`, more accurate
+  than the static `getTabPlatforms`). When set, `live`/`removed`/`total`/`byCountry`/`byProxy` are
+  recomputed using only that platform's status/date columns and the already-existing per-platform
+  `isPlatformFlagged`/`passesPlatformDateFilter` gates — the same gates that already drive the `tp`/`ag`/
+  `cg`/`wo` sub-counts — instead of today's OR-across-all-platforms aggregate, so the new path can't drift
+  from Platform Breakdown's own numbers. `platformFilter` omitted preserves byte-identical behavior for
+  every existing caller.
+- `Overview.tsx`: new URL-param-only `platformFilter` state (no localStorage — a spec-review correction;
+  Overview's other filters don't persist that way either, only Score Summary's own page does, for itself),
+  rendered via the existing `BrandFilterDropdown` pill, first in the filter row. Tabs `fetchTabKpis` returns
+  `null` for are filtered out of `state.tabs` before render — they simply disappear from Brands Performance.
+  The Platform Breakdown donut section hides entirely once a specific platform is selected (redundant once
+  already scoped to one).
+- One unplanned but justified scope expansion: `src/lib/queries.test.ts` had 34 pre-existing TypeScript
+  errors from the `computeTabKpisFromEntries` signature change, never caught because that task's own step
+  didn't require `npm run build`. Fixed with non-null assertions at 16 call sites that never pass
+  `platformFilter` (so `null` is structurally unreachable there) plus one explicit `Entry[]` type
+  annotation — compile-time-only, independently verified line-by-line by both the task reviewer and the
+  final whole-branch reviewer.
+- The final whole-branch review caught 4 real Important gaps no per-task review could see, all fixed in one
+  pass: (1) the Live/Removed KPI breakdown modal ignored `platformFilter` entirely, always summing all 4
+  platforms' unfiltered sub-counts even though the KPI card above it showed a platform-scoped number; (2)
+  the Clear button's 4 sequential `setSearchParams` calls each closed over the same stale `searchParams`,
+  so only the last call's change (Platform) actually survived in the URL — Date/Country/Proxy silently
+  stopped clearing; (3) drill-through links (`openDimensionSlice`'s `linkFor`, the per-tab card's own link,
+  and `SliceBreakdownModal`'s "View: TP AG CG" chips) dropped the active platform scope, so clicking through
+  to Brand Tabs could show different numbers than what was just clicked; (4) selecting a platform no tab
+  tracks (a real risk for WO specifically — see Known Issues) rendered a silently blank page with no
+  explanation. Fixed with a single combined `setSearchParams` clear, `?platform=` propagated onto both
+  link sites, the chip row suppressed under an active global filter, and a "No brand tabs track {PLATFORM}"
+  empty state.
+- Built via 2 subagent-driven-development tasks plus the final whole-branch review's fix round, in a
+  worktree that forked from local `main` before an unrelated concurrent session's "Manual Review Text
+  Entry" feature (Task 199, above) was pushed to `origin/main` — merged cleanly with zero file overlap (that
+  branch touched `EditEntryModal.tsx`/`ReviewTextBlock.tsx`/`BrandGroup.tsx`; this one touched only
+  `queries.ts`/`queries.test.ts`/`Overview.tsx`). Full suite and build both pass on the merged `main`.
+- Spec: `docs/superpowers/specs/2026-08-10-overview-platform-filter-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-10-overview-platform-filter.md`.
+
+### Known Issues / Backlog (added by this task)
+- Live browser verification was not performed this session — no login credentials available in this
+  environment. Given the final review's findings were only observable with a filter active, treat the live
+  pass as required before this is considered fully done, not optional — specifically confirm: toggling
+  through All → TP → AG → CG → WO updates every section correctly, the Clear button now really clears all
+  5 filters together, a drill-through link during an active filter opens Brand Tabs pre-scoped to the same
+  platform, and WO's empty-state message (see below).
+- Selecting Wizard of Odds may render a fully empty Brands Performance grid in production: `WoO Review
+  Status` (the only header variant `computeTabKpisFromEntries`'s `resolveHeader` accepts for `woCol`,
+  exact-match) has never been confirmed to exist on a live WO-tracking tab — a pre-existing, previously
+  documented risk (see the WO entries in this file's earlier known-issues sections). This task adds a
+  "No brand tabs track WO" empty state for exactly this case rather than a silent blank page, but the
+  underlying header-name risk itself is unresolved and unrelated to this task's own scope.
+- Two Minor items deferred, not fixed: the "Brands Performance" per-tab cards' platform badges
+  (`kpis.activePlatforms`) describe what a tab *tracks* and are intentionally left unfiltered by
+  `platformFilter` — under a specific-platform filter this can look like clutter (a TP-filtered view still
+  shows a multi-platform tab's TP+AG+CG badges) but is not a wrong number, just a cosmetic inconsistency
+  with the feature's own intent. KPI card hint text ("active across TP / AG / CG / WO", etc.) also still
+  asserts all-platform scope under a filter.
+
+---
