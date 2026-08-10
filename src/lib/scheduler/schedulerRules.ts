@@ -30,9 +30,8 @@ export const PAUSE_RULES = {
   // recalculatePauses in schedulerService.ts) is strictly below this
   // percentage, once it has at least minDecidedPostsForRateCheck decided
   // (live+removed) posts within that window. Independent of, and
-  // lower-priority than, the consecutiveRemovedThreshold rule above and the
-  // flagged-via-email check -- see recalculatePauses in
-  // schedulerService.ts. Originally shipped 2026-08-07 (see
+  // lower-priority than, the consecutiveRemovedThreshold rule above -- see
+  // recalculatePauses in schedulerService.ts. Originally shipped 2026-08-07 (see
   // docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md)
   // as a calendar-month-to-date window (fixing the previously-known-broken
   // all-time oscillation issue), but a final whole-branch review on that
@@ -47,14 +46,13 @@ export const PAUSE_RULES = {
   minDecidedPostsForRateCheck: 5,
 };
 
-// Reason strings for the two pause triggers that persist until manually
-// cleared, rather than auto-expiring after a week like the automatic
-// triggers do. Shared between schedulerService.ts (which produces them)
-// and calendarRenderer.tsx (which compares against them to decide the
-// pause tooltip's wording) so the two can't drift out of sync.
+// Reason string for the pause trigger that persists until manually cleared,
+// rather than auto-expiring after a week like the automatic triggers do.
+// Shared between schedulerService.ts (which produces it) and
+// calendarRenderer.tsx (which compares against it to decide the pause
+// tooltip's wording) so the two can't drift out of sync.
 export const PERSISTENT_PAUSE_REASONS = {
   manual: 'Manually paused',
-  flagged: 'Flagged via email notification',
 } as const;
 
 export const CARRYOVER_RULES = {

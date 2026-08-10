@@ -163,13 +163,12 @@ function resumeWeekLabel(pausedWeekStart: string): string {
 function titleFor(props: PausedPlatformIndicatorProps): string {
   if (props.source === 'system') {
     const { pause } = props;
-    // "Manually paused" (Task 7) and "Flagged via email notification" (Task 6)
-    // both persist for as long as the override/flag stays set -- their
-    // paused_week_start gets re-upserted to the current week on every
-    // recalculatePauses run, so unlike a real auto-detected pause they don't
-    // actually auto-resume next week. Showing "Resumes week of ..." for them
-    // would be misleading.
-    const autoExpires = pause.reason !== PERSISTENT_PAUSE_REASONS.manual && pause.reason !== PERSISTENT_PAUSE_REASONS.flagged;
+    // "Manually paused" (Task 7) persists for as long as the override stays
+    // set -- its paused_week_start gets re-upserted to the current week on
+    // every recalculatePauses run, so unlike a real auto-detected pause it
+    // doesn't actually auto-resume next week. Showing "Resumes week of ..."
+    // for it would be misleading.
+    const autoExpires = pause.reason !== PERSISTENT_PAUSE_REASONS.manual;
     return autoExpires
       ? `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`
       : `Reason: ${pause.reason}\nStays paused until manually cleared`;

@@ -4,10 +4,10 @@ const { singletonFrom } = vi.hoisted(() => ({ singletonFrom: vi.fn() }));
 vi.mock('./supabase', () => ({
   supabase: {
     from: singletonFrom,
-    // setBrandPlatformFlagged/setBrandPlatformOverride (unlike the fetch*
-    // functions above) always go through the singleton and call
-    // currentUserEmail() -> supabase.auth.getSession() internally -- stub it
-    // out so those tests don't throw on an undefined `.auth`.
+    // setBrandPlatformOverride (unlike the fetch* functions above) always
+    // goes through the singleton and calls currentUserEmail() ->
+    // supabase.auth.getSession() internally -- stub it out so those tests
+    // don't throw on an undefined `.auth`.
     auth: { getSession: vi.fn().mockResolvedValue({ data: { session: null } }) },
   },
   SUPABASE_ANON_KEY: '',
@@ -24,9 +24,7 @@ import {
   fetchRemovedPlatformBrands,
   bulkUpsertBrandSchedule,
   computeTabKpisFromEntries,
-  fetchFlaggedPlatformBrands,
   fetchBrandPlatformOverrides,
-  setBrandPlatformFlagged,
   setBrandPlatformOverride,
   clearBrandPlatformOverride,
 } from './queries';
@@ -91,36 +89,11 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
-  it('fetchFlaggedPlatformBrands uses the passed-in client', async () => {
-    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
-    await fetchFlaggedPlatformBrands({ from: fakeFrom } as any);
-    expect(fakeFrom).toHaveBeenCalledWith('flagged_platform_brands');
-    expect(singletonFrom).not.toHaveBeenCalled();
-  });
-
   it('fetchBrandPlatformOverrides uses the passed-in client', async () => {
     const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
     await fetchBrandPlatformOverrides('X', { from: fakeFrom } as any);
     expect(fakeFrom).toHaveBeenCalledWith('brand_platform_override');
     expect(singletonFrom).not.toHaveBeenCalled();
-  });
-
-  it('setBrandPlatformFlagged upserts into flagged_platform_brands when flagged=true', async () => {
-    const upsert = vi.fn().mockResolvedValue({ error: null });
-    singletonFrom.mockReturnValue({ upsert });
-    await setBrandPlatformFlagged('X', 'WinMega', 'tp', true);
-    expect(singletonFrom).toHaveBeenCalledWith('flagged_platform_brands');
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ tab: 'X', brand: 'WinMega', platform: 'tp' }),
-      { onConflict: 'tab,brand_key,platform' },
-    );
-  });
-
-  it('setBrandPlatformFlagged deletes from flagged_platform_brands when flagged=false', async () => {
-    const chainObj: any = { delete: () => chainObj, eq: () => chainObj, then: (resolve: any) => resolve({ error: null }) };
-    singletonFrom.mockReturnValue(chainObj);
-    await setBrandPlatformFlagged('X', 'WinMega', 'tp', false);
-    expect(singletonFrom).toHaveBeenCalledWith('flagged_platform_brands');
   });
 
   it('setBrandPlatformOverride upserts into brand_platform_override', async () => {

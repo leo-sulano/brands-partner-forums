@@ -12,7 +12,6 @@ import {
   computeSuccessRates, successRatePct, type SuccessRate, type DateRange,
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
-import { platformFlaggedKey } from '../flaggedPlatformBrands.ts';
 import { overrideKey, type OverrideState } from '../scheduleOverrides.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
@@ -30,12 +29,6 @@ export interface TabContext {
   // to "nothing removed") so callers/tests that don't care about this feature
   // don't need to thread an empty Set through everywhere.
   removedPlatformBrandSet?: Set<string>;
-  // Every (tab, brand, platform) manually flagged via the "flagged via
-  // email" toggle -- a third OR-condition in the automatic pause check,
-  // alongside two-consecutive-removed and the monthly success-rate
-  // threshold. Optional, same "defaults to nothing flagged" convention as
-  // removedPlatformBrandSet.
-  flaggedPlatformBrandSet?: Set<string>;
   // Every (tab, brand_key, platform) with a manually-set override, beating
   // whatever the automatic checks below would otherwise compute. 'active'
   // forces continued posting (deletes/skips any pause); 'pause' forces a
@@ -152,7 +145,6 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   ]);
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
-  const flaggedSet = ctx.flaggedPlatformBrandSet ?? new Set<string>();
   const overrideMap = ctx.overrideMap ?? new Map<string, OverrideState>();
 
   // Computed once per active platform (not per brand) since each call scans
@@ -174,8 +166,8 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       if (removedSet.has(platformRemovedKey(tab, brand, platform))) continue;
 
       // Manual override beats every automatic check below -- checked before
-      // the existing/alreadyHasRow/flagged/consecutive-removed/success-rate
-      // chain entirely, not merged into it, since it's an explicit operator
+      // the existing/alreadyHasRow/consecutive-removed/success-rate chain
+      // entirely, not merged into it, since it's an explicit operator
       // decision rather than a background computation. 'pause' deliberately
       // does NOT respect the alreadyHasRow guard the auto path uses below
       // (that guard exists to protect the auto-detection heuristic from a
@@ -208,14 +200,6 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       }
       const alreadyHasRow = existingRows.some((r) => r.platform === platform && r.brand_key === brandKey);
       if (alreadyHasRow) continue;
-
-      // Highest-priority automatic trigger -- an explicit, human-verified
-      // email notification outranks the inferred consecutive-removed and
-      // success-rate signals below.
-      if (flaggedSet.has(platformFlaggedKey(tab, brand, platform))) {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, PERSISTENT_PAUSE_REASONS.flagged, client);
-        continue;
-      }
 
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);

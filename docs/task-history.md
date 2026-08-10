@@ -2229,3 +2229,18 @@ The user asked for a full check that count/summary data agrees everywhere on the
 - Not yet committed — pending user confirmation before pushing to `main`.
 
 ---
+
+## Task 196: Remove the "Flagged via Email" Checkboxes and Feature
+
+**Date:** August 10, 2026
+
+The user asked to remove the "TrustPilot/AskGamblers/CasinoGuru flagged via email" checkboxes from the Edit Entry modal. Investigation found these checkboxes were the *only* UI that could ever set or clear a row in `flagged_platform_brands` — the table backed a real feature (Task 179): a manual "ops got an email" toggle that fed the highest-priority OR-condition in `recalculatePauses`' automatic Schedule Planner pause logic, ahead of consecutive-removed and the success-rate check. Since simply deleting the checkboxes would have permanently orphaned any already-flagged brand (paused forever, no way to unflag it), the user was asked and chose full removal of the feature rather than a UI-only hide.
+
+- Removed the checkboxes and `flaggedPlatforms` state/prop from `EditEntryModal.tsx`, and all wiring in `BrandGroup.tsx` (fetch, `flaggedPlatformsFor`/`isPlatformFlagged` helpers, the modal's `onSave` diff-and-write block).
+- Removed `fetchFlaggedPlatformBrands`/`setBrandPlatformFlagged` from `queries.ts`, and deleted `src/lib/flaggedPlatformBrands.ts` + its test outright (the module existed solely for this feature's shared key-building logic).
+- Removed the third pause-trigger branch and `flaggedPlatformBrandSet` from `TabContext` in `schedulerService.ts` (`recalculatePauses`), and `PERSISTENT_PAUSE_REASONS.flagged` from `schedulerRules.ts` — `calendarRenderer.tsx`'s pause-tooltip `autoExpires` check updated accordingly since it read that same reason constant.
+- Applied the identical removal to `supabase/functions/generate-weekly-schedule/` (the not-yet-deployed weekly cron function), which independently built the same `TabContext` shape client-side did.
+- Confirmed via the anon-key REST API that `flagged_platform_brands` held zero rows in production, then wrote and applied migration `20260810120000_drop_flagged_platform_brands.sql` (`drop table if exists`) — `brand_platform_override`, created in the same original migration as this table, is a separate still-live feature and was left untouched. Verified post-push: the table now 404s via REST.
+- Full suite (667 tests) and build both pass. `deno check`/`deno test` on the edited Edge Function are blocked by a pre-existing, unrelated `countryFlags.ts` import-resolution error — confirmed via `git stash` that the same error reproduces on the untouched tree, so it predates and is unaffected by this change.
+
+---

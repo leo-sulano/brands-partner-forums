@@ -10,13 +10,11 @@ import {
   setBrandScheduleDay,
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
-  fetchFlaggedPlatformBrands,
   fetchBrandPlatformOverrides,
   type BrandPlatformPause,
 } from '../lib/queries';
 import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, isCurrentWeekStart, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
-import { buildFlaggedPlatformBrandSet } from '../lib/flaggedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
@@ -122,7 +120,6 @@ export default function SchedulePlanner() {
     activePlatforms: Platform[];
     entries: Entry[];
     removedPlatformBrandSet: Set<string>;
-    flaggedPlatformBrandSet: Set<string>;
     overrideMap: Map<string, OverrideState>;
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
@@ -187,11 +184,10 @@ export default function SchedulePlanner() {
     setPauses([]);
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows, flaggedPlatformBrandRows, overrideRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, overrideRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           fetchRemovedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
-          fetchFlaggedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
           fetchBrandPlatformOverrides(tab).catch(() => []),
         ]);
         if (canceled) return;
@@ -204,7 +200,7 @@ export default function SchedulePlanner() {
         if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
         const platforms = getTabPlatforms(tab);
         if (canceled) return;
-        // Set all four together, tagged with the tab they were loaded for —
+        // Set all three together, tagged with the tab they were loaded for —
         // never as separate setState calls, so there's no window where one
         // has updated and the others haven't.
         setTabCtx({
@@ -213,7 +209,6 @@ export default function SchedulePlanner() {
           activePlatforms: platforms,
           entries: rawEntries,
           removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
-          flaggedPlatformBrandSet: buildFlaggedPlatformBrandSet(flaggedPlatformBrandRows),
           overrideMap: buildOverrideMap(overrideRows),
         });
       } catch (err) {
@@ -270,7 +265,6 @@ export default function SchedulePlanner() {
             activePlatforms: tabCtx!.activePlatforms,
             entries: tabCtx!.entries,
             removedPlatformBrandSet: tabCtx!.removedPlatformBrandSet,
-            flaggedPlatformBrandSet: tabCtx!.flaggedPlatformBrandSet,
             overrideMap: tabCtx!.overrideMap,
           };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);

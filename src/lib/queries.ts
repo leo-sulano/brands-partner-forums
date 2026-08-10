@@ -721,38 +721,6 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
   }
 }
 
-export async function fetchFlaggedPlatformBrands(
-  client: SupabaseClient = supabase,
-): Promise<{ tab: string; brand: string; platform: Platform }[]> {
-  const { data, error } = await client
-    .from('flagged_platform_brands')
-    .select('tab, brand, platform');
-  if (error) throw error;
-  return (data ?? []) as { tab: string; brand: string; platform: Platform }[];
-}
-
-// Mirrors setBrandPlatformRemoved exactly: matches/deletes via the
-// generated brand_key column so a stored brand value that differs only in
-// case/whitespace from the one passed in here still matches the existing
-// row instead of silently no-oping.
-export async function setBrandPlatformFlagged(tab: string, brand: string, platform: Platform, flagged: boolean): Promise<void> {
-  const brandKey = normalizeBrandKey(brand);
-  if (flagged) {
-    const { error } = await supabase
-      .from('flagged_platform_brands')
-      .upsert({ tab, brand, platform, flagged_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
-    if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from('flagged_platform_brands')
-      .delete()
-      .eq('tab', tab)
-      .eq('brand_key', brandKey)
-      .eq('platform', platform);
-    if (error) throw error;
-  }
-}
-
 export interface BrandPlatformOverride {
   tab: string;
   brand_key: string;

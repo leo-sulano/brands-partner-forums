@@ -3,8 +3,8 @@
 // compute (docs/superpowers/specs/2026-08-07-schedule-planner-rules-update-design.md).
 // 'pause' forces a pause regardless of auto conditions; 'active' forces
 // continued posting even if auto-detection would otherwise pause it.
-// Unlike flaggedPlatformBrands/removedPlatformBrands (boolean presence),
-// this carries a state, so the shared helper here builds a Map, not a Set.
+// Unlike removedPlatformBrands (boolean presence), this carries a state, so
+// the shared helper here builds a Map, not a Set.
 //
 // Keyed by brand_key (not raw brand) because the source table
 // (brand_platform_override, like brand_platform_pause) only stores the
