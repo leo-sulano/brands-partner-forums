@@ -377,7 +377,8 @@ export function computeTabKpisFromEntries(
   removedPlatformBrands: Set<string>,
   countryFilter?: string,
   proxyFilter?: string,
-): TabKpis {
+  platformFilter?: Platform,
+): TabKpis | null {
   // Resolve the actual sheet column name case-insensitively so minor casing
   // differences between tabs don't cause zeroed-out counts.
   function resolveHeader(...variants: string[]): string | null {
@@ -393,6 +394,16 @@ export function computeTabKpisFromEntries(
   const cgCol = resolveHeader('CG Review Status');
   const woCol = resolveHeader('WoO Review Status');
   const genericCol = resolveHeader('Review Status', 'status', 'Status');
+
+  const activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[] = [];
+  if (tpCol) activePlatforms.push('tp');
+  if (agCol) activePlatforms.push('ag');
+  if (cgCol) activePlatforms.push('cg');
+  if (woCol) activePlatforms.push('wo');
+
+  if (platformFilter && !activePlatforms.includes(platformFilter)) {
+    return null;
+  }
 
   let live = 0, removed = 0, done = 0, pending = 0, onPause = 0, notDone = 0;
   let tpLive = 0, tpRemoved = 0;
@@ -460,13 +471,18 @@ export function computeTabKpisFromEntries(
     // top KPI cards), disagreeing with Platform Breakdown and the
     // per-platform KPI cards, which already exclude it. A row with other,
     // unflagged platform statuses still counts via those.
-    const statuses = [
-      tpDateOk && !isPlatformFlagged('tp') ? tp : '',
-      agDateOk && !isPlatformFlagged('ag') ? ag : '',
-      cgDateOk && !isPlatformFlagged('cg') ? cg : '',
-      woDateOk && !isPlatformFlagged('wo') ? wo : '',
-      genericInRange ? generic : '',
-    ].filter(Boolean);
+    const platformValue: Record<'tp' | 'ag' | 'cg' | 'wo', string> = { tp, ag, cg, wo };
+    const platformDateOk: Record<'tp' | 'ag' | 'cg' | 'wo', boolean> = { tp: tpDateOk, ag: agDateOk, cg: cgDateOk, wo: woDateOk };
+
+    const statuses: string[] = platformFilter
+      ? (platformDateOk[platformFilter] && !isPlatformFlagged(platformFilter) ? [platformValue[platformFilter]] : [])
+      : [
+          tpDateOk && !isPlatformFlagged('tp') ? tp : '',
+          agDateOk && !isPlatformFlagged('ag') ? ag : '',
+          cgDateOk && !isPlatformFlagged('cg') ? cg : '',
+          woDateOk && !isPlatformFlagged('wo') ? wo : '',
+          genericInRange ? generic : '',
+        ].filter(Boolean);
 
     if (statuses.length > 0) {
       if (statuses.some(isLiveStatus)) {
@@ -484,12 +500,6 @@ export function computeTabKpisFromEntries(
       else if (statuses.some(isNotDoneStatus)) notDone++;
     }
   }
-
-  const activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[] = [];
-  if (tpCol) activePlatforms.push('tp');
-  if (agCol) activePlatforms.push('ag');
-  if (cgCol) activePlatforms.push('cg');
-  if (woCol) activePlatforms.push('wo');
 
   return {
     total: live + removed,
@@ -518,13 +528,14 @@ export async function fetchTabKpis(
   removedPlatformBrands: Set<string> = new Set(),
   countryFilter?: string,
   proxyFilter?: string,
-): Promise<TabKpis> {
+  platformFilter?: Platform,
+): Promise<TabKpis | null> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
   const brandCol = getBrandNameCol(tab);
-  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter);
+  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter);
 }
 
 // ---------------------------------------------------------------------------

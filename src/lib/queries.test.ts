@@ -313,4 +313,84 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.countries).toEqual(['France', 'Germany']);
     expect(kpis.proxies).toEqual(['Enigma-US1', 'Enigma-US2']);
   });
+
+  it('returns null when platformFilter names a platform the tab has no column for', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+    ];
+    // `rawHeaders` (line 123) has no CG column at all -- this tab structurally
+    // can't track CasinoGuru.
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'cg');
+    expect(kpis).toBeNull();
+  });
+
+  it('platformFilter scopes live/removed/total to only that platform, ignoring other platforms on the same row', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const multiEntry = {
+      id: '1', tab: 'Rooster Partners', sheet_row_id: '1',
+      data: {
+        'Brands': 'Multi Brand',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '15/06/2026', 'CG Review Status': 'Published',
+      },
+      updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
+    };
+
+    // No filter: today's existing OR-across-platforms aggregate counts the
+    // row once as live, because CG's live status wins over TP's removed
+    // status on the same row -- this is the exact ambiguity the filter
+    // exists to resolve.
+    const unfiltered = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set());
+    expect(unfiltered).not.toBeNull();
+    expect(unfiltered!.live).toBe(1);
+    expect(unfiltered!.removed).toBe(0);
+
+    // Filtered to TP only: the row's true TP status (Removed) surfaces.
+    const tpOnly = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'tp');
+    expect(tpOnly).not.toBeNull();
+    expect(tpOnly!.live).toBe(0);
+    expect(tpOnly!.removed).toBe(1);
+    expect(tpOnly!.total).toBe(1);
+
+    // Filtered to CG only: the row's true CG status (Published/live) surfaces.
+    const cgOnly = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'cg');
+    expect(cgOnly).not.toBeNull();
+    expect(cgOnly!.live).toBe(1);
+    expect(cgOnly!.removed).toBe(0);
+    expect(cgOnly!.total).toBe(1);
+  });
+
+  it('platformFilter scopes byCountry/byProxy to only rows that have a value on that platform', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status', 'Country'];
+    const entries = [
+      {
+        id: '1', tab: 'Rooster Partners', sheet_row_id: '1',
+        data: { 'Brands': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'Germany' },
+        updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
+      },
+      {
+        id: '2', tab: 'Rooster Partners', sheet_row_id: '2',
+        data: { 'Brands': 'B', 'Casino Guru review added': '15/06/2026', 'CG Review Status': 'Published', 'Country': 'France' },
+        updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
+      },
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'cg');
+    expect(kpis).not.toBeNull();
+    // Only entry 2 (France) has a CG value -- entry 1 (Germany) is TP-only
+    // and must not appear in a CG-scoped breakdown at all.
+    expect(kpis!.byCountry).toEqual({ FR: { label: 'France', live: 1, removed: 0 } });
+    expect(kpis!.live).toBe(1);
+    expect(kpis!.removed).toBe(0);
+  });
+
+  it('platformFilter still respects the per-platform removed-brand flag', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+    ];
+    const flagged = new Set([platformRemovedKey('TP Affiliate', 'Flagged Brand', 'tp')]);
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged, undefined, undefined, 'tp');
+    expect(kpis).not.toBeNull();
+    expect(kpis!.live).toBe(0);
+    expect(kpis!.removed).toBe(0);
+  });
 });
