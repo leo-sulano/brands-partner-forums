@@ -415,9 +415,11 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {sections.ag.map((h) => renderField(h))}
               </div>
-              <div className="mt-3">
-                <ReviewTextBlock text={getReviewText(entry.data, 'ag')} />
-              </div>
+              {tabPlatforms.includes('ag') && (
+                <div className="mt-3">
+                  <ReviewTextBlock text={getReviewText(entry.data, 'ag')} />
+                </div>
+              )}
             </>
           )}
 
@@ -428,9 +430,11 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {sections.cg.map((h) => renderField(h))}
               </div>
-              <div className="mt-3">
-                <ReviewTextBlock text={getReviewText(entry.data, 'cg')} />
-              </div>
+              {tabPlatforms.includes('cg') && (
+                <div className="mt-3">
+                  <ReviewTextBlock text={getReviewText(entry.data, 'cg')} />
+                </div>
+              )}
             </>
           )}
 

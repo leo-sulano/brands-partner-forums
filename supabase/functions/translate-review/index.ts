@@ -37,6 +37,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!text || typeof text !== 'string') {
     return jsonResponse({ error: 'Missing text' }, 400);
   }
+  if (text.length > 10000) {
+    return jsonResponse({ error: 'Review text is too long to translate' }, 400);
+  }
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -54,11 +57,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
           },
           { role: 'user', content: text },
         ],
-        max_tokens: 1000,
+        max_tokens: 2000,
       }),
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}`);
     const data = await res.json();
+    if (data.choices?.[0]?.finish_reason === 'length') {
+      return jsonResponse({ error: 'Translation was too long to complete' }, 500);
+    }
     const translation = data.choices?.[0]?.message?.content;
     if (typeof translation !== 'string') throw new Error('No translation in response');
     return jsonResponse({ translation: translation.trim() });

@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { Loader2, Languages } from 'lucide-react';
 import { shouldShowTranslateButton, translateReviewText } from '../lib/reviewTranslation';
 
+const TRANSLATE_FAILURE_MESSAGE = 'Unable to translate this review at the moment. Please try again later.';
+
 interface Props {
   text: string | null;
 }
@@ -13,7 +15,7 @@ export default function ReviewTextBlock({ text }: Props) {
 
   const showButton = useMemo(() => (text ? shouldShowTranslateButton(text) : false), [text]);
 
-  if (!text) {
+  if (!text?.trim()) {
     return <p className="text-xs text-slate-400 italic">No review content available.</p>;
   }
 
@@ -23,9 +25,14 @@ export default function ReviewTextBlock({ text }: Props) {
     setError(null);
     try {
       const result = await translateReviewText(text);
-      setTranslated(result);
+      if (!result?.trim()) {
+        setError(TRANSLATE_FAILURE_MESSAGE);
+        setTranslated(null);
+      } else {
+        setTranslated(result);
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to translate this review at the moment. Please try again later.');
+      setError(err instanceof Error ? err.message : TRANSLATE_FAILURE_MESSAGE);
     } finally {
       setTranslating(false);
     }
@@ -33,7 +40,8 @@ export default function ReviewTextBlock({ text }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="whitespace-pre-wrap rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+      <label className="mb-1.5 block text-xs font-medium text-slate-500">Original Review</label>
+      <div className="whitespace-pre-wrap break-words rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
         {text}
       </div>
 
@@ -55,10 +63,10 @@ export default function ReviewTextBlock({ text }: Props) {
         </div>
       )}
 
-      {translated && (
+      {translated?.trim() && (
         <div>
           <label className="mb-1.5 block text-xs font-medium text-slate-500">English Translation</label>
-          <div className="whitespace-pre-wrap rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-slate-700">
+          <div className="whitespace-pre-wrap break-words rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-slate-700">
             {translated}
           </div>
         </div>
