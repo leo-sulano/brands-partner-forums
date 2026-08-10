@@ -432,16 +432,7 @@ export function computeTabKpisFromEntries(
 
     // Date-gating is per-platform (passesPlatformDateFilter), independent of
     // any other platform's date on the same row — this is the actual fix for
-    // the Overview vs Score Summary mismatch. It is deliberately split from
-    // the platform-flag exclusion below: the per-platform breakdown counters
-    // (tpLive/tpRemoved, etc.) exclude a platform-flagged brand, but the
-    // tab-level aggregate (live/removed/done/pending/onPause/notDone) does
-    // NOT — matching the pre-existing aggregate behavior (a flagged brand's
-    // other-platform data still counts toward the tab total; there's no
-    // single "the platform" to exclude against at the aggregate level).
-    // Folding the flag check into these date flags would silently change
-    // that pre-existing exclusion semantics, which this fix is not meant to
-    // touch.
+    // the Overview vs Score Summary mismatch.
     const tpDateOk = !!tp && passesPlatformDateFilter(d, 'tp', dateFrom, dateTo);
     const agDateOk = !!ag && passesPlatformDateFilter(d, 'ag', dateFrom, dateTo);
     const cgDateOk = !!cg && passesPlatformDateFilter(d, 'cg', dateFrom, dateTo);
@@ -462,11 +453,18 @@ export function computeTabKpisFromEntries(
     if (cgDateOk && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
     if (woDateOk && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
 
+    // A platform-flagged status is excluded here too, not just from that
+    // platform's own tpLive/tpRemoved counters above — otherwise a brand
+    // whose only status is on a flagged platform still counts toward the
+    // tab-level aggregate (and therefore Country/Proxy Breakdown and the
+    // top KPI cards), disagreeing with Platform Breakdown and the
+    // per-platform KPI cards, which already exclude it. A row with other,
+    // unflagged platform statuses still counts via those.
     const statuses = [
-      tpDateOk ? tp : '',
-      agDateOk ? ag : '',
-      cgDateOk ? cg : '',
-      woDateOk ? wo : '',
+      tpDateOk && !isPlatformFlagged('tp') ? tp : '',
+      agDateOk && !isPlatformFlagged('ag') ? ag : '',
+      cgDateOk && !isPlatformFlagged('cg') ? cg : '',
+      woDateOk && !isPlatformFlagged('wo') ? wo : '',
       genericInRange ? generic : '',
     ].filter(Boolean);
 

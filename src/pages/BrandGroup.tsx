@@ -213,14 +213,6 @@ const ENTRY_DATE_COLS = [
   'Date', 'date', 'Posted At', 'posted_at',
 ];
 
-// Per-platform date columns used when a specific platform is selected.
-const PLATFORM_DATE_COLS = {
-  tp: 'Trust Pilot',
-  ag: 'Ask Gambler review added',
-  cg: 'Casino Guru review added',
-  wo: 'Wizard of Odds',
-} as const;
-
 const PLATFORM_STATUS_COL = {
   tp: 'TP Review Status',
   ag: 'AG Review Status',
@@ -279,26 +271,11 @@ const TP_STATUS_VARIANTS = new Set([
   'Trust pilot Review Status', 'Review Status',
 ]);
 
-function getEntryDate(data: Record<string, string | null>): Date | null {
-  for (const col of ENTRY_DATE_COLS) {
-    const raw = data[col];
-    if (!raw) continue;
-    const m = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
-    const d = new Date(raw);
-    if (!isNaN(d.getTime())) return d;
-  }
-  return null;
-}
-
-// Only excludes entries that have a date AND it falls outside the range.
-// Entries with no date are always included so pending accounts stay visible.
-function inDateRangeInclusive(data: Record<string, string | null>, from: string, to: string): boolean {
-  const d = getEntryDate(data);
-  if (!d) return true;
-  if (from && d < new Date(from + 'T00:00:00')) return false;
-  if (to && d > new Date(to + 'T23:59:59')) return false;
-  return true;
+// The actual header (if present on this tab) that carries a given
+// platform's own status.
+function platformStatusCol(headers: string[], platform: Platform): string | null {
+  if (platform === 'tp') return headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null;
+  return headers.find((h) => h.toLowerCase() === PLATFORM_STATUS_COL[platform].toLowerCase()) ?? null;
 }
 
 function isDateCol(header: string): boolean {
@@ -1373,49 +1350,37 @@ export default function BrandGroup() {
     });
   })();
 
-  const statusFiltered = statusFilter === 'all'
-    ? ratingFiltered
-    : ratingFiltered.filter((e) =>
-        activeStatusCols.some((h) => {
-          const v = (e.data[h] ?? '').toLowerCase();
-          if (statusFilter === 'live') return isLive(v);
-          if (statusFilter === 'removed') return isRemoved(v);
-          if (statusFilter === 'done') return isDone(v);
-          if (statusFilter === 'on-pause') return isOnPause(v);
-          if (statusFilter === 'pending') return isPending(v);
-          if (statusFilter === 'not-done') return isNotDone(v);
-          return false;
-        }),
-      );
-
   const dateActive = !!(dateFrom || dateTo);
+  const relevantPlatforms = platformFilter !== 'all' ? [platformFilter] : getTabPlatforms(decodedTab);
 
-  function applyDateFilter<T extends { data: Record<string, string | null> }>(rows: T[]): T[] {
-    if (!dateActive) return rows;
-    return rows.filter((e) => {
-      if (platformFilter !== 'all') {
-        const col = PLATFORM_DATE_COLS[platformFilter];
-        const raw = e.data[col]?.trim();
-        if (!raw) return true; // no date — always include
-        const d = parseCellDate(raw) ?? new Date(raw);
-        if (isNaN(d.getTime())) return true; // unparseable — include rather than hide
-        if (dateFrom && d < new Date(dateFrom + 'T00:00:00')) return false;
-        if (dateTo && d > new Date(dateTo + 'T23:59:59')) return false;
-        return true;
-      }
-      // Known, deliberately deferred gap: this 'all'-platform branch still
-      // uses the old cross-platform date-column fallback (inDateRangeInclusive)
-      // rather than checking each of the tab's active platforms via
-      // passesPlatformDateFilter like the KPI cards above (countPlatform,
-      // displayTotals) now do. On a multi-platform tab with platformFilter
-      // === 'all' and a date range set, the visible table rows here can
-      // therefore disagree with the KPI cards. Not the bug this branch fixes
-      // (Overview vs Score Summary) — a separate follow-up.
-      return inDateRangeInclusive(e.data, dateFrom, dateTo);
-    });
+  // A row matches if ANY relevant platform's own status+date state satisfies
+  // the current filters — status and date are checked against the SAME
+  // platform, not independently (a Live status on AG can no longer "borrow"
+  // an unrelated in-range date from TP on the same row). This is the same
+  // per-platform coupling the KPI cards (countPlatform/displayTotals) already
+  // use, so the table can no longer disagree with the cards above it as
+  // platform/date filters change. The flag check only applies to an actual
+  // status match (live/removed/etc.) — a flagged platform's date can still
+  // place the row in range under "All statuses", matching the pre-existing
+  // rule that a flagged brand's row still shows in the table (with its
+  // badge), just excluded from the counts.
+  function matchesPlatform(e: { data: Record<string, string | null> }, platform: Platform): boolean {
+    if (dateActive && !passesPlatformDateFilter(e.data, platform, dateFrom, dateTo)) return false;
+    if (statusFilter === 'all') return true;
+    if (brandCol && isPlatformRemoved(e.data[brandCol], platform)) return false;
+    const col = platformStatusCol(headers, platform);
+    if (!col) return false;
+    const v = (e.data[col] ?? '').toLowerCase();
+    if (statusFilter === 'live') return isLive(v);
+    if (statusFilter === 'removed') return isRemoved(v);
+    if (statusFilter === 'done') return isDone(v);
+    if (statusFilter === 'on-pause') return isOnPause(v);
+    if (statusFilter === 'pending') return isPending(v);
+    if (statusFilter === 'not-done') return isNotDone(v);
+    return false;
   }
 
-  const filtered = applyDateFilter(statusFiltered);
+  const filtered = ratingFiltered.filter((e) => relevantPlatforms.some((p) => matchesPlatform(e, p)));
 
   // Platform card counts — computed from ratingFiltered with each platform's
   // own date-range check (passesPlatformDateFilter) so they always reflect

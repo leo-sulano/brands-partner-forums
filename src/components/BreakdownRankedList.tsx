@@ -36,10 +36,10 @@ export default function BreakdownRankedList({ rows }: BreakdownRankedListProps) 
             <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
               {row.icon}
             </div>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-700" title={row.label}>
+            <span className="w-28 shrink-0 truncate text-sm font-medium text-slate-700 sm:w-36 md:w-44" title={row.label}>
               {row.label}
             </span>
-            <div className="hidden h-6 w-40 shrink-0 overflow-hidden rounded-full bg-slate-100 sm:flex md:w-56">
+            <div className="mr-6 hidden h-6 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100 sm:flex">
               {total > 0 && (
                 <>
                   <button
