@@ -1,5 +1,15 @@
-import { describe, it, expect } from 'vitest';
-import { shouldShowTranslateButton } from './reviewTranslation';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { mockGetSession } = vi.hoisted(() => ({
+  mockGetSession: vi.fn().mockResolvedValue({ data: { session: null } }),
+}));
+vi.mock('./supabase', () => ({
+  supabase: { auth: { getSession: mockGetSession } },
+  SUPABASE_ANON_KEY: 'test-anon-key',
+  TRANSLATE_REVIEW_URL: 'https://example.com/translate-review',
+}));
+
+import { shouldShowTranslateButton, translateReviewText } from './reviewTranslation';
 
 describe('shouldShowTranslateButton', () => {
   it('returns false for English text', () => {
@@ -26,5 +36,64 @@ describe('shouldShowTranslateButton', () => {
 
   it('returns false for empty text', () => {
     expect(shouldShowTranslateButton('')).toBe(false);
+  });
+});
+
+describe('translateReviewText', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+  });
+
+  it('returns the translation on a successful response', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ translation: 'The casino is very good.' }),
+    });
+
+    const result = await translateReviewText('Das Casino ist sehr gut.');
+
+    expect(result).toBe('The casino is very good.');
+  });
+
+  it('sends the anon key and a bearer token to TRANSLATE_REVIEW_URL', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ translation: 'ok' }),
+    });
+
+    await translateReviewText('some text');
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://example.com/translate-review',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ apikey: 'test-anon-key' }),
+      }),
+    );
+  });
+
+  it('throws the standard friendly message on a non-OK response', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, json: async () => ({}) });
+
+    await expect(translateReviewText('text')).rejects.toThrow(
+      'Unable to translate this review at the moment. Please try again later.',
+    );
+  });
+
+  it('throws the standard friendly message when fetch itself rejects', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network down'));
+
+    await expect(translateReviewText('text')).rejects.toThrow(
+      'Unable to translate this review at the moment. Please try again later.',
+    );
+  });
+
+  it('throws the standard friendly message when the response has no translation field', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({}) });
+
+    await expect(translateReviewText('text')).rejects.toThrow(
+      'Unable to translate this review at the moment. Please try again later.',
+    );
   });
 });

@@ -36,3 +36,8 @@ export const CHECK_AG_STATUS_BASE_URL = CHECK_AG_STATUS_URL.replace(/\/check-sta
 // AI assistant Edge Function URL (gpt-4o-mini proxy). Set in Vercel env once the
 // `ai-assistant` function is deployed. Empty string disables the assistant.
 export const AI_ASSISTANT_URL = import.meta.env?.VITE_AI_ASSISTANT_URL ?? '';
+
+// Translate-review Edge Function URL (gpt-4o-mini proxy). Set in Vercel env once the
+// `translate-review` function is deployed. Empty string means the Translate button's
+// click always fails with the standard "unable to translate" message.
+export const TRANSLATE_REVIEW_URL = import.meta.env?.VITE_TRANSLATE_REVIEW_URL ?? '';
