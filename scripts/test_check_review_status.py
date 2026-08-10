@@ -348,3 +348,26 @@ def test_normalize_review_list_url_leaves_numeric_looking_slug_unchanged():
     # A brand slug ending in digits (not an isolated page-number segment) must survive.
     url = 'https://www.askgamblers.com/online-casinos/reviews/vegas2web-casino'
     assert crs.normalize_review_list_url(url) == url
+
+
+_NEXT_DATA_WITH_REVIEW_TEXT = '''<html><body><script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {"review": {"state": "published", "stars": 5, "text": "Das Casino ist sehr gut."}}}}
+</script></body></html>'''
+
+_NEXT_DATA_NO_TEXT_FIELD = '''<html><body><script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {"review": {"state": "published", "stars": 4}}}}
+</script></body></html>'''
+
+_NO_NEXT_DATA = '<html><body>thanks for your review</body></html>'
+
+
+def test_parse_review_text_reads_text_field_from_next_data():
+    assert crs.parse_review_text(_NEXT_DATA_WITH_REVIEW_TEXT) == 'Das Casino ist sehr gut.'
+
+
+def test_parse_review_text_none_when_review_object_has_no_text_field():
+    assert crs.parse_review_text(_NEXT_DATA_NO_TEXT_FIELD) is None
+
+
+def test_parse_review_text_none_without_next_data_blob():
+    assert crs.parse_review_text(_NO_NEXT_DATA) is None
