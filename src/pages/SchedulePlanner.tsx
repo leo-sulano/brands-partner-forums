@@ -556,7 +556,7 @@ export default function SchedulePlanner() {
                       )
                     : [];
                   return (
-                    <tr key={brand} className="border-t border-slate-100 group">
+                    <tr key={brand} className="border-t border-slate-100 group hover:bg-blue-50">
                       <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
                         <Link
                           to={`/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`}
