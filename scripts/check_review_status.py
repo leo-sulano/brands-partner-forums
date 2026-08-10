@@ -30,6 +30,7 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 import undetected_chromedriver as uc
+from selenium.webdriver.common.by import By
 
 from geo_proxy import country_code_for_entry
 
@@ -151,6 +152,82 @@ def page_blocked(html: str, title: str = "") -> bool:
         print(f"    [blocked] page too small ({len(html)} chars)")
         return True
     return False
+
+
+# ─── Review-text extraction (shared by AG/CG/WO) ──────────────────────────────
+# None of AG/CG/WO isolate a review-card DOM element today — they only prove a
+# review exists via a whole-page text search, then discard everything except a
+# rating regex. This locates the actual card so its clean text can be stored.
+
+def _xpath_literal(value: str) -> str:
+    """Build a safely-quoted XPath string literal. Handles values containing
+    both quote types (rare for a username, but cheap to get right) via XPath's
+    concat() trick, since XPath 1.0 has no string-escaping syntax."""
+    if "'" not in value:
+        return f"'{value}'"
+    if '"' not in value:
+        return f'"{value}"'
+    parts = value.split("'")
+    return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
+
+
+def _has_ancestor_with_class(element, class_name: str) -> bool:
+    """Walk up from `element` looking for an ancestor carrying `class_name`."""
+    try:
+        node = element
+        for _ in range(8):
+            classes = (node.get_attribute("class") or "").split()
+            if class_name in classes:
+                return True
+            node = node.find_element(By.XPATH, "..")
+    except Exception:
+        pass
+    return False
+
+
+def extract_review_card_text(
+    driver: uc.Chrome,
+    user_lower: str,
+    exclude_class: Optional[str] = None,
+    min_len: int = 40,
+    max_len: int = 4000,
+    max_ancestors: int = 6,
+) -> Optional[str]:
+    """Locate the review card containing `user_lower` (the caller has already
+    confirmed it's present via a whole-page text search) and return its clean
+    rendered text. Walks up from the first matching element until an ancestor's
+    text length falls inside [min_len, max_len] — a heuristic for "this is a
+    review card, not a bare username span or the whole page" tuned against
+    real live pages during this task's validation pass, not guessed blind.
+    `exclude_class` skips a match nested inside an element carrying that CSS
+    class (e.g. CasinoGuru's hidden 'tooltip-user-row' "helpful" widget, which
+    reuses the same author-name markup as a real review)."""
+    try:
+        elements = driver.find_elements(
+            By.XPATH,
+            "//*[contains(translate(text(), "
+            "'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), "
+            f"{_xpath_literal(user_lower)})]",
+        )
+    except Exception:
+        return None
+
+    for el in elements:
+        try:
+            if exclude_class and _has_ancestor_with_class(el, exclude_class):
+                continue
+            node = el
+            for _ in range(max_ancestors):
+                text = (node.text or "").strip()
+                if min_len <= len(text) <= max_len:
+                    return text
+                parent = node.find_element(By.XPATH, "..")
+                if parent == node:
+                    break
+                node = parent
+        except Exception:
+            continue
+    return None
 
 
 # ─── Status resolution (shared by AG/CG) ──────────────────────────────────────

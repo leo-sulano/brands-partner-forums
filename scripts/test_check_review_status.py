@@ -248,6 +248,23 @@ def test_resolve_status_found_is_always_published():
     assert crs.resolve_status(found=True, current_status='Published') == 'Published'
 
 
+def test_xpath_literal_wraps_plain_string_in_single_quotes():
+    assert crs._xpath_literal('niklasweber') == "'niklasweber'"
+
+
+def test_xpath_literal_uses_double_quotes_when_value_has_single_quote():
+    assert crs._xpath_literal("o'brien") == '"o\'brien"'
+
+
+def test_xpath_literal_uses_concat_when_value_has_both_quote_types():
+    # Pathological but must not crash or produce invalid XPath — split on
+    # single quotes and rejoin with an escaped single-quote literal.
+    value = '''o'br"ien'''
+    result = crs._xpath_literal(value)
+    assert result.startswith('concat(')
+    assert "'" in result and '"' in result
+
+
 def test_resolve_status_not_found_from_published_is_removed():
     assert crs.resolve_status(found=False, current_status='Published') == 'Removed'
     assert crs.resolve_status(found=False, current_status='published') == 'Removed'
