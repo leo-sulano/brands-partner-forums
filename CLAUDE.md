@@ -38,6 +38,7 @@ Brands Partner Forum/
 - TypeScript strict mode. No `any` unless commented why.
 - Pages own data fetching via `lib/queries.ts`; components stay presentational.
 - Env vars are read once in `src/lib/supabase.ts`. Never hardcode URLs or keys.
+- **Cross-dashboard consistency is a standing requirement, not a per-task nice-to-have.** Any change or new feature must stay aligned and correctly mapped with every other surface that shares the same data/logic (Overview, Score Summary, Brand Tabs, Schedule Planner, Ask AI, etc.) — same filters, same date/status/platform semantics, same computed numbers wherever they're shown. Before calling work done, check whether other pages/components read the same underlying data or duplicate the same logic, and verify they still agree. This project has shipped multiple data-accuracy bugs from independently-written logic silently diverging (see Task 180, Task 174 platform-removed-brand gap, Task 173 plan-vs-evidence mismatch) — a final whole-branch review, not just a per-task review, is what has caught most of these historically.
 
 ## Deployment
 - `npm run build` → `dist/` → Vercel (config in `vercel.json`).
