@@ -228,6 +228,13 @@ sudo dnf versionlock add google-chrome-stable
 ```
 (Install `dnf-plugins-core` first if versionlock isn't available: `sudo dnf install -y python3-dnf-plugins-core`)
 
+**Note (2026-08-10):** this repo's local `check_review_status.py` currently pins
+`version_main=151` (bumped from 149 during the review-text feature's local
+development, to match a local Chrome auto-update). This pin is EC2-machine-coupled,
+not something that should be assumed in sync with local — before deploying this or
+any future version of the script to EC2, explicitly confirm EC2's actual installed
+Chrome major version (`google-chrome --version`) and set `version_main` to match.
+
 ---
 
 ## Troubleshooting

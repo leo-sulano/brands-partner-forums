@@ -101,6 +101,23 @@ not guessed in advance:
   status/rating parsing. A text-extraction failure never blocks or corrupts the existing
   status write — status/rating behavior is unchanged by this task.
 
+## Known data-quality characteristics
+
+Two other PMS tasks (a translation-display modal, and an analysis overview) will consume
+this data next and need to know, per platform, what "clean" means before assuming every
+stored value is bare review prose:
+
+- **TP**: generally a clean review body. On a page whose `__NEXT_DATA__` review object has
+  none of the exact `text`/`body`/`reviewBody` keys, the field-priority fallback chain may
+  instead store a review *title* — not the full body — rather than leaving the field unset.
+- **AG**: clean review body, but can carry a short trailing "Helpful (N)" vote-count line.
+- **CG**: clean review body when the account's byline matched cleanly; can carry the
+  casino's full owner-reply text appended after the review when that case didn't need
+  special-casing, or be entirely `None`/absent when the only text-searchable match was
+  ambiguous (an intentional safe-fail, not a bug).
+- **WO**: clean review body with a short leading byline/date/rating header, no observed
+  reply bleed.
+
 ## Write path & re-fetch behavior
 
 Reuses `update_entry()` unchanged in shape — the review-text key is simply included in

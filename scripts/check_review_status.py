@@ -159,6 +159,18 @@ def page_blocked(html: str, title: str = "") -> bool:
 # review exists via a whole-page text search, then discard everything except a
 # rating regex. This locates the actual card so its clean text can be stored.
 
+# Single source of truth for the jsonb key each platform's review text is
+# stored under — every checker below reads/writes through this, so the four
+# can't silently drift the way independently-written key names have before
+# in this repo (see CLAUDE.md's Task 180/174/173 history).
+REVIEW_TEXT_KEYS = {
+    "tp": "TP Review Text",
+    "ag": "AG Review Text",
+    "cg": "CG Review Text",
+    "wo": "WO Review Text",
+}
+
+
 def _xpath_literal(value: str) -> str:
     """Build a safely-quoted XPath string literal. Handles values containing
     both quote types (rare for a username, but cheap to get right) via XPath's
@@ -198,27 +210,39 @@ def _has_ancestor_with_class(element, class_names: tuple) -> bool:
     return False
 
 
-def _strip_last_descendant_with_class(node, class_names: tuple, text: str) -> str:
+def _strip_first_matching_descendant(node, class_names: tuple, text: str) -> str:
     """Trim `text` (the already-fetched .text of `node`) at the start of the
-    *rightmost* descendant matching any of `class_names` — e.g. a business
+    *leftmost* (earliest-occurring) descendant whose `class` attribute carries
+    any of `class_names` as an exact, whole-token match — e.g. a business
     reply block nested inside the same review-card container as the real
     review, always positioned after it. Confirmed live on AskGamblers'
     `review__reply`, which nests inside the same review card as the real
-    review with no ancestor level containing one without the other. Uses the
-    rightmost match (not the first) because a site may reuse the same class
-    for more than one purpose earlier in the card (seen live on CasinoGuru,
-    where the same class also tags an unrelated translate-toggle duplicate of
-    the review text itself) — callers for which that's a real risk should
-    pass `exclude_class` instead, which skips the whole candidate rather than
+    review with no ancestor level containing one without the other, and is a
+    single, unambiguous class with no BEM-modifier siblings observed live.
+
+    Matching is exact-token (via XPath 1.0's padded-space `contains()` idiom)
+    rather than substring, so a class like `review__reply` cannot also match
+    a differently-scoped sibling such as `review__reply-header` — which would
+    otherwise risk the leftmost match landing on an inner sub-element instead
+    of the real reply block. With exact-token matching there should be at
+    most one match for any single-purpose class, so leftmost and rightmost
+    are equivalent in practice; leftmost is kept as the more conservative
+    choice. Callers who need to guard against genuine multi-purpose class
+    reuse (seen live on CasinoGuru, where the same class also tags an
+    unrelated translate-toggle duplicate of the review text itself) should
+    use `exclude_class` instead, which skips the whole candidate rather than
     trying to trim around an ambiguous marker."""
     if not class_names:
         return text
     try:
-        selector = " or ".join(f"contains(@class, {_xpath_literal(c)})" for c in class_names)
+        selector = " or ".join(
+            f"contains(concat(' ', normalize-space(@class), ' '), {_xpath_literal(' ' + c + ' ')})"
+            for c in class_names
+        )
         descendants = node.find_elements(By.XPATH, f".//*[{selector}]")
     except Exception:
         return text
-    rightmost = None
+    leftmost = None
     for d in descendants:
         try:
             d_text = (d.text or "").strip()
@@ -231,11 +255,11 @@ def _strip_last_descendant_with_class(node, class_names: tuple, text: str) -> st
         # in every case observed live, but not guaranteed if a site renders
         # whitespace differently at different DOM depths.
         idx = text.find(d_text)
-        if idx != -1 and (rightmost is None or idx > rightmost):
-            rightmost = idx
-    if rightmost is None:
+        if idx != -1 and (leftmost is None or idx < leftmost):
+            leftmost = idx
+    if leftmost is None:
         return text
-    return text[:rightmost].strip()
+    return text[:leftmost].strip()
 
 
 def extract_review_card_text(
@@ -253,6 +277,13 @@ def extract_review_card_text(
     text length falls inside [min_len, max_len] — a heuristic for "this is a
     review card, not a bare username span or the whole page" tuned against
     real live pages during this task's validation pass, not guessed blind.
+
+    `min_len`/`max_len` defaults were tuned against real live AskGamblers and
+    CasinoGuru pages during this feature's Task 7 live-validation pass — not
+    TrustPilot, which never calls this function (TP extracts via structured
+    `__NEXT_DATA__` JSON, not DOM-walking); Wizard of Odds' real pages, while
+    also validated live, didn't need threshold tuning since its cards render
+    without reply/noise bleed.
 
     Two independent, deliberately separate exclusion mechanisms, since a
     single class name can need either behavior depending on the platform:
@@ -294,9 +325,15 @@ def extract_review_card_text(
                 text = (node.text or "").strip()
                 if min_len <= len(text) <= max_len:
                     if strip_classes:
-                        text = _strip_last_descendant_with_class(node, strip_classes, text)
-                    if len(text) >= min_len:
-                        return text
+                        stripped = _strip_first_matching_descendant(node, strip_classes, text)
+                        if len(stripped) >= min_len:
+                            return stripped
+                        # Stripping cut this candidate below min_len -- a wider
+                        # ancestor is more surrounding noise, not more of this
+                        # review. Move to the next candidate element entirely
+                        # rather than keep climbing from here.
+                        break
+                    return text
                 parent = node.find_element(By.XPATH, "..")
                 if parent == node:
                     break
@@ -897,9 +934,9 @@ def main() -> None:
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
-                current_review_text = data.get("TP Review Text") or ""
+                current_review_text = data.get(REVIEW_TEXT_KEYS["tp"]) or ""
                 if new_review_text and new_review_text != current_review_text:
-                    updates["TP Review Text"] = new_review_text
+                    updates[REVIEW_TEXT_KEYS["tp"]] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")

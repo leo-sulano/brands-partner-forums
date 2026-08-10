@@ -38,6 +38,7 @@ from check_review_status import (
     STATUS_FILTER_MAP,
     matches_scope_filters,
     extract_review_card_text,
+    REVIEW_TEXT_KEYS,
 )
 from geo_bridge import ensure_display
 
@@ -298,9 +299,9 @@ def check_wo_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
-                current_review_text = data.get("WO Review Text") or ""
+                current_review_text = data.get(REVIEW_TEXT_KEYS["wo"]) or ""
                 if new_review_text and new_review_text != current_review_text:
-                    updates["WO Review Text"] = new_review_text
+                    updates[REVIEW_TEXT_KEYS["wo"]] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")
