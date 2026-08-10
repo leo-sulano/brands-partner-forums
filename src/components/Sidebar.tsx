@@ -179,15 +179,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                   {!isCollapsed && 'Score Summary'}
                 </NavLink>
                 <NavLink
-                  to="/log"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Log' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <ScrollText className="size-4" />
-                  {!isCollapsed && 'Log'}
-                </NavLink>
-                <NavLink
                   to="/schedule-planner"
                   onClick={() => onClose?.()}
                   title={isCollapsed ? 'Schedule Planner' : undefined}
@@ -195,6 +186,15 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                 >
                   <CalendarDays className="size-4" />
                   {!isCollapsed && 'Schedule Planner'}
+                </NavLink>
+                <NavLink
+                  to="/log"
+                  onClick={() => onClose?.()}
+                  title={isCollapsed ? 'Log' : undefined}
+                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                >
+                  <ScrollText className="size-4" />
+                  {!isCollapsed && 'Log'}
                 </NavLink>
                 {isAdmin && (
                   <NavLink
