@@ -717,7 +717,7 @@ def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
         # fingerprint) without ever appearing on the user's desktop.
         options.add_argument("--window-position=-2400,-2400")
 
-    driver = uc.Chrome(options=options, version_main=149)
+    driver = uc.Chrome(options=options, version_main=151)
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
 
     if _ext_path:
