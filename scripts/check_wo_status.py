@@ -37,6 +37,7 @@ from check_review_status import (
     log_check_error,
     STATUS_FILTER_MAP,
     matches_scope_filters,
+    extract_review_card_text,
 )
 from geo_bridge import ensure_display
 
@@ -173,10 +174,10 @@ def fetch_wo_review(
 ) -> tuple:
     """Visit the WO casino review page and search player reviews for wo_user.
 
-    Returns (status, rating):
-      ('Published', 1-5 or None)  — username found in reviews
-      ('Removed', None)           — not found, current status was 'published'
-      (None, None)                — not found, status was not published (no write)
+    Returns (status, rating, review_text):
+      ('Published', 1-5 or None, text or None)  — username found in reviews
+      ('Removed', None, None)                   — not found, current status was 'published'
+      (None, None, None)                         — not found, status was not published (no write)
     """
     url = wo_link.strip()
     if not url.startswith("http"):
@@ -191,7 +192,7 @@ def fetch_wo_review(
     current_url = driver.current_url.lower()
     if "wizardofodds.com" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
-        return ("Removed", None)
+        return ("Removed", None, None)
 
     wo_user_lower = wo_user.lower()
 
@@ -207,7 +208,12 @@ def fetch_wo_review(
             idx = html_lower.find(wo_user_lower)
             context = html[max(0, idx - 500) : idx + 1500]
             rating = _extract_rating_from_context(context)
-            return ("Published", rating)
+            try:
+                review_text = extract_review_card_text(driver, wo_user_lower)
+            except Exception as exc:
+                print(f"    [text] extraction error: {exc}")
+                review_text = None
+            return ("Published", rating, review_text)
 
         clicked = _try_load_more(driver)
         if not clicked:
@@ -215,8 +221,8 @@ def fetch_wo_review(
         time.sleep(LOAD_MORE_SLEEP)
 
     if current_status.strip().lower() == "published":
-        return ("Removed", None)
-    return (None, None)
+        return ("Removed", None, None)
+    return (None, None, None)
 
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -230,6 +236,7 @@ def check_wo_for_tab(
     agent: Optional[str] = None,
     proxy: Optional[str] = None,
     country: Optional[str] = None,
+    dry_run: bool = False,
 ) -> dict:
     entries = load_wo_entries(tab, include_published, status_filter, brands, agent, proxy, country)
     total = len(entries)
@@ -261,7 +268,7 @@ def check_wo_for_tab(
 
                 print(f"  [WO {checked}/{total}] {wo_link} (@{wo_user})")
                 try:
-                    new_status, new_rating = fetch_wo_review(driver, wo_link, wo_user, current)
+                    new_status, new_rating, new_review_text = fetch_wo_review(driver, wo_link, wo_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("WO", wo_link, exc)
@@ -291,18 +298,25 @@ def check_wo_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                current_review_text = data.get("WO Review Text") or ""
+                if new_review_text and new_review_text != current_review_text:
+                    updates["WO Review Text"] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")
                     continue
 
-                sheet_ok = update_entry(
-                    entry["id"], data, updates,
-                    tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"),
-                )
-                if not sheet_ok:
-                    sheet_errors += 1
-                print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (sheet: {'ok' if sheet_ok else 'FAILED'})")
+                if dry_run:
+                    sheet_ok = True
+                    print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (dry run)")
+                else:
+                    sheet_ok = update_entry(
+                        entry["id"], data, updates,
+                        tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"),
+                    )
+                    if not sheet_ok:
+                        sheet_errors += 1
+                    print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (sheet: {'ok' if sheet_ok else 'FAILED'})")
                 updated += 1
 
             remaining = total - (i + len(batch))
@@ -318,12 +332,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Selenium stealth Wizard of Odds status checker")
     ap.add_argument("--tab", help="Restrict to a specific tab name")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--dry-run", action="store_true", help="Print changes without writing to Supabase")
     args = ap.parse_args()
 
     scope = f"tab: {args.tab}" if args.tab else "all tabs"
     print(f"Loading WO entries ({scope})...")
-    result = check_wo_for_tab(args.tab, include_published=True, headless=args.headless)
+    result = check_wo_for_tab(args.tab, include_published=True, headless=args.headless, dry_run=args.dry_run)
     print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
+    if args.dry_run:
+        print("(dry-run — no writes made)")
 
 
 if __name__ == "__main__":

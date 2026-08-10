@@ -94,6 +94,6 @@ def test_fetch_wo_review_does_not_crash_when_user_not_found(monkeypatch):
     # rate for WO Check Status confirmed live in production 2026-07-10.
     monkeypatch.setattr(wos.time, 'sleep', lambda *_: None)
 
-    status, rating = wos.fetch_wo_review(_FakeDriver(), 'https://wizardofodds.com/x', 'NoSuchUser')
+    status, rating, review_text = wos.fetch_wo_review(_FakeDriver(), 'https://wizardofodds.com/x', 'NoSuchUser')
 
-    assert (status, rating) == (None, None)
+    assert (status, rating, review_text) == (None, None, None)
