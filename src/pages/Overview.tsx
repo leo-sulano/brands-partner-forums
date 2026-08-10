@@ -586,15 +586,6 @@ export default function Overview() {
     <div className="space-y-8">
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium text-slate-500 shrink-0">Platform</span>
-        <BrandFilterDropdown
-          noun="platform"
-          value={platformFilter === 'all' ? '' : platformFilter.toUpperCase()}
-          onChange={(v) => setPlatformFilter(v.toLowerCase())}
-          brands={['TP', 'AG', 'CG', 'WO']}
-        />
-        <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
-
         <span className="text-xs font-medium text-slate-500 shrink-0">Date Range</span>
         <DatePicker
           value={dateFrom}
@@ -612,28 +603,30 @@ export default function Overview() {
           align="left"
         />
 
-        {(allCountries.length > 1 || allProxies.length > 1) && (
-          <>
-            <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
-            <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
-            {allCountries.length > 1 && (
-              <BrandFilterDropdown
-                noun="countrie"
-                value={countryFilter}
-                onChange={(v) => updateFilterParam('country', v)}
-                brands={allCountries}
-              />
-            )}
-            {allProxies.length > 1 && (
-              <BrandFilterDropdown
-                noun="proxie"
-                value={proxyFilter}
-                onChange={(v) => updateFilterParam('proxy', v)}
-                brands={allProxies}
-              />
-            )}
-          </>
+        <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
+        <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
+        {allCountries.length > 1 && (
+          <BrandFilterDropdown
+            noun="countrie"
+            value={countryFilter}
+            onChange={(v) => updateFilterParam('country', v)}
+            brands={allCountries}
+          />
         )}
+        {allProxies.length > 1 && (
+          <BrandFilterDropdown
+            noun="proxie"
+            value={proxyFilter}
+            onChange={(v) => updateFilterParam('proxy', v)}
+            brands={allProxies}
+          />
+        )}
+        <BrandFilterDropdown
+          noun="platform"
+          value={platformFilter === 'all' ? '' : platformFilter.toUpperCase()}
+          onChange={(v) => setPlatformFilter(v.toLowerCase())}
+          brands={['TP', 'AG', 'CG', 'WO']}
+        />
 
         {(dateActive || countryFilter || proxyFilter || platformFilter !== 'all') && (
           <button
