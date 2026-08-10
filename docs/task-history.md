@@ -2261,3 +2261,61 @@ The PMS backlog's "Fetch and store written review text; feed Ask AI trend detect
 - Spec: `docs/superpowers/specs/2026-08-10-review-text-fetch-store-design.md`. Plan: `docs/superpowers/plans/2026-08-10-review-text-fetch-store.md`. Full per-task and final-review ledger (now historical, worktree removed after merge): commit history on `main` from `f546fd2`..`e28ba08` carries the same detail in each commit message.
 
 ---
+
+## Task 198 (PMS Task 1): Original Review Content + On-Demand English Translation in Edit Modal
+
+**Date:** August 10, 2026
+
+The other half of the PMS ticket pair from Task 197 — unblocked the same day once that task's review-text
+storage landed. Adds a display of each review's original-language text to the Edit Entry modal, per
+platform, with an on-demand "Translate to English" button. Never auto-translates; never appears in the
+review table (both explicit ticket requirements, and both already structurally enforced by Task 197's own
+exclusion of the four review-text keys from the table/duplicate-entry paths).
+
+- New pure-logic module `src/lib/reviewTranslation.ts`: `shouldShowTranslateButton` (wraps `franc-min`, a
+  newly-added real dependency, for client-side language detection — hides the button for English or
+  too-short/undetermined text) and `translateReviewText` (calls the new Edge Function, guarantees the exact
+  ticket-mandated failure copy on every error path). New presentational `ReviewTextBlock.tsx` renders the
+  original text, the button, and (once clicked) the translation below it — wired into `EditEntryModal.tsx`'s
+  existing Trust Pilot/Wizard of Odds, AskGamblers, and Casino Guru section blocks, one per platform.
+- New minimal Supabase Edge Function `supabase/functions/translate-review/index.ts` (OpenAI gpt-4o-mini,
+  single request/response, no streaming/tool-calling — deliberately simpler than the existing `ai-assistant`
+  function it's modeled on), reusing that function's already-provisioned `OPENAI_API_KEY` secret.
+- Built via 5 subagent-driven-development tasks plus a controller-run manual-verification task, followed by
+  a final whole-branch review that caught 3 real Important issues no per-task review had the whole-diff view
+  to see: the OpenAI call had no `finish_reason` check, so a long translation could be silently truncated and
+  shown as if complete (now checked, fails cleanly instead); the original review text rendered with no label
+  (every other field in this modal has one); and the new AG/Casino Guru section blocks had no
+  platform-membership gate matching the Trust-Pilot section's `tabPlatforms.includes(...)` guard — a real
+  latent divergence risk between `getTabPlatforms` and live `tab_schemas` headers, this project's most
+  historically expensive bug class. Also fixed in the same pass: whitespace-only text/translations no longer
+  render as if present, long unbroken tokens (URLs) no longer force horizontal scroll, and the Edge Function
+  gained an input-length cap. One fix wave + one scoped re-review; both clean.
+- **Live browser verification was not performed this session** — Playwright was available and the dev
+  server ran successfully, but no login credentials for this app existed in the session's environment, and
+  reusing a session across ports wasn't possible (Supabase auth state is origin-scoped, and the main
+  checkout's own dev server had no active session either). The user explicitly chose to proceed to the final
+  review rather than share credentials; the final reviewer judged this acceptable since the feature stays
+  fully inert (translation click always shows the friendly failure message) until the Edge Function is
+  deployed and `VITE_TRANSLATE_REVIEW_URL` is set — both deliberately deferred, not part of this task. A live
+  walkthrough of the actual rendered modal is the recommended checkpoint immediately before or at that
+  deploy step, not yet done.
+- Merged via a genuine `git merge --ff-only` (not a rebase or merge commit) — `main` had not moved at all
+  since this branch forked, so no replay was needed; pushed straight to `main` per explicit instruction.
+- Full suite (289 tests on the feature branch; matches on merged `main`) and build both pass.
+- Spec: `docs/superpowers/specs/2026-08-10-review-translation-modal-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-10-review-translation-modal.md`. Full per-task and final-review ledger
+  (now historical, worktree removed after merge): commit history on `main` from `ff1685b`..`b97d26b` carries
+  the same detail in each commit message.
+
+### Known Issues / Backlog (added by this task)
+- Translation feature is fully built but inert in production until `supabase functions deploy
+  translate-review` is run and `VITE_TRANSLATE_REVIEW_URL` is set in Vercel (redeploy required after, since
+  Vite env vars are baked in at build time). No live browser verification has been done — do one before or
+  immediately at that deploy step, specifically checking: the "Original Review" label and box on a
+  multi-platform tab (three blocks in one modal), a real long review's text wrapping, and whether any
+  TP-only tab shows a stray AskGamblers/Casino Guru "No review content available." block (would indicate the
+  `tab_schemas`/`getTabPlatforms` divergence the final review flagged as a live-data-only risk it couldn't
+  verify without a DB credential).
+
+---
