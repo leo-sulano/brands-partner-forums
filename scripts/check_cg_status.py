@@ -51,6 +51,7 @@ from check_review_status import (
     normalize_review_list_url,
     STATUS_FILTER_MAP,
     matches_scope_filters,
+    extract_review_card_text,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
 from geo_bridge import ensure_bridges, ensure_display
@@ -199,12 +200,12 @@ def fetch_cg_review(
 ) -> tuple:
     """Visit the CG casino review page and search player reviews for cg_user.
 
-    Returns (status, rating):
-      ('Published', 1-5 or None)  — username found in reviews
-      ('Removed', None)           — not found, current status was 'published'
-      ('Pending', None)           — not found, added within the grace period (see resolve_status)
-      ('Refused', None)           — not found, not previously published, past the grace period
-      ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
+    Returns (status, rating, review_text):
+      ('Published', 1-5 or None, text or None)  — username found in reviews
+      ('Removed', None, None)     — not found, current status was 'published'
+      ('Pending', None, None)     — not found, added within the grace period (see resolve_status)
+      ('Refused', None, None)     — not found, not previously published, past the grace period
+      ('__skip__', None, None)    — page blocked/CAPTCHA; skip without changing status
     """
     url = normalize_review_list_url(cg_link.strip())
     if not url.startswith("http"):
@@ -220,7 +221,7 @@ def fetch_cg_review(
     current_url = driver.current_url.lower()
     if "casino.guru" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
-        return ("Removed", None)
+        return ("Removed", None, None)
 
     # Scroll down to trigger lazy-loaded reviews section
     try:
@@ -246,7 +247,7 @@ def fetch_cg_review(
         # reads identically to a genuinely-removed review.
         if page_num == 0 and page_blocked(html, driver.title):
             print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
-            return ("__skip__", None)
+            return ("__skip__", None, None)
 
         # Only the rendered visible text proves an authored review exists — the
         # hidden liker tooltip never appears here, unlike in raw page_source.
@@ -258,7 +259,12 @@ def fetch_cg_review(
         if cg_user_lower in visible_text:
             context = _find_authored_context(html, html.lower(), cg_user_lower)
             rating = _extract_rating_from_context(context) if context else None
-            return ("Published", rating)
+            try:
+                review_text = extract_review_card_text(driver, cg_user_lower, exclude_class=_LIKER_TOOLTIP_MARKER)
+            except Exception as exc:
+                print(f"    [text] extraction error: {exc}")
+                review_text = None
+            return ("Published", rating, review_text)
 
         clicked = _try_load_more(driver)
         page_num += 1
@@ -266,7 +272,7 @@ def fetch_cg_review(
             break
         time.sleep(LOAD_MORE_SLEEP)
 
-    return (resolve_status(found=False, current_status=current_status, added_date=added_date), None)
+    return (resolve_status(found=False, current_status=current_status, added_date=added_date), None, None)
 
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -280,6 +286,7 @@ def check_cg_for_tab(
     brands: Optional[list] = None,
     agent: Optional[str] = None,
     proxy: Optional[str] = None,
+    dry_run: bool = False,
 ) -> dict:
     ensure_bridges()
     if ensure_display():
@@ -333,7 +340,7 @@ def check_cg_for_tab(
 
                 print(f"  [CG {checked}/{total}] {cg_link} (@{cg_user})")
                 try:
-                    new_status, new_rating = fetch_cg_review(driver, cg_link, cg_user, current, cg_date)
+                    new_status, new_rating, new_review_text = fetch_cg_review(driver, cg_link, cg_user, current, cg_date)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("CG", cg_link, exc)
@@ -350,18 +357,25 @@ def check_cg_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                current_review_text = data.get("CG Review Text") or ""
+                if new_review_text and new_review_text != current_review_text:
+                    updates["CG Review Text"] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")
                     continue
 
-                sheet_ok = update_entry(
-                    entry["id"], data, updates,
-                    tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"),
-                )
-                if not sheet_ok:
-                    sheet_errors += 1
-                print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (sheet: {'ok' if sheet_ok else 'FAILED'})")
+                if dry_run:
+                    sheet_ok = True
+                    print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (dry run)")
+                else:
+                    sheet_ok = update_entry(
+                        entry["id"], data, updates,
+                        tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"),
+                    )
+                    if not sheet_ok:
+                        sheet_errors += 1
+                    print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (sheet: {'ok' if sheet_ok else 'FAILED'})")
                 updated += 1
 
             remaining = total - (i + len(batch))
@@ -379,6 +393,7 @@ def main() -> None:
     ap.add_argument("--tab", help="Restrict to a specific tab name")
     ap.add_argument("--country", help="Restrict to one country (full name or ISO-2, e.g. Germany or de)")
     ap.add_argument("--no-headless", dest="headless", action="store_false", help="Show Chrome browser window")
+    ap.add_argument("--dry-run", action="store_true", help="Print changes without writing to Supabase")
     ap.set_defaults(headless=True)
     args = ap.parse_args()
 
@@ -386,8 +401,11 @@ def main() -> None:
     if args.country:
         scope += f", country: {args.country}"
     print(f"Loading CG entries ({scope})...")
-    result = check_cg_for_tab(args.tab, include_published=True, headless=args.headless, country=args.country)
+    result = check_cg_for_tab(args.tab, include_published=True, headless=args.headless,
+                               country=args.country, dry_run=args.dry_run)
     print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
+    if args.dry_run:
+        print("(dry-run — no writes made)")
 
 
 if __name__ == "__main__":
