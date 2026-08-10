@@ -2109,7 +2109,7 @@ export default function BrandGroup() {
                   return (
                   <tr
                     key={entry.id}
-                    className={`group transition-colors ${isRowSelected ? 'relative z-20 outline outline-2 outline-blue-500 -outline-offset-2' : ''}`}
+                    className={`group transition-colors hover:bg-blue-50 ${isRowSelected ? 'relative z-20 outline outline-2 outline-blue-500 -outline-offset-2' : ''}`}
                   >
                     {isApproved && (
                       <td
@@ -2254,7 +2254,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className={`px-[10px] py-2 whitespace-nowrap cursor-pointer hover:bg-blue-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-blue-50/60' : 'bg-white'}`}
+                            className={`px-[10px] py-2 whitespace-nowrap cursor-pointer group-hover:bg-blue-50 select-none sticky left-8 z-10 ${isRowSelected ? 'bg-blue-50/60' : 'bg-white'}`}
                             onClick={() => setEditEntry(entry)}
                           >
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
@@ -2379,7 +2379,7 @@ export default function BrandGroup() {
                         return (
                           <td
                             key={h}
-                            className="px-[10px] py-2 cursor-text hover:bg-blue-50 group"
+                            className="px-[10px] py-2 cursor-text"
                             onClick={() => {
                               const raw = entry.data[h] ?? '';
                               const display = raw ? formatCellValue(raw) : '';
