@@ -68,7 +68,10 @@ describe('translateReviewText', () => {
       'https://example.com/translate-review',
       expect.objectContaining({
         method: 'POST',
-        headers: expect.objectContaining({ apikey: 'test-anon-key' }),
+        headers: expect.objectContaining({
+          apikey: 'test-anon-key',
+          Authorization: expect.stringMatching(/^Bearer /),
+        }),
       }),
     );
   });

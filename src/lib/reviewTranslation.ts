@@ -37,7 +37,10 @@ export async function translateReviewText(text: string): Promise<string> {
     const data = await res.json();
     if (typeof data.translation !== 'string') throw new Error(TRANSLATE_FAILURE_MESSAGE);
     return data.translation;
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message === TRANSLATE_FAILURE_MESSAGE) {
+      throw err;
+    }
     throw new Error(TRANSLATE_FAILURE_MESSAGE);
   }
 }
