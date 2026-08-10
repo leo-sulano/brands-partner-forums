@@ -45,6 +45,7 @@ from check_review_status import (
     page_blocked,
     resolve_status,
     normalize_review_list_url,
+    extract_review_card_text,
     STATUS_FILTER_MAP,
     matches_scope_filters,
     SUPABASE_URL,
@@ -182,10 +183,10 @@ def fetch_ag_review(
 ) -> tuple:
     """Visit the AG casino review page and search player reviews for ag_user.
 
-    Returns (status, rating):
-      ('Published', 1-5 or None)  — username found in reviews
-      (None, None)                — not found; caller resolves the next status via resolve_status()
-      ('__skip__', None)          — page blocked/CAPTCHA; skip without changing status
+    Returns (status, rating, review_text):
+      ('Published', 1-5 or None, text or None)  — username found in reviews
+      (None, None, None)                        — not found; caller resolves the next status via resolve_status()
+      ('__skip__', None, None)                  — page blocked/CAPTCHA; skip without changing status
     """
     url = normalize_review_list_url(ag_link.strip())
     if not url.startswith("http"):
@@ -200,7 +201,7 @@ def fetch_ag_review(
     current_url = driver.current_url.lower()
     if "askgamblers.com" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
-        return ("Removed", None)
+        return ("Removed", None, None)
 
     # Scroll down to trigger lazy-loaded reviews section
     try:
@@ -226,7 +227,7 @@ def fetch_ag_review(
             print(f"    [page] length={len(html)}, url={driver.current_url[:60]}")
             if page_blocked(html, driver.title):
                 print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
-                return ("__skip__", None)
+                return ("__skip__", None, None)
 
         # Only the rendered visible text proves an authored review exists — a raw
         # HTML match can come from a hidden widget reusing review markup (confirmed
@@ -243,7 +244,12 @@ def fetch_ag_review(
             # Extract rating from surrounding HTML context
             context = html[max(0, idx - 500) : idx + 1500]
             rating = _extract_rating_from_context(context)
-            return ("Published", rating)
+            try:
+                review_text = extract_review_card_text(driver, ag_user_lower)
+            except Exception as exc:
+                print(f"    [text] extraction error: {exc}")
+                review_text = None
+            return ("Published", rating, review_text)
 
         clicked = _try_load_more(driver)
         page_num += 1
@@ -252,7 +258,7 @@ def fetch_ag_review(
         time.sleep(LOAD_MORE_SLEEP)
 
     # Username not found after all pages — caller decides next status
-    return (None, None)
+    return (None, None, None)
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
 
@@ -265,6 +271,7 @@ def check_ag_for_tab(
     brands: Optional[list] = None,
     agent: Optional[str] = None,
     proxy: Optional[str] = None,
+    dry_run: bool = False,
 ) -> dict:
     """Run AG status check for all eligible entries in `tab`.
     Returns {checked, updated, errors, sheet_errors, total}."""
@@ -319,7 +326,7 @@ def check_ag_for_tab(
 
                 print(f"  [AG {checked}/{total}] {ag_link} (@{ag_user})")
                 try:
-                    new_status, new_rating = fetch_ag_review(driver, ag_link, ag_user, current)
+                    new_status, new_rating, new_review_text = fetch_ag_review(driver, ag_link, ag_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("AG", ag_link, exc)
@@ -340,18 +347,25 @@ def check_ag_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                current_review_text = data.get("AG Review Text") or ""
+                if new_review_text and new_review_text != current_review_text:
+                    updates["AG Review Text"] = new_review_text
 
                 if not updates:
                     print(f"    -> {current!r} *{current_score or '-'} (no change)")
                     continue
 
-                sheet_ok = update_entry(
-                    entry["id"], data, updates,
-                    tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"),
-                )
-                if not sheet_ok:
-                    sheet_errors += 1
-                print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (sheet: {'ok' if sheet_ok else 'FAILED'})")
+                if dry_run:
+                    sheet_ok = True
+                    print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (dry run)")
+                else:
+                    sheet_ok = update_entry(
+                        entry["id"], data, updates,
+                        tab=entry.get("tab"), sheet_row_id=entry.get("sheet_row_id"),
+                    )
+                    if not sheet_ok:
+                        sheet_errors += 1
+                    print(f"    -> {current!r} -> {new_status!r} *{new_rating or '-'} (sheet: {'ok' if sheet_ok else 'FAILED'})")
                 updated += 1
 
             remaining = total - (i + len(batch))
@@ -369,6 +383,7 @@ def main() -> None:
     ap.add_argument("--tab", help="Restrict to a specific tab name")
     ap.add_argument("--country", help="Restrict to one country (full name or ISO-2, e.g. Germany or de)")
     ap.add_argument("--no-headless", dest="headless", action="store_false", help="Show Chrome browser window")
+    ap.add_argument("--dry-run", action="store_true", help="Print changes without writing to Supabase")
     ap.set_defaults(headless=True)
     args = ap.parse_args()
 
@@ -376,8 +391,11 @@ def main() -> None:
     if args.country:
         scope += f", country: {args.country}"
     print(f"Loading AG entries ({scope})...")
-    result = check_ag_for_tab(args.tab, include_published=True, headless=args.headless, country=args.country)
+    result = check_ag_for_tab(args.tab, include_published=True, headless=args.headless,
+                               country=args.country, dry_run=args.dry_run)
     print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
+    if args.dry_run:
+        print("(dry-run — no writes made)")
 
 
 if __name__ == "__main__":
