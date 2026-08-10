@@ -180,6 +180,14 @@ def _try_load_more(driver: uc.Chrome) -> bool:
 _LIKER_TOOLTIP_MARKER = "tooltip-user-row"
 _LIKER_LOOKBACK = 1000  # chars to scan backward from a match for the tooltip wrapper
 
+# CasinoGuru's owner-reply block (class `js-reply`) greets the reviewer by
+# name ("Hello <user>,") — confirmed live: on at least one real review, the
+# reviewer's own byline never matched as a plain text node at all (likely
+# split across markup CG uses to deter scraping), leaving the reply as the
+# *only* text-search match, which wrongly returned the reply as if it were
+# the review. Excluded the same way as the liker tooltip above.
+_REPLY_MARKER = "js-reply"
+
 
 def _find_authored_context(html: str, html_lower: str, user_lower: str) -> Optional[str]:
     """Return HTML context around the first occurrence of user_lower that isn't
@@ -260,7 +268,7 @@ def fetch_cg_review(
             context = _find_authored_context(html, html.lower(), cg_user_lower)
             rating = _extract_rating_from_context(context) if context else None
             try:
-                review_text = extract_review_card_text(driver, cg_user_lower, exclude_class=_LIKER_TOOLTIP_MARKER)
+                review_text = extract_review_card_text(driver, cg_user_lower, exclude_class=(_LIKER_TOOLTIP_MARKER, _REPLY_MARKER))
             except Exception as exc:
                 print(f"    [text] extraction error: {exc}")
                 review_text = None

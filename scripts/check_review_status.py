@@ -171,13 +171,23 @@ def _xpath_literal(value: str) -> str:
     return "concat(" + ", \"'\", ".join(f"'{p}'" for p in parts) + ")"
 
 
-def _has_ancestor_with_class(element, class_name: str) -> bool:
-    """Walk up from `element` looking for an ancestor carrying `class_name`."""
+def _as_tuple(class_or_classes) -> tuple:
+    """Normalize (None, a single class name, or an iterable of class names)
+    to a tuple for uniform iteration."""
+    if not class_or_classes:
+        return ()
+    if isinstance(class_or_classes, str):
+        return (class_or_classes,)
+    return tuple(class_or_classes)
+
+
+def _has_ancestor_with_class(element, class_names: tuple) -> bool:
+    """Walk up from `element` looking for an ancestor carrying any of `class_names`."""
     try:
         node = element
         for _ in range(8):
             classes = (node.get_attribute("class") or "").split()
-            if class_name in classes:
+            if any(c in classes for c in class_names):
                 return True
             node = node.find_element(By.XPATH, "..")
     except Exception:
@@ -185,10 +195,47 @@ def _has_ancestor_with_class(element, class_name: str) -> bool:
     return False
 
 
+def _strip_last_descendant_with_class(node, class_names: tuple, text: str) -> str:
+    """Trim `text` (the already-fetched .text of `node`) at the start of the
+    *rightmost* descendant matching any of `class_names` — e.g. a business
+    reply block nested inside the same review-card container as the real
+    review, always positioned after it. Confirmed live on AskGamblers'
+    `review__reply`, which nests inside the same review card as the real
+    review with no ancestor level containing one without the other. Uses the
+    rightmost match (not the first) because a site may reuse the same class
+    for more than one purpose earlier in the card (seen live on CasinoGuru,
+    where the same class also tags an unrelated translate-toggle duplicate of
+    the review text itself) — callers for which that's a real risk should
+    pass `exclude_class` instead, which skips the whole candidate rather than
+    trying to trim around an ambiguous marker."""
+    if not class_names:
+        return text
+    try:
+        selector = " or ".join(f"contains(@class, {_xpath_literal(c)})" for c in class_names)
+        descendants = node.find_elements(By.XPATH, f".//*[{selector}]")
+    except Exception:
+        return text
+    rightmost = None
+    for d in descendants:
+        try:
+            d_text = (d.text or "").strip()
+        except Exception:
+            continue
+        if not d_text:
+            continue
+        idx = text.find(d_text)
+        if idx != -1 and (rightmost is None or idx > rightmost):
+            rightmost = idx
+    if rightmost is None:
+        return text
+    return text[:rightmost].strip()
+
+
 def extract_review_card_text(
     driver: uc.Chrome,
     user_lower: str,
-    exclude_class: Optional[str] = None,
+    exclude_class=None,
+    strip_class=None,
     min_len: int = 40,
     max_len: int = 4000,
     max_ancestors: int = 6,
@@ -199,9 +246,28 @@ def extract_review_card_text(
     text length falls inside [min_len, max_len] — a heuristic for "this is a
     review card, not a bare username span or the whole page" tuned against
     real live pages during this task's validation pass, not guessed blind.
-    `exclude_class` skips a match nested inside an element carrying that CSS
-    class (e.g. CasinoGuru's hidden 'tooltip-user-row' "helpful" widget, which
-    reuses the same author-name markup as a real review)."""
+
+    Two independent, deliberately separate exclusion mechanisms, since a
+    single class name can need either behavior depending on the platform:
+    - `exclude_class`: skip a candidate entirely when it's nested inside (or
+      is) a matching element — for markers that are NEVER part of a real
+      review (CasinoGuru's hidden 'tooltip-user-row' "helpful" widget), or
+      whose only visible occurrence of the username IS the excluded thing
+      (confirmed live on CasinoGuru's `js-reply` business-reply block, which
+      can be the *only* text-searchable match when a review's own byline
+      isn't a plain text node).
+    - `strip_class`: once a candidate ancestor is otherwise accepted, trim its
+      text at a nested descendant matching this class — for a marker that IS
+      unambiguously trailing content bundled inside the same card as a real
+      review (confirmed live on AskGamblers' `review__reply`). Do not reuse a
+      class that also tags unrelated content elsewhere in the card for this
+      parameter — that ambiguity is exactly what caused a real regression
+      during this feature's live validation (CasinoGuru's `js-reply` also
+      tags a translate-toggle duplicate of the review text itself, so
+      strip-based trimming on it cut into real review content; that platform
+      uses `exclude_class` for the same marker instead)."""
+    exclude_classes = _as_tuple(exclude_class)
+    strip_classes = _as_tuple(strip_class)
     try:
         elements = driver.find_elements(
             By.XPATH,
@@ -214,13 +280,16 @@ def extract_review_card_text(
 
     for el in elements:
         try:
-            if exclude_class and _has_ancestor_with_class(el, exclude_class):
+            if exclude_classes and _has_ancestor_with_class(el, exclude_classes):
                 continue
             node = el
             for _ in range(max_ancestors):
                 text = (node.text or "").strip()
                 if min_len <= len(text) <= max_len:
-                    return text
+                    if strip_classes:
+                        text = _strip_last_descendant_with_class(node, strip_classes, text)
+                    if len(text) >= min_len:
+                        return text
                 parent = node.find_element(By.XPATH, "..")
                 if parent == node:
                     break
