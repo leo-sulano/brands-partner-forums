@@ -14,12 +14,14 @@ import Toast, { type ToastKind } from '../components/Toast';
 import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import AccountUsageBadges from '../components/AccountUsageBadges';
 import MultiSelectDropdown, { type MultiSelectOption } from '../components/MultiSelectDropdown';
+import ExportMenuButton from '../components/ExportMenuButton';
+import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
-import { slugToTab, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
+import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
@@ -1666,16 +1668,23 @@ export default function BrandGroup() {
             min={dateFrom || undefined}
           />
         </div>
-        {isApproved && (
-          <button
-            type="button"
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-[#000060] px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#000060]/90 transition-colors"
-          >
-            <Plus className="size-4" />
-            Add Review Account
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <ExportMenuButton
+            headers={visibleHeaders}
+            getRows={() => buildBrandRowsForExport(sorted, visibleHeaders, decodedTab)}
+            filenameBase={tabToSlug(decodedTab)}
+          />
+          {isApproved && (
+            <button
+              type="button"
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-md bg-[#000060] px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#000060]/90 transition-colors"
+            >
+              <Plus className="size-4" />
+              Add Review Account
+            </button>
+          )}
+        </div>
       </div>
 
       {activePlatforms.length <= 1 && (
