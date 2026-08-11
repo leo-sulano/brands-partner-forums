@@ -2713,3 +2713,78 @@ turned out to be available after all, once actually checked):
   than try to separate them now that they share the same files on `main`.
 
 ---
+
+## Task 205: Data Export — CSV/Excel on Brand Tabs, Score Summary, Schedule Planner
+**Date:** August 12, 2026
+
+Added a client-side Export button (CSV or Excel `.xlsx`, user's choice via a small popover) to
+Brand Tabs, Score Summary, and Schedule Planner — the 3 pages with real filterable tabular data,
+per an explicit user scoping decision that excluded Overview, Activity Log, Admin Users, Sync
+Status, and Ask AI. Each export reads only that page's already-computed, already-filtered state —
+no new Supabase queries, no write path, no change to any filtering/computation logic. New
+dependency: `xlsx` (SheetJS, MIT).
+
+New shared `src/lib/exportFile.ts` (`buildCsv`/`buildWorkbook`/`downloadFile`, a plain Blob+anchor
+download, no server round-trip) and `src/components/ExportMenuButton.tsx` (the shared toolbar
+button + CSV/Excel popover, `getRows` called lazily only on click — never eagerly on render, which
+matters on Brand Tabs specifically since it re-renders on every keystroke over a
+sometimes-thousands-of-rows filtered set). Each page gets its own small, pure, unit-tested
+row-builder: `src/lib/brandExport.ts` (mirrors Brand Tabs' on-screen cell rendering — raw value +
+the same `formatCellValue` date normalization, `Country` via the derived `getEntryCountry` lookup;
+link columns export the real underlying URL rather than the on-screen "View" label, which is more
+useful for a data export than a fixed label would be), `src/lib/scoreSummaryExport.ts` (one flat
+row per brand — Tab, Brand, star columns when a single platform is selected, Unrated, Stars Total,
+Published, Removed, Total, Success Rate % via the existing shared `successRatePct`, deliberately no
+per-group/grand-total subtotal rows), and `src/lib/scheduler/scheduleExport.ts` (one row per
+(brand, platform) for the *currently displayed week only* — confirmed with the user as
+"what you see is what you get," not the brand's full multi-week schedule history — with Mon-Fri
+status, a Paused-this-week flag, and a Page-removed flag).
+
+Built via 9-task Subagent-Driven Development (shared utility + button, then 3 independent
+row-builder/wiring pairs, sized for parallel dispatch — though implementers were still dispatched
+one at a time in this working session, since no per-task worktree isolation was in place and the
+SDD process forbids parallel implementer dispatch against one shared working tree). Each task's
+review came back Approved with no Critical/Important findings; one real plan defect was caught and
+fixed mid-build — the Schedule Planner task's own brief had a `'TrustPilot'` casing typo in its
+test fixtures against the real `PLATFORM_FULL_LABEL.tp` value (`'Trustpilot'`, lowercase p) — the
+implementer correctly stopped and escalated rather than guessing, and both the plan and brief files
+were corrected in place before it proceeded.
+
+Two real, unrelated things surfaced along the way, not part of this task: (1) a prior session's
+uncommitted "header-bleed" scraper work (Task 204, above) was sitting uncommitted in the same
+working directory at the start of this session — left untouched throughout, and a concurrent
+session committed it independently partway through this build; (2) a stale memory claiming no
+dashboard login credentials exist anywhere in this environment turned out to be wrong (`.env` has
+had `CAPTURE_EMAIL`/`CAPTURE_PASSWORD` since the 2026-07-08 Getting Started walkthrough task) —
+corrected, and used to drive a real, logged-in Playwright verification pass against live Supabase
+data rather than settling for code-review-only sign-off.
+
+That live pass verified all 3 pages end-to-end against real data: Brand Tabs (Rooster Partners)
+exported 2223 real rows in both CSV and XLSX — the full date-filtered set, not just the 25-row
+paginated page — with real URLs in link columns and correctly formatted dates; Score Summary's CSV
+matched the on-screen table exactly on a spot-checked brand (Gulf Recovery Group: 3/1/0/0/0 stars,
+4 published, 10 removed, 28% success rate, identical in both places); Schedule Planner's CSV
+matched the real per-day chip state exactly on a spot-checked brand (7Bit Casino crypto: blank
+Monday with no real chip, "Active" Tuesday with a real emerald "Trustpilot: Scheduled" chip). The
+same pass also caught and fully root-caused an apparent bug that turned out not to be one: the
+very first CSV/XLSX exports on a freshly-loaded page came back empty, traced to the table still
+showing its loading skeleton (real entries hadn't finished fetching yet) rather than any defect in
+`buildCsv`/`buildWorkbook`/`downloadFile` — confirmed by reproducing the exact same Blob/anchor
+pattern manually with hardcoded content (worked fine) and then re-testing once the real page
+finished loading (fully correct, as above).
+
+One genuine, real gap did come out of this and is deliberately left open, flagged for a follow-up
+rather than fixed here: the Export button is not gated on any page's own `loading` state (unlike
+the KPI cards beside it, which already show "…" while loading), so a user who clicks Export during
+the initial data-fetch window gets a valid-but-empty file instead of a "please wait" affordance —
+not a data-correctness defect (once loaded, every export is exactly correct, per the live
+verification above), just a UX polish gap none of the 4 page-wiring task reviews caught, since each
+reviewed static code correctness rather than this specific runtime loading-state race. Fix
+direction: disable/hide the Export button while that page's `loading` is true, mirroring the
+existing KPI-card pattern.
+
+Full test suite (1028 tests, 27 new across the 4 new lib modules) and build both pass. Spec:
+`docs/superpowers/specs/2026-08-11-data-export-design.md`. Plan:
+`docs/superpowers/plans/2026-08-11-data-export.md`.
+
+---
