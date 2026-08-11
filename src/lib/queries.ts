@@ -4,7 +4,7 @@ import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
 import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
 import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
-import { canonicalProxyKey, canonicalProxyName } from './proxyAliases.ts';
+import { canonicalProxyKey, canonicalProxyName, isRedactedProxyValue } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
@@ -353,6 +353,11 @@ function uniqueDisplayValues(
   return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 }
 
+function proxyValue(data: Record<string, string | null | undefined>): string {
+  const trimmed = (data['Proxy Used'] ?? '').trim();
+  return isRedactedProxyValue(trimmed) ? '' : trimmed;
+}
+
 function addToBreakdown(
   map: Record<string, CountBreakdown>,
   rawValue: string | null | undefined,
@@ -416,13 +421,13 @@ export function computeTabKpisFromEntries(
   const filteredEntries = (countryFilter?.length || proxyFilter?.length)
     ? entries.filter((e) => {
         if (countryFilter?.length && !countryFilter.some((cf) => canonicalCountryKey(resolveCountryLabel(e.data, tab)) === canonicalCountryKey(cf))) return false;
-        if (proxyFilter?.length && !proxyFilter.some((pf) => canonicalProxyKey(e.data['Proxy Used'] ?? '') === canonicalProxyKey(pf))) return false;
+        if (proxyFilter?.length && !proxyFilter.some((pf) => canonicalProxyKey(proxyValue(e.data)) === canonicalProxyKey(pf))) return false;
         return true;
       })
     : entries;
 
   const countries = uniqueDisplayValues(entries.map((e) => resolveCountryLabel(e.data, tab)), canonicalCountryKey, canonicalCountryName);
-  const proxies = uniqueDisplayValues(entries.map((e) => e.data['Proxy Used']), canonicalProxyKey, canonicalProxyName);
+  const proxies = uniqueDisplayValues(entries.map((e) => proxyValue(e.data)), canonicalProxyKey, canonicalProxyName);
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
 
@@ -472,11 +477,11 @@ export function computeTabKpisFromEntries(
       if (statuses.some(isLiveStatus)) {
         live++;
         addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
-        addToBreakdown(byProxy, d['Proxy Used'], 'live', canonicalProxyKey, canonicalProxyName);
+        addToBreakdown(byProxy, proxyValue(d), 'live', canonicalProxyKey, canonicalProxyName);
       } else if (statuses.some(isRemovedStatus)) {
         removed++;
         addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
-        addToBreakdown(byProxy, d['Proxy Used'], 'removed', canonicalProxyKey, canonicalProxyName);
+        addToBreakdown(byProxy, proxyValue(d), 'removed', canonicalProxyKey, canonicalProxyName);
       }
       else if (statuses.some(isDoneStatus)) done++;
       else if (statuses.some(isPendingStatus)) pending++;

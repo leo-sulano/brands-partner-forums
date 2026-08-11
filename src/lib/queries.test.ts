@@ -328,6 +328,16 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.byProxy).toEqual({ 'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 } });
   });
 
+  it('byProxy and proxies treat a redacted "*****" Proxy Used value the same as blank', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': '*****' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+    expect(kpis.byProxy).toEqual({ 'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 } });
+    expect(kpis.proxies).toEqual(['Enigma-US1']);
+  });
+
   it('countries and proxies distinct lists are built from unfiltered entries, independent of any active country/proxy filter', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US1' }),

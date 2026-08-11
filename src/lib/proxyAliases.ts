@@ -18,3 +18,11 @@ export function canonicalProxyName(rawProxy: string): string {
   const trimmed = rawProxy.trim();
   return PROXY_ALIASES[trimmed.toLowerCase()] ?? trimmed;
 }
+
+// Some entries have "Proxy Used" recorded as a redacted placeholder
+// (e.g. "*****") rather than a real proxy name — not a distinct proxy
+// service, so it should be treated as if the field were blank everywhere
+// proxy values are read.
+export function isRedactedProxyValue(rawProxy: string): boolean {
+  return /^\*+$/.test(rawProxy.trim());
+}
