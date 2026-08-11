@@ -510,6 +510,32 @@ Deno.test('get_score_summary/get_success_rate_by_field with platform omitted sti
   assertEquals(omitted, withArray);
 });
 
+Deno.test('scoreSummary with an empty platforms array falls back to all 4 combined', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '9' } },
+    { id: '2', tab: 't', data: { Brand: 'Acme', 'CG Review Status': 'Removed' } },
+  ];
+  const out = scoreSummary(entries, []);
+  assertEquals(out.length, 1);
+  // Neither row has a TP status, so ['tp'] (the omitted-platform default)
+  // would find nothing for this brand — [] must resolve to all 4 platforms
+  // combined, not fall back to the tp-only default.
+  assertEquals(out[0].live, 1);
+  assertEquals(out[0].removed, 1);
+});
+
+Deno.test('successRateByField with an empty platforms array falls back to all 4 combined', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'AG Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'Enigma', 'CG Review Status': 'Removed' } },
+  ];
+  const out = successRateByField(entries, 'proxy', []);
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.removed, 1);
+  assertEquals(enigma.total, 2);
+});
+
 Deno.test('get_schedule returns the weekly grid for a tab and week, using brand not brand_key', async () => {
   const tables = {
     brand_schedule: [

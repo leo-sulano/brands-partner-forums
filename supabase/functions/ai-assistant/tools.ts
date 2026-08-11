@@ -521,7 +521,7 @@ export const TOOL_DEFS = [
         type: 'object',
         properties: {
           tab: { type: 'string' },
-          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Omit or pass all 4 for a combined total across every platform (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection).' },
+          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection). Omitting this parameter defaults to TrustPilot only, matching this tool\'s existing single-platform behavior — explicitly list platforms (including all 4) to get a combined total.' },
         },
       },
     },
@@ -563,7 +563,7 @@ export const TOOL_DEFS = [
         type: 'object',
         properties: {
           field: { type: 'string', enum: ['proxy', 'agent', 'country'] },
-          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Omit or pass all 4 for a combined total across every platform (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection).' },
+          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection). Omitting this parameter defaults to TrustPilot only, matching this tool\'s existing single-platform behavior — explicitly list platforms (including all 4) to get a combined total.' },
           tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
         },
         required: ['field'],
