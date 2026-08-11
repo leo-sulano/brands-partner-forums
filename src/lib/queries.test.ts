@@ -152,7 +152,7 @@ describe('computeTabKpisFromEntries', () => {
 
     const rates = computeTabSuccessRates(
       entries.map((e) => ({ tab: e.tab, data: e.data })) as Parameters<typeof computeTabSuccessRates>[0],
-      'tp',
+      ['tp'],
       new Set(),
       { from: new Date(2026, 4, 1), to: new Date(2026, 6, 31) },
     );

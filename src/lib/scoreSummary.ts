@@ -50,6 +50,7 @@ export interface BrandSummary {
 export interface ScoreSummaryResult {
   brands: BrandSummary[];
   excludedRows: number;
+  showStars: boolean;
 }
 
 export interface DateRange {
@@ -247,16 +248,24 @@ export function computeScoreSummary(
   entries: Entry[],
   range: DateRange,
   pinnedFirst: string[] = [],
-  platform: Platform = 'tp',
+  platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
 ): ScoreSummaryResult {
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;
 
-  const statusKeys = PLATFORM_STATUS_KEYS[platform];
-  const dateKeys = PLATFORM_DATE_KEYS[platform];
-  const scoreKeys = PLATFORM_SCORE_KEYS[platform];
-  const maxScore = PLATFORM_MAX_SCORE[platform];
+  // Empty selection means "all 4 platforms combined" (same convention as
+  // every other filter); the ['tp'] default above only applies when the
+  // caller passes nothing at all, preserving today's initial-load behavior.
+  const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
+  // The star-rating histogram is scale- and column-dependent per platform
+  // (TP is 1-5, AG is 1-10; even same-scale platforms have independent
+  // review-text columns) — it only ever renders for exactly one platform.
+  const showStars = resolved.length === 1;
+  const soleStatusKeys = showStars ? PLATFORM_STATUS_KEYS[resolved[0]] : null;
+  const soleDateKeys = showStars ? PLATFORM_DATE_KEYS[resolved[0]] : null;
+  const soleScoreKeys = showStars ? PLATFORM_SCORE_KEYS[resolved[0]] : null;
+  const maxScore = showStars ? PLATFORM_MAX_SCORE[resolved[0]] : 0;
 
   interface Bucket {
     tab: string;
@@ -283,41 +292,58 @@ export function computeScoreSummary(
 
     const tab = e.tab ?? '';
 
-    if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
+    if (showStars) {
+      // Single-platform path: unchanged from before this task, just reading
+      // the one selected platform's keys instead of a bare `platform` param.
+      if (removedPlatformBrands.has(platformRemovedKey(tab, brand, resolved[0]))) continue;
 
-    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
-    if (!status) continue;
+      const status = (pick(d, soleStatusKeys!) ?? '').trim().toLowerCase();
+      if (!status) continue;
 
-    // Bucket presence is keyed off ANY resolvable status (matching
-    // computeSuccessRates' gate), not just Published — otherwise a brand
-    // that's entirely Removed/Refused never gets a row at all, silently
-    // hiding its all-time Success Rate too (which ScoreSummaryPanel looks up
-    // by this same tab+brand key, independent of the Published filter below).
-    const key = `${tab} ${brand}`;
-    let bucket = buckets.get(key);
-    if (!bucket) {
-      bucket = { tab, brand, counts: emptyCounts(), unrated: 0 };
-      buckets.set(key, bucket);
-    }
-
-    if (status !== 'published') continue;
-
-    const date = parsePostDate(pick(d, dateKeys));
-
-    if (dateFilterActive) {
-      if (date == null) {
-        excludedRows++;
-        continue;
+      // Bucket presence is keyed off ANY resolvable status (matching
+      // computeSuccessRates' gate), not just Published — otherwise a brand
+      // that's entirely Removed/Refused never gets a row at all, silently
+      // hiding its all-time Success Rate too (which ScoreSummaryPanel looks up
+      // by this same tab+brand key, independent of the Published filter below).
+      const key = `${tab} ${brand}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { tab, brand, counts: emptyCounts(), unrated: 0 };
+        buckets.set(key, bucket);
       }
-      if (fromBound && date < fromBound) continue;
-      if (toBound && date > toBound) continue;
-    }
 
-    const score = scoreKeys.length > 0 ? parseScore(pick(d, scoreKeys), maxScore) : null;
-    if (score == null) {
-      bucket.unrated += 1;
+      if (status !== 'published') continue;
+
+      const date = parsePostDate(pick(d, soleDateKeys!));
+
+      if (dateFilterActive) {
+        if (date == null) {
+          excludedRows++;
+          continue;
+        }
+        if (fromBound && date < fromBound) continue;
+        if (toBound && date > toBound) continue;
+      }
+
+      const score = soleScoreKeys!.length > 0 ? parseScore(pick(d, soleScoreKeys!), maxScore) : null;
+      if (score == null) {
+        bucket.unrated += 1;
+      } else {
+        bucket.counts[score] += 1;
+      }
     } else {
-      bucket.counts[score] += 1;
+      // Multi-platform path: only the tab/brand bucket needs to exist (so the
+      // brand list is complete) — no star counts are ever shown, so no
+      // per-platform score/date processing runs here. A bucket exists if any
+      // NON-flagged selected platform has any resolvable status at all,
+      // mirroring the single-platform gate's "any resolvable status" rule.
+      const hasAnyStatus = resolved.some((p) => {
+        if (removedPlatformBrands.has(platformRemovedKey(tab, brand, p))) return false;
+        return !!(pick(d, PLATFORM_STATUS_KEYS[p]) ?? '').trim();
+      });
+      if (!hasAnyStatus) continue;
+      const key = `${tab} ${brand}`;
+      if (!buckets.has(key)) buckets.set(key, { tab, brand, counts: {}, unrated: 0 });
     }
   }
 
@@ -349,7 +375,7 @@ export function computeScoreSummary(
     return a.brand.localeCompare(b.brand);
   });
 
-  return { brands: summaries, excludedRows };
+  return { brands: summaries, excludedRows, showStars };
 }
 
 export interface SuccessRate {
@@ -379,29 +405,41 @@ export function isRemovedStatus(s: string): boolean {
 // defaults to all-time (no filtering) when omitted.
 export function computeSuccessRates(
   entries: Entry[],
-  platform: Platform,
+  platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
   range: DateRange = { from: null, to: null },
 ): Map<string, SuccessRate> {
-  const statusKeys = PLATFORM_STATUS_KEYS[platform];
-  const dateKeys = PLATFORM_DATE_KEYS[platform];
+  const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;
   const buckets = new Map<string, { live: number; removed: number }>();
 
   for (const e of entries) {
     const d = e.data ?? {};
-
     const brand = (pick(d, BRAND_KEYS) ?? '').trim();
     if (!brand) continue;
-
-    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
-    if (!status) continue;
-
     const tab = e.tab ?? '';
-    if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
 
-    if (!passesDateFilter(d, dateKeys, fromBound, toBound)) continue;
+    // matchedAny tracks "does at least one selected, unflagged platform have
+    // a non-blank, in-range status" — this is the bucket-existence gate,
+    // matching the original single-platform function's "if (!status)
+    // continue" (a bucket exists even for a status that's neither live nor
+    // removed, e.g. "pending" — only matchedLive/matchedRemoved decide what
+    // it increments). Getting this gate wrong silently drops such rows from
+    // the result map entirely instead of leaving them at rate: null.
+    let matchedAny = false;
+    let matchedLive = false;
+    let matchedRemoved = false;
+    for (const platform of resolved) {
+      if (removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
+      const status = (pick(d, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status) continue;
+      if (!passesDateFilter(d, PLATFORM_DATE_KEYS[platform], fromBound, toBound)) continue;
+      matchedAny = true;
+      if (isLiveStatus(status)) matchedLive = true;
+      else if (isRemovedStatus(status)) matchedRemoved = true;
+    }
+    if (!matchedAny) continue;
 
     const key = `${tab} ${brand}`;
     let bucket = buckets.get(key);
@@ -409,9 +447,8 @@ export function computeSuccessRates(
       bucket = { live: 0, removed: 0 };
       buckets.set(key, bucket);
     }
-
-    if (isLiveStatus(status)) bucket.live += 1;
-    else if (isRemovedStatus(status)) bucket.removed += 1;
+    if (matchedLive) bucket.live += 1;
+    else if (matchedRemoved) bucket.removed += 1;
   }
 
   const result = new Map<string, SuccessRate>();
@@ -432,35 +469,41 @@ export function computeSuccessRates(
 // otherwise matches BrandGroup.tsx's brand-tab KPI cards via passesDateFilter.
 export function computeTabSuccessRates(
   entries: Entry[],
-  platform: Platform,
+  platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
   range: DateRange = { from: null, to: null },
 ): Map<string, SuccessRate> {
-  const statusKeys = PLATFORM_STATUS_KEYS[platform];
-  const dateKeys = PLATFORM_DATE_KEYS[platform];
+  const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   const fromBound = range.from ? startOfDay(range.from) : null;
   const toBound = range.to ? endOfDay(range.to) : null;
   const buckets = new Map<string, { live: number; removed: number }>();
 
   for (const e of entries) {
     const d = e.data ?? {};
-    const status = (pick(d, statusKeys) ?? '').trim().toLowerCase();
-    if (!status) continue;
-
     const tab = e.tab ?? '';
     const brand = (pick(d, BRAND_KEYS) ?? '').trim();
-    if (brand && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
 
-    if (!passesDateFilter(d, dateKeys, fromBound, toBound)) continue;
+    let matchedAny = false;
+    let matchedLive = false;
+    let matchedRemoved = false;
+    for (const platform of resolved) {
+      if (brand && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform))) continue;
+      const status = (pick(d, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status) continue;
+      if (!passesDateFilter(d, PLATFORM_DATE_KEYS[platform], fromBound, toBound)) continue;
+      matchedAny = true;
+      if (isLiveStatus(status)) matchedLive = true;
+      else if (isRemovedStatus(status)) matchedRemoved = true;
+    }
+    if (!matchedAny) continue;
 
     let bucket = buckets.get(tab);
     if (!bucket) {
       bucket = { live: 0, removed: 0 };
       buckets.set(tab, bucket);
     }
-
-    if (isLiveStatus(status)) bucket.live += 1;
-    else if (isRemovedStatus(status)) bucket.removed += 1;
+    if (matchedLive) bucket.live += 1;
+    else if (matchedRemoved) bucket.removed += 1;
   }
 
   const result = new Map<string, SuccessRate>();
