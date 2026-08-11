@@ -18,6 +18,8 @@ import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { Entry } from '../types/entry';
 import MultiSelectDropdown, { type MultiSelectOption } from './MultiSelectDropdown';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
+import ExportMenuButton from './ExportMenuButton';
+import { buildScoreSummaryExportHeaders, buildScoreSummaryExportRows } from '../lib/scoreSummaryExport';
 
 interface Props {
   entries: Entry[];
@@ -311,6 +313,12 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
             />
             <div className="h-4 w-px bg-slate-200 mx-1" />
             <MultiSelectDropdown noun="brand-tab" values={tabFilter} onChange={setTabFilter} options={tabOptions.map((t) => ({ value: t, label: tabDisplayName(t) }))} searchable />
+            <div className="h-4 w-px bg-slate-200 mx-1" />
+            <ExportMenuButton
+              headers={buildScoreSummaryExportHeaders(maxScore, result.showStars)}
+              getRows={() => buildScoreSummaryExportRows(filteredBrands, maxScore, result.showStars, successRates)}
+              filenameBase="score-summary"
+            />
           </div>
 
           {filteredBrands.length === 0 ? (
