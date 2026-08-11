@@ -618,7 +618,7 @@ export default function Overview() {
         <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
         {allCountries.length > 1 && (
           <MultiSelectDropdown
-            noun="country"
+            noun="countrie"
             values={countryFilter}
             onChange={(v) => updateFilterParam('country', v)}
             options={allCountries.map((c) => ({ value: c, label: c }))}
@@ -627,7 +627,7 @@ export default function Overview() {
         )}
         {allProxies.length > 1 && (
           <MultiSelectDropdown
-            noun="proxy"
+            noun="proxie"
             values={proxyFilter}
             onChange={(v) => updateFilterParam('proxy', v)}
             options={allProxies.map((p) => ({ value: p, label: p }))}
