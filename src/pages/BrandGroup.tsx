@@ -1306,7 +1306,15 @@ export default function BrandGroup() {
   })();
 
   const dateActive = !!(dateFrom || dateTo);
-  const relevantPlatforms = platformFilter.length > 0 ? platformFilter : getTabPlatforms(decodedTab);
+  // Intersect the selection with the platforms this tab actually tracks — a deep link
+  // (e.g. from Overview, which links in the whole current cross-tab selection regardless
+  // of the target tab's own platforms) can carry a platform this tab never had, and
+  // treating it as "relevant" would make passesPlatformDateFilter's undated-row fallback
+  // silently accept every row, making the date filter inert. Empty selection (or a
+  // selection with no overlap here) still means "every platform this tab tracks."
+  const tabPlatforms = getTabPlatforms(decodedTab);
+  const selectedTabPlatforms = platformFilter.filter((p) => tabPlatforms.includes(p));
+  const relevantPlatforms = selectedTabPlatforms.length > 0 ? selectedTabPlatforms : tabPlatforms;
 
   function matchesOneStatus(status: StatusValue, v: string): boolean {
     if (status === 'live') return isLive(v);
@@ -1378,29 +1386,31 @@ export default function BrandGroup() {
     return v.toLowerCase().includes('pending') || v.toLowerCase() === 'not published';
   }
 
-  // Top KPI card counts — always reflect the active filter combination.
+  // Top KPI card counts — always reflect the active filter combination. Row-level
+  // counting: each row contributes to at most one of live/removed, decided by ANY of
+  // the relevant platforms' own status (checking live before removed, same tie-break
+  // order queries.ts's computeTabKpisFromEntries already uses for Overview/Score
+  // Summary's combined totals) — never summed per platform, which would double-count
+  // a single row that's e.g. Live on both TP and AG when both are selected. This is
+  // the same OR-across-selected-platforms rule `filtered`/`matchesPlatform` above
+  // already apply to the table itself, so the cards can no longer disagree with it.
   const displayTotals = (() => {
-    if (activePlatforms.length > 1) {
-      // Scope to the selected platform card(s), combined (OR-across-selected);
-      // fall back to all when none chosen or none of the selection applies here.
-      const matchingSelection = activePlatforms.filter((k) => platformFilter.includes(k));
-      const selectedPlatforms = matchingSelection.length > 0 ? matchingSelection : activePlatforms;
-      const live = selectedPlatforms.reduce((s, k) => s + displayKpis[k].live, 0);
-      const removed = selectedPlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
-      return { total: live + removed, live, removed };
-    }
-    // Local `activePlatforms` above only ever tracks tp/ag/cg (it never
-    // includes 'wo') and is empty for the Wizard of Odds tab specifically —
-    // so this branch also covers WO-only tabs, not just TP-only ones. Use the
-    // shared getTabPlatforms(tab) helper (which correctly returns ['wo'] for
-    // Wizard of Odds) to know which single platform this loop is implicitly
-    // counting, instead of assuming 'tp'.
-    const soloPlatform: Platform = getTabPlatforms(decodedTab)[0] ?? 'tp';
+    // Local `activePlatforms` only ever tracks tp/ag/cg (never 'wo') and is empty for
+    // the Wizard of Odds tab specifically — use the shared getTabPlatforms(tab) helper
+    // (already computed above as tabPlatforms) so a WO-only tab is still covered, and
+    // so a multi-platform tab intersects the selection with what this tab actually has
+    // (same "empty/no-overlap selection === everything" rule as relevantPlatforms).
+    const matchingSelection = tabPlatforms.filter((p) => platformFilter.includes(p));
+    const totalsPlatforms = matchingSelection.length > 0 ? matchingSelection : tabPlatforms;
     let live = 0, removed = 0;
     for (const e of ratingFiltered) {
-      if (brandCol && isPlatformRemoved(e.data[brandCol], soloPlatform)) continue;
-      if (dateActive && !passesPlatformDateFilter(e.data, soloPlatform, dateFrom, dateTo)) continue;
-      const statuses = statusCols.map((h) => (e.data[h] ?? '').toLowerCase()).filter(Boolean);
+      const statuses = totalsPlatforms
+        .filter((p) => !(brandCol && isPlatformRemoved(e.data[brandCol], p)))
+        .filter((p) => !dateActive || passesPlatformDateFilter(e.data, p, dateFrom, dateTo))
+        .map((p) => platformStatusCol(headers, p))
+        .filter((col): col is string => !!col)
+        .map((col) => (e.data[col] ?? '').toLowerCase())
+        .filter(Boolean);
       if (statuses.some(isLive)) live++;
       else if (statuses.some(isRemoved)) removed++;
     }
