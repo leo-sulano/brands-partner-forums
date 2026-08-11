@@ -13,7 +13,7 @@ import TotalBreakdownModal from '../components/TotalBreakdownModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import AccountUsageBadges from '../components/AccountUsageBadges';
-import BrandFilterDropdown from '../components/BrandFilterDropdown';
+import MultiSelectDropdown, { type MultiSelectOption } from '../components/MultiSelectDropdown';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
@@ -25,6 +25,7 @@ import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
+import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
 import type { Entry } from '../types/entry';
 
 // Checked case-insensitively against header names for tabs with no whitelist config.
@@ -298,71 +299,20 @@ function parseCellDate(value: string): Date | null {
   return null;
 }
 
-type FilterOpt<T extends string> = { value: T; label: string; dot?: string };
-
-function FilterDropdown<T extends string>({
-  value, onChange, options,
-}: { value: T; onChange: (v: T) => void; options: FilterOpt<T>[] }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  const selected = options.find((o) => o.value === value);
-
-  return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-600 shadow-sm hover:bg-blue-50 hover:border-blue-200 transition-colors"
-      >
-        {selected?.dot && <span className={`size-1.5 shrink-0 rounded-full ${selected.dot}`} />}
-        {selected?.label}
-        <ChevronDown className={`size-3 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-20 mt-1 min-w-[10rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-          {options.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${opt.value === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'}`}
-            >
-              {opt.dot && <span className={`size-1.5 shrink-0 rounded-full ${opt.dot}`} />}
-              <span className="flex-1">{opt.label}</span>
-              {opt.value === value && <Check className="size-3 text-blue-500" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const STATUS_OPTS: FilterOpt<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>[] = [
-  { value: 'all',      label: 'All statuses', dot: 'bg-slate-400' },
+const STATUS_MULTI_OPTS: MultiSelectOption[] = [
   { value: 'live',     label: 'Live', dot: 'bg-green-500' },
-  { value: 'done',     label: 'Done',             dot: 'bg-blue-500' },
+  { value: 'done',     label: 'Done', dot: 'bg-blue-500' },
   { value: 'removed',  label: 'Removed', dot: 'bg-rose-500' },
-  { value: 'on-pause', label: 'On Pause',     dot: 'bg-slate-500' },
-  { value: 'pending',  label: 'Pending',      dot: 'bg-amber-400' },
-  { value: 'not-done', label: 'Not Done',     dot: 'bg-orange-500' },
+  { value: 'on-pause', label: 'On Pause', dot: 'bg-slate-500' },
+  { value: 'pending',  label: 'Pending', dot: 'bg-amber-400' },
+  { value: 'not-done', label: 'Not Done', dot: 'bg-orange-500' },
 ];
 
-const PLATFORM_OPTS: FilterOpt<'all' | 'tp' | 'ag' | 'cg'>[] = [
-  { value: 'all', label: 'All platforms' },
-  { value: 'tp',  label: 'Trust Pilot',  dot: 'bg-blue-500' },
-  { value: 'ag',  label: 'Ask Gambler',  dot: 'bg-amber-500' },
-  { value: 'cg',  label: 'Casino Guru',  dot: 'bg-violet-500' },
+const PLATFORM_MULTI_OPTS: MultiSelectOption[] = [
+  { value: 'tp', label: 'Trust Pilot', dot: 'bg-blue-500' },
+  { value: 'ag', label: 'Ask Gambler', dot: 'bg-amber-500' },
+  { value: 'cg', label: 'Casino Guru', dot: 'bg-violet-500' },
+  { value: 'wo', label: 'Wizard of Odds', dot: 'bg-emerald-500' },
 ];
 
 const BRAND_LINK_COLS = ['AG Review Link', 'CG Review Link'];
@@ -543,12 +493,12 @@ function writeSortToStorage(tab: string, col: string | null, dir: 'asc' | 'desc'
 // it, instead of the tab always reopening blank.
 type StoredBrandFilters = {
   search: string;
-  brandFilter: string;
-  agentFilter: string;
-  proxyFilter: string;
-  countryFilter: string;
-  statusFilter: string;
-  platformFilter: string;
+  brandFilter: string[];
+  agentFilter: string[];
+  proxyFilter: string[];
+  countryFilter: string[];
+  statusFilter: string[];
+  platformFilter: string[];
   ratingFilter: number | 'unrated' | 'any' | null;
   dateFrom: string;
   dateTo: string;
@@ -558,10 +508,22 @@ function filterStorageKey(tab: string) {
   return `bpf_filters_${tab}`;
 }
 
+// Legacy entries written before this filter went multi-select stored these
+// six fields as bare strings — toArrayFilter reads either shape.
 function readFiltersFromStorage(tab: string): Partial<StoredBrandFilters> {
   try {
     const raw = localStorage.getItem(filterStorageKey(tab));
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return {
+      ...parsed,
+      brandFilter: toArrayFilter(parsed.brandFilter),
+      agentFilter: toArrayFilter(parsed.agentFilter),
+      proxyFilter: toArrayFilter(parsed.proxyFilter),
+      countryFilter: toArrayFilter(parsed.countryFilter),
+      statusFilter: toArrayFilter(parsed.statusFilter),
+      platformFilter: toArrayFilter(parsed.platformFilter),
+    };
   } catch {
     return {};
   }
@@ -589,15 +551,16 @@ export default function BrandGroup() {
   const [error, setError] = useState<string | null>(null);
 
   const [search, setSearch] = useState('');
-  const [brandFilter, setBrandFilter] = useState('');
+  const [brandFilter, setBrandFilter] = useState<string[]>([]);
   const [showTotalModal, setShowTotalModal] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const STATUS_FILTER_VALUES = ['live', 'removed', 'done', 'on-pause', 'pending', 'not-done'] as const;
-  const [statusFilter, setStatusFilter] = useState<'all' | 'live' | 'removed' | 'done' | 'on-pause' | 'pending' | 'not-done'>(
-    (STATUS_FILTER_VALUES.includes(searchParams.get('status') as typeof STATUS_FILTER_VALUES[number]) ? searchParams.get('status') as typeof STATUS_FILTER_VALUES[number] : 'all')
+  type StatusValue = typeof STATUS_FILTER_VALUES[number];
+  const [statusFilter, setStatusFilter] = useState<StatusValue[]>(
+    readArrayParam(searchParams, 'status').filter((s): s is StatusValue => STATUS_FILTER_VALUES.includes(s as StatusValue)),
   );
-  const [platformFilter, setPlatformFilter] = useState<'all' | 'tp' | 'ag' | 'cg' | 'wo'>(
-    (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
+  const [platformFilter, setPlatformFilter] = useState<Platform[]>(
+    readArrayParam(searchParams, 'platform').filter((p): p is Platform => ['tp', 'ag', 'cg', 'wo'].includes(p)),
   );
   const [ratingFilter, setRatingFilter] = useState<number | 'unrated' | 'any' | null>(() => {
     const raw = searchParams.get('rating');
@@ -614,9 +577,9 @@ export default function BrandGroup() {
   const [page, setPage] = useState(1);
   const [jumpInput, setJumpInput] = useState('');
 
-  const [agentFilter, setAgentFilter] = useState('');
-  const [proxyFilter, setProxyFilter] = useState('');
-  const [countryFilter, setCountryFilter] = useState('');
+  const [agentFilter, setAgentFilter] = useState<string[]>([]);
+  const [proxyFilter, setProxyFilter] = useState<string[]>([]);
+  const [countryFilter, setCountryFilter] = useState<string[]>([]);
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
@@ -771,13 +734,13 @@ export default function BrandGroup() {
       const hasDeepLinkParams = ['brand', 'platform', 'status', 'rating', 'country'].some((p) => searchParams.has(p));
 
       setSearch(saved.search ?? '');
-      setBrandFilter(hasDeepLinkParams ? (searchParams.get('brand') ?? '') : (saved.brandFilter ?? ''));
+      setBrandFilter(hasDeepLinkParams ? readArrayParam(searchParams, 'brand') : (saved.brandFilter ?? []));
       setStatusFilter(hasDeepLinkParams
-        ? (STATUS_FILTER_VALUES.includes(searchParams.get('status') as typeof STATUS_FILTER_VALUES[number]) ? searchParams.get('status') as typeof STATUS_FILTER_VALUES[number] : 'all')
-        : (STATUS_FILTER_VALUES.includes(saved.statusFilter as typeof STATUS_FILTER_VALUES[number]) ? saved.statusFilter as typeof STATUS_FILTER_VALUES[number] : 'all'));
+        ? readArrayParam(searchParams, 'status').filter((s): s is StatusValue => STATUS_FILTER_VALUES.includes(s as StatusValue))
+        : (saved.statusFilter ?? []).filter((s): s is StatusValue => STATUS_FILTER_VALUES.includes(s as StatusValue)));
       setPlatformFilter(hasDeepLinkParams
-        ? (['tp', 'ag', 'cg', 'wo'].includes(searchParams.get('platform') ?? '') ? searchParams.get('platform') as 'tp' | 'ag' | 'cg' | 'wo' : 'all')
-        : (['tp', 'ag', 'cg', 'wo'].includes(saved.platformFilter ?? '') ? saved.platformFilter as 'tp' | 'ag' | 'cg' | 'wo' : 'all'));
+        ? readArrayParam(searchParams, 'platform').filter((p): p is Platform => ['tp', 'ag', 'cg', 'wo'].includes(p))
+        : (saved.platformFilter ?? []).filter((p): p is Platform => ['tp', 'ag', 'cg', 'wo'].includes(p)));
       setRatingFilter(hasDeepLinkParams
         ? (() => {
             const raw = searchParams.get('rating');
@@ -787,9 +750,9 @@ export default function BrandGroup() {
             return Number.isInteger(r) && r > 0 ? r : null;
           })()
         : (saved.ratingFilter ?? null));
-      setAgentFilter(saved.agentFilter ?? '');
-      setProxyFilter(saved.proxyFilter ?? '');
-      setCountryFilter(hasDeepLinkParams ? (searchParams.get('country') ?? '') : (saved.countryFilter ?? ''));
+      setAgentFilter(saved.agentFilter ?? []);
+      setProxyFilter(saved.proxyFilter ?? []);
+      setCountryFilter(hasDeepLinkParams ? readArrayParam(searchParams, 'country') : (saved.countryFilter ?? []));
       setDateFrom(saved.dateFrom ?? '');
       setDateTo(saved.dateTo ?? '');
       setPage(1);
@@ -950,12 +913,10 @@ export default function BrandGroup() {
       lastResyncedTabRef.current = decodedTab;
       return;
     }
-    const p = searchParams.get('platform');
-    setPlatformFilter(['tp', 'ag', 'cg', 'wo'].includes(p ?? '') ? (p as 'tp' | 'ag' | 'cg' | 'wo') : 'all');
-    const s = searchParams.get('status');
-    setStatusFilter(STATUS_FILTER_VALUES.includes(s as typeof STATUS_FILTER_VALUES[number]) ? (s as typeof STATUS_FILTER_VALUES[number]) : 'all');
-    setBrandFilter(searchParams.get('brand') ?? '');
-    setCountryFilter(searchParams.get('country') ?? '');
+    setPlatformFilter(readArrayParam(searchParams, 'platform').filter((p): p is Platform => ['tp', 'ag', 'cg', 'wo'].includes(p)));
+    setStatusFilter(readArrayParam(searchParams, 'status').filter((s): s is StatusValue => STATUS_FILTER_VALUES.includes(s as StatusValue)));
+    setBrandFilter(readArrayParam(searchParams, 'brand'));
+    setCountryFilter(readArrayParam(searchParams, 'country'));
     const raw = searchParams.get('rating');
     if (raw === 'unrated') {
       setRatingFilter('unrated');
@@ -1028,11 +989,12 @@ export default function BrandGroup() {
 
   const GUEST_HIDDEN_COLS = new Set(['User Name', 'AG User', 'CG User']);
 
-  // Hide other platforms' columns when a specific platform is selected.
-  const visibleHeaders = (platformFilter !== 'all' && activePlatforms.length > 1
+  // Hide other platforms' columns when one or more specific platforms are selected —
+  // shows the union of every selected platform's own columns, hiding the rest.
+  const visibleHeaders = (platformFilter.length > 0 && activePlatforms.length > 1
     ? headers.filter((h) => {
         for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as ['tp' | 'ag' | 'cg', Set<string>][]) {
-          if (key !== platformFilter && cols.has(h)) return false;
+          if (!platformFilter.includes(key) && cols.has(h)) return false;
         }
         return true;
       })
@@ -1293,44 +1255,43 @@ export default function BrandGroup() {
       )
     : entries;
 
-  const brandFiltered = brandFilter && brandCol
-    ? (() => {
-        const group = getBrandGroup(decodedTab, brandFilter);
-        return group
-          ? searchFiltered.filter((e) => group.some((v) => v.trim() === (e.data[brandCol] ?? '').trim()))
-          : searchFiltered.filter((e) => e.data[brandCol] === brandFilter);
-      })()
+  const brandFiltered = brandFilter.length > 0 && brandCol
+    ? searchFiltered.filter((e) =>
+        brandFilter.some((bf) => {
+          const group = getBrandGroup(decodedTab, bf);
+          return group ? group.some((v) => v.trim() === (e.data[brandCol] ?? '').trim()) : e.data[brandCol] === bf;
+        }),
+      )
     : searchFiltered;
 
-  const agentFiltered = agentFilter && agentCol
-    ? brandFiltered.filter((e) => e.data[agentCol] === agentFilter)
+  const agentFiltered = agentFilter.length > 0 && agentCol
+    ? brandFiltered.filter((e) => agentFilter.includes(e.data[agentCol] ?? ''))
     : brandFiltered;
 
-  const proxyFiltered = proxyFilter
-    ? agentFiltered.filter((e) => canonicalProxyKey(e.data['Proxy Used'] ?? '') === canonicalProxyKey(proxyFilter))
+  const proxyFiltered = proxyFilter.length > 0
+    ? agentFiltered.filter((e) => proxyFilter.some((pf) => canonicalProxyKey(e.data['Proxy Used'] ?? '') === canonicalProxyKey(pf)))
     : agentFiltered;
 
-  const countryFiltered = countryFilter
-    ? proxyFiltered.filter((e) => canonicalCountryKey(resolveCountryLabel(e.data, decodedTab)) === canonicalCountryKey(countryFilter))
+  const countryFiltered = countryFilter.length > 0
+    ? proxyFiltered.filter((e) => countryFilter.some((cf) => canonicalCountryKey(resolveCountryLabel(e.data, decodedTab)) === canonicalCountryKey(cf)))
     : proxyFiltered;
 
   // Platform filter only affects visible columns, not row filtering.
   const platformFiltered = countryFiltered;
 
   const statusCols = headers.filter(isStatusCol);
-  // When a platform card is selected, only check that platform's status column(s).
-  const activeStatusCols = platformFilter === 'all'
+  // Union of status columns across every selected platform, instead of one.
+  const activeStatusCols = platformFilter.length === 0
     ? statusCols
-    : platformFilter === 'tp'
-      ? statusCols.filter((h) => TP_STATUS_VARIANTS.has(h))
-      : statusCols.filter((h) => h.toLowerCase() === PLATFORM_STATUS_COL[platformFilter].toLowerCase());
+    : statusCols.filter((h) => platformFilter.some((p) => (p === 'tp' ? TP_STATUS_VARIANTS.has(h) : h.toLowerCase() === PLATFORM_STATUS_COL[p].toLowerCase())));
 
-  // Rating filter (arrives via Score Summary star-count/Total links): only meaningful when a
-  // specific platform is active, since a rating value is only comparable within one
-  // platform's score column. Matches Published-status rows only, exactly mirroring what
-  // Score Summary counted — not "any status with that score." 'any' matches every Published
-  // row for the platform regardless of score, mirroring a Score Summary Total link.
-  const activePlatformForRating = platformFilter !== 'all' ? platformFilter : null;
+  // Rating filter (arrives via Score Summary star-count/Total links) is only
+  // meaningful paired with exactly one platform — a score value is only
+  // comparable within one platform's own scale/columns. Selecting 2+
+  // platforms silently stops applying whatever rating deep-link was active,
+  // the same "don't merge across platforms" rule Score Summary's own star
+  // histogram follows.
+  const activePlatformForRating = platformFilter.length === 1 ? platformFilter[0] : null;
   const ratingFiltered = (() => {
     if (ratingFilter == null || !activePlatformForRating) return platformFiltered;
     const maxScore = PLATFORM_MAX_SCORE[activePlatformForRating];
@@ -1345,33 +1306,30 @@ export default function BrandGroup() {
   })();
 
   const dateActive = !!(dateFrom || dateTo);
-  const relevantPlatforms = platformFilter !== 'all' ? [platformFilter] : getTabPlatforms(decodedTab);
+  const relevantPlatforms = platformFilter.length > 0 ? platformFilter : getTabPlatforms(decodedTab);
+
+  function matchesOneStatus(status: StatusValue, v: string): boolean {
+    if (status === 'live') return isLive(v);
+    if (status === 'removed') return isRemoved(v);
+    if (status === 'done') return isDone(v);
+    if (status === 'on-pause') return isOnPause(v);
+    if (status === 'pending') return isPending(v);
+    return isNotDone(v);
+  }
 
   // A row matches if ANY relevant platform's own status+date state satisfies
   // the current filters — status and date are checked against the SAME
-  // platform, not independently (a Live status on AG can no longer "borrow"
-  // an unrelated in-range date from TP on the same row). This is the same
-  // per-platform coupling the KPI cards (countPlatform/displayTotals) already
-  // use, so the table can no longer disagree with the cards above it as
-  // platform/date filters change. The flag check only applies to an actual
-  // status match (live/removed/etc.) — a flagged platform's date can still
-  // place the row in range under "All statuses", matching the pre-existing
-  // rule that a flagged brand's row still shows in the table (with its
-  // badge), just excluded from the counts.
+  // platform, not independently. Multi-select only widens WHICH platforms
+  // and WHICH statuses are checked; the per-platform coupling itself is
+  // unchanged from the single-select version.
   function matchesPlatform(e: { data: Record<string, string | null> }, platform: Platform): boolean {
     if (dateActive && !passesPlatformDateFilter(e.data, platform, dateFrom, dateTo)) return false;
-    if (statusFilter === 'all') return true;
+    if (statusFilter.length === 0) return true;
     if (brandCol && isPlatformRemoved(e.data[brandCol], platform)) return false;
     const col = platformStatusCol(headers, platform);
     if (!col) return false;
     const v = (e.data[col] ?? '').toLowerCase();
-    if (statusFilter === 'live') return isLive(v);
-    if (statusFilter === 'removed') return isRemoved(v);
-    if (statusFilter === 'done') return isDone(v);
-    if (statusFilter === 'on-pause') return isOnPause(v);
-    if (statusFilter === 'pending') return isPending(v);
-    if (statusFilter === 'not-done') return isNotDone(v);
-    return false;
+    return statusFilter.some((sf) => matchesOneStatus(sf, v));
   }
 
   const filtered = ratingFiltered.filter((e) => relevantPlatforms.some((p) => matchesPlatform(e, p)));
@@ -1423,11 +1381,10 @@ export default function BrandGroup() {
   // Top KPI card counts — always reflect the active filter combination.
   const displayTotals = (() => {
     if (activePlatforms.length > 1) {
-      // Scope to the selected platform card; fall back to all when none chosen.
-      const selectedPlatforms =
-        platformFilter !== 'all' && activePlatforms.includes(platformFilter as 'tp' | 'ag' | 'cg')
-          ? [platformFilter as 'tp' | 'ag' | 'cg']
-          : activePlatforms;
+      // Scope to the selected platform card(s), combined (OR-across-selected);
+      // fall back to all when none chosen or none of the selection applies here.
+      const matchingSelection = activePlatforms.filter((k) => platformFilter.includes(k));
+      const selectedPlatforms = matchingSelection.length > 0 ? matchingSelection : activePlatforms;
       const live = selectedPlatforms.reduce((s, k) => s + displayKpis[k].live, 0);
       const removed = selectedPlatforms.reduce((s, k) => s + displayKpis[k].removed, 0);
       return { total: live + removed, live, removed };
@@ -1564,14 +1521,22 @@ export default function BrandGroup() {
     // every already-resolved account on every run. Filtering the table — by status,
     // brand, agent, proxy, or country — and then clicking Check Status scopes that
     // run to exactly what's currently filtered, for whichever platform(s) it covers.
-    const activeStatusFilter = statusFilter !== 'all' ? statusFilter : undefined;
-    const filterLabel = activeStatusFilter ? STATUS_OPTS.find((o) => o.value === statusFilter)?.label : undefined;
+    // The check-status API's status/agent/proxy/country fields are still single-value
+    // (unlike `brands`, already an array) — scoping by one of those only applies when
+    // exactly one value is selected here, the same "single-value only" rule already
+    // used for the rating filter above; 2+ selected silently widens the check back to
+    // its normal unscoped sweep for that one field, rather than guessing which value
+    // to send.
+    const activeStatusFilter = statusFilter.length === 1 ? statusFilter[0] : undefined;
+    const filterLabel = activeStatusFilter ? STATUS_MULTI_OPTS.find((o) => o.value === activeStatusFilter)?.label : undefined;
     const scope: StatusCheckScope = {
       statusFilter: activeStatusFilter,
-      brands: brandFilter ? (getBrandGroup(decodedTab, brandFilter) ?? [brandFilter]) : undefined,
-      agent: agentFilter || undefined,
-      proxy: proxyFilter || undefined,
-      country: countryFilter || undefined,
+      brands: brandFilter.length > 0
+        ? [...new Set(brandFilter.flatMap((bf) => getBrandGroup(decodedTab, bf) ?? [bf]))]
+        : undefined,
+      agent: agentFilter.length === 1 ? agentFilter[0] : undefined,
+      proxy: proxyFilter.length === 1 ? proxyFilter[0] : undefined,
+      country: countryFilter.length === 1 ? countryFilter[0] : undefined,
     };
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
@@ -1711,16 +1676,16 @@ export default function BrandGroup() {
             value={loading ? '…' : displayTotals.live.toLocaleString()}
             hint="Reviews live or published"
             color="emerald"
-            onClick={() => { setStatusFilter(statusFilter === 'live' ? 'all' : 'live'); setPage(1); }}
-            active={statusFilter === 'live'}
+            onClick={() => { setStatusFilter(statusFilter.includes('live') ? statusFilter.filter((s) => s !== 'live') : [...statusFilter, 'live']); setPage(1); }}
+            active={statusFilter.includes('live')}
           />
           <KpiCard
             label="Removed"
             value={loading ? '…' : displayTotals.removed.toLocaleString()}
             hint="Reviews removed or refused"
             color="rose"
-            onClick={() => { setStatusFilter(statusFilter === 'removed' ? 'all' : 'removed'); setPage(1); }}
-            active={statusFilter === 'removed'}
+            onClick={() => { setStatusFilter(statusFilter.includes('removed') ? statusFilter.filter((s) => s !== 'removed') : [...statusFilter, 'removed']); setPage(1); }}
+            active={statusFilter.includes('removed')}
           />
           <KpiCard
             label="Success Rate"
@@ -1733,24 +1698,23 @@ export default function BrandGroup() {
 
       {activePlatforms.length > 1 && (() => {
         const visibleCards = PLATFORM_CARDS.filter(({ key }) =>
-          activePlatforms.includes(key) && (platformFilter === 'all' || platformFilter === key)
+          activePlatforms.includes(key) && (platformFilter.length === 0 || platformFilter.includes(key))
         );
         const cols = visibleCards.length === 1 ? 'sm:grid-cols-1' : visibleCards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3';
         return (
         <div className={`grid grid-cols-1 gap-3 ${cols} mt-[10px]`}>
           {visibleCards.map(({ key, label }) => {
-            const active = platformFilter === key;
+            const active = platformFilter.includes(key);
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => {
-                  const next = active ? 'all' : key;
+                  const next = active ? platformFilter.filter((p) => p !== key) : [...platformFilter, key];
                   setPlatformFilter(next);
                   setSearchParams((prev) => {
                     const params = new URLSearchParams(prev);
-                    if (next === 'all') params.delete('platform');
-                    else params.set('platform', next);
+                    writeArrayParam(params, 'platform', next);
                     return params;
                   });
                   setPage(1);
@@ -1854,25 +1818,25 @@ export default function BrandGroup() {
               <X className="size-4" />
             </button>
           )}
-          {!loading && (search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all') && (
+          {!loading && (search || brandFilter.length > 0 || statusFilter.length > 0 || platformFilter.length > 0) && (
             <span className="text-xs text-slate-400 whitespace-nowrap">
               {filtered.length} result{filtered.length !== 1 ? 's' : ''}
             </span>
           )}
-          {(brandFilter || ratingFilter != null) && (
+          {(brandFilter.length > 0 || ratingFilter != null) && (
             <div className="flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs text-blue-700 whitespace-nowrap">
               <span>
                 Filtered by:
-                {brandFilter ? ` ${brandFilter}` : ''}
-                {platformFilter !== 'all' ? ` · ${platformFilter.toUpperCase()}` : ''}
+                {brandFilter.length > 0 ? ` ${brandFilter.join(', ')}` : ''}
+                {platformFilter.length > 0 ? ` · ${platformFilter.map((p) => p.toUpperCase()).join('+')}` : ''}
                 {ratingFilter != null ? ` · ${ratingFilter === 'unrated' ? 'Rating Unrated' : ratingFilter === 'any' ? 'Published' : `Rating ${ratingFilter}`}` : ''}
               </span>
               <button
                 type="button"
                 onClick={() => {
-                  setBrandFilter('');
+                  setBrandFilter([]);
                   setRatingFilter(null);
-                  setPlatformFilter('all');
+                  setPlatformFilter([]);
                   setSearchParams({});
                   setPage(1);
                 }}
@@ -1885,65 +1849,67 @@ export default function BrandGroup() {
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
           {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && (
-            <BrandFilterDropdown
-              value={brandFilter}
+            <MultiSelectDropdown
+              noun="brand"
+              values={brandFilter}
               onChange={(v) => {
                 setBrandFilter(v);
                 setSearchParams((prev) => {
                   const params = new URLSearchParams(prev);
-                  if (v) params.set('brand', v);
-                  else params.delete('brand');
+                  writeArrayParam(params, 'brand', v);
                   return params;
                 });
                 setPage(1);
               }}
-              brands={uniqueBrands}
-              noun="brand"
+              options={uniqueBrands.map((b) => ({ value: b, label: b }))}
+              searchable
             />
           )}
           {uniqueAgents.length > 1 && (
-            <BrandFilterDropdown
+            <MultiSelectDropdown
               noun="agent"
-              value={agentFilter}
+              values={agentFilter}
               onChange={(v) => { setAgentFilter(v); setPage(1); }}
-              brands={uniqueAgents}
+              options={uniqueAgents.map((a) => ({ value: a, label: a }))}
             />
           )}
           {uniqueProxies.length > 1 && (
-            <BrandFilterDropdown
-              noun="proxie"
-              value={proxyFilter}
+            <MultiSelectDropdown
+              noun="proxy"
+              values={proxyFilter}
               onChange={(v) => { setProxyFilter(v); setPage(1); }}
-              brands={uniqueProxies}
+              options={uniqueProxies.map((p) => ({ value: p, label: p }))}
             />
           )}
           {uniqueCountries.length > 1 && (
-            <BrandFilterDropdown
-              noun="countrie"
-              value={countryFilter}
+            <MultiSelectDropdown
+              noun="country"
+              values={countryFilter}
               onChange={(v) => { setCountryFilter(v); setPage(1); }}
-              brands={uniqueCountries}
+              options={uniqueCountries.map((c) => ({ value: c, label: c }))}
+              searchable
             />
           )}
-          <FilterDropdown
-            value={statusFilter}
-            onChange={(v) => { setStatusFilter(v); setPage(1); }}
-            options={STATUS_OPTS}
+          <MultiSelectDropdown
+            noun="status"
+            values={statusFilter}
+            onChange={(v) => { setStatusFilter(v as StatusValue[]); setPage(1); }}
+            options={STATUS_MULTI_OPTS}
           />
           {activePlatforms.length > 1 && (
-            <FilterDropdown
-              value={platformFilter}
+            <MultiSelectDropdown
+              noun="platform"
+              values={platformFilter}
               onChange={(v) => {
-                setPlatformFilter(v);
+                setPlatformFilter(v as Platform[]);
                 setSearchParams((prev) => {
                   const params = new URLSearchParams(prev);
-                  if (v === 'all') params.delete('platform');
-                  else params.set('platform', v);
+                  writeArrayParam(params, 'platform', v);
                   return params;
                 });
                 setPage(1);
               }}
-              options={PLATFORM_OPTS.filter((o) => o.value === 'all' || (activePlatforms as string[]).includes(o.value))}
+              options={PLATFORM_MULTI_OPTS.filter((o) => (activePlatforms as string[]).includes(o.value))}
             />
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
@@ -2100,7 +2066,7 @@ export default function BrandGroup() {
               ) : pageRows.length === 0 ? (
                 <tr>
                   <td colSpan={(isApproved ? visibleHeaders.length + 2 : visibleHeaders.length + 1) + countGroupSpacers(visibleHeaders) || 5} className="px-4 py-8 text-center text-slate-400">
-                    {search || brandFilter || statusFilter !== 'all' || platformFilter !== 'all' || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Check Status page.'}
+                    {search || brandFilter.length > 0 || statusFilter.length > 0 || platformFilter.length > 0 || dateActive ? 'No entries match your filters.' : 'No entries — run a sync from the Check Status page.'}
                   </td>
                 </tr>
               ) : (
@@ -2607,9 +2573,9 @@ export default function BrandGroup() {
           live={displayTotals.live}
           removed={displayTotals.removed}
           onClose={() => setShowTotalModal(false)}
-          onFilterLive={() => { setStatusFilter('live'); setPage(1); }}
-          onFilterRemoved={() => { setStatusFilter('removed'); setPage(1); }}
-          onFilterTotal={() => { setStatusFilter('all'); setPage(1); }}
+          onFilterLive={() => { setStatusFilter(['live']); setPage(1); }}
+          onFilterRemoved={() => { setStatusFilter(['removed']); setPage(1); }}
+          onFilterTotal={() => { setStatusFilter([]); setPage(1); }}
         />
       )}
 
