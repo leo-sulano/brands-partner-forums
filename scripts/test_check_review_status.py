@@ -105,6 +105,30 @@ def test_load_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch
     assert result == []
 
 
+def test_filter_by_active_group_splits_kept_and_skipped(monkeypatch):
+    monkeypatch.setattr(crs, 'in_active_group', lambda tab, brand, today=None: brand == 'Boho Casino')
+    rows = [
+        _row('Brand / TP URL PAGE', 'Boho Casino'),
+        _row('Brand / TP URL PAGE', '7Bit Casino crypto'),
+    ]
+
+    kept, skipped = crs.filter_by_active_group(rows)
+
+    assert len(kept) == 1
+    assert kept[0]['data']['Brand / TP URL PAGE'] == 'Boho Casino'
+    assert skipped == 1
+
+
+def test_filter_by_active_group_treats_missing_brand_col_as_blank_brand(monkeypatch):
+    monkeypatch.setattr(crs, 'in_active_group', lambda tab, brand, today=None: brand == '')
+    rows = [{'id': 'row-1', 'tab': 'TP Brand Injection', 'sheet_row_id': 'sr-1', 'data': {'Link to the profile': 'x'}}]
+
+    kept, skipped = crs.filter_by_active_group(rows)
+
+    assert len(kept) == 1
+    assert skipped == 0
+
+
 def test_matches_scope_filters_no_filters_matches_everything():
     assert crs.matches_scope_filters({'Agent': 'Lai', 'Proxy Used': 'Enigma', 'Country': 'Germany'}) is True
     assert crs.matches_scope_filters({}) is True
