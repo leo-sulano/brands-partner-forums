@@ -1549,14 +1549,14 @@ export default function BrandGroup() {
       country: countryFilter.length === 1 ? countryFilter[0] : undefined,
     };
     try {
-      const results: { checked?: number; updated: number; errors: number; sheet_errors?: number }[] = [];
+      const results: { checked?: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }[] = [];
       // Populated when the request itself failed (e.g. another check already
       // running on the server) rather than individual entries erroring during
       // the scrape — surfaced directly instead of the generic fallback below.
       const requestErrors: string[] = [];
       for (const p of platforms) {
         try {
-          let r: { checked: number; updated: number; errors: number; sheet_errors?: number };
+          let r: { checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number };
           if (p === 'tp') r = await triggerStatusCheck(decodedTab, scope);
           else if (p === 'ag') r = await triggerAgStatusCheck(decodedTab, scope);
           else if (p === 'cg') r = await triggerCgStatusCheck(decodedTab, scope);
@@ -1572,11 +1572,13 @@ export default function BrandGroup() {
       let totalUpdated = 0;
       let totalErrors = 0;
       let totalSheetErrors = 0;
+      let totalSkippedGroup = 0;
       for (const r of results) {
-        totalChecked     += r.checked ?? 0;
-        totalUpdated     += r.updated ?? 0;
-        totalErrors      += r.errors  ?? 0;
-        totalSheetErrors += r.sheet_errors ?? 0;
+        totalChecked      += r.checked ?? 0;
+        totalUpdated      += r.updated ?? 0;
+        totalErrors       += r.errors  ?? 0;
+        totalSheetErrors  += r.sheet_errors ?? 0;
+        totalSkippedGroup += r.skipped_group ?? 0;
       }
 
       const now = new Date().toLocaleString();
@@ -1608,6 +1610,9 @@ export default function BrandGroup() {
       } else {
         msg = filterLabel ? `No ${filterLabel} entries found to check` : 'No entries found to check';
         kind = 'success';
+      }
+      if (totalSkippedGroup > 0) {
+        msg += ` — ${totalSkippedGroup} skipped (not scheduled this week)`;
       }
       setToast({ message: msg, kind });
       setRefreshingAfterCheck(true);
