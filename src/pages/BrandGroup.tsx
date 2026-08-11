@@ -1003,6 +1003,13 @@ export default function BrandGroup() {
     : headers
   ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
 
+  // Export always includes every column this tab has — Account Details through Behavior
+  // Flags, every platform's own fields — regardless of the on-screen Platform filter, which
+  // only narrows which columns the *table* shows. A user exporting data wants the full record
+  // per account, matching everything editable in the Edit Entry modal, not just whichever
+  // platform happens to be selected on screen.
+  const exportHeaders = headers.filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
+
   const removedPlatformBrandSet = useMemo(() => buildRemovedPlatformBrandSet(removedPlatformBrandRows), [removedPlatformBrandRows]);
   function isPlatformRemoved(brandName: string | null | undefined, platform: Platform): boolean {
     return !!brandName && removedPlatformBrandSet.has(platformRemovedKey(decodedTab, brandName, platform));
@@ -1670,8 +1677,8 @@ export default function BrandGroup() {
         </div>
         <div className="flex items-center gap-2">
           <ExportMenuButton
-            headers={visibleHeaders.map((h) => getColLabel(h, decodedTab))}
-            getRows={() => buildBrandRowsForExport(sorted, visibleHeaders, decodedTab)}
+            headers={exportHeaders.map((h) => getColLabel(h, decodedTab))}
+            getRows={() => buildBrandRowsForExport(sorted, exportHeaders, decodedTab)}
             filenameBase={tabToSlug(decodedTab)}
             disabled={loading}
           />
