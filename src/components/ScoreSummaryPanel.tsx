@@ -424,7 +424,7 @@ function computeColumnTotals(rows: BrandSummary[], maxScore: number): ColumnTota
 function SummaryColgroup({ showGroup = false, maxScore, showStars }: { showGroup?: boolean; maxScore: number; showStars: boolean }) {
   const SPACER_PCT = 1;
   const GROUP_PCT = showGroup ? 12 : 0;
-  const thirdPct = (100 - GROUP_PCT - SPACER_PCT * 2) / 3;
+  const thirdPct = (100 - GROUP_PCT - SPACER_PCT * 2) / (showStars ? 3 : 2);
   const starColPct = showStars ? thirdPct / (maxScore + 2) : 0;
   const successColPct = thirdPct / 4;
 

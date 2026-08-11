@@ -692,9 +692,12 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const platforms: Platform[] = Array.isArray(args?.platform)
-      ? args.platform.filter((p: string): p is Platform => validPlatforms.includes(p as Platform))
-      : ['tp'];
+    const rawPlatform = args?.platform;
+    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
+      ? rawPlatform
+      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
+    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
+    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
     return { brands: scoreSummary(data ?? [], platforms, removedSet) };
   }
   if (name === 'get_removed_platform_flags') {
@@ -710,9 +713,12 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const platforms: Platform[] = Array.isArray(args?.platform)
-      ? args.platform.filter((p: string): p is Platform => validPlatforms.includes(p as Platform))
-      : ['tp'];
+    const rawPlatform = args?.platform;
+    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
+      ? rawPlatform
+      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
+    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
+    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
     return { results: successRateByField(data ?? [], args?.field, platforms, removedSet) };
   }
   if (name === 'get_schedule') {

@@ -1881,19 +1881,21 @@ export default function BrandGroup() {
               values={agentFilter}
               onChange={(v) => { setAgentFilter(v); setPage(1); }}
               options={uniqueAgents.map((a) => ({ value: a, label: a }))}
+              searchable
             />
           )}
           {uniqueProxies.length > 1 && (
             <MultiSelectDropdown
-              noun="proxy"
+              noun="proxie"
               values={proxyFilter}
               onChange={(v) => { setProxyFilter(v); setPage(1); }}
               options={uniqueProxies.map((p) => ({ value: p, label: p }))}
+              searchable
             />
           )}
           {uniqueCountries.length > 1 && (
             <MultiSelectDropdown
-              noun="country"
+              noun="countrie"
               values={countryFilter}
               onChange={(v) => { setCountryFilter(v); setPage(1); }}
               options={uniqueCountries.map((c) => ({ value: c, label: c }))}
@@ -1901,7 +1903,7 @@ export default function BrandGroup() {
             />
           )}
           <MultiSelectDropdown
-            noun="status"
+            noun="statuse"
             values={statusFilter}
             onChange={(v) => { setStatusFilter(v as StatusValue[]); setPage(1); }}
             options={STATUS_MULTI_OPTS}

@@ -490,6 +490,36 @@ Deno.test('get_score_summary with 2 platforms combines their live/removed counts
   assertEquals(result.brands[0].rated, 0);
 });
 
+Deno.test('get_score_summary with platform as a bare string behaves identically to a one-item array (final-review fix: model can omit the array wrapper)', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '8' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const bareString: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: 'ag' });
+  const arrayForm: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: ['ag'] });
+  assertEquals(bareString, arrayForm);
+  assertEquals(bareString.brands[0].average, 8);
+});
+
+Deno.test('get_score_summary with an all-invalid platform array falls back to tp-only, not all-4-combined (final-review fix)', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'TP Review Status': 'Published', 'Score added': '3' } },
+      { id: '2', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Removed' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: ['xyz'] });
+  assertEquals(result.brands.length, 1);
+  // If this fell back to all-4-combined (the pre-fix empty-array behavior),
+  // the AG Removed row would also count, making removed 1 instead of 0.
+  assertEquals(result.brands[0].live, 1);
+  assertEquals(result.brands[0].removed, 0);
+  assertEquals(result.brands[0].average, 3);
+});
+
 Deno.test('successRateByField with 2 platforms combines a value\'s live/removed across both', () => {
   const entries: EntryRow[] = [
     { id: '1', tab: 't', data: { Brand: 'Acme', 'Proxy Used': 'Enigma', 'TP Review Status': 'Removed', 'AG Review Status': 'Published' } },

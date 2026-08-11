@@ -166,6 +166,30 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.tp).toEqual({ live: 2, removed: 1 });
   });
 
+  it('agrees with Score Summary\'s computeTabSuccessRates on the same entries, MULTIPLE platforms, and range', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const entries = [
+      { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+        Brands: 'BrandX',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+    ];
+
+    const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg'])!;
+
+    const rates = computeTabSuccessRates(
+      entries.map((e) => ({ tab: e.tab, data: e.data })) as unknown as Parameters<typeof computeTabSuccessRates>[0],
+      ['tp', 'cg'],
+      new Set(),
+      { from: new Date(2026, 4, 1), to: new Date(2026, 6, 31) },
+    );
+    const scoreSummaryRate = rates.get('Rooster Partners') ?? { live: 0, removed: 0 };
+
+    expect(kpis.live).toBe(scoreSummaryRate.live);
+    expect(kpis.removed).toBe(scoreSummaryRate.removed);
+  });
+
   it('excludes a platform-flagged brand from the tab-level aggregate too, matching that platform\'s own breakdown (a flagged status is unreliable everywhere it feeds, not just its own tile)', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
