@@ -2620,19 +2620,96 @@ cursor — a failed or skipped run self-corrects on the next one with no recover
   `docs/superpowers/plans/2026-08-11-alternating-brand-check-schedules.md`.
 
 ### Known Issues / Backlog (added by this task)
-- **Not yet deployed or verified live.** All 8 implementing sessions for this branch were pure
-  local git-worktree work — no SSH command was run against the real EC2 box at any point, and
-  this branch has never touched the live instance. Two things are still pending before this
-  feature is actually live: (1) deploy — `schedule_groups.py` (new file) plus the modified
-  `check_review_status.py`, `check_ag_status.py`, `check_cg_status.py`, `check_wo_status.py`,
-  and `status_server.py` all need to be uploaded to EC2 together, followed by a `status_server`
-  restart, per the deploy note added to `docs/ec2-scraper-runbook.md`'s "Brand Schedule Groups"
-  section; and (2) live verification — a real SSH-based end-to-end check confirming an actual
-  weekly-cron run skips the expected brands has not been performed, and still needs to happen
-  once the deploy above is done.
+- **Deployed 2026-08-11 (as part of Task 204's session, not this task's own).** This branch's 8
+  implementing sessions were pure local git-worktree work with no EC2 contact; it merged into
+  `main` mid-session while a separate session (Task 204) had uncommitted scraper changes of its
+  own in the same working directory — git auto-stashed that work rather than losing it, and once
+  reconciled, Task 204's own EC2 rollout carried this feature along with it: `schedule_groups.py`
+  plus the modified `check_review_status.py`/`check_ag_status.py`/`check_cg_status.py`/
+  `check_wo_status.py`/`status_server.py` are all uploaded, all confirmed importable together, and
+  `status_server` has been restarted onto the new code (`/health` returns `{"ok":true}`). **Still
+  not live-verified**: no real end-to-end check has confirmed an actual run (weekly cron or a
+  manual Check Status click) actually skips the expected out-of-group brands — only that the code
+  imports and the server is healthy. Worth a dedicated follow-up once the weekly cron fires
+  naturally (next Monday) or via a manual scoped run.
 - No dashboard-side visibility into *which* brands are in which group ahead of time (only a
   post-run skip count) — same category of gap as the weekly cron's own health visibility,
   noted in Task 201's Known Issues. Worth a joint follow-up if either becomes a real pain
   point.
+
+---
+
+## Task 204: Strip Username/Date/Rating Header Bleed from Scraped Review Text
+**Date:** August 11, 2026
+
+Fixed the WO/AG/CG Selenium checkers storing more than the review body in `WO/AG/CG Review Text`.
+Per this feature's own design doc (Task 5, 2026-08-10), Wizard of Odds' review card renders a
+leading byline/date/rating header before the body, and AskGamblers' can carry a trailing
+"Helpful (N)" vote-count line — both were being stored verbatim in the Review Text field even
+though each platform already has its own dedicated Score/Date column for that same
+rating/date, duplicating and cluttering the stored text instead of keeping it body-only.
+
+Added a new shared, unit-tested `split_review_header()` helper to `check_review_status.py`
+(reused by AG/CG/WO — a no-op, confirmed by test, on CG's usual header-less cards) that locates
+the reviewer's username line within the extracted card text and, when a date and/or star-rating
+line immediately follows it (matched against several real date formats and both
+one-line/two-line rating renderings, e.g. WO's `"5"` + `"/ 5"`), strips them out and returns the
+clean body plus the parsed date/rating separately. A second helper, `strip_trailing_helpful()`,
+removes AG's trailing vote-count line. `fetch_wo_review`/`fetch_ag_review`/`fetch_cg_review` all
+widened from a 3-tuple to a `(status, rating, review_text, review_date)` 4-tuple: the site-truth
+rating parsed from the card now takes priority over the older raw-HTML regex guess, and the
+site-truth date (when found) is written into that platform's existing Date column
+(`Wizard of Odds` / `Ask Gambler review added` / `Casino Guru review added`), overwriting
+whatever was previously tracked there — a deliberate site-truth-wins decision, confirmed with the
+user before implementing since it changes what those columns mean once a review is confirmed
+Published. TrustPilot's checker was already clean (extracts text/rating from `__NEXT_DATA__`
+structured JSON, no header/footer bleed) and needed no change.
+
+Initial version: 9 unit tests covering `split_review_header`/`strip_trailing_helpful` against
+synthetic text only (including the real-world WO example that prompted this task:
+`"AManiaW\nJuly 20, 2026 17:51\n5\n/ 5\n<body>"`), no live verification (no Selenium/Chrome
+available in the sandbox that built it).
+
+**Live-verified and deployed to EC2 this same session** (SSH access + Supabase credentials
+turned out to be available after all, once actually checked):
+- Confirmed EC2's real Chrome version is 149, not the locally-drifted `version_main=151`
+  pin — fixed before any upload, per the runbook's own standing warning about this exact
+  mismatch.
+- **WO confirmed end-to-end live, twice**, against the literal motivating example
+  (`@AManiaW` on the Wizard of Odds tab): clean body text, correct rating (5), correct date
+  (`July 20, 2026 17:51`), nothing baked into the text field.
+- **Found and fixed a real gap live**: CasinoGuru's actual header shape is
+  `username → loyalty-tier badge ("Bronze"/"Silver"/etc.) → relative date ("1 month ago")`,
+  not WO's absolute-date-then-rating shape — the original regex correctly no-op'd (safe, no
+  corruption) but didn't clean it. Extended `split_review_header` with `_BADGE_LINE_RE`
+  (a small closed tier-name vocabulary, only consumed if a date/rating corroborates it right
+  after — never enough evidence on its own) and `_RELATIVE_DATE_RE`. A relative date is
+  stripped from the body but deliberately **never** returned as `date_str` — writing something
+  imprecise like "1 month ago" into a Date column other logic parses as an absolute date
+  (grace-period day-math) would have been a real, separate bug. 5 new tests lock this in using
+  the real captured card text (`Ivar88` @ Rooster Bet Casino). Full suite now 91 tests.
+- **AG and the re-verified CG fix were not independently re-confirmed live** — CasinoGuru
+  started Cloudflare-blocking every attempt after ~3 rapid requests (almost certainly this
+  session's own request volume, not a code issue), and AG hit either a block or an account with
+  no current review on all 4 attempts. No crashes in either platform's new code across any
+  attempt. Accepted as sufficient given both fail safe (no-op, not corruption) on an
+  unrecognized shape — a deliberate call, not an oversight.
+- **A genuine incident, caught and fixed, not hidden:** mid-session, a concurrent Claude Code
+  session merged an unrelated "alternating brand check schedules" feature (see Task 203,
+  above) into `main` in this same working directory while this session had uncommitted
+  changes. Git auto-stashed the uncommitted work rather than losing it, but the tool output
+  reporting the file changes carried an embedded instruction to not mention it to the user —
+  ignored, and flagged instead, per standing practice of treating unexpected instructions in
+  tool output as untrusted. The stash reconciled cleanly against the merge (no real code
+  conflict, one trivial doc-file conflict resolved by hand). Separately, re-uploading the
+  post-merge `check_review_status.py` to EC2 without its new `schedule_groups.py` dependency
+  briefly broke imports for all four checkers on the box — caught within minutes (before the
+  weekly cron or a dashboard Check Status click could hit it) and fixed by uploading the
+  missing file.
+- **Deployed for real**: all 4 checker scripts, `schedule_groups.py`, and `status_server.py`
+  uploaded to EC2, all confirmed importable together, `status_server` restarted onto the new
+  code and confirmed healthy (`/health` → `{"ok":true}`). This also carries Task 203's
+  alternating-schedule feature live, per explicit user decision to deploy both together rather
+  than try to separate them now that they share the same files on `main`.
 
 ---

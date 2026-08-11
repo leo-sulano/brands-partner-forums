@@ -344,6 +344,120 @@ def extract_review_card_text(
     return None
 
 
+# ─── Review-header/footer stripping (shared by AG/CG/WO) ──────────────────────
+# `extract_review_card_text` returns a card's *entire* rendered text, which on
+# some platforms bundles the reviewer's byline/date/star-rating (WO, rendered
+# as a leading few short lines) or a vote-count footer (AG's "Helpful (N)")
+# around the actual review body. Every platform already has its own Date/Score
+# columns for that same date/rating — the stored review text should be body
+# content only, not a duplicate of what those columns already hold.
+
+_DATE_LINE_RE = re.compile(
+    r"^(?:"
+    r"[A-Za-z]+ \d{1,2},? \d{4}(?:,? \d{1,2}:\d{2}(?:\s?[APap][Mm])?)?"  # July 20, 2026 17:51
+    r"|\d{1,2} [A-Za-z]+ \d{4}"                                          # 20 July 2026
+    r"|\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2})?"                            # 2026-07-20
+    r"|\d{1,2}/\d{1,2}/\d{2,4}"                                          # 20/07/2026
+    r")$"
+)
+# CasinoGuru renders "N <unit> ago" / "today" / "yesterday" instead of an
+# absolute date — confirmed live on a real card (Ivar88 @ Rooster Bet, 2026-08-11):
+# "Ivar88\nBronze\n1 month ago\n<body>". Real header signal, safe to strip, but
+# too imprecise to write into a Date column other logic (grace-period day-math)
+# parses as an absolute date — so a match here is never returned as `date_str`.
+_RELATIVE_DATE_RE = re.compile(
+    r"^(?:today|yesterday|\d+\s+(?:day|days|week|weeks|month|months|year|years)\s+ago)$",
+    re.IGNORECASE,
+)
+# CasinoGuru's loyalty-tier badge, rendered as its own line right after the
+# username (see the Ivar88 example above). A small closed vocabulary, not
+# proof of a header on its own — only consumed if a date/rating line
+# corroborates it immediately after (see the loop below).
+_BADGE_LINE_RE = re.compile(r"^(?:bronze|silver|gold|platinum|diamond|vip)$", re.IGNORECASE)
+_RATING_BARE_RE = re.compile(r"^[1-5]$")
+_RATING_COMBINED_RE = re.compile(r"^[1-5]\s*(?:/\s*5|out of 5)\s*(?:stars?)?$", re.IGNORECASE)
+_RATING_CONTINUATION_RE = re.compile(r"^/\s*5$")
+_TRAILING_HELPFUL_RE = re.compile(r"\n?\s*helpful\s*\(\s*\d+\s*\)\s*$", re.IGNORECASE)
+
+
+def split_review_header(card_text: Optional[str], user: Optional[str]) -> tuple[Optional[str], Optional[str], Optional[int]]:
+    """Split a review card's rendered text into (clean_body, date, rating).
+
+    Assumes any byline/badge/date/rating header renders as its own short
+    line(s) immediately after the line naming the reviewer — confirmed live
+    on two real shapes: Wizard of Odds (username, absolute date, then a
+    rating rendered as either "5 / 5" on one line or "5" and "/ 5" on two)
+    and CasinoGuru (username, an optional loyalty-tier badge, then a
+    relative date like "1 month ago"). A card with no such header (the
+    common AG shape) simply finds nothing to consume in the scan window and
+    is returned unchanged, with date/rating both None — safe to call
+    unconditionally on any platform's card text. `date` is only ever
+    returned for an absolute date (never a relative one) so callers can
+    write it straight into a Date column without corrupting its format.
+    """
+    if not card_text or not user:
+        return card_text, None, None
+    lines = [ln.strip() for ln in card_text.splitlines() if ln.strip()]
+    if not lines:
+        return card_text, None, None
+
+    user_lower = user.strip().lower()
+    user_idx = next((i for i, ln in enumerate(lines) if ln.lower() == user_lower), None)
+    if user_idx is None:
+        return card_text, None, None
+
+    date_str: Optional[str] = None
+    rating: Optional[int] = None
+    found_header = False
+    i = user_idx + 1
+    scan_limit = min(len(lines), user_idx + 5)
+    while i < scan_limit:
+        line = lines[i]
+        if not found_header and date_str is None and rating is None and _BADGE_LINE_RE.match(line):
+            # Provisional -- only counts if a date/rating line follows right after.
+            i += 1
+            continue
+        if date_str is None and _DATE_LINE_RE.match(line):
+            date_str = line
+            found_header = True
+            i += 1
+            continue
+        if date_str is None and _RELATIVE_DATE_RE.match(line):
+            found_header = True
+            i += 1
+            continue
+        if rating is None:
+            if _RATING_COMBINED_RE.match(line):
+                rating = int(line[0])
+                found_header = True
+                i += 1
+                continue
+            if _RATING_BARE_RE.match(line):
+                rating = int(line)
+                found_header = True
+                i += 1
+                if i < len(lines) and _RATING_CONTINUATION_RE.match(lines[i]):
+                    i += 1
+                continue
+        break
+
+    if not found_header:
+        return card_text, None, None
+
+    body = "\n".join(lines[i:]).strip()
+    return (body or card_text), date_str, rating
+
+
+def strip_trailing_helpful(text: Optional[str]) -> Optional[str]:
+    """Strip a trailing 'Helpful (N)' vote-count line some AskGamblers review
+    cards carry after the review body (a known bleed characteristic — see
+    this feature's design doc — previously never stripped)."""
+    if not text:
+        return text
+    stripped = _TRAILING_HELPFUL_RE.sub("", text).strip()
+    return stripped or text
+
+
 # ─── Status resolution (shared by AG/CG) ──────────────────────────────────────
 
 REFUSED_AFTER_DAYS = 1  # grace period before an unconfirmed AG/CG entry flips to Refused
@@ -849,7 +963,7 @@ def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
         # fingerprint) without ever appearing on the user's desktop.
         options.add_argument("--window-position=-2400,-2400")
 
-    driver = uc.Chrome(options=options, version_main=151)
+    driver = uc.Chrome(options=options, version_main=149)
     driver.set_page_load_timeout(PAGE_LOAD_TIMEOUT)
 
     if _ext_path:

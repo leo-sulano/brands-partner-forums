@@ -53,6 +53,7 @@ from check_review_status import (
     matches_scope_filters,
     filter_by_active_group,
     extract_review_card_text,
+    split_review_header,
     REVIEW_TEXT_KEYS,
 )
 from geo_proxy import geo_proxy_for_entry, country_code_for_entry, detect_exit_country
@@ -210,12 +211,17 @@ def fetch_cg_review(
 ) -> tuple:
     """Visit the CG casino review page and search player reviews for cg_user.
 
-    Returns (status, rating, review_text):
-      ('Published', 1-5 or None, text or None)  — username found in reviews
-      ('Removed', None, None)     — not found, current status was 'published'
-      ('Pending', None, None)     — not found, added within the grace period (see resolve_status)
-      ('Refused', None, None)     — not found, not previously published, past the grace period
-      ('__skip__', None, None)    — page blocked/CAPTCHA; skip without changing status
+    Returns (status, rating, review_text, review_date):
+      ('Published', 1-5 or None, text or None, date or None) — username found in reviews
+      ('Removed', None, None, None)     — not found, current status was 'published'
+      ('Pending', None, None, None)     — not found, added within the grace period (see resolve_status)
+      ('Refused', None, None, None)     — not found, not previously published, past the grace period
+      ('__skip__', None, None, None)    — page blocked/CAPTCHA; skip without changing status
+
+    `review_text` is body-only — the liker-tooltip/reply exclusions already
+    applied by `extract_review_card_text` stay, and any username/date/rating
+    byline header (if the card renders one) is additionally stripped via
+    `split_review_header`, which is a no-op on CG's usual header-less cards.
     """
     url = normalize_review_list_url(cg_link.strip())
     if not url.startswith("http"):
@@ -231,7 +237,7 @@ def fetch_cg_review(
     current_url = driver.current_url.lower()
     if "casino.guru" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
-        return ("Removed", None, None)
+        return ("Removed", None, None, None)
 
     # Scroll down to trigger lazy-loaded reviews section
     try:
@@ -257,7 +263,7 @@ def fetch_cg_review(
         # reads identically to a genuinely-removed review.
         if page_num == 0 and page_blocked(html, driver.title):
             print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
-            return ("__skip__", None, None)
+            return ("__skip__", None, None, None)
 
         # Only the rendered visible text proves an authored review exists — the
         # hidden liker tooltip never appears here, unlike in raw page_source.
@@ -269,12 +275,17 @@ def fetch_cg_review(
         if cg_user_lower in visible_text:
             context = _find_authored_context(html, html.lower(), cg_user_lower)
             rating = _extract_rating_from_context(context) if context else None
+            review_date = None
             try:
                 review_text = extract_review_card_text(driver, cg_user_lower, exclude_class=(_LIKER_TOOLTIP_MARKER, _REPLY_MARKER))
+                if review_text:
+                    review_text, review_date, card_rating = split_review_header(review_text, cg_user)
+                    if card_rating is not None:
+                        rating = card_rating
             except Exception as exc:
                 print(f"    [text] extraction error: {exc}")
                 review_text = None
-            return ("Published", rating, review_text)
+            return ("Published", rating, review_text, review_date)
 
         clicked = _try_load_more(driver)
         page_num += 1
@@ -282,7 +293,7 @@ def fetch_cg_review(
             break
         time.sleep(LOAD_MORE_SLEEP)
 
-    return (resolve_status(found=False, current_status=current_status, added_date=added_date), None, None)
+    return (resolve_status(found=False, current_status=current_status, added_date=added_date), None, None, None)
 
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -343,15 +354,17 @@ def check_cg_for_tab(
                 data: dict = entry["data"]
                 status_col  = _col(data, CG_STATUS_COLS)
                 score_col   = _col(data, CG_SCORE_COLS)
+                date_col    = _col(data, CG_DATE_COLS)
                 cg_link     = _val(data, CG_LINK_COLS) or ""
                 cg_user     = _val(data, CG_USER_COLS) or ""
                 cg_date     = _val(data, CG_DATE_COLS) or ""
                 current     = (data.get(status_col, "") or "").strip()
                 current_score = str(data.get(score_col, "") or "") if score_col else ""
+                current_date = str(data.get(date_col, "") or "") if date_col else ""
 
                 print(f"  [CG {checked}/{total}] {cg_link} (@{cg_user})")
                 try:
-                    new_status, new_rating, new_review_text = fetch_cg_review(driver, cg_link, cg_user, current, cg_date)
+                    new_status, new_rating, new_review_text, new_review_date = fetch_cg_review(driver, cg_link, cg_user, current, cg_date)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("CG", cg_link, exc)
@@ -368,6 +381,10 @@ def check_cg_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                # Site-truth date read straight off the review card, overwriting
+                # whatever was previously tracked in this column.
+                if date_col and new_review_date and new_review_date != current_date:
+                    updates[date_col] = new_review_date
                 current_review_text = data.get(REVIEW_TEXT_KEYS["cg"]) or ""
                 if new_review_text and new_review_text != current_review_text:
                     updates[REVIEW_TEXT_KEYS["cg"]] = new_review_text

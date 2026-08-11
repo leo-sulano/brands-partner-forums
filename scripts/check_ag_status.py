@@ -46,6 +46,8 @@ from check_review_status import (
     resolve_status,
     normalize_review_list_url,
     extract_review_card_text,
+    split_review_header,
+    strip_trailing_helpful,
     STATUS_FILTER_MAP,
     matches_scope_filters,
     filter_by_active_group,
@@ -193,10 +195,16 @@ def fetch_ag_review(
 ) -> tuple:
     """Visit the AG casino review page and search player reviews for ag_user.
 
-    Returns (status, rating, review_text):
-      ('Published', 1-5 or None, text or None)  — username found in reviews
-      (None, None, None)                        — not found; caller resolves the next status via resolve_status()
-      ('__skip__', None, None)                  — page blocked/CAPTCHA; skip without changing status
+    Returns (status, rating, review_text, review_date):
+      ('Published', 1-5 or None, text or None, date or None) — username found in reviews
+      (None, None, None, None)   — not found; caller resolves the next status via resolve_status()
+      ('__skip__', None, None, None)  — page blocked/CAPTCHA; skip without changing status
+
+    `review_text` is body-only — the casino's reply (already trimmed via
+    `strip_class`), a trailing "Helpful (N)" vote-count line, and any
+    username/date/rating byline header are all stripped. When a byline
+    header is found, `review_date`/`rating` are the site-truth values read
+    straight off the card.
     """
     url = normalize_review_list_url(ag_link.strip())
     if not url.startswith("http"):
@@ -211,7 +219,7 @@ def fetch_ag_review(
     current_url = driver.current_url.lower()
     if "askgamblers.com" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
-        return ("Removed", None, None)
+        return ("Removed", None, None, None)
 
     # Scroll down to trigger lazy-loaded reviews section
     try:
@@ -237,7 +245,7 @@ def fetch_ag_review(
             print(f"    [page] length={len(html)}, url={driver.current_url[:60]}")
             if page_blocked(html, driver.title):
                 print(f"    -> page blocked/CAPTCHA — skipping (no status change)")
-                return ("__skip__", None, None)
+                return ("__skip__", None, None, None)
 
         # Only the rendered visible text proves an authored review exists — a raw
         # HTML match can come from a hidden widget reusing review markup (confirmed
@@ -254,12 +262,18 @@ def fetch_ag_review(
             # Extract rating from surrounding HTML context
             context = html[max(0, idx - 500) : idx + 1500]
             rating = _extract_rating_from_context(context)
+            review_date = None
             try:
                 review_text = extract_review_card_text(driver, ag_user_lower, strip_class=_AG_REPLY_MARKER)
+                if review_text:
+                    review_text = strip_trailing_helpful(review_text)
+                    review_text, review_date, card_rating = split_review_header(review_text, ag_user)
+                    if card_rating is not None:
+                        rating = card_rating
             except Exception as exc:
                 print(f"    [text] extraction error: {exc}")
                 review_text = None
-            return ("Published", rating, review_text)
+            return ("Published", rating, review_text, review_date)
 
         clicked = _try_load_more(driver)
         page_num += 1
@@ -268,7 +282,7 @@ def fetch_ag_review(
         time.sleep(LOAD_MORE_SLEEP)
 
     # Username not found after all pages — caller decides next status
-    return (None, None, None)
+    return (None, None, None, None)
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
 
@@ -330,14 +344,16 @@ def check_ag_for_tab(
                 data: dict = entry["data"]
                 status_col  = _col(data, AG_STATUS_COLS)
                 score_col   = _col(data, AG_SCORE_COLS)
+                date_col    = _col(data, AG_DATE_COLS)
                 ag_link     = _val(data, AG_LINK_COLS) or ""
                 ag_user     = _val(data, AG_USER_COLS) or ""
                 current     = (data.get(status_col, "") or "").strip()
                 current_score = str(data.get(score_col, "") or "") if score_col else ""
+                current_date = str(data.get(date_col, "") or "") if date_col else ""
 
                 print(f"  [AG {checked}/{total}] {ag_link} (@{ag_user})")
                 try:
-                    new_status, new_rating, new_review_text = fetch_ag_review(driver, ag_link, ag_user, current)
+                    new_status, new_rating, new_review_text, new_review_date = fetch_ag_review(driver, ag_link, ag_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("AG", ag_link, exc)
@@ -358,6 +374,10 @@ def check_ag_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                # Site-truth date read straight off the review card, overwriting
+                # whatever was previously tracked in this column.
+                if date_col and new_review_date and new_review_date != current_date:
+                    updates[date_col] = new_review_date
                 current_review_text = data.get(REVIEW_TEXT_KEYS["ag"]) or ""
                 if new_review_text and new_review_text != current_review_text:
                     updates[REVIEW_TEXT_KEYS["ag"]] = new_review_text

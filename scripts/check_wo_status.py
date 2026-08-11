@@ -39,6 +39,7 @@ from check_review_status import (
     matches_scope_filters,
     filter_by_active_group,
     extract_review_card_text,
+    split_review_header,
     REVIEW_TEXT_KEYS,
 )
 from geo_bridge import ensure_display
@@ -176,10 +177,15 @@ def fetch_wo_review(
 ) -> tuple:
     """Visit the WO casino review page and search player reviews for wo_user.
 
-    Returns (status, rating, review_text):
-      ('Published', 1-5 or None, text or None)  — username found in reviews
-      ('Removed', None, None)                   — not found, current status was 'published'
-      (None, None, None)                         — not found, status was not published (no write)
+    Returns (status, rating, review_text, review_date):
+      ('Published', 1-5 or None, text or None, date or None) — username found in reviews
+      ('Removed', None, None, None)                          — not found, current status was 'published'
+      (None, None, None, None)                                — not found, status was not published (no write)
+
+    `review_text` is body-only — the card's own username/date/rating header
+    (if present) is stripped via `split_review_header` and, when found there,
+    `review_date`/`rating` are the site-truth values read straight off the
+    card rather than duplicated inside the stored text.
     """
     url = wo_link.strip()
     if not url.startswith("http"):
@@ -194,7 +200,7 @@ def fetch_wo_review(
     current_url = driver.current_url.lower()
     if "wizardofodds.com" not in current_url:
         print(f"    redirected off-site -> {driver.current_url}")
-        return ("Removed", None, None)
+        return ("Removed", None, None, None)
 
     wo_user_lower = wo_user.lower()
 
@@ -210,12 +216,17 @@ def fetch_wo_review(
             idx = html_lower.find(wo_user_lower)
             context = html[max(0, idx - 500) : idx + 1500]
             rating = _extract_rating_from_context(context)
+            review_date = None
             try:
                 review_text = extract_review_card_text(driver, wo_user_lower)
+                if review_text:
+                    review_text, review_date, card_rating = split_review_header(review_text, wo_user)
+                    if card_rating is not None:
+                        rating = card_rating
             except Exception as exc:
                 print(f"    [text] extraction error: {exc}")
                 review_text = None
-            return ("Published", rating, review_text)
+            return ("Published", rating, review_text, review_date)
 
         clicked = _try_load_more(driver)
         if not clicked:
@@ -223,8 +234,8 @@ def fetch_wo_review(
         time.sleep(LOAD_MORE_SLEEP)
 
     if current_status.strip().lower() == "published":
-        return ("Removed", None, None)
-    return (None, None, None)
+        return ("Removed", None, None, None)
+    return (None, None, None, None)
 
 
 # ─── Main check loop ──────────────────────────────────────────────────────────
@@ -264,14 +275,16 @@ def check_wo_for_tab(
                 data: dict = entry["data"]
                 status_col  = _col(data, WO_STATUS_COLS)
                 score_col   = _col(data, WO_SCORE_COLS)
+                date_col    = _col(data, WO_DATE_COLS)
                 wo_link     = _val(data, WO_LINK_COLS) or ""
                 wo_user     = _val(data, WO_USER_COLS) or ""
                 current     = (data.get(status_col, "") or "").strip()
                 current_score = str(data.get(score_col, "") or "") if score_col else ""
+                current_date = str(data.get(date_col, "") or "") if date_col else ""
 
                 print(f"  [WO {checked}/{total}] {wo_link} (@{wo_user})")
                 try:
-                    new_status, new_rating, new_review_text = fetch_wo_review(driver, wo_link, wo_user, current)
+                    new_status, new_rating, new_review_text, new_review_date = fetch_wo_review(driver, wo_link, wo_user, current)
                 except Exception as exc:
                     print(f"    -> ERROR: {exc}")
                     log_check_error("WO", wo_link, exc)
@@ -301,6 +314,10 @@ def check_wo_for_tab(
                 is_boolean_col = current_score.strip().lower() in {"yes", "no", ""}
                 if score_col and new_score_str and new_score_str != current_score and not is_boolean_col:
                     updates[score_col] = new_score_str
+                # Site-truth date read straight off the review card, overwriting
+                # whatever was previously tracked in this column.
+                if date_col and new_review_date and new_review_date != current_date:
+                    updates[date_col] = new_review_date
                 current_review_text = data.get(REVIEW_TEXT_KEYS["wo"]) or ""
                 if new_review_text and new_review_text != current_review_text:
                     updates[REVIEW_TEXT_KEYS["wo"]] = new_review_text

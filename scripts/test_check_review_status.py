@@ -403,3 +403,120 @@ def test_review_text_keys_are_stable():
         "cg": "CG Review Text",
         "wo": "WO Review Text",
     }
+
+
+# ─── split_review_header / strip_trailing_helpful ────────────────────────────
+
+_WO_CARD_TEXT_TWO_LINE_RATING = (
+    "AManiaW\n"
+    "July 20, 2026 17:51\n"
+    "5\n"
+    "/ 5\n"
+    "I had a similar experience after cashing out around $180. The withdrawal "
+    "was approved, and the money was in my bank account within three days. "
+    "It's always good when the payout process is smooth."
+)
+
+
+def test_split_review_header_extracts_wo_username_date_rating():
+    body, date, rating = crs.split_review_header(_WO_CARD_TEXT_TWO_LINE_RATING, "AManiaW")
+    assert date == "July 20, 2026 17:51"
+    assert rating == 5
+    assert body.startswith("I had a similar experience")
+    assert "AManiaW" not in body
+    assert "July 20, 2026" not in body
+
+
+def test_split_review_header_handles_combined_rating_line():
+    text = "PlayerX\nJune 1, 2026\n4 / 5\nGreat casino, fast payouts."
+    body, date, rating = crs.split_review_header(text, "PlayerX")
+    assert date == "June 1, 2026"
+    assert rating == 4
+    assert body == "Great casino, fast payouts."
+
+
+def test_split_review_header_no_change_when_username_not_found():
+    text = "Just a review body with no byline at all."
+    body, date, rating = crs.split_review_header(text, "SomeUser")
+    assert body == text
+    assert date is None
+    assert rating is None
+
+
+def test_split_review_header_no_change_when_no_header_after_username():
+    # Common AG/CG shape: username IS present but nothing recognizable as a
+    # date/rating line follows it — must be left untouched, not truncated.
+    text = "ReviewerName\nThis review never renders a separate date/rating line."
+    body, date, rating = crs.split_review_header(text, "ReviewerName")
+    assert body == text
+    assert date is None
+    assert rating is None
+
+
+def test_split_review_header_returns_input_unchanged_for_empty_text():
+    assert crs.split_review_header("", "SomeUser") == ("", None, None)
+    assert crs.split_review_header(None, "SomeUser") == (None, None, None)
+
+
+def test_strip_trailing_helpful_removes_vote_count_line():
+    text = "Great casino, would recommend.\nHelpful (12)"
+    assert crs.strip_trailing_helpful(text) == "Great casino, would recommend."
+
+
+def test_strip_trailing_helpful_no_change_without_marker():
+    text = "Great casino, would recommend."
+    assert crs.strip_trailing_helpful(text) == text
+
+
+# ─── split_review_header: CasinoGuru badge + relative-date shape ─────────────
+# Confirmed live 2026-08-11 against a real CasinoGuru card (Ivar88 @ Rooster
+# Bet Casino) via a direct fetch_cg_review() dry-run on EC2.
+
+_CG_CARD_TEXT_BADGE_RELATIVE_DATE = (
+    "X\n"
+    "Ivar88\n"
+    "Bronze\n"
+    "1 month ago\n"
+    "Amazing and easy website. Great assistance by support. Reliable "
+    "transactions and nice theme!\n"
+    "Great theme\n"
+    "Reliable transactions\n"
+    "2\n"
+    "Rooster Bet Casino\n"
+    "1 month ago\n"
+    "Hi Ivar88,\n"
+    "Thank you for your wonderful review!"
+)
+
+
+def test_split_review_header_strips_cg_badge_and_relative_date():
+    body, date, rating = crs.split_review_header(_CG_CARD_TEXT_BADGE_RELATIVE_DATE, "Ivar88")
+    assert body.startswith("Amazing and easy website")
+    assert "Bronze" not in body
+    assert not body.startswith("1 month ago")
+
+
+def test_split_review_header_relative_date_never_returned_as_date():
+    # A relative date is real header signal (safe to strip) but too
+    # imprecise to write into a Date column parsed as an absolute date
+    # elsewhere (grace-period day-math) -- must always come back as None.
+    _, date, _ = crs.split_review_header(_CG_CARD_TEXT_BADGE_RELATIVE_DATE, "Ivar88")
+    assert date is None
+
+
+def test_split_review_header_relative_date_alone_without_badge():
+    text = "PlayerZ\nyesterday\nFast withdrawals, would play again."
+    body, date, rating = crs.split_review_header(text, "PlayerZ")
+    assert body == "Fast withdrawals, would play again."
+    assert date is None
+    assert rating is None
+
+
+def test_split_review_header_badge_alone_without_corroborating_date_is_noop():
+    # A tier badge by itself isn't proof of a header -- must not strip
+    # anything unless a date/rating line immediately corroborates it.
+    text = "PlayerY\nBronze\nJust a regular review with no further header line."
+    body, date, rating = crs.split_review_header(text, "PlayerY")
+    assert body == text
+    assert date is None
+    assert rating is None
