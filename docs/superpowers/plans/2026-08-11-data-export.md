@@ -922,7 +922,7 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: [],
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'TrustPilot', 'Active', '', 'Paused', '', '', 'N', 'N'],
+      ['Acme', 'Trustpilot', 'Active', '', 'Paused', '', '', 'N', 'N'],
     ]);
   });
 
@@ -935,7 +935,7 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: ['tp'],
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'TrustPilot', '', '', '', '', '', 'Y', 'Y'],
+      ['Acme', 'Trustpilot', '', '', '', '', '', 'Y', 'Y'],
     ]);
   });
 
@@ -949,7 +949,7 @@ describe('buildScheduleExportRows', () => {
     }];
     const rows = buildScheduleExportRows(data);
     expect(rows).toHaveLength(2);
-    expect(rows[0][1]).toBe('TrustPilot');
+    expect(rows[0][1]).toBe('Trustpilot');
     expect(rows[1][1]).toBe('AskGamblers');
   });
 
