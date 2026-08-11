@@ -153,7 +153,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   // (e.g. "WinMega" / "winmega") merge correctly.
   const rateRange = last30DaysRange(weekStart);
   const ratesByPlatform = new Map(
-    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, platform, new Set(), rateRange), tab)]),
+    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, [platform], new Set(), rateRange), tab)]),
   );
 
   for (const brand of ctx.brands) {

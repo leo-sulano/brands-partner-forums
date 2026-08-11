@@ -284,26 +284,39 @@ export interface FieldSuccessRate {
 export function successRateByField(
   entries: EntryRow[],
   field: 'proxy' | 'agent' | 'country',
-  platform: Platform = 'tp',
+  platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
 ): FieldSuccessRate[] {
+  const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   const fieldKeys = FIELD_KEYS[field];
-  const statusKeys = PLATFORM_STATUS_KEYS[platform];
   const buckets = new Map<string, { live: number; removed: number }>();
   for (const e of entries) {
     const value = (pick(e.data, fieldKeys) ?? '').trim();
     if (!value) continue;
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
-    if (brand && removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
-    const status = (pick(e.data, statusKeys) ?? '').trim().toLowerCase();
-    if (!status) continue;
+
+    // matchedAny mirrors the frontend's computeSuccessRates gate (Task 5) —
+    // a bucket exists for any non-blank status, not only a live/removed one.
+    let matchedAny = false;
+    let matchedLive = false;
+    let matchedRemoved = false;
+    for (const platform of resolved) {
+      if (brand && removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
+      const status = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status) continue;
+      matchedAny = true;
+      if (isLiveStatus(status)) matchedLive = true;
+      else if (isRemovedStatus(status)) matchedRemoved = true;
+    }
+    if (!matchedAny) continue;
+
     let b = buckets.get(value);
     if (!b) {
       b = { live: 0, removed: 0 };
       buckets.set(value, b);
     }
-    if (isLiveStatus(status)) b.live += 1;
-    else if (isRemovedStatus(status)) b.removed += 1;
+    if (matchedLive) b.live += 1;
+    else if (matchedRemoved) b.removed += 1;
   }
   return [...buckets.entries()]
     .map(([value, { live, removed }]) => {
@@ -333,12 +346,16 @@ export interface BrandScoreSummary {
 // into a single result since the assistant only ever needs the combined view.
 export function scoreSummary(
   entries: EntryRow[],
-  platform: Platform = 'tp',
+  platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
 ): BrandScoreSummary[] {
-  const statusKeys = PLATFORM_STATUS_KEYS[platform];
-  const scoreKeys = PLATFORM_SCORE_KEYS[platform];
-  const maxScore = PLATFORM_MAX_SCORE[platform];
+  const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
+  // Same rule as computeScoreSummary (Task 5): the star/score breakdown only
+  // ever applies for exactly one platform — 2+ platforms still combine
+  // live/removed but report zeroed counts/unrated (the caller should treat
+  // a >1-length platforms array as "combined totals only, no star detail").
+  const showStars = resolved.length === 1;
+  const maxScore = showStars ? PLATFORM_MAX_SCORE[resolved[0]] : 0;
 
   interface Bucket {
     tab: string;
@@ -353,9 +370,21 @@ export function scoreSummary(
   for (const e of entries) {
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
     if (!brand) continue;
-    if (removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
-    const status = (pick(e.data, statusKeys) ?? '').trim().toLowerCase();
-    if (!status) continue;
+
+    let matchedAny = false;
+    let matchedLive = false;
+    let matchedRemoved = false;
+    let solePublished = false;
+    for (const platform of resolved) {
+      if (removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
+      const status = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status) continue;
+      matchedAny = true;
+      if (isLiveStatus(status)) matchedLive = true;
+      else if (isRemovedStatus(status)) matchedRemoved = true;
+      if (showStars && status === 'published') solePublished = true;
+    }
+    if (!matchedAny) continue;
 
     const key = `${e.tab} ${brand}`;
     let b = buckets.get(key);
@@ -366,13 +395,14 @@ export function scoreSummary(
       buckets.set(key, b);
     }
 
-    if (isLiveStatus(status)) b.live += 1;
-    else if (isRemovedStatus(status)) b.removed += 1;
+    if (matchedLive) b.live += 1;
+    else if (matchedRemoved) b.removed += 1;
 
-    if (status !== 'published') continue;
-    const score = parseScore(pick(e.data, scoreKeys), maxScore);
-    if (score == null) b.unrated += 1;
-    else b.counts[score] += 1;
+    if (showStars && solePublished) {
+      const score = parseScore(pick(e.data, PLATFORM_SCORE_KEYS[resolved[0]]), maxScore);
+      if (score == null) b.unrated += 1;
+      else b.counts[score] += 1;
+    }
   }
 
   return [...buckets.values()].map((b) => {
@@ -477,16 +507,21 @@ export const TOOL_DEFS = [
       name: 'get_score_summary',
       description:
         'Star-rating rollup (Published reviews only) AND live/removed Success Rate ' +
-        'per brand, matching the dashboard\'s Score Summary page, for one platform: ' +
-        'tp (TrustPilot, default), ag (AskGamblers), cg (CasinoGuru), or wo (Wizard ' +
-        'of Odds). All-time only — no date-range filtering yet. Brands whose page on ' +
-        'the queried platform was flagged removed (see get_removed_platform_flags) ' +
-        'are excluded from these results entirely.',
+        'per brand, matching the dashboard\'s Score Summary page, for one or more ' +
+        'platforms: tp (TrustPilot, default), ag (AskGamblers), cg (CasinoGuru), or wo ' +
+        '(Wizard of Odds). Passing multiple platforms combines their live/removed ' +
+        'counts into one total, the same OR-across-platforms rule the dashboard\'s own ' +
+        'multi-select filters use — it does not average or intersect them. Star-rating ' +
+        'detail is only meaningful for exactly one platform at a time — when 2+ ' +
+        'platforms are passed, the response still includes combined live/removed/' +
+        'successRate but zeroes out the star breakdown. All-time only — no date-range ' +
+        'filtering yet. Brands whose page on the queried platform was flagged removed ' +
+        '(see get_removed_platform_flags) are excluded from these results entirely.',
       parameters: {
         type: 'object',
         properties: {
           tab: { type: 'string' },
-          platform: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] },
+          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection). Omitting this parameter defaults to TrustPilot only, matching this tool\'s existing single-platform behavior — explicitly list platforms (including all 4) to get a combined total.' },
         },
       },
     },
@@ -515,18 +550,20 @@ export const TOOL_DEFS = [
       description:
         'Computes the same live/removed "Success Rate" shown elsewhere in the dashboard ' +
         '(Published+Live vs Removed+Refused, as a percentage), grouped by one field: proxy, ' +
-        'agent, or country, for one platform: tp (TrustPilot, default), ag (AskGamblers), ' +
-        'cg (CasinoGuru), or wo (Wizard of Odds). Results are sorted best-rate-first, so the ' +
-        'top row answers "which X works best". Rows whose status is pending, paused, or ' +
-        'otherwise undecided are not counted (contribute to neither live nor removed) — total ' +
-        'may be lower than raw row count for that value. Brands whose page on the queried ' +
-        'platform was flagged removed (see get_removed_platform_flags) are excluded from ' +
-        'these results entirely.',
+        'agent, or country, for one or more platforms: tp (TrustPilot, default), ag ' +
+        '(AskGamblers), cg (CasinoGuru), or wo (Wizard of Odds). Passing multiple platforms ' +
+        'combines their live/removed counts into one total, the same OR-across-platforms rule ' +
+        'the dashboard\'s own multi-select filters use — it does not average or intersect them. ' +
+        'Results are sorted best-rate-first, so the top row answers "which X works best". Rows ' +
+        'whose status is pending, paused, or otherwise undecided are not counted (contribute to ' +
+        'neither live nor removed) — total may be lower than raw row count for that value. ' +
+        'Brands whose page on the queried platform was flagged removed (see ' +
+        'get_removed_platform_flags) are excluded from these results entirely.',
       parameters: {
         type: 'object',
         properties: {
           field: { type: 'string', enum: ['proxy', 'agent', 'country'] },
-          platform: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] },
+          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection). Omitting this parameter defaults to TrustPilot only, matching this tool\'s existing single-platform behavior — explicitly list platforms (including all 4) to get a combined total.' },
           tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
         },
         required: ['field'],
@@ -655,8 +692,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
-    return { brands: scoreSummary(data ?? [], platform, removedSet) };
+    const rawPlatform = args?.platform;
+    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
+      ? rawPlatform
+      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
+    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
+    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+    return { brands: scoreSummary(data ?? [], platforms, removedSet) };
   }
   if (name === 'get_removed_platform_flags') {
     let q = supabase.from('removed_platform_brands').select('tab, brand, platform');
@@ -671,8 +713,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const platform: Platform = validPlatforms.includes(args?.platform) ? args.platform : 'tp';
-    return { results: successRateByField(data ?? [], args?.field, platform, removedSet) };
+    const rawPlatform = args?.platform;
+    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
+      ? rawPlatform
+      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
+    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
+    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+    return { results: successRateByField(data ?? [], args?.field, platforms, removedSet) };
   }
   if (name === 'get_schedule') {
     if (!args?.tab || !args?.week_start) {

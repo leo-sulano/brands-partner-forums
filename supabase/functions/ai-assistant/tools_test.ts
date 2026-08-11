@@ -238,7 +238,7 @@ Deno.test('successRateByField picks up WoO Review Status (Wizard of Odds tabs)',
   const entries: EntryRow[] = [
     { id: '1', tab: 'Wizard of Odds', data: { Agent: 'ANN', 'WoO Review Status': 'Published' } },
   ];
-  const out = successRateByField(entries, 'agent', 'wo');
+  const out = successRateByField(entries, 'agent', ['wo']);
   const ann = out.find((r) => r.value === 'ANN')!;
   assertEquals(ann.live, 1);
   assertEquals(ann.removed, 0);
@@ -250,13 +250,13 @@ Deno.test('successRateByField picks up AG Review Status and CG Review Status (mu
     { id: '1', tab: 'Rooster Partners', data: { Agent: 'ANN', 'AG Review Status': 'Published' } },
     { id: '2', tab: 'Rooster Partners', data: { Agent: 'BOB', 'CG Review Status': 'Removed' } },
   ];
-  const agOut = successRateByField(entries, 'agent', 'ag');
+  const agOut = successRateByField(entries, 'agent', ['ag']);
   const ann = agOut.find((r) => r.value === 'ANN');
   assertEquals(ann?.live, 1);
   assertEquals(ann?.total, 1);
   assertEquals(agOut.find((r) => r.value === 'BOB'), undefined);
 
-  const cgOut = successRateByField(entries, 'agent', 'cg');
+  const cgOut = successRateByField(entries, 'agent', ['cg']);
   const bob = cgOut.find((r) => r.value === 'BOB');
   assertEquals(bob?.removed, 1);
   assertEquals(bob?.total, 1);
@@ -288,7 +288,7 @@ Deno.test('scoreSummary is platform-aware and supports AskGamblers 1-10 scores',
     // A TP status key on the same tab/brand must NOT leak into an AG-scoped query.
     { id: '3', tab: 't', data: { Brand: 'A', 'Review Status': 'Published', 'Score added': '2' } },
   ];
-  const out = scoreSummary(entries, 'ag');
+  const out = scoreSummary(entries, ['ag']);
   assertEquals(out.length, 1);
   assertEquals(out[0].rated, 1);
   assertEquals(out[0].average, 8);
@@ -328,7 +328,7 @@ Deno.test('scoreSummary works for cg and wo platforms, not just tp/ag', () => {
   const cgEntries: EntryRow[] = [
     { id: '1', tab: 't', data: { Brand: 'D', 'CG Review Status': 'Published', 'CG Score added': '4' } },
   ];
-  const cgOut = scoreSummary(cgEntries, 'cg');
+  const cgOut = scoreSummary(cgEntries, ['cg']);
   assertEquals(cgOut.length, 1);
   assertEquals(cgOut[0].rated, 1);
   assertEquals(cgOut[0].average, 4);
@@ -336,7 +336,7 @@ Deno.test('scoreSummary works for cg and wo platforms, not just tp/ag', () => {
   const woEntries: EntryRow[] = [
     { id: '2', tab: 't', data: { Brand: 'E', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '5' } },
   ];
-  const woOut = scoreSummary(woEntries, 'wo');
+  const woOut = scoreSummary(woEntries, ['wo']);
   assertEquals(woOut.length, 1);
   assertEquals(woOut[0].rated, 1);
   assertEquals(woOut[0].average, 5);
@@ -389,7 +389,7 @@ Deno.test('scoreSummary excludes a brand flagged as removed for the queried plat
     { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '5' } },
   ];
   const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
-  const out = scoreSummary(entries, 'tp', removedSet);
+  const out = scoreSummary(entries, ['tp'], removedSet);
   assertEquals(out.length, 0);
 });
 
@@ -398,7 +398,7 @@ Deno.test('scoreSummary does not exclude a brand flagged as removed on a differe
     { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '8' } },
   ];
   const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
-  const out = scoreSummary(entries, 'ag', removedSet);
+  const out = scoreSummary(entries, ['ag'], removedSet);
   assertEquals(out.length, 1);
 });
 
@@ -422,7 +422,7 @@ Deno.test('successRateByField excludes rows whose brand is flagged removed for t
     { id: '1', tab: 't', data: { Brand: 'Acme', 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
   ];
   const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
-  const out = successRateByField(entries, 'proxy', 'tp', removedSet);
+  const out = successRateByField(entries, 'proxy', ['tp'], removedSet);
   assertEquals(out.length, 0);
 });
 
@@ -430,7 +430,7 @@ Deno.test('successRateByField works normally when a row has no brand field at al
   const entries: EntryRow[] = [
     { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
   ];
-  const out = successRateByField(entries, 'proxy', 'tp', new Set());
+  const out = successRateByField(entries, 'proxy', ['tp'], new Set());
   assertEquals(out.length, 1);
   assertEquals(out[0].value, 'Enigma');
 });
@@ -455,7 +455,7 @@ Deno.test('successRateByField does not exclude a brand flagged as removed on a d
     { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', Agent: 'ANN' } },
   ];
   const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
-  const out = successRateByField(entries, 'agent', 'ag', removedSet);
+  const out = successRateByField(entries, 'agent', ['ag'], removedSet);
   assertEquals(out.length, 1);
   assertEquals(out[0].value, 'ANN');
 });
@@ -471,6 +471,99 @@ Deno.test('get_success_rate_by_field defaults to tp platform when given an inval
   assertEquals(result.results.length, 1);
   assertEquals(result.results[0].value, 'Enigma');
   assertEquals(result.results[0].live, 1);
+});
+
+Deno.test('get_score_summary with 2 platforms combines their live/removed counts, hides star detail', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'TP Review Status': 'Removed', 'CG Review Status': 'Published', 'CG Score added': '4' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: ['tp', 'cg'] });
+  assertEquals(result.brands.length, 1);
+  // TP Removed + CG Published/live on the same brand: live wins (matches
+  // computeTabKpisFromEntries' and computeScoreSummary's live-checked-before-removed
+  // tie-break), and star counts are zeroed since 2 platforms are selected.
+  assertEquals(result.brands[0].live, 1);
+  assertEquals(result.brands[0].removed, 0);
+  assertEquals(result.brands[0].rated, 0);
+});
+
+Deno.test('get_score_summary with platform as a bare string behaves identically to a one-item array (final-review fix: model can omit the array wrapper)', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '8' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const bareString: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: 'ag' });
+  const arrayForm: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: ['ag'] });
+  assertEquals(bareString, arrayForm);
+  assertEquals(bareString.brands[0].average, 8);
+});
+
+Deno.test('get_score_summary with an all-invalid platform array falls back to tp-only, not all-4-combined (final-review fix)', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'TP Review Status': 'Published', 'Score added': '3' } },
+      { id: '2', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Removed' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: ['xyz'] });
+  assertEquals(result.brands.length, 1);
+  // If this fell back to all-4-combined (the pre-fix empty-array behavior),
+  // the AG Removed row would also count, making removed 1 instead of 0.
+  assertEquals(result.brands[0].live, 1);
+  assertEquals(result.brands[0].removed, 0);
+  assertEquals(result.brands[0].average, 3);
+});
+
+Deno.test('successRateByField with 2 platforms combines a value\'s live/removed across both', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'Proxy Used': 'Enigma', 'TP Review Status': 'Removed', 'AG Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'proxy', ['tp', 'ag']);
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.removed, 0);
+});
+
+Deno.test('get_score_summary/get_success_rate_by_field with platform omitted still default to tp only (regression lock)', async () => {
+  const tables = {
+    entries: [{ id: '1', tab: 't', data: { Brand: 'C', 'TP Review Status': 'Published', 'Score added': '3' } }],
+    removed_platform_brands: [],
+  };
+  const withArray: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { platform: ['tp'] });
+  const omitted: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', {});
+  assertEquals(omitted, withArray);
+});
+
+Deno.test('scoreSummary with an empty platforms array falls back to all 4 combined', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '9' } },
+    { id: '2', tab: 't', data: { Brand: 'Acme', 'CG Review Status': 'Removed' } },
+  ];
+  const out = scoreSummary(entries, []);
+  assertEquals(out.length, 1);
+  // Neither row has a TP status, so ['tp'] (the omitted-platform default)
+  // would find nothing for this brand — [] must resolve to all 4 platforms
+  // combined, not fall back to the tp-only default.
+  assertEquals(out[0].live, 1);
+  assertEquals(out[0].removed, 1);
+});
+
+Deno.test('successRateByField with an empty platforms array falls back to all 4 combined', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'AG Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'Enigma', 'CG Review Status': 'Removed' } },
+  ];
+  const out = successRateByField(entries, 'proxy', []);
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.removed, 1);
+  assertEquals(enigma.total, 2);
 });
 
 Deno.test('get_schedule returns the weekly grid for a tab and week, using brand not brand_key', async () => {

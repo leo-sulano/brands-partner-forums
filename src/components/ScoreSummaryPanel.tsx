@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Check, ChevronDown, Star, X } from 'lucide-react';
+import { ChevronDown, Star } from 'lucide-react';
 import DatePicker from './DatePicker';
 import {
   computeScoreSummary,
@@ -14,9 +14,10 @@ import {
   type Star as StarRating,
   type SuccessRate,
 } from '../lib/scoreSummary';
-import { PLATFORM_FAVICON } from '../lib/removedPlatformBrands';
 import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import type { Entry } from '../types/entry';
+import MultiSelectDropdown, { type MultiSelectOption } from './MultiSelectDropdown';
+import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
 
 interface Props {
   entries: Entry[];
@@ -80,11 +81,11 @@ function successRateTitle(sr: SuccessRate | undefined): string {
   return `${successRatePct(sr.rate)}% = ${sr.live} live ÷ (${sr.live} live + ${sr.removed} removed)`;
 }
 
-const PLATFORM_OPTS: { value: Platform; label: string; icon: string }[] = [
-  { value: 'tp', label: 'TrustPilot', icon: PLATFORM_FAVICON.tp },
-  { value: 'ag', label: 'AskGamblers', icon: PLATFORM_FAVICON.ag },
-  { value: 'cg', label: 'CasinoGuru', icon: PLATFORM_FAVICON.cg },
-  { value: 'wo', label: 'Wizard of Odds', icon: PLATFORM_FAVICON.wo },
+const PLATFORM_MULTI_OPTS: MultiSelectOption[] = [
+  { value: 'tp', label: 'TrustPilot' },
+  { value: 'ag', label: 'AskGamblers' },
+  { value: 'cg', label: 'CasinoGuru' },
+  { value: 'wo', label: 'Wizard of Odds' },
 ];
 
 const PLATFORM_DATE_LABEL: Record<Platform, string> = {
@@ -103,16 +104,22 @@ const PLATFORM_VALUES = new Set<string>(['tp', 'ag', 'cg', 'wo']);
 const FILTER_STORAGE_KEY = 'bpf_score_summary_filters';
 
 type StoredScoreSummaryFilters = {
-  platform: string;
+  platform: string[];
   from: string;
   to: string;
-  tab: string;
+  tab: string[];
 };
 
 function readFiltersFromStorage(): Partial<StoredScoreSummaryFilters> {
   try {
     const raw = localStorage.getItem(FILTER_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return {
+      ...parsed,
+      platform: toArrayFilter(parsed.platform),
+      tab: toArrayFilter(parsed.tab),
+    };
   } catch {
     return {};
   }
@@ -133,11 +140,36 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
   // selection is shareable/bookmarkable — matches the pattern already used by
   // BrandGroup's platform/status/brand/rating params and Topbar's from/to.
   const [searchParams, setSearchParams] = useSearchParams();
+  // Empty platform selection here does NOT default to ['tp'] on every
+  // render — it only falls back to ['tp'] when the URL param is entirely
+  // absent (never touched). An explicit "?platform=none" sentinel
+  // distinguishes "user cleared it to All/combined" from "untouched," since
+  // this filter's real default is one specific platform (TP), unlike every
+  // other filter here whose default already IS "All" (empty).
+  //
+  // Both `platform` and `tabFilter` are memoized against the underlying raw
+  // param string (not recomputed unconditionally every render) — otherwise a
+  // fresh array identity on every render (even a UI-only one, like toggling
+  // `collapsed`) would make the computeScoreSummary/computeSuccessRates/
+  // computeTabSuccessRates useMemos below — each a full scan over every
+  // entry across all 11 operational tabs — and the filter-persistence save
+  // effect all see a "changed" dependency and rerun on every render,
+  // regardless of whether the URL actually changed. Mirrors Overview.tsx's
+  // identical fix for the same hazard (countryFilter/proxyFilter/
+  // platformFilter memoized against their raw searchParams strings).
   const platformParam = searchParams.get('platform');
-  const platform: Platform = PLATFORM_VALUES.has(platformParam ?? '') ? (platformParam as Platform) : 'tp';
+  const platform: Platform[] = useMemo(
+    () => platformParam == null
+      ? ['tp']
+      : platformParam === 'none'
+        ? []
+        : platformParam.split(',').filter((p): p is Platform => PLATFORM_VALUES.has(p)),
+    [platformParam],
+  );
   const fromIso = searchParams.get('from') ?? '';
   const toIso = searchParams.get('to') ?? '';
-  const tabFilter = searchParams.get('tab') ?? '';
+  const tabParam = searchParams.get('tab');
+  const tabFilter = useMemo(() => readArrayParam(searchParams, 'tab'), [tabParam]);
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
@@ -147,10 +179,14 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
       return next;
     }, { replace: true });
   }
-  const setPlatform = (v: Platform) => setParam('platform', v === 'tp' ? '' : v);
+  const setPlatform = (v: Platform[]) => setParam('platform', v.length === 0 ? 'none' : v.join(','));
   const setFromIso = (v: string) => setParam('from', v);
   const setToIso = (v: string) => setParam('to', v);
-  const setTabFilter = (v: string) => setParam('tab', v);
+  const setTabFilter = (v: string[]) => setSearchParams((prev) => {
+    const next = new URLSearchParams(prev);
+    writeArrayParam(next, 'tab', v);
+    return next;
+  }, { replace: true });
 
   // On first mount only: a bare URL (no filter params at all — the sidebar
   // link, or the initial page load) restores the last remembered view. An
@@ -168,10 +204,12 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
     skipNextFilterSaveRef.current = true;
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (saved.platform && saved.platform !== 'tp') next.set('platform', saved.platform); else next.delete('platform');
+      if (saved.platform && saved.platform.length > 0 && !(saved.platform.length === 1 && saved.platform[0] === 'tp')) {
+        next.set('platform', saved.platform.join(','));
+      } else next.delete('platform');
       if (saved.from) next.set('from', saved.from); else next.delete('from');
       if (saved.to) next.set('to', saved.to); else next.delete('to');
-      if (saved.tab) next.set('tab', saved.tab); else next.delete('tab');
+      if (saved.tab && saved.tab.length > 0) next.set('tab', saved.tab.join(',')); else next.delete('tab');
       return next;
     }, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -211,7 +249,7 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
     [entries, platform, removedPlatformBrands, range],
   );
 
-  const maxScore = PLATFORM_MAX_SCORE[platform];
+  const maxScore = result.showStars ? PLATFORM_MAX_SCORE[platform[0]] : 0;
 
   // Tab options come from the raw entries so the dropdown lists every tab that
   // has data, not just those that survived the active date filter.
@@ -222,7 +260,7 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
   }, [entries]);
 
   const filteredBrands = useMemo(
-    () => (tabFilter ? result.brands.filter((b) => b.tab === tabFilter) : result.brands),
+    () => (tabFilter.length > 0 ? result.brands.filter((b) => tabFilter.includes(b.tab)) : result.brands),
     [result.brands, tabFilter],
   );
 
@@ -234,7 +272,7 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-slate-800">Score Summary</h2>
           <span className="text-xs text-slate-400">
-            {PLATFORM_OPTS.find((o) => o.value === platform)?.label} · Published reviews
+            {platform.length === 0 ? 'All platforms (combined)' : platform.length === 1 ? PLATFORM_MULTI_OPTS.find((o) => o.value === platform[0])?.label : `${platform.length} platforms (combined)`} · Published reviews
             {totalAcrossBrands > 0 ? ` · ${totalAcrossBrands.toLocaleString()} total` : ''}
           </span>
         </div>
@@ -253,7 +291,7 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
       {!collapsed && (
         <div className="px-4 py-4 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <PlatformFilter value={platform} onChange={setPlatform} />
+            <MultiSelectDropdown noun="platform" values={platform} onChange={(v) => setPlatform(v as Platform[])} options={PLATFORM_MULTI_OPTS} />
             <div className="h-4 w-px bg-slate-200 mx-1" />
             <DatePicker
               value={fromIso}
@@ -272,22 +310,22 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
               triggerTextClassName="text-sm"
             />
             <div className="h-4 w-px bg-slate-200 mx-1" />
-            <TabFilterDropdown value={tabFilter} onChange={setTabFilter} options={tabOptions} />
+            <MultiSelectDropdown noun="brand-tab" values={tabFilter} onChange={setTabFilter} options={tabOptions.map((t) => ({ value: t, label: tabDisplayName(t) }))} searchable />
           </div>
 
           {filteredBrands.length === 0 ? (
             <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
               {result.brands.length === 0
                 ? 'No published reviews in this range.'
-                : `No published reviews for ${tabFilter || 'this filter'} in this range.`}
+                : `No published reviews for ${tabFilter.length > 0 ? tabFilter.join(', ') : 'this filter'} in this range.`}
             </div>
           ) : (
-            <GroupedSummary rows={filteredBrands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} dateRangeActive={range.from != null || range.to != null} />
+            <GroupedSummary rows={filteredBrands} maxScore={maxScore} showStars={result.showStars} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} dateRangeActive={range.from != null || range.to != null} />
           )}
 
           {result.excludedRows > 0 && (
             <p className="text-xs text-slate-400">
-              {result.excludedRows} row{result.excludedRows !== 1 ? 's' : ''} excluded from the selected range (missing or unreadable {PLATFORM_DATE_LABEL[platform]}).
+              {result.excludedRows} row{result.excludedRows !== 1 ? 's' : ''} excluded from the selected range (missing or unreadable {PLATFORM_DATE_LABEL[platform[0]]}).
             </p>
           )}
         </div>
@@ -296,127 +334,7 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
   );
 }
 
-function PlatformFilter({
-  value,
-  onChange,
-}: {
-  value: Platform;
-  onChange: (v: Platform) => void;
-}) {
-  return (
-    <div className="inline-flex rounded-md overflow-hidden">
-      {PLATFORM_OPTS.map((opt, i) => (
-        <button
-          key={opt.value}
-          type="button"
-          onClick={() => onChange(opt.value)}
-          className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium transition-colors ${
-            i > 0 && opt.value !== value && PLATFORM_OPTS[i - 1].value !== value ? 'border-l border-slate-200' : ''
-          } ${
-            opt.value === value
-              ? 'bg-[#2D5FED] text-white'
-              : 'text-slate-600 hover:bg-blue-50'
-          }`}
-        >
-          <img
-            src={opt.icon}
-            alt=""
-            className="size-3 shrink-0 rounded-sm"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function TabFilterDropdown({
-  value,
-  onChange,
-  options,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  options: string[];
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [open]);
-
-  const active = !!value;
-  return (
-    <div className="relative shrink-0" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-sm font-medium shadow-sm transition-colors ${
-          active
-            ? 'border-blue-300 bg-blue-50 text-blue-700'
-            : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-blue-50'
-        }`}
-      >
-        {active && <span className="size-1.5 shrink-0 rounded-full bg-blue-500" />}
-        <span className="max-w-[10rem] truncate">{active ? tabDisplayName(value) : 'All brands'}</span>
-        {active ? (
-          <span
-            onClick={(e) => { e.stopPropagation(); onChange(''); }}
-            className="ml-0.5 text-blue-400 hover:text-blue-600 transition-colors"
-            role="button"
-            aria-label="Clear brand filter"
-          >
-            <X className="size-3" />
-          </span>
-        ) : (
-          <ChevronDown className={`size-3 text-slate-400 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
-        )}
-      </button>
-
-      {open && (
-        <div className="absolute left-0 top-full z-20 mt-1 w-56 rounded-lg border border-slate-200 bg-white shadow-lg">
-          <div className="max-h-72 overflow-y-auto py-1">
-            <button
-              type="button"
-              onClick={() => { onChange(''); setOpen(false); }}
-              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${
-                !value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'
-              }`}
-            >
-              <span className="flex-1">All brands</span>
-              {!value && <Check className="size-3 text-blue-500" />}
-            </button>
-            {options.length === 0 && (
-              <div className="px-3 py-4 text-center text-xs text-slate-400">No brands available</div>
-            )}
-            {options.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => { onChange(opt); setOpen(false); }}
-                className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${
-                  opt === value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-600'
-                }`}
-              >
-                <span className="flex-1 truncate">{tabDisplayName(opt)}</span>
-                {opt === value && <Check className="size-3 text-blue-500" />}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRates, dateRangeActive }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate>; dateRangeActive: boolean }) {
+function GroupedSummary({ rows, maxScore, showStars, platform, successRates, tabSuccessRates, dateRangeActive }: { rows: BrandSummary[]; maxScore: number; showStars: boolean; platform: Platform[]; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate>; dateRangeActive: boolean }) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const groups = useMemo(() => {
@@ -468,7 +386,7 @@ function GroupedSummary({ rows, maxScore, platform, successRates, tabSuccessRate
                 />
               </button>
             </header>
-            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} dateRangeActive={dateRangeActive} />}
+            {!isCollapsed && <SummaryTable rows={brands} maxScore={maxScore} showStars={showStars} platform={platform} successRates={successRates} tabSuccessRates={tabSuccessRates} dateRangeActive={dateRangeActive} />}
           </section>
         );
       })}
@@ -503,11 +421,11 @@ function computeColumnTotals(rows: BrandSummary[], maxScore: number): ColumnTota
 // evenly across its columns (stars + Unrtd + Total), whose count varies by
 // platform (5 for TP/CG, 10 for AG), and Success Rate's share is split evenly
 // across its 4 columns (Published, Removed, Total, SR %).
-function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean; maxScore: number }) {
+function SummaryColgroup({ showGroup = false, maxScore, showStars }: { showGroup?: boolean; maxScore: number; showStars: boolean }) {
   const SPACER_PCT = 1;
   const GROUP_PCT = showGroup ? 12 : 0;
-  const thirdPct = (100 - GROUP_PCT - SPACER_PCT * 2) / 3;
-  const starColPct = thirdPct / (maxScore + 2);
+  const thirdPct = (100 - GROUP_PCT - SPACER_PCT * 2) / (showStars ? 3 : 2);
+  const starColPct = showStars ? thirdPct / (maxScore + 2) : 0;
   const successColPct = thirdPct / 4;
 
   return (
@@ -515,11 +433,11 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
       {showGroup && <col style={{ width: `${GROUP_PCT}%` }} />}
       <col style={{ width: `${thirdPct}%` }} />
       <col style={{ width: `${SPACER_PCT}%` }} />
-      {Array.from({ length: maxScore }, (_, i) => (
+      {showStars && Array.from({ length: maxScore }, (_, i) => (
         <col key={i} style={{ width: `${starColPct}%` }} />
       ))}
-      <col style={{ width: `${starColPct}%` }} />
-      <col style={{ width: `${starColPct}%` }} />
+      {showStars && <col style={{ width: `${starColPct}%` }} />}
+      {showStars && <col style={{ width: `${starColPct}%` }} />}
       <col style={{ width: `${SPACER_PCT}%` }} />
       <col style={{ width: `${successColPct}%` }} />
       <col style={{ width: `${successColPct}%` }} />
@@ -529,10 +447,11 @@ function SummaryColgroup({ showGroup = false, maxScore }: { showGroup?: boolean;
   );
 }
 
-function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates, dateRangeActive }: { rows: BrandSummary[]; maxScore: number; platform: Platform; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate>; dateRangeActive: boolean }) {
+function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSuccessRates, dateRangeActive }: { rows: BrandSummary[]; maxScore: number; showStars: boolean; platform: Platform[]; successRates: Map<string, SuccessRate>; tabSuccessRates: Map<string, SuccessRate>; dateRangeActive: boolean }) {
   const stars = starsFor(maxScore);
   const showGroup = new Set(rows.map((r) => r.tab)).size > 1;
   const totals = useMemo(() => computeColumnTotals(rows, maxScore), [rows, maxScore]);
+  const platformParam = platform.join(',');
   // All rows in a single SummaryTable share one tab (GroupedSummary groups by
   // r.tab before rendering each table), so a direct lookup by rows[0].tab is
   // the whole tab's rate — not a sum over only the brands that happen to have
@@ -542,15 +461,17 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
   return (
     <div className="overflow-x-auto">
       <table className="w-full table-fixed text-sm">
-        <SummaryColgroup showGroup={showGroup} maxScore={maxScore} />
+        <SummaryColgroup showGroup={showGroup} maxScore={maxScore} showStars={showStars} />
         <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
           <tr className="border-b border-slate-200">
             {showGroup && <th className="bg-[#17225a] px-3 py-1 text-left font-medium text-slate-100">Group</th>}
             <th className="bg-[#17225a] px-3 py-1 text-left font-medium text-slate-100">Brand</th>
             <th />
-            <th colSpan={stars.length + 2} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
-              Star Rating
-            </th>
+            {showStars && (
+              <th colSpan={stars.length + 2} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
+                Star Rating
+              </th>
+            )}
             <th />
             <th
               colSpan={4}
@@ -566,22 +487,26 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
             {showGroup && <th scope="col" className="px-3 py-2 text-left font-medium" />}
             <th scope="col" className="px-3 py-2 text-left font-medium" />
             <th />
-            {stars.map((s) => (
-              <th key={s} scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>
-                <span className="inline-flex items-center justify-start gap-0.5">
-                  <span className="font-mono tabular-nums">{s}</span>
-                  <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
-                </span>
-              </th>
-            ))}
-            <th
-              scope="col"
-              className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}
-              title="Published reviews with no Score added value yet"
-            >
-              Unrtd
-            </th>
-            <th scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>Total</th>
+            {showStars && (
+              <>
+                {stars.map((s) => (
+                  <th key={s} scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>
+                    <span className="inline-flex items-center justify-start gap-0.5">
+                      <span className="font-mono tabular-nums">{s}</span>
+                      <Star className={`size-3 fill-current ${starColor(s, maxScore)}`} />
+                    </span>
+                  </th>
+                ))}
+                <th
+                  scope="col"
+                  className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}
+                  title="Published reviews with no Score added value yet"
+                >
+                  Unrtd
+                </th>
+                <th scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>Total</th>
+              </>
+            )}
             <th />
             <th
               scope="col"
@@ -627,61 +552,65 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
               )}
               <td className="px-3 py-1.5 truncate" title={r.brand}>
                 <Link
-                  to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
+                  to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}`}
                   className="font-medium text-slate-800 hover:text-blue-600 hover:underline"
                 >
                   {r.brand}
                 </Link>
               </td>
               <td />
-              {stars.map((s) => (
-                <td
-                  key={s}
-                  className={`px-2 py-1.5 text-left font-mono tabular-nums ${
-                    r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
-                  }`}
-                >
-                  {r.counts[s] > 0 ? (
-                    <Link
-                      to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=${s}`}
-                      className="hover:text-blue-600 hover:underline"
+              {showStars && (
+                <>
+                  {stars.map((s) => (
+                    <td
+                      key={s}
+                      className={`px-2 py-1.5 text-left font-mono tabular-nums ${
+                        r.counts[s] > 0 ? 'text-slate-800' : 'text-slate-300'
+                      }`}
                     >
-                      {r.counts[s].toLocaleString()}
-                    </Link>
-                  ) : (
-                    r.counts[s].toLocaleString()
-                  )}
-                </td>
-              ))}
-              <td className={`px-2 py-1.5 text-left font-mono tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
-                {r.unrated > 0 ? (
-                  <Link
-                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=unrated`}
-                    className="hover:text-blue-600 hover:underline"
-                  >
-                    {r.unrated.toLocaleString()}
-                  </Link>
-                ) : (
-                  r.unrated.toLocaleString()
-                )}
-              </td>
-              <td className="px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800">
-                {r.total > 0 ? (
-                  <Link
-                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&rating=any`}
-                    className="hover:text-blue-600 hover:underline"
-                  >
-                    {r.total.toLocaleString()}
-                  </Link>
-                ) : (
-                  r.total.toLocaleString()
-                )}
-              </td>
+                      {r.counts[s] > 0 ? (
+                        <Link
+                          to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}&rating=${s}`}
+                          className="hover:text-blue-600 hover:underline"
+                        >
+                          {r.counts[s].toLocaleString()}
+                        </Link>
+                      ) : (
+                        r.counts[s].toLocaleString()
+                      )}
+                    </td>
+                  ))}
+                  <td className={`px-2 py-1.5 text-left font-mono tabular-nums ${r.unrated > 0 ? 'text-slate-500' : 'text-slate-300'}`}>
+                    {r.unrated > 0 ? (
+                      <Link
+                        to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}&rating=unrated`}
+                        className="hover:text-blue-600 hover:underline"
+                      >
+                        {r.unrated.toLocaleString()}
+                      </Link>
+                    ) : (
+                      r.unrated.toLocaleString()
+                    )}
+                  </td>
+                  <td className="px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800">
+                    {r.total > 0 ? (
+                      <Link
+                        to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}&rating=any`}
+                        className="hover:text-blue-600 hover:underline"
+                      >
+                        {r.total.toLocaleString()}
+                      </Link>
+                    ) : (
+                      r.total.toLocaleString()
+                    )}
+                  </td>
+                </>
+              )}
               <td />
               <td className="px-2 py-1.5 text-left font-mono tabular-nums text-slate-700">
                 {(sr?.live ?? 0) > 0 ? (
                   <Link
-                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&status=live`}
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}&status=live`}
                     className="hover:text-blue-600 hover:underline"
                   >
                     {(sr?.live ?? 0).toLocaleString()}
@@ -693,7 +622,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
               <td className="px-2 py-1.5 text-left font-mono tabular-nums text-slate-700">
                 {(sr?.removed ?? 0) > 0 ? (
                   <Link
-                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}&status=removed`}
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}&status=removed`}
                     className="hover:text-blue-600 hover:underline"
                   >
                     {(sr?.removed ?? 0).toLocaleString()}
@@ -705,7 +634,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
               <td className="px-2 py-1.5 text-left font-semibold font-mono tabular-nums text-slate-800">
                 {((sr?.live ?? 0) + (sr?.removed ?? 0)) > 0 ? (
                   <Link
-                    to={`/brands/${tabToSlug(r.tab)}?platform=${platform}&brand=${encodeURIComponent(r.brand)}`}
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}`}
                     className="hover:text-blue-600 hover:underline"
                   >
                     {((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()}
@@ -731,8 +660,8 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
               <Link
                 to={
                   rows.length === 1
-                    ? `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&brand=${encodeURIComponent(rows[0].brand)}&rating=any`
-                    : `/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`
+                    ? `/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&brand=${encodeURIComponent(rows[0].brand)}&rating=any`
+                    : `/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&rating=any`
                 }
                 className="font-medium text-slate-800 hover:text-blue-600 hover:underline"
               >
@@ -740,54 +669,58 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
               </Link>
             </td>
             <td />
-            {stars.map((s) => (
-              <td
-                key={s}
-                className={`px-2 py-2 text-left font-mono tabular-nums ${
-                  totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
-                }`}
-              >
-                {totals.counts[s] > 0 ? (
-                  <Link
-                    to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=${s}`}
-                    className="hover:text-blue-600 hover:underline"
+            {showStars && (
+              <>
+                {stars.map((s) => (
+                  <td
+                    key={s}
+                    className={`px-2 py-2 text-left font-mono tabular-nums ${
+                      totals.counts[s] > 0 ? 'text-slate-800' : 'text-slate-400'
+                    }`}
                   >
-                    {totals.counts[s].toLocaleString()}
-                  </Link>
-                ) : (
-                  totals.counts[s].toLocaleString()
-                )}
-              </td>
-            ))}
-            <td className={`px-2 py-2 text-left font-mono tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
-              {totals.unrated > 0 ? (
-                <Link
-                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=unrated`}
-                  className="hover:text-blue-600 hover:underline"
-                >
-                  {totals.unrated.toLocaleString()}
-                </Link>
-              ) : (
-                totals.unrated.toLocaleString()
-              )}
-            </td>
-            <td className="px-2 py-2 text-left font-mono tabular-nums">
-              {totals.total > 0 ? (
-                <Link
-                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&rating=any`}
-                  className="hover:text-blue-600 hover:underline"
-                >
-                  {totals.total.toLocaleString()}
-                </Link>
-              ) : (
-                totals.total.toLocaleString()
-              )}
-            </td>
+                    {totals.counts[s] > 0 ? (
+                      <Link
+                        to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&rating=${s}`}
+                        className="hover:text-blue-600 hover:underline"
+                      >
+                        {totals.counts[s].toLocaleString()}
+                      </Link>
+                    ) : (
+                      totals.counts[s].toLocaleString()
+                    )}
+                  </td>
+                ))}
+                <td className={`px-2 py-2 text-left font-mono tabular-nums ${totals.unrated > 0 ? 'text-slate-600' : 'text-slate-400'}`}>
+                  {totals.unrated > 0 ? (
+                    <Link
+                      to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&rating=unrated`}
+                      className="hover:text-blue-600 hover:underline"
+                    >
+                      {totals.unrated.toLocaleString()}
+                    </Link>
+                  ) : (
+                    totals.unrated.toLocaleString()
+                  )}
+                </td>
+                <td className="px-2 py-2 text-left font-mono tabular-nums">
+                  {totals.total > 0 ? (
+                    <Link
+                      to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&rating=any`}
+                      className="hover:text-blue-600 hover:underline"
+                    >
+                      {totals.total.toLocaleString()}
+                    </Link>
+                  ) : (
+                    totals.total.toLocaleString()
+                  )}
+                </td>
+              </>
+            )}
             <td />
             <td className="px-2 py-2 text-left font-mono tabular-nums">
               {groupSuccess.live > 0 ? (
                 <Link
-                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&status=live`}
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&status=live`}
                   className="hover:text-blue-600 hover:underline"
                 >
                   {groupSuccess.live.toLocaleString()}
@@ -799,7 +732,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
             <td className="px-2 py-2 text-left font-mono tabular-nums">
               {groupSuccess.removed > 0 ? (
                 <Link
-                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}&status=removed`}
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}&status=removed`}
                   className="hover:text-blue-600 hover:underline"
                 >
                   {groupSuccess.removed.toLocaleString()}
@@ -811,7 +744,7 @@ function SummaryTable({ rows, maxScore, platform, successRates, tabSuccessRates,
             <td className="px-2 py-2 text-left font-mono tabular-nums">
               {(groupSuccess.live + groupSuccess.removed) > 0 ? (
                 <Link
-                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platform}`}
+                  to={`/brands/${tabToSlug(rows[0].tab)}?platform=${platformParam}`}
                   className="hover:text-blue-600 hover:underline"
                 >
                   {(groupSuccess.live + groupSuccess.removed).toLocaleString()}

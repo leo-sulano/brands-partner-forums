@@ -65,7 +65,7 @@ describe('computeScoreSummary', () => {
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published', 'TP Score added': '5' }),
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published', 'TP Score added': '4' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'tp');
+    const result = computeScoreSummary(entries, noRange, [], ['tp']);
     expect(result.brands).toHaveLength(1);
     const [brand] = result.brands;
     expect(brand.counts[5]).toBe(1);
@@ -79,7 +79,7 @@ describe('computeScoreSummary', () => {
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'CG Review Status': 'Published', 'CG Score added': '3' }),
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'CG Review Status': 'Published', 'CG Score added': '2' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'cg');
+    const result = computeScoreSummary(entries, noRange, [], ['cg']);
     const [brand] = result.brands;
     expect(brand.counts[3]).toBe(1);
     expect(brand.counts[2]).toBe(1);
@@ -92,7 +92,7 @@ describe('computeScoreSummary', () => {
       makeEntry('1', 'Wizard of Odds', { 'Brand Name': 'ZodiacBet.com', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '4' }),
       makeEntry('2', 'Wizard of Odds', { 'Brand Name': 'ZodiacBet.com', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '3' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'wo');
+    const result = computeScoreSummary(entries, noRange, [], ['wo']);
     const [brand] = result.brands;
     expect(brand.counts[4]).toBe(1);
     expect(brand.counts[3]).toBe(1);
@@ -105,7 +105,7 @@ describe('computeScoreSummary', () => {
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'AG Review Status': 'Published', 'AG Score added': '9' }),
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'AG Review Status': 'Published', 'AG Score added': '10' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'ag');
+    const result = computeScoreSummary(entries, noRange, [], ['ag']);
     const [brand] = result.brands;
     expect(brand.counts[9]).toBe(1);
     expect(brand.counts[10]).toBe(1);
@@ -117,7 +117,7 @@ describe('computeScoreSummary', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'AG Review Status': 'Published' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'ag');
+    const result = computeScoreSummary(entries, noRange, [], ['ag']);
     const [brand] = result.brands;
     expect(brand.unrated).toBe(1);
     expect(brand.average).toBeNull();
@@ -127,7 +127,7 @@ describe('computeScoreSummary', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'CG Review Status': 'Published', 'CG Score added': '9' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'cg');
+    const result = computeScoreSummary(entries, noRange, [], ['cg']);
     const [brand] = result.brands;
     expect(brand.unrated).toBe(1);
   });
@@ -140,7 +140,7 @@ describe('computeScoreSummary', () => {
     const entries: Entry[] = [
       makeEntry('1', 'GRG - Gulf Recovery Group', { Brands: 'Gulf Recovery Group', 'TP Review Status': 'Removed' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'tp');
+    const result = computeScoreSummary(entries, noRange, [], ['tp']);
     expect(result.brands).toHaveLength(1);
     const [brand] = result.brands;
     expect(brand.brand).toBe('Gulf Recovery Group');
@@ -152,7 +152,7 @@ describe('computeScoreSummary', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com' }),
     ];
-    const result = computeScoreSummary(entries, noRange, [], 'tp');
+    const result = computeScoreSummary(entries, noRange, [], ['tp']);
     expect(result.brands).toHaveLength(0);
   });
 });
@@ -165,7 +165,7 @@ describe('computeSuccessRates', () => {
       makeEntry('3', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
       makeEntry('4', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Pending' }),
     ];
-    const result = computeSuccessRates(entries, 'tp');
+    const result = computeSuccessRates(entries, ['tp']);
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 2, removed: 1, rate: (2 / 3) * 100 });
   });
 
@@ -175,7 +175,7 @@ describe('computeSuccessRates', () => {
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Done' }),
       makeEntry('3', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'On Pause' }),
     ];
-    const result = computeSuccessRates(entries, 'tp');
+    const result = computeSuccessRates(entries, ['tp']);
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 0, rate: null });
   });
 
@@ -184,7 +184,7 @@ describe('computeSuccessRates', () => {
       makeEntry('1', 'Hanan', { Brands: '', 'TP Review Status': 'Published' }),
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com' }),
     ];
-    const result = computeSuccessRates(entries, 'tp');
+    const result = computeSuccessRates(entries, ['tp']);
     expect(result.size).toBe(0);
   });
 
@@ -192,7 +192,7 @@ describe('computeSuccessRates', () => {
     const entries: Entry[] = [
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
     ];
-    const result = computeSuccessRates(entries, 'tp');
+    const result = computeSuccessRates(entries, ['tp']);
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 
@@ -201,7 +201,7 @@ describe('computeSuccessRates', () => {
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
     ];
     const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 30) };
-    const result = computeSuccessRates(entries, 'tp', new Set(), range);
+    const result = computeSuccessRates(entries, ['tp'], new Set(), range);
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 
@@ -211,7 +211,7 @@ describe('computeSuccessRates', () => {
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed', 'Trust Pilot': '05/08/2026' }),
     ];
     const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
-    const result = computeSuccessRates(entries, 'tp', new Set(), range);
+    const result = computeSuccessRates(entries, ['tp'], new Set(), range);
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
   });
 
@@ -220,9 +220,36 @@ describe('computeSuccessRates', () => {
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published' }),
       makeEntry('2', 'Trybet', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
     ];
-    const result = computeSuccessRates(entries, 'tp');
+    const result = computeSuccessRates(entries, ['tp']);
     expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
     expect(result.get('Trybet ZodiacBet.com')).toEqual({ live: 0, removed: 1, rate: 0 });
+  });
+});
+
+describe('computeSuccessRates multi-platform', () => {
+  it('a row live on one selected platform and removed on another counts as live once, never both (live-precedence, not double-counted)', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published', 'AG Review Status': 'Removed' }),
+    ];
+    const result = computeSuccessRates(entries, ['tp', 'ag']);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
+  });
+
+  it('a row with only a non-live/non-removed status on one selected platform still creates a bucket (matchedAny gate), rather than being dropped from the result map', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Pending' }),
+    ];
+    const result = computeSuccessRates(entries, ['tp', 'ag']);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 0, rate: null });
+  });
+
+  it('excludes a platform-removed-flagged brand only on the flagged platform within the combined loop, not the whole row', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed', 'AG Review Status': 'Published' }),
+    ];
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp' }]);
+    const result = computeSuccessRates(entries, ['tp', 'ag'], removed);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
   });
 });
 
@@ -232,8 +259,8 @@ describe('computeTabSuccessRates — date range (matches BrandGroup.tsx brand-ta
       makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed' }),
     ];
     const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
-    expect(computeTabSuccessRates(entries, 'tp').get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
-    expect(computeTabSuccessRates(entries, 'tp', new Set(), range).get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
+    expect(computeTabSuccessRates(entries, ['tp']).get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
+    expect(computeTabSuccessRates(entries, ['tp'], new Set(), range).get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 
   it('excludes a dated row outside the selected range', () => {
@@ -242,7 +269,7 @@ describe('computeTabSuccessRates — date range (matches BrandGroup.tsx brand-ta
       makeEntry('2', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed', 'Trust Pilot': '05/08/2026' }),
     ];
     const range = { from: new Date(2026, 6, 1), to: new Date(2026, 6, 31) };
-    const result = computeTabSuccessRates(entries, 'tp', new Set(), range);
+    const result = computeTabSuccessRates(entries, ['tp'], new Set(), range);
     expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
   });
 });
@@ -303,7 +330,7 @@ describe('computeTabSuccessRates', () => {
         makeEntry(`b${i}`, 'Hanan', { Brands: 'BrandB.com', 'TP Review Status': 'Removed' }),
       ),
     ];
-    const result = computeTabSuccessRates(entries, 'tp');
+    const result = computeTabSuccessRates(entries, ['tp']);
     expect(result.get('Hanan')).toEqual({ live: 10, removed: 20, rate: (10 / 30) * 100 });
   });
 
@@ -312,7 +339,7 @@ describe('computeTabSuccessRates', () => {
       makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
       makeEntry('2', 'Hanan', { 'TP Review Status': 'Removed' }),
     ];
-    const result = computeTabSuccessRates(entries, 'tp');
+    const result = computeTabSuccessRates(entries, ['tp']);
     expect(result.get('Hanan')).toEqual({ live: 1, removed: 1, rate: 50 });
   });
 
@@ -321,7 +348,7 @@ describe('computeTabSuccessRates', () => {
       makeEntry('1', 'Hanan', { 'TP Review Status': 'Pending' }),
       makeEntry('2', 'Hanan', {}),
     ];
-    const result = computeTabSuccessRates(entries, 'tp');
+    const result = computeTabSuccessRates(entries, ['tp']);
     expect(result.get('Hanan')).toEqual({ live: 0, removed: 0, rate: null });
   });
 
@@ -330,7 +357,7 @@ describe('computeTabSuccessRates', () => {
       makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
       makeEntry('2', 'Trybet', { 'TP Review Status': 'Removed' }),
     ];
-    const result = computeTabSuccessRates(entries, 'tp');
+    const result = computeTabSuccessRates(entries, ['tp']);
     expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
     expect(result.get('Trybet')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
@@ -395,7 +422,7 @@ describe('computeScoreSummary — removedPlatformBrands exclusion', () => {
       makeEntry('2', 'Hanan', { Brands: 'WinMega.com', 'TP Review Status': 'Published', 'TP Score added': '4' }),
     ];
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
-    const result = computeScoreSummary(entries, noRange, [], 'tp', removed);
+    const result = computeScoreSummary(entries, noRange, [], ['tp'], removed);
     expect(result.brands.map((b) => b.brand)).toEqual(['WinMega.com']);
   });
 
@@ -404,7 +431,7 @@ describe('computeScoreSummary — removedPlatformBrands exclusion', () => {
       makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'AG Review Status': 'Published', 'AG Score added': '9' }),
     ];
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
-    const result = computeScoreSummary(entries, noRange, [], 'ag', removed);
+    const result = computeScoreSummary(entries, noRange, [], ['ag'], removed);
     expect(result.brands).toHaveLength(1);
   });
 
@@ -417,8 +444,8 @@ describe('computeScoreSummary — removedPlatformBrands exclusion', () => {
       { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' },
       { tab: 'Hanan', brand: 'Pribet.com', platform: 'ag' },
     ]);
-    expect(computeScoreSummary(entries, noRange, [], 'tp', removed).brands).toHaveLength(0);
-    expect(computeScoreSummary(entries, noRange, [], 'ag', removed).brands).toHaveLength(0);
+    expect(computeScoreSummary(entries, noRange, [], ['tp'], removed).brands).toHaveLength(0);
+    expect(computeScoreSummary(entries, noRange, [], ['ag'], removed).brands).toHaveLength(0);
   });
 });
 
@@ -428,7 +455,7 @@ describe('computeSuccessRates — removedPlatformBrands exclusion', () => {
       makeEntry('1', 'Hanan', { Brands: 'Pribet.com', 'TP Review Status': 'Published' }),
     ];
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
-    const result = computeSuccessRates(entries, 'tp', removed);
+    const result = computeSuccessRates(entries, ['tp'], removed);
     expect(result.has('Hanan Pribet.com')).toBe(false);
   });
 });
@@ -440,7 +467,7 @@ describe('computeTabSuccessRates — removedPlatformBrands exclusion', () => {
       makeEntry('2', 'Hanan', { Brands: 'WinMega.com', 'TP Review Status': 'Removed' }),
     ];
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
-    const result = computeTabSuccessRates(entries, 'tp', removed);
+    const result = computeTabSuccessRates(entries, ['tp'], removed);
     expect(result.get('Hanan')).toEqual({ live: 0, removed: 1, rate: 0 });
   });
 
@@ -449,7 +476,7 @@ describe('computeTabSuccessRates — removedPlatformBrands exclusion', () => {
       makeEntry('1', 'Hanan', { 'TP Review Status': 'Published' }),
     ];
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'SomeOtherBrand', platform: 'tp' }]);
-    const result = computeTabSuccessRates(entries, 'tp', removed);
+    const result = computeTabSuccessRates(entries, ['tp'], removed);
     expect(result.get('Hanan')).toEqual({ live: 1, removed: 0, rate: 100 });
   });
 });
@@ -460,7 +487,7 @@ describe('computeScoreSummary — removedPlatformBrands case/whitespace normaliz
       makeEntry('1', 'Hanan', { Brands: '  PRIBET.COM  ', 'TP Review Status': 'Published' }),
     ];
     const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' }]);
-    const result = computeScoreSummary(entries, { from: null, to: null }, [], 'tp', removed);
+    const result = computeScoreSummary(entries, { from: null, to: null }, [], ['tp'], removed);
     expect(result.brands).toHaveLength(0);
   });
 });
@@ -563,5 +590,28 @@ describe('passesPlatformDateFilter', () => {
   it('includes everything when no range is set', () => {
     const data = { 'Trust Pilot': '10/01/2020' };
     expect(passesPlatformDateFilter(data, 'tp', undefined, undefined)).toBe(true);
+  });
+});
+
+describe('computeScoreSummary multi-platform', () => {
+  it('showStars is true for exactly one platform and false for 2+', () => {
+    const one = computeScoreSummary([], { from: null, to: null }, [], ['tp']);
+    const two = computeScoreSummary([], { from: null, to: null }, [], ['tp', 'ag']);
+    expect(one.showStars).toBe(true);
+    expect(two.showStars).toBe(false);
+  });
+
+  it('an empty platforms array behaves as all 4 combined (bucket exists if any platform has a status)', () => {
+    const entries = [{ tab: 'X', data: { Brands: 'B1', 'AG Review Status': 'Published' } }] as unknown as Entry[];
+    const result = computeScoreSummary(entries, { from: null, to: null }, [], []);
+    expect(result.brands.map((b) => b.brand)).toEqual(['B1']);
+    expect(result.showStars).toBe(false);
+  });
+
+  it('omitting platforms entirely defaults to TP only, preserving today\'s default (regression lock)', () => {
+    const entries = [{ tab: 'X', data: { Brands: 'B1', 'TP Review Status': 'Published' } }] as unknown as Entry[];
+    const withDefault = computeScoreSummary(entries, { from: null, to: null });
+    const explicitTp = computeScoreSummary(entries, { from: null, to: null }, [], ['tp']);
+    expect(withDefault).toEqual(explicitTp);
   });
 });

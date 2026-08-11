@@ -152,7 +152,7 @@ describe('computeTabKpisFromEntries', () => {
 
     const rates = computeTabSuccessRates(
       entries.map((e) => ({ tab: e.tab, data: e.data })) as Parameters<typeof computeTabSuccessRates>[0],
-      'tp',
+      ['tp'],
       new Set(),
       { from: new Date(2026, 4, 1), to: new Date(2026, 6, 31) },
     );
@@ -164,6 +164,30 @@ describe('computeTabKpisFromEntries', () => {
     // (entry 3 only; entry 2 is excluded, not counted as removed).
     expect(kpis.tp).toEqual({ live: scoreSummaryTp.live, removed: scoreSummaryTp.removed });
     expect(kpis.tp).toEqual({ live: 2, removed: 1 });
+  });
+
+  it('agrees with Score Summary\'s computeTabSuccessRates on the same entries, MULTIPLE platforms, and range', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const entries = [
+      { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+        Brands: 'BrandX',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+    ];
+
+    const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg'])!;
+
+    const rates = computeTabSuccessRates(
+      entries.map((e) => ({ tab: e.tab, data: e.data })) as unknown as Parameters<typeof computeTabSuccessRates>[0],
+      ['tp', 'cg'],
+      new Set(),
+      { from: new Date(2026, 4, 1), to: new Date(2026, 6, 31) },
+    );
+    const scoreSummaryRate = rates.get('Rooster Partners') ?? { live: 0, removed: 0 };
+
+    expect(kpis.live).toBe(scoreSummaryRate.live);
+    expect(kpis.removed).toBe(scoreSummaryRate.removed);
   });
 
   it('excludes a platform-flagged brand from the tab-level aggregate too, matching that platform\'s own breakdown (a flagged status is unreliable everywhere it feeds, not just its own tile)', () => {
@@ -219,7 +243,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'germany' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'France' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany')!;
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Germany'])!;
     expect(kpis.live).toBe(2);
     expect(kpis.removed).toBe(0);
   });
@@ -230,7 +254,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'enigma-us1' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'Enigma-US2' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, 'Enigma-US1')!;
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, ['Enigma-US1'])!;
     expect(kpis.live).toBe(2);
     expect(kpis.removed).toBe(0);
   });
@@ -241,7 +265,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US2' }),
       entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France', 'Proxy Used': 'Enigma-US1' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany', 'Enigma-US1')!;
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Germany'], ['Enigma-US1'])!;
     expect(kpis.live).toBe(1);
   });
 
@@ -271,7 +295,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Unknown')!;
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Unknown'])!;
     expect(kpis.live).toBe(1);
   });
 
@@ -291,7 +315,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'UK' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'United Kingdom')!;
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['United Kingdom'])!;
     expect(kpis.live).toBe(1);
   });
 
@@ -309,7 +333,7 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US1' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'France', 'Proxy Used': 'Enigma-US2' }),
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), 'Germany')!;
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Germany'])!;
     expect(kpis.countries).toEqual(['France', 'Germany']);
     expect(kpis.proxies).toEqual(['Enigma-US1', 'Enigma-US2']);
   });
@@ -320,7 +344,7 @@ describe('computeTabKpisFromEntries', () => {
     ];
     // `rawHeaders` (line 123) has no CG column at all -- this tab structurally
     // can't track CasinoGuru.
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'cg');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['cg']);
     expect(kpis).toBeNull();
   });
 
@@ -346,14 +370,14 @@ describe('computeTabKpisFromEntries', () => {
     expect(unfiltered!.removed).toBe(0);
 
     // Filtered to TP only: the row's true TP status (Removed) surfaces.
-    const tpOnly = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'tp');
+    const tpOnly = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp']);
     expect(tpOnly).not.toBeNull();
     expect(tpOnly!.live).toBe(0);
     expect(tpOnly!.removed).toBe(1);
     expect(tpOnly!.total).toBe(1);
 
     // Filtered to CG only: the row's true CG status (Published/live) surfaces.
-    const cgOnly = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'cg');
+    const cgOnly = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['cg']);
     expect(cgOnly).not.toBeNull();
     expect(cgOnly!.live).toBe(1);
     expect(cgOnly!.removed).toBe(0);
@@ -374,7 +398,7 @@ describe('computeTabKpisFromEntries', () => {
         updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
       },
     ];
-    const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, 'cg');
+    const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['cg']);
     expect(kpis).not.toBeNull();
     // Only entry 2 (France) has a CG value -- entry 1 (Germany) is TP-only
     // and must not appear in a CG-scoped breakdown at all.
@@ -388,9 +412,57 @@ describe('computeTabKpisFromEntries', () => {
       entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
     ];
     const flagged = new Set([platformRemovedKey('TP Affiliate', 'Flagged Brand', 'tp')]);
-    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged, undefined, undefined, 'tp');
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged, undefined, undefined, ['tp']);
     expect(kpis).not.toBeNull();
     expect(kpis!.live).toBe(0);
     expect(kpis!.removed).toBe(0);
+  });
+
+  it('platformFilter with 2 platforms combines their live/removed into one total (combined-total semantics)', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const multiEntry = {
+      id: '1', tab: 'Rooster Partners', sheet_row_id: '1',
+      data: {
+        Brands: 'BrandX',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      },
+      updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null,
+    };
+    const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg']);
+    expect(kpis).not.toBeNull();
+    // TP is Removed and CG is Published/live on the same row — statuses.some(isLiveStatus)
+    // is checked before statuses.some(isRemovedStatus), so a row with a decided outcome on
+    // both counts as live once, not once for each platform and not as removed.
+    expect(kpis!.live).toBe(1);
+    expect(kpis!.removed).toBe(0);
+    expect(kpis!.tp).toEqual({ live: 0, removed: 1 });
+    expect(kpis!.cg).toEqual({ live: 1, removed: 0 });
+  });
+
+  it('a tab is included when it tracks at least one of 2 selected platforms, scoped to only the tracked one', () => {
+    const kpis = computeTabKpisFromEntries(
+      [entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' })],
+      rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg'],
+    );
+    expect(kpis).not.toBeNull();
+    expect(kpis!.live).toBe(1);
+  });
+
+  it('countryFilter with 2 values matches either (OR)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
+      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Spain' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Germany', 'France'])!;
+    expect(kpis.live).toBe(2);
+  });
+
+  it('an empty platformFilter array behaves identically to omitting it entirely (regression lock)', () => {
+    const entries = [entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' })];
+    const omitted = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const empty = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, []);
+    expect(empty).toEqual(omitted);
   });
 });

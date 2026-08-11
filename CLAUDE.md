@@ -594,6 +594,32 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **Live cross-surface consistency check never performed on this branch (multi-select filters).**
+  No live check exists yet confirming Overview's and Score Summary's combined multi-platform KPI
+  figures agree on real data for the same tab/platforms/range — this branch's entire premise is
+  4 independently-coded implementations of one counting rule, and only static tracing + unit
+  tests have verified agreement so far (no Supabase login credentials are available in any
+  session in this environment currently). Recommend this be the first live check performed once
+  credentials are available, specifically comparing a 2-platform selection's numbers between
+  Overview and Score Summary for the same tab/range.
+- Overview's per-tab KPI count can disagree with the row list on the BrandGroup page it
+  deep-links into, for a row with mixed per-platform outcomes (e.g. TP Removed + CG Published on
+  the same row) — Overview's combined-total logic classifies such a row as live-only (live
+  checked before removed, one classification per row), while BrandGroup's own status filter
+  treats a row as matching `?status=removed` if ANY relevant platform matches. Pre-existing
+  behavior (present before the multi-select filters branch), but multi-select makes it newly
+  reachable via an explicit 2-platform selection rather than only the old "all platforms" view.
+- Comma is an unescaped delimiter in every multi-select filter's URL/localStorage serialization
+  (`src/lib/filterParams.ts`'s `readArrayParam`/`writeArrayParam`). A country label, brand name,
+  or tab name containing a literal comma would round-trip incorrectly through
+  `?country=`/`?brand=`/`?tab=`. No known real value currently contains one, but this hasn't been
+  exhaustively verified against live country/brand data.
+- Check Status silently widens to an unscoped sweep when 2+ values are selected for
+  Agent/Proxy/Country/Status on Brand Tabs (`BrandGroup.tsx`'s Check Status scope-building logic)
+  — the live `StatusCheckScope` API only accepts one value per field, so selecting e.g. 2 proxies
+  and clicking Check Status runs an unscoped (all-proxies) sweep for that field rather than
+  guessing which of the 2 to send, which can be a much longer-running check than the user expects
+  from the visible filter. No UI hint currently surfaces this.
 - On a multi-platform brand tab (Rooster Partners, Revolution Casino, SilverPlay, Hanan) with
   `platformFilter === 'all'` and a date range set, `BrandGroup.tsx`'s visible **table rows**
   (`applyDateFilter`, around the `platformFilter === 'all'` branch) still use the old
