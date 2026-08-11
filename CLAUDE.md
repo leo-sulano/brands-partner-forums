@@ -39,6 +39,10 @@ Brands Partner Forum/
 - Pages own data fetching via `lib/queries.ts`; components stay presentational.
 - Env vars are read once in `src/lib/supabase.ts`. Never hardcode URLs or keys.
 - **Cross-dashboard consistency is a standing requirement, not a per-task nice-to-have.** Any change or new feature must stay aligned and correctly mapped with every other surface that shares the same data/logic (Overview, Score Summary, Brand Tabs, Schedule Planner, Ask AI, etc.) — same filters, same date/status/platform semantics, same computed numbers wherever they're shown. Before calling work done, check whether other pages/components read the same underlying data or duplicate the same logic, and verify they still agree. This project has shipped multiple data-accuracy bugs from independently-written logic silently diverging (see Task 180, Task 174 platform-removed-brand gap, Task 173 plan-vs-evidence mismatch) — a final whole-branch review, not just a per-task review, is what has caught most of these historically.
+- **Tier the process by blast radius — don't run the full pipeline on every task.** The full spec → plan → subagent-driven dev → per-task review → whole-branch review → live-verification pipeline exists to catch cross-dashboard drift, but applying it uniformly makes even small tasks take an hour. Classify every task before starting:
+  - **Tier 1 (fast path):** cosmetic/copy/layout changes, or any change confined to a component/file used in exactly one place. Guardrail before treating anything as Tier 1: grep for other importers of the file/component first — if it's used anywhere else, it is not Tier 1. Skip spec/plan/subagents/whole-branch review, but never skip build + a quick visual check.
+  - **Tier 2 (light path):** a scoped bug fix or small feature with one clear, contained root cause that touches shared logic but not `queries.ts`/`scoreSummary.ts`/date-status-platform filtering. Skip the formal spec+plan doc and subagent fan-out; implement directly, then do one self-review pass of the diff.
+  - **Tier 3 (full pipeline, current default for anything ambiguous):** anything touching `queries.ts`, `scoreSummary.ts`, date/status/platform filtering, KPI computation, or any logic duplicated across pages — i.e. anything the cross-dashboard consistency rule above covers. When in doubt between Tier 2 and Tier 3, pick Tier 3; misjudging this exact boundary is what caused Tasks 173/174/180.
 
 ## Deployment
 - `npm run build` → `dist/` → Vercel (config in `vercel.json`).
@@ -716,3 +720,66 @@ Brands Partner Forum/
   documented, not fixed, as of the 2026-08-04 Phase 2 review — a real fix means either changing
   `src/lib/scoreSummary.ts`'s shared behavior (out of scope, affects the live dashboard) or
   accepting the divergence.
+
+<!-- gitnexus:start -->
+# GitNexus MCP
+
+This project is indexed by GitNexus as **Forums Dashboard** (1240 symbols, 3401 relationships, 82 execution flows).
+
+GitNexus provides a knowledge graph over this codebase — call chains, blast radius, execution flows, and semantic search.
+
+## Always Start Here
+
+For any task involving code understanding, debugging, impact analysis, or refactoring, you must:
+
+1. **Read `gitnexus://repo/{name}/context`** — codebase overview + check index freshness
+2. **Match your task to a skill below** and **read that skill file**
+3. **Follow the skill's workflow and checklist**
+
+> If step 1 warns the index is stale, run `npx gitnexus analyze` in the terminal first.
+
+## Skills
+
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/refactoring/SKILL.md` |
+
+## Tools Reference
+
+| Tool | What it gives you |
+|------|-------------------|
+| `query` | Process-grouped code intelligence — execution flows related to a concept |
+| `context` | 360-degree symbol view — categorized refs, processes it participates in |
+| `impact` | Symbol blast radius — what breaks at depth 1/2/3 with confidence |
+| `detect_changes` | Git-diff impact — what do your current changes affect |
+| `rename` | Multi-file coordinated rename with confidence-tagged edits |
+| `cypher` | Raw graph queries (read `gitnexus://repo/{name}/schema` first) |
+| `list_repos` | Discover indexed repos |
+
+## Resources Reference
+
+Lightweight reads (~100-500 tokens) for navigation:
+
+| Resource | Content |
+|----------|---------|
+| `gitnexus://repo/{name}/context` | Stats, staleness check |
+| `gitnexus://repo/{name}/clusters` | All functional areas with cohesion scores |
+| `gitnexus://repo/{name}/cluster/{clusterName}` | Area members |
+| `gitnexus://repo/{name}/processes` | All execution flows |
+| `gitnexus://repo/{name}/process/{processName}` | Step-by-step trace |
+| `gitnexus://repo/{name}/schema` | Graph schema for Cypher |
+
+## Graph Schema
+
+**Nodes:** File, Function, Class, Interface, Method, Community, Process
+**Edges (via CodeRelation.type):** CALLS, IMPORTS, EXTENDS, IMPLEMENTS, DEFINES, MEMBER_OF, STEP_IN_PROCESS
+
+```cypher
+MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f:Function {name: "myFunc"})
+RETURN caller.name, caller.filePath
+```
+
+<!-- gitnexus:end -->
