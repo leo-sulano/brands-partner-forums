@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
-import BrandFilterDropdown from '../components/BrandFilterDropdown';
+import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
@@ -20,6 +20,7 @@ import { proxyIconUrl } from '../lib/proxyIcons';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { readArrayParam, writeArrayParam } from '../lib/filterParams';
 import type { TabKpis } from '../types/brand-entry';
 
 
@@ -131,7 +132,7 @@ function KpiBreakdownModal({
 }: {
   modal: KpiModalState;
   tabs: TabSummary[];
-  platformFilter: 'all' | Platform;
+  platformFilter: Platform[];
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -145,10 +146,11 @@ function KpiBreakdownModal({
   function getCount(kpis: TabKpis): number {
     if (modal.kind === 'total') return kpis.total;
     // kpis.live/kpis.removed are already scoped to platformFilter (see
-    // computeTabKpisFromEntries), and kpis[platformFilter] carries the same
-    // scoped number — summing all 4 platforms' unfiltered sub-counts here
-    // would disagree with the KPI card that opened this modal.
-    if (platformFilter !== 'all') return kpis[platformFilter][modal.kind];
+    // computeTabKpisFromEntries's combined-total rule — a row counts once if
+    // ANY selected platform's status says so) — reading them directly here
+    // keeps this modal's total in agreement with the KPI card that opened it
+    // for any number of selected platforms, not just one.
+    if (platformFilter.length > 0) return kpis[modal.kind];
     if (modal.kind === 'live') return kpis.tp.live + kpis.ag.live + kpis.cg.live + kpis.wo.live;
     return kpis.tp.removed + kpis.ag.removed + kpis.cg.removed + kpis.wo.removed;
   }
@@ -225,7 +227,7 @@ function SliceBreakdownModal({
   onClose,
 }: {
   modal: SliceModalState;
-  platformFilter: 'all' | Platform;
+  platformFilter: Platform[];
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -284,7 +286,7 @@ function SliceBreakdownModal({
             // pick which one to actually view — unless a global platform
             // filter is already active, in which case every row is already
             // scoped and the chip selector would be redundant too.
-            const rowPlatforms = (modal.platform || platformFilter !== 'all') ? [] : getTabPlatforms(r.tab);
+            const rowPlatforms = (modal.platform || platformFilter.length > 0) ? [] : getTabPlatforms(r.tab);
             return (
               <div key={r.tab} className="-mx-3 rounded-lg px-3 py-2.5 transition-colors hover:bg-blue-50">
                 <Link to={modal.linkFor(r.tab)} onClick={onClose} className="group flex items-center gap-3">
@@ -430,10 +432,19 @@ export default function Overview() {
   const [searchParams, setSearchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
-  const countryFilter = searchParams.get('country') ?? '';
-  const proxyFilter   = searchParams.get('proxy')   ?? '';
-  const platformParam = searchParams.get('platform');
-  const platformFilter: 'all' | Platform = PLATFORM_VALUES.has(platformParam ?? '') ? (platformParam as Platform) : 'all';
+  // readArrayParam returns a fresh array every call, so its result is memoized
+  // against the underlying raw param string — otherwise loadData's useCallback
+  // (which depends on these arrays directly) would see a "changed" dependency
+  // on every render even when the URL hasn't, refetching in an infinite loop.
+  const countryParamRaw  = searchParams.get('country');
+  const proxyParamRaw    = searchParams.get('proxy');
+  const platformParamRaw = searchParams.get('platform');
+  const countryFilter = useMemo(() => readArrayParam(searchParams, 'country'), [countryParamRaw]);
+  const proxyFilter   = useMemo(() => readArrayParam(searchParams, 'proxy'), [proxyParamRaw]);
+  const platformFilter = useMemo(
+    () => readArrayParam(searchParams, 'platform').filter((p) => PLATFORM_VALUES.has(p)) as Platform[],
+    [platformParamRaw],
+  );
 
   const loadData = useCallback(async () => {
     setState(s => ({ ...s, loading: true }));
@@ -448,9 +459,9 @@ export default function Overview() {
             dateFrom || undefined,
             dateTo || undefined,
             removedPlatformBrands,
-            countryFilter || undefined,
-            proxyFilter || undefined,
-            platformFilter === 'all' ? undefined : platformFilter,
+            countryFilter,
+            proxyFilter,
+            platformFilter,
           )
             .then((kpis): TabSummary | null => (kpis ? { tab, kpis } : null))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
@@ -511,7 +522,7 @@ export default function Overview() {
         tab: t.tab,
         count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
       })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter !== 'all' ? `&platform=${platformFilter}` : ''}`,
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
     });
   }
 
@@ -519,18 +530,18 @@ export default function Overview() {
     setOtherModal({ dimension, kind, members });
   }
 
-  function updateFilterParam(key: 'country' | 'proxy', value: string) {
+  function updateFilterParam(key: 'country' | 'proxy', values: string[]) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (value) next.set(key, value); else next.delete(key);
+      writeArrayParam(next, key, values);
       return next;
     }, { replace: true });
   }
 
-  function setPlatformFilter(v: string) {
+  function setPlatformFilter(values: string[]) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
-      if (v) next.set('platform', v); else next.delete('platform');
+      writeArrayParam(next, 'platform', values);
       return next;
     }, { replace: true });
   }
@@ -606,29 +617,33 @@ export default function Overview() {
         <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
         <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
         {allCountries.length > 1 && (
-          <BrandFilterDropdown
-            noun="countrie"
-            value={countryFilter}
+          <MultiSelectDropdown
+            noun="country"
+            values={countryFilter}
             onChange={(v) => updateFilterParam('country', v)}
-            brands={allCountries}
+            options={allCountries.map((c) => ({ value: c, label: c }))}
+            searchable
           />
         )}
         {allProxies.length > 1 && (
-          <BrandFilterDropdown
-            noun="proxie"
-            value={proxyFilter}
+          <MultiSelectDropdown
+            noun="proxy"
+            values={proxyFilter}
             onChange={(v) => updateFilterParam('proxy', v)}
-            brands={allProxies}
+            options={allProxies.map((p) => ({ value: p, label: p }))}
+            searchable
           />
         )}
-        <BrandFilterDropdown
+        <MultiSelectDropdown
           noun="platform"
-          value={platformFilter === 'all' ? '' : platformFilter.toUpperCase()}
-          onChange={(v) => setPlatformFilter(v.toLowerCase())}
-          brands={['TP', 'AG', 'CG', 'WO']}
+          values={platformFilter}
+          onChange={setPlatformFilter}
+          options={[
+            { value: 'tp', label: 'TP' }, { value: 'ag', label: 'AG' }, { value: 'cg', label: 'CG' }, { value: 'wo', label: 'WO' },
+          ]}
         />
 
-        {(dateActive || countryFilter || proxyFilter || platformFilter !== 'all') && (
+        {(dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0) && (
           <button
             type="button"
             onClick={() => setSearchParams((prev) => {
@@ -692,9 +707,9 @@ export default function Overview() {
       {/* Tab summary grid */}
       <section>
         <h2 className="mb-3 text-sm font-semibold text-slate-700">Brands Performance</h2>
-        {!state.loading && state.tabs.length === 0 && platformFilter !== 'all' ? (
+        {!state.loading && state.tabs.length === 0 && platformFilter.length > 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
-            No brand tabs track {PLATFORM_BADGE[platformFilter].label}
+            No brand tabs track {platformFilter.map((p) => PLATFORM_BADGE[p].label).join(' or ')}
           </p>
         ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -715,7 +730,7 @@ export default function Overview() {
                 return (
                   <Link
                     key={tab}
-                    to={`/brands/${tabToSlug(tab)}${platformFilter !== 'all' ? `?platform=${platformFilter}` : ''}`}
+                    to={`/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`}
                     style={{ height: 80 }}
                     className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
                   >
@@ -758,7 +773,7 @@ export default function Overview() {
       </section>
 
       {/* Platform breakdown chart -- redundant once scoped to one platform */}
-      {platformFilter === 'all' && (
+      {platformFilter.length === 0 && (
         <section>
           <div className="mb-4">
             <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
