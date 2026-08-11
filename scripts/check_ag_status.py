@@ -284,7 +284,7 @@ def check_ag_for_tab(
     dry_run: bool = False,
 ) -> dict:
     """Run AG status check for all eligible entries in `tab`.
-    Returns {checked, updated, errors, sheet_errors, total}."""
+    Returns {checked, updated, errors, sheet_errors, total, skipped_group}."""
     ensure_bridges()
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears

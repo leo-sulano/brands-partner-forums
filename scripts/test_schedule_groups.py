@@ -44,6 +44,35 @@ def test_active_group_index_is_stable_within_the_same_week():
     assert base == mid_week
 
 
+def test_brand_group_index_distribution_is_not_wildly_skewed():
+    # Smoke test for "the hash isn't degenerate" (e.g. always returning 0), not a precise
+    # balance guarantee -- per the design spec's request for a rough distribution check
+    # across a representative brand roster. Uses a synthetic ~45-brand set across a couple
+    # of tab names, since no real Supabase data is available in this environment.
+    brands = [
+        'Rocketspin', 'Lucky7even', 'Trybet.com', 'Boho Casino', 'Fortuneplay', 'Rollero',
+        'SilverPlay', 'Revolution Casino', 'Prive Casino', 'Online Casino Deutschland',
+        'ZodiacBet.com', 'Casino Extreme', 'Golden Reels', 'Spin Palace', 'Royal Vegas',
+        'Bet Kingdom', 'Lucky Star Casino', 'Diamond Reels', 'Vegas Crest', 'Slot Empire',
+        'Jackpot Wheel', 'Winward Casino', 'Sun Palace', 'Uptown Aces', 'Red Dog Casino',
+        'Cafe Casino', 'Ignition Casino', 'BetOnline', 'Bovada', 'MyBookie',
+        'Wild Casino', 'El Royale', 'Las Atlantis', 'Super Slots', 'Everygame',
+        'Casino Days', 'PlayAmo', 'Bitstarz', 'Fairspin', 'mBit Casino',
+        'Cloudbet', 'Stake Casino', 'Rocketpot', 'BC.Game', 'Trustdice',
+    ]
+    tabs = ['Rooster Partners', 'Hanan']
+    counts = {}
+    for tab in tabs:
+        for brand in brands:
+            idx = sg.brand_group_index(tab, brand)
+            counts[idx] = counts.get(idx, 0) + 1
+
+    assert set(counts.keys()) == set(range(sg.NUM_GROUPS))  # every group actually got at least one
+    smallest = min(counts.values())
+    largest = max(counts.values())
+    assert largest <= smallest * 2.5  # loose bound -- catches a degenerate hash, not a precise balance
+
+
 def test_in_active_group_matches_brand_and_active_group():
     day0 = sg._EPOCH
     assert sg.active_group_index(day0) == 0

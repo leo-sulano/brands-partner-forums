@@ -136,6 +136,10 @@ silently produce blocked/garbage results); WO's CLI default already matches prod
 finish first (in case a manual Check Status click is still running). Logs: `~/scraper_tp_weekly.log`,
 `~/scraper_ag_weekly.log`, `~/scraper_cg_weekly.log`, `~/scraper_wo_weekly.log`.
 
+**Note:** "across all tabs" above is not the same as "across all brands" — since 2026-08-11 each
+run only checks whichever brand group is active that week, per-brand, not per-tab. See
+[Brand Schedule Groups](#brand-schedule-groups) below.
+
 **Check last week's run:**
 ```bash
 tail -40 ~/weekly_all_platforms.log
@@ -165,7 +169,7 @@ on the EC2 box (or anywhere with the repo checked out and no dependencies beyond
 standard library):
 
 ```bash
-cd ~/scripts   # or wherever check_review_status.py lives on this box
+cd ~
 python3 -c "import schedule_groups as sg; from datetime import date; print(sg.active_group_index(date.today()))"
 ```
 
@@ -173,6 +177,37 @@ python3 -c "import schedule_groups as sg; from datetime import date; print(sg.ac
 change, a brand can now go up to 3 weeks between checks on any given platform. Accepted
 deliberately when this was designed — revisit only if real-world staleness turns out to be a
 problem in practice.
+
+**Also note:** groups balance by brand *count* (roughly 1/3 of brands per group), not by
+row/entry count — some brands have many more tracked review accounts than others, so actual
+per-week scrape volume can still vary noticeably between groups even though the brand split
+itself is roughly even.
+
+**Deploy note:** this feature requires a new file, `schedule_groups.py`, that
+`check_review_status.py` imports unconditionally (`from schedule_groups import
+in_active_group`) — `check_ag_status.py`/`check_cg_status.py`/`check_wo_status.py`/
+`status_server.py` all import from `check_review_status`, so they transitively need it too. A
+deploy of this feature is **not** just re-uploading `check_review_status.py` per the
+["Updating the Script"](#updating-the-script) section below — it must include all of the
+following, uploaded together, or the server ends up with a `check_review_status.py` that
+imports a module that was never uploaded (`ModuleNotFoundError`, breaking every platform's
+weekly cron AND the manual "Check Status" button for all 4 platforms):
+
+```bash
+# New file — must land in the SAME directory as check_review_status.py (~/, not a subdirectory)
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\schedule_groups.py" ec2-user@54.179.186.205:~/schedule_groups.py
+
+# Modified in this branch — re-upload all of these
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_review_status.py" ec2-user@54.179.186.205:~/check_review_status.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_ag_status.py" ec2-user@54.179.186.205:~/check_ag_status.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_cg_status.py" ec2-user@54.179.186.205:~/check_cg_status.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_wo_status.py" ec2-user@54.179.186.205:~/check_wo_status.py
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.179.186.205:~/status_server.py
+
+# Then restart the status server so it picks up the new code:
+pkill -f status_server
+nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+```
 
 ---
 

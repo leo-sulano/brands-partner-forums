@@ -2620,11 +2620,16 @@ cursor — a failed or skipped run self-corrects on the next one with no recover
   `docs/superpowers/plans/2026-08-11-alternating-brand-check-schedules.md`.
 
 ### Known Issues / Backlog (added by this task)
-- Live verification against the real EC2 box (confirming a real weekly-cron invocation
-  actually skips the expected brands) was not performed if no EC2 SSH access was available in
-  the implementing session — check `docs/ec2-scraper-runbook.md`'s "Brand Schedule Groups"
-  section for the no-SSH way to at least confirm which group is active, and flag here whether
-  a real SSH-based end-to-end check still needs to happen.
+- **Not yet deployed or verified live.** All 8 implementing sessions for this branch were pure
+  local git-worktree work — no SSH command was run against the real EC2 box at any point, and
+  this branch has never touched the live instance. Two things are still pending before this
+  feature is actually live: (1) deploy — `schedule_groups.py` (new file) plus the modified
+  `check_review_status.py`, `check_ag_status.py`, `check_cg_status.py`, `check_wo_status.py`,
+  and `status_server.py` all need to be uploaded to EC2 together, followed by a `status_server`
+  restart, per the deploy note added to `docs/ec2-scraper-runbook.md`'s "Brand Schedule Groups"
+  section; and (2) live verification — a real SSH-based end-to-end check confirming an actual
+  weekly-cron run skips the expected brands has not been performed, and still needs to happen
+  once the deploy above is done.
 - No dashboard-side visibility into *which* brands are in which group ahead of time (only a
   post-run skip count) — same category of gap as the weekly cron's own health visibility,
   noted in Task 201's Known Issues. Worth a joint follow-up if either becomes a real pain
