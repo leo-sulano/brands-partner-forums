@@ -226,6 +226,33 @@ describe('computeSuccessRates', () => {
   });
 });
 
+describe('computeSuccessRates multi-platform', () => {
+  it('a row live on one selected platform and removed on another counts as live once, never both (live-precedence, not double-counted)', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published', 'AG Review Status': 'Removed' }),
+    ];
+    const result = computeSuccessRates(entries, ['tp', 'ag']);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
+  });
+
+  it('a row with only a non-live/non-removed status on one selected platform still creates a bucket (matchedAny gate), rather than being dropped from the result map', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Pending' }),
+    ];
+    const result = computeSuccessRates(entries, ['tp', 'ag']);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 0, removed: 0, rate: null });
+  });
+
+  it('excludes a platform-removed-flagged brand only on the flagged platform within the combined loop, not the whole row', () => {
+    const entries: Entry[] = [
+      makeEntry('1', 'Hanan', { Brands: 'ZodiacBet.com', 'TP Review Status': 'Removed', 'AG Review Status': 'Published' }),
+    ];
+    const removed = buildRemovedPlatformBrandSet([{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp' }]);
+    const result = computeSuccessRates(entries, ['tp', 'ag'], removed);
+    expect(result.get('Hanan ZodiacBet.com')).toEqual({ live: 1, removed: 0, rate: 100 });
+  });
+});
+
 describe('computeTabSuccessRates — date range (matches BrandGroup.tsx brand-tab KPI cards)', () => {
   it('is all-time by default and, when a range is given, still counts undated rows regardless', () => {
     const entries: Entry[] = [

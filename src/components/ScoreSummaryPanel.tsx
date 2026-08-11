@@ -146,15 +146,30 @@ export default function ScoreSummaryPanel({ entries, removedPlatformBrands = EMP
   // distinguishes "user cleared it to All/combined" from "untouched," since
   // this filter's real default is one specific platform (TP), unlike every
   // other filter here whose default already IS "All" (empty).
+  //
+  // Both `platform` and `tabFilter` are memoized against the underlying raw
+  // param string (not recomputed unconditionally every render) — otherwise a
+  // fresh array identity on every render (even a UI-only one, like toggling
+  // `collapsed`) would make the computeScoreSummary/computeSuccessRates/
+  // computeTabSuccessRates useMemos below — each a full scan over every
+  // entry across all 11 operational tabs — and the filter-persistence save
+  // effect all see a "changed" dependency and rerun on every render,
+  // regardless of whether the URL actually changed. Mirrors Overview.tsx's
+  // identical fix for the same hazard (countryFilter/proxyFilter/
+  // platformFilter memoized against their raw searchParams strings).
   const platformParam = searchParams.get('platform');
-  const platform: Platform[] = platformParam == null
-    ? ['tp']
-    : platformParam === 'none'
-      ? []
-      : platformParam.split(',').filter((p): p is Platform => PLATFORM_VALUES.has(p));
+  const platform: Platform[] = useMemo(
+    () => platformParam == null
+      ? ['tp']
+      : platformParam === 'none'
+        ? []
+        : platformParam.split(',').filter((p): p is Platform => PLATFORM_VALUES.has(p)),
+    [platformParam],
+  );
   const fromIso = searchParams.get('from') ?? '';
   const toIso = searchParams.get('to') ?? '';
-  const tabFilter = readArrayParam(searchParams, 'tab');
+  const tabParam = searchParams.get('tab');
+  const tabFilter = useMemo(() => readArrayParam(searchParams, 'tab'), [tabParam]);
 
   function setParam(key: string, value: string) {
     setSearchParams((prev) => {
