@@ -23,6 +23,8 @@ import AddPlatformModal from '../components/AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from '../components/Toast';
 import SelectDropdown from '../components/SelectDropdown';
+import ExportMenuButton from '../components/ExportMenuButton';
+import { buildScheduleExportRows, SCHEDULE_EXPORT_HEADERS } from '../lib/scheduler/scheduleExport';
 import type { Entry } from '../types/entry';
 
 const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
@@ -500,6 +502,22 @@ export default function SchedulePlanner() {
                 >
                   Today
                 </button>
+                <ExportMenuButton
+                  headers={SCHEDULE_EXPORT_HEADERS}
+                  getRows={() => buildScheduleExportRows(
+                    filteredBrands.map((brand) => {
+                      const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
+                      return {
+                        brand,
+                        platforms: brandPlatforms(brand),
+                        rowsByPlatform,
+                        pausesByPlatform,
+                        removedPlatforms: flaggedRemovedPlatforms(brand),
+                      };
+                    }),
+                  )}
+                  filenameBase={`schedule-planner-${tabToSlug(tab)}-${weekStartISO}`}
+                />
               </div>
             </div>
           </div>
