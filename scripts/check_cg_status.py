@@ -51,6 +51,7 @@ from check_review_status import (
     normalize_review_list_url,
     STATUS_FILTER_MAP,
     matches_scope_filters,
+    filter_by_active_group,
     extract_review_card_text,
     REVIEW_TEXT_KEYS,
 )
@@ -301,9 +302,10 @@ def check_cg_for_tab(
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
     entries = load_cg_entries(tab, include_published, country, status_filter, brands, agent, proxy)
+    entries, skipped_group = filter_by_active_group(entries)
     total = len(entries)
     if not total:
-        return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
+        return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0, "skipped_group": skipped_group}
 
     checked = updated = errors = sheet_errors = 0
     driver = None
@@ -394,7 +396,7 @@ def check_cg_for_tab(
         if driver:
             driver.quit()
 
-    return {"checked": checked, "updated": updated, "errors": errors, "sheet_errors": sheet_errors, "total": total}
+    return {"checked": checked, "updated": updated, "errors": errors, "sheet_errors": sheet_errors, "total": total, "skipped_group": skipped_group}
 
 
 def main() -> None:
@@ -412,7 +414,7 @@ def main() -> None:
     print(f"Loading CG entries ({scope})...")
     result = check_cg_for_tab(args.tab, include_published=True, headless=args.headless,
                                country=args.country, dry_run=args.dry_run)
-    print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
+    print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']} skipped_group={result.get('skipped_group', 0)}")
     if args.dry_run:
         print("(dry-run — no writes made)")
 
