@@ -2587,3 +2587,47 @@ transparent migration for existing single-value URL params/localStorage (new
   Plan: `docs/superpowers/plans/2026-08-11-multi-select-dashboard-filters.md`.
 
 ---
+
+## Task 203: Divide Brands into Alternating Schedules
+
+**Date:** August 11, 2026
+
+Split the EC2 automatic status-check pipeline into 3 deterministic, stateless brand groups so
+neither the weekly all-platform cron (Task 201) nor the manual "Check Status" button processes
+every brand at once. A brand's group (`schedule_groups.py`'s `brand_group_index(tab, brand)`) is
+a stable hash of its own tab + name — no new table, no manual assignment step, a brand added
+tomorrow is grouped automatically the instant it's first queried. Which group is active for a
+given run (`active_group_index()`) is computed purely from the calendar date, with no persisted
+cursor — a failed or skipped run self-corrects on the next one with no recovery step needed.
+
+- Enforced in exactly one place, `check_review_status.py`'s new `filter_by_active_group()`,
+  called by all four platform checkers' entry points (`check_ag_for_tab`/`check_cg_for_tab`/
+  `check_wo_for_tab`, plus TP's own `main()` and `status_server.py`'s TP branch) — both the
+  weekly cron and the manual dashboard button go through the same function, so they can't
+  drift from each other.
+- Deliberately no override: a brand outside the current run's active group is skipped
+  unconditionally regardless of how the check was triggered, per an explicit decision during
+  design over adding an "ignore schedule" escape hatch.
+- 3 groups was kept even after confirming, during design, that it means a 3-week full rotation
+  on top of Task 201's daily->weekly cadence change for TP — an accepted trade-off, not
+  revisited further.
+- Dashboard's Check Status result toast gains a skip count (e.g. "Checked 14 — 31 skipped (not
+  scheduled this week)") sourced from the checker's own response — no per-row badge, no new
+  page.
+- No schema change; no change to Score Summary/Overview/Brand Tabs KPI computation or the
+  Schedule Planner (an unrelated feature/scheduling engine).
+- Spec: `docs/superpowers/specs/2026-08-11-alternating-brand-check-schedules-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-11-alternating-brand-check-schedules.md`.
+
+### Known Issues / Backlog (added by this task)
+- Live verification against the real EC2 box (confirming a real weekly-cron invocation
+  actually skips the expected brands) was not performed if no EC2 SSH access was available in
+  the implementing session — check `docs/ec2-scraper-runbook.md`'s "Brand Schedule Groups"
+  section for the no-SSH way to at least confirm which group is active, and flag here whether
+  a real SSH-based end-to-end check still needs to happen.
+- No dashboard-side visibility into *which* brands are in which group ahead of time (only a
+  post-run skip count) — same category of gap as the weekly cron's own health visibility,
+  noted in Task 201's Known Issues. Worth a joint follow-up if either becomes a real pain
+  point.
+
+---

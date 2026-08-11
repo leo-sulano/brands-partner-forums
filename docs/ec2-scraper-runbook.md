@@ -144,6 +144,38 @@ tail -40 ~/scraper_tp_weekly.log ~/scraper_ag_weekly.log ~/scraper_cg_weekly.log
 
 ---
 
+## Brand Schedule Groups
+
+Added 2026-08-11 to spread the weekly all-platform run's load: every brand is deterministically
+split into 3 groups (`scripts/schedule_groups.py`, `brand_group_index(tab, brand)` — a stable
+hash of the tab + brand name, no database table involved), and each Monday's run only checks
+whichever group is "active" that week (`active_group_index()`, computed purely from the
+calendar date — no stored cursor). A brand not in this week's active group is skipped
+entirely by all four platform checkers, and also by the manual dashboard "Check Status"
+button — there is no override. Full rotation (every brand checked at least once) takes
+3 weeks.
+
+`filter_by_active_group()` in `check_review_status.py` is the one place this is enforced;
+`check_ag_status.py`/`check_cg_status.py`/`check_wo_status.py`'s `check_*_for_tab()` functions
+and `status_server.py`'s TP branch all call it right after loading entries, so both the cron
+path and the manual-button path are covered by the same code.
+
+**To check which group is active this week without SSH-ing in and reading logs**, run this
+on the EC2 box (or anywhere with the repo checked out and no dependencies beyond the
+standard library):
+
+```bash
+cd ~/scripts   # or wherever check_review_status.py lives on this box
+python3 -c "import schedule_groups as sg; from datetime import date; print(sg.active_group_index(date.today()))"
+```
+
+**Known trade-off:** stacked on top of this same runbook's earlier TP daily->weekly cadence
+change, a brand can now go up to 3 weeks between checks on any given platform. Accepted
+deliberately when this was designed — revisit only if real-world staleness turns out to be a
+problem in practice.
+
+---
+
 ## Updating the Script
 
 Whenever `scripts/check_review_status.py` is changed locally, re-upload it:
