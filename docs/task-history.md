@@ -2523,3 +2523,67 @@ any route, leftover scaffolding from an earlier design).
   asserts all-platform scope under a filter.
 
 ---
+
+## Task 202: Multi-Select Dashboard Filters
+
+**Date:** August 11, 2026
+
+Converted every category-filter dropdown across the dashboard — Platform, Country, Proxy, Status,
+Agent, Brand, Tab — from single-select to multi-select, per the PMS task of the same name (due
+2026-08-07). New shared `MultiSelectDropdown` component (`src/components/MultiSelectDropdown.tsx`)
+replaces four independently hand-rolled single-select dropdowns (`BrandFilterDropdown.tsx`, now
+deleted; `SelectDropdown.tsx`'s filter usages; BrandGroup's inline `FilterDropdown`; Score
+Summary's inline `PlatformFilter`/`TabFilterDropdown`), so any future filter gets multi-select for
+free instead of joining the pile. Every filter's state became `string[]` (`[]` = "All"), with
+transparent migration for existing single-value URL params/localStorage (new
+`src/lib/filterParams.ts`: `readArrayParam`/`writeArrayParam`/`toArrayFilter`).
+
+- **Combined-total semantics:** selecting 2+ platforms merges their Live/Removed/Success-Rate
+  counts into one total — a row counts as live if ANY selected platform's own status+date line
+  up (OR across platforms, live-checked-before-removed tie-break, never double-counted per row).
+  Implemented independently in 4 places that must agree — `queries.ts` (Overview),
+  `BrandGroup.tsx` (Brand Tabs), `scoreSummary.ts` (Score Summary), `ai-assistant/tools.ts` (Ask
+  AI) — and confirmed to agree via hand-traced examples in both the per-task and final
+  whole-branch reviews, plus a new automated parity test in `queries.test.ts` locking Overview's
+  and Score Summary's multi-platform numbers together (extending the existing Task-180-era
+  single-platform lock).
+- **Score Summary's star-rating histogram** (TP is 1-5, AG is 1-10, and even same-scale platforms
+  have independent review-text columns) only renders for exactly 1 selected platform; 2+ hides it
+  while still showing combined Live/Removed/Success-Rate. Score Summary's platform filter alone
+  keeps a non-"all" default (`['tp']`, matching its pre-existing behavior) via a `?platform=none`
+  URL sentinel distinguishing "untouched" from "explicitly cleared to all-combined" — confirmed
+  isolated to this one page, with Overview/BrandGroup both correctly defaulting empty to "all."
+- Built via 7-task Subagent-Driven Development with per-task review + fix loops, plus a final
+  whole-branch review. Real bugs caught and fixed along the way (not just polish): an infinite
+  refetch loop from `readArrayParam`'s unstable array reference feeding a `useCallback` dependency
+  (Overview, Score Summary — both now memoize against the raw URL param string); BrandGroup's
+  `displayTotals` KPI cards summed each platform's counts independently instead of counting each
+  row once, disagreeing with Overview for the same tab/selection/range on a row live on 2+
+  platforms — switched to row-counting for every selection state (including "none selected") so
+  "select all platforms" and "select none" stay numerically identical; BrandGroup's
+  `relevantPlatforms` didn't intersect the selection with a tab's own tracked platforms, so an
+  Overview deep link naming a platform the target tab doesn't track silently defeated the date
+  filter (undated rows always pass); Ask AI's `get_score_summary`/`get_success_rate_by_field`
+  handlers discarded a bare-string `platform` argument from the tool-calling model instead of
+  treating it as one platform, and an all-invalid platform array fell back to "all 4 combined"
+  instead of the tool's existing tp-only default — both fixed, plus the tool's own parameter
+  description corrected (it had claimed omitting `platform` gives an all-platform total; the code,
+  correctly, defaults to tp-only, matching every other surface in this change).
+- Known, deliberately deferred (documented in this file's Known Issues section rather than
+  fixed): no live cross-surface check has been performed comparing Overview's and Score Summary's
+  combined multi-platform KPIs on real data (no Supabase credentials available in any session in
+  this environment); Overview's per-tab KPI count can disagree with BrandGroup's own row-level
+  status filter for a row with mixed per-platform outcomes (pre-existing, newly reachable via an
+  explicit multi-platform selection); comma is an unescaped delimiter in every array filter's
+  URL/localStorage serialization (no known real value currently contains one); Check Status
+  silently widens to an unscoped sweep for Agent/Proxy/Country/Status when 2+ values are selected,
+  since the live `StatusCheckScope` API only accepts one value per field. Also left as-is per
+  final review triage: BrandGroup's additive Live/Removed KPI-card toggles vs. `TotalBreakdownModal`'s
+  replace-whole-selection toggles (both defensible, undocumented); a saved "all platforms combined"
+  Score Summary selection doesn't survive a reload (reverts to the `['tp']` default); `MultiSelectDropdown`
+  has no Escape-to-close handler.
+- Full suite (315 tests) and build pass; `deno test`/`deno check` on the `ai-assistant` Edge
+  Function pass (71 tests). Spec: `docs/superpowers/specs/2026-08-11-multi-select-dashboard-filters-design.md`.
+  Plan: `docs/superpowers/plans/2026-08-11-multi-select-dashboard-filters.md`.
+
+---
