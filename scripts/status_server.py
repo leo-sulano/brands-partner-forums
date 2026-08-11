@@ -30,7 +30,7 @@ from check_review_status import (
     load_entries, build_driver, fetch_status,
     find_status_col, find_score_col, update_entry,
     BATCH_SIZE, DELAY_BETWEEN_BATCHES, CHROME_RESTART_EVERY,
-    REVIEW_TEXT_KEYS,
+    REVIEW_TEXT_KEYS, filter_by_active_group,
 )
 from check_ag_status import check_ag_for_tab
 from check_cg_status import check_cg_for_tab
@@ -156,11 +156,12 @@ def check_status():
         # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published, brands=brands,
                                 status_filter=status_filter, agent=agent, proxy=proxy, country=country)
+        entries, skipped_group = filter_by_active_group(entries)
         total = len(entries)
-        print(f'\n[server] TP check started — {total} entries ({scope})')
+        print(f'\n[server] TP check started — {total} entries ({scope}, {skipped_group} skipped — not in this run\'s schedule group)')
 
         if not total:
-            return jsonify({'checked': 0, 'updated': 0, 'errors': 0, 'total': 0})
+            return jsonify({'checked': 0, 'updated': 0, 'errors': 0, 'total': 0, 'skipped_group': skipped_group})
 
         driver = build_driver(headless=PLATFORM_HEADLESS['tp'])
         checked = updated = errors = sheet_errors = 0
@@ -227,7 +228,7 @@ def check_status():
             driver.quit()
 
         print(f'[server] Done. checked={checked} updated={updated} errors={errors} sheet_errors={sheet_errors}')
-        return jsonify({'checked': checked, 'updated': updated, 'errors': errors, 'sheet_errors': sheet_errors, 'total': total})
+        return jsonify({'checked': checked, 'updated': updated, 'errors': errors, 'sheet_errors': sheet_errors, 'total': total, 'skipped_group': skipped_group})
 
     finally:
         _active_tabs.discard(tab_key)

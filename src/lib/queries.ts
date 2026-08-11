@@ -865,7 +865,7 @@ function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<st
 export async function triggerStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
-): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
   if (!CHECK_STATUS_URL) {
     throw new Error(
       'VITE_CHECK_STATUS_URL is not configured — check .env',
@@ -892,7 +892,7 @@ export async function triggerStatusCheck(
 export async function triggerAgStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
-): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
   if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
@@ -914,7 +914,7 @@ export async function triggerAgStatusCheck(
 export async function triggerCgStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
-): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
   if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
@@ -936,7 +936,7 @@ export async function triggerCgStatusCheck(
 export async function triggerWoStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
-): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number }> {
+): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
   if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',

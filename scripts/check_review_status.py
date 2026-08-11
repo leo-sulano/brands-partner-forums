@@ -33,6 +33,7 @@ import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 
 from geo_proxy import country_code_for_entry
+from schedule_groups import in_active_group
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
 
@@ -674,6 +675,24 @@ def find_brand_col(data: dict) -> Optional[str]:
     return None
 
 
+def filter_by_active_group(entries: list[dict]) -> tuple[list[dict], int]:
+    """Keep only entries whose (tab, brand) hashes into this run's active
+    schedule group (see schedule_groups.py). Entries that are skipped here
+    are left completely untouched -- this only decides whether they're
+    visited this run, never anything about their stored status/data."""
+    kept: list[dict] = []
+    skipped = 0
+    for entry in entries:
+        data = entry.get("data") or {}
+        brand_col = find_brand_col(data)
+        brand_val = (data.get(brand_col) or "").strip() if brand_col else ""
+        if in_active_group(entry.get("tab") or "", brand_val):
+            kept.append(entry)
+        else:
+            skipped += 1
+    return kept, skipped
+
+
 # Mirrors the dashboard's own Brand/Agent/Proxy/Country filter dropdowns so a
 # "Check Status" run can be scoped to exactly what's currently filtered in the
 # table for any of TP/AG/CG/WO, the same way status_filter scopes to a status.
@@ -885,8 +904,9 @@ def main() -> None:
     scope = f"tab: {args.tab}" if args.tab else "all tabs"
     print(f"Loading entries ({scope})...")
     entries = load_entries(args.tab)
+    entries, skipped_group = filter_by_active_group(entries)
     total = len(entries)
-    print(f"  -> {total} entries to check\n")
+    print(f"  -> {total} entries to check ({skipped_group} skipped -- not in this run's schedule group)\n")
 
     if not total:
         print("Nothing to do.")
@@ -958,7 +978,7 @@ def main() -> None:
         driver.quit()
 
     print(f"\n{'-'*40}")
-    print(f"Done.  checked={checked}  updated={updated}  errors={errors}")
+    print(f"Done.  checked={checked}  updated={updated}  errors={errors}  skipped_group={skipped_group}")
     if args.dry_run:
         print("(dry-run — no writes made)")
 

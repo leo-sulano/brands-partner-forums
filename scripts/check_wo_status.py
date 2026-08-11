@@ -37,6 +37,7 @@ from check_review_status import (
     log_check_error,
     STATUS_FILTER_MAP,
     matches_scope_filters,
+    filter_by_active_group,
     extract_review_card_text,
     REVIEW_TEXT_KEYS,
 )
@@ -240,9 +241,10 @@ def check_wo_for_tab(
     dry_run: bool = False,
 ) -> dict:
     entries = load_wo_entries(tab, include_published, status_filter, brands, agent, proxy, country)
+    entries, skipped_group = filter_by_active_group(entries)
     total = len(entries)
     if not total:
-        return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0}
+        return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0, "skipped_group": skipped_group}
 
     # WO runs non-headless (see PLATFORM_HEADLESS in status_server.py), same as AG/CG,
     # but has no display to render into on a headless Linux box — Chrome fails to start
@@ -326,7 +328,7 @@ def check_wo_for_tab(
     finally:
         driver.quit()
 
-    return {"checked": checked, "updated": updated, "errors": errors, "sheet_errors": sheet_errors, "total": total}
+    return {"checked": checked, "updated": updated, "errors": errors, "sheet_errors": sheet_errors, "total": total, "skipped_group": skipped_group}
 
 
 def main() -> None:
@@ -339,7 +341,7 @@ def main() -> None:
     scope = f"tab: {args.tab}" if args.tab else "all tabs"
     print(f"Loading WO entries ({scope})...")
     result = check_wo_for_tab(args.tab, include_published=True, headless=args.headless, dry_run=args.dry_run)
-    print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']}")
+    print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']} skipped_group={result.get('skipped_group', 0)}")
     if args.dry_run:
         print("(dry-run — no writes made)")
 
