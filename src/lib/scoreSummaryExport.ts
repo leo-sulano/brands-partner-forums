@@ -1,4 +1,5 @@
 import { successRatePct, type BrandSummary, type SuccessRate } from './scoreSummary';
+import { tabDisplayName } from './tabs';
 
 export function buildScoreSummaryExportHeaders(maxScore: number, showStars: boolean): string[] {
   const headers = ['Tab', 'Brand'];
@@ -17,7 +18,7 @@ export function buildScoreSummaryExportRows(
   successRates: Map<string, SuccessRate>,
 ): string[][] {
   return brands.map((b) => {
-    const row: string[] = [b.tab, b.brand];
+    const row: string[] = [tabDisplayName(b.tab), b.brand];
     if (showStars) {
       for (let s = maxScore; s >= 1; s--) row.push(String(b.counts[s] ?? 0));
       row.push(String(b.unrated), String(b.total));

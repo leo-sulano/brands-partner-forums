@@ -13,7 +13,7 @@ filtered state into `string[][]` — no page duplicates another page's row-build
 page's filtering/computation logic is touched or duplicated.
 
 **Tech Stack:** React 19 + TypeScript (strict), Vitest, new dependency: `xlsx` (SheetJS community
-build, MIT license, no other new dependencies).
+build, Apache-2.0 license, no other new dependencies).
 
 ## Global Constraints
 

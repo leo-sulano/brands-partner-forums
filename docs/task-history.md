@@ -2722,7 +2722,7 @@ Brand Tabs, Score Summary, and Schedule Planner — the 3 pages with real filter
 per an explicit user scoping decision that excluded Overview, Activity Log, Admin Users, Sync
 Status, and Ask AI. Each export reads only that page's already-computed, already-filtered state —
 no new Supabase queries, no write path, no change to any filtering/computation logic. New
-dependency: `xlsx` (SheetJS, MIT).
+dependency: `xlsx` (SheetJS, Apache-2.0).
 
 New shared `src/lib/exportFile.ts` (`buildCsv`/`buildWorkbook`/`downloadFile`, a plain Blob+anchor
 download, no server round-trip) and `src/components/ExportMenuButton.tsx` (the shared toolbar
@@ -2773,15 +2773,18 @@ showing its loading skeleton (real entries hadn't finished fetching yet) rather 
 pattern manually with hardcoded content (worked fine) and then re-testing once the real page
 finished loading (fully correct, as above).
 
-One genuine, real gap did come out of this and is deliberately left open, flagged for a follow-up
-rather than fixed here: the Export button is not gated on any page's own `loading` state (unlike
-the KPI cards beside it, which already show "…" while loading), so a user who clicks Export during
-the initial data-fetch window gets a valid-but-empty file instead of a "please wait" affordance —
-not a data-correctness defect (once loaded, every export is exactly correct, per the live
-verification above), just a UX polish gap none of the 4 page-wiring task reviews caught, since each
-reviewed static code correctness rather than this specific runtime loading-state race. Fix
-direction: disable/hide the Export button while that page's `loading` is true, mirroring the
-existing KPI-card pattern.
+The final whole-branch review caught and fixed a real gap this task's own live verification had
+missed: the Export button wasn't gated on the page's own `loading` state, so clicking it during the
+initial data-fetch window on Brand Tabs produced a genuinely 0-byte CSV (both `headers` and `rows`
+were empty arrays at that point), and on Schedule Planner a header-only file. Score Summary was
+accidentally immune — its parent page never mounts the panel containing the Export button while
+loading. Fixed by adding an optional `disabled` prop to `ExportMenuButton` and wiring it to each
+page's own existing `loading` state (Brand Tabs, Schedule Planner); Score Summary needed no change.
+The review also caught two places where the export used raw internal identifiers instead of the
+display labels the screen actually shows — Brand Tabs' CSV/Excel header row (now run through the
+same `getColLabel` the on-screen table headers use) and Score Summary's exported Tab column (now
+`tabDisplayName`, so the two tabs users know only as `FTP`/`BITP` export under those names instead
+of their long canonical form) — both fixed the same way.
 
 Full test suite (1028 tests, 27 new across the 4 new lib modules) and build both pass. Spec:
 `docs/superpowers/specs/2026-08-11-data-export-design.md`. Plan:

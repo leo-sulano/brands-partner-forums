@@ -517,6 +517,7 @@ export default function SchedulePlanner() {
                     }),
                   )}
                   filenameBase={`schedule-planner-${tabToSlug(tab)}-${weekStartISO}`}
+                  disabled={loading}
                 />
               </div>
             </div>

@@ -598,6 +598,24 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- Schedule Planner's CSV/Excel export (`src/lib/scheduler/scheduleExport.ts`) reads each day's status
+  only from the `brand_schedule` plan row (`rowsByPlatform[platform]?.[day]`), not from the same
+  confirmed/removed real-evidence overlay or past-day "ghosting" the calendar grid itself displays on
+  top of that plan (Tasks 165/168/173). A day can therefore show a confirmed ✓ or a removed ✕ chip on
+  screen while exporting as blank, or export a confident `Active` for a past day the grid itself
+  ghosts as unverified. This is spec-sanctioned (the design spec explicitly scopes the day columns to
+  the plan lookup) but breaks that same spec's own "what you see is what you get" framing, and is the
+  same class of plan-vs-evidence divergence Task 173 fixed on the calendar itself. Fix direction: add
+  two more export columns (`Confirmed Days`, `Removed Days`) built from the `dateStatusIndex`
+  `SchedulePlanner.tsx` already computes via `computeConfirmedByPlatform`/`computeRemovedByPlatform`.
+- The `xlsx` dependency (Data Export feature) is pinned at `0.18.5` — the last version SheetJS
+  published to npm; known npm-audit advisories against it (prototype pollution, ReDoS) have no patched
+  version available on npm (fixes exist only via SheetJS's own CDN), so `npm audit`/Dependabot will
+  flag this permanently with no npm-side fix to upgrade to. Actual exposure is negligible: the app only
+  ever calls `XLSX.utils.aoa_to_sheet`/`XLSX.write` on data it constructs itself
+  (`src/lib/exportFile.ts`) — the only `XLSX.read` call in the codebase is in that file's own test,
+  reading a buffer the same test just produced, never untrusted input. Documented so a future audit
+  finding isn't mistaken for an active gap or "fixed" by swapping in an unvetted fork.
 - **Live cross-surface consistency check never performed on this branch (multi-select filters).**
   No live check exists yet confirming Overview's and Score Summary's combined multi-platform KPI
   figures agree on real data for the same tab/platforms/range — this branch's entire premise is

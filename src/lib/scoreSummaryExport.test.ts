@@ -66,4 +66,13 @@ describe('buildScoreSummaryExportRows', () => {
     const rows = buildScoreSummaryExportRows(brands, 0, false, successRates);
     expect(rows[0][rows[0].length - 1]).toBe('99');
   });
+
+  it('exports the display name for a renamed tab while keeping the success-rate lookup keyed on the raw tab', () => {
+    const brands = [makeBrand({ tab: 'TP Affiliate' })];
+    const successRates = new Map<string, SuccessRate>([
+      ['TP Affiliate Acme', { live: 8, removed: 2, rate: 80 }],
+    ]);
+    const rows = buildScoreSummaryExportRows(brands, 0, false, successRates);
+    expect(rows).toEqual([['FTP', 'Acme', '8', '2', '10', '80']]);
+  });
 });

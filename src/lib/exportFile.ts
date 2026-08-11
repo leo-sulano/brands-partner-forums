@@ -1,10 +1,11 @@
 import * as XLSX from 'xlsx';
 
 function escapeCsvField(value: string): string {
-  if (/[",\r\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const safeValue = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  if (/[",\r\n]/.test(safeValue)) {
+    return `"${safeValue.replace(/"/g, '""')}"`;
   }
-  return value;
+  return safeValue;
 }
 
 export function buildCsv(headers: string[], rows: string[][]): string {

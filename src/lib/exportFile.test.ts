@@ -32,6 +32,21 @@ describe('buildCsv', () => {
     const csv = buildCsv(['A', 'B'], []);
     expect(csv).toBe('A,B');
   });
+
+  it('produces an empty string when there are no headers and no rows', () => {
+    const csv = buildCsv([], []);
+    expect(csv).toBe('');
+  });
+
+  it('prefixes a formula-triggering field with a leading quote and leaves it otherwise unquoted', () => {
+    const csv = buildCsv(['Formula'], [['=1+1']]);
+    expect(csv).toBe("Formula\r\n'=1+1");
+  });
+
+  it('leaves a normal field unaffected by the formula-injection guard', () => {
+    const csv = buildCsv(['Status'], [['Live']]);
+    expect(csv).toBe('Status\r\nLive');
+  });
 });
 
 describe('buildWorkbook', () => {

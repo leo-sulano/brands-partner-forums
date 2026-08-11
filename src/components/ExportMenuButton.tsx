@@ -7,6 +7,7 @@ interface Props {
   headers: string[];
   getRows: () => string[][];
   filenameBase: string;
+  disabled?: boolean;
 }
 
 function todayStamp(): string {
@@ -17,7 +18,7 @@ function todayStamp(): string {
   return `${y}-${m}-${day}`;
 }
 
-export default function ExportMenuButton({ headers, getRows, filenameBase }: Props) {
+export default function ExportMenuButton({ headers, getRows, filenameBase, disabled }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -74,7 +75,8 @@ export default function ExportMenuButton({ headers, getRows, filenameBase }: Pro
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+        disabled={disabled}
+        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <Download className="size-4" />
         Export

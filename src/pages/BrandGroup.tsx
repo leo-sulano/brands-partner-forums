@@ -1670,9 +1670,10 @@ export default function BrandGroup() {
         </div>
         <div className="flex items-center gap-2">
           <ExportMenuButton
-            headers={visibleHeaders}
+            headers={visibleHeaders.map((h) => getColLabel(h, decodedTab))}
             getRows={() => buildBrandRowsForExport(sorted, visibleHeaders, decodedTab)}
             filenameBase={tabToSlug(decodedTab)}
+            disabled={loading}
           />
           {isApproved && (
             <button
