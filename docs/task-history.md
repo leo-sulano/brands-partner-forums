@@ -3065,3 +3065,11 @@ next to the actual date (e.g. "12/08/2026") when checked, or "—" when not. Liv
 the same real, already-TP-flagged Hanan entry: TP correctly showed the checked box with
 "29/07/2026", AG/CG (unflagged) showed the unchecked box with "—". Read-only check, no writes;
 closed via Cancel. Full test suite and build pass.
+
+Same-day, sixth follow-up: the label's platform name switched from the full name to the short
+code — "TrustPilot/AskGamblers/CasinoGuru/Wizard of Odds Page Removed Status" is now
+"TP/AG/CG/WO Page Removed Status", via `PLATFORM_SHORT_LABEL` instead of `PLATFORM_LABEL`
+(newly imported in `EditEntryModal.tsx`). The scheduling-override label elsewhere in the same
+modal ("{Platform} scheduling:") still uses the full name — not part of this request. Live-verified
+read-only against the same real Hanan entry (TP/AG/CG all showed the short-code label); full test
+suite and build pass.

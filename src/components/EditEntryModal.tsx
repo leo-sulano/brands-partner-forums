@@ -8,7 +8,7 @@ import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
-import { PLATFORM_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import { PLATFORM_LABEL, PLATFORM_SHORT_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { isYesNoCol, sectionOf } from '../lib/entryFieldSections';
 
 const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
@@ -268,7 +268,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     return (
       <div key={`removed-${platform}`}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">
-          {PLATFORM_LABEL[platform]} Page Removed Status
+          {PLATFORM_SHORT_LABEL[platform]} Page Removed Status
         </label>
         <div className="flex h-[38px] items-center gap-2 rounded-md border border-slate-200 px-3">
           <input
