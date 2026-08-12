@@ -212,12 +212,12 @@ export async function fetchAvailableTabs(): Promise<string[]> {
 
 export async function fetchRemovedPlatformBrands(
   client: SupabaseClient = supabase,
-): Promise<{ tab: string; brand: string; platform: Platform }[]> {
+): Promise<{ tab: string; brand: string; platform: Platform; removed_at: string }[]> {
   const { data, error } = await client
     .from('removed_platform_brands')
-    .select('tab, brand, platform');
+    .select('tab, brand, platform, removed_at');
   if (error) throw error;
-  return (data ?? []) as { tab: string; brand: string; platform: Platform }[];
+  return (data ?? []) as { tab: string; brand: string; platform: Platform; removed_at: string }[];
 }
 
 export async function fetchScheduleHiddenBrands(

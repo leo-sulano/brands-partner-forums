@@ -79,6 +79,15 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
+  it('fetchRemovedPlatformBrands selects removed_at alongside tab/brand/platform', async () => {
+    const selectSpy = vi.fn().mockReturnValue({
+      then: (resolve: (v: { data: unknown[]; error: null }) => unknown) => resolve({ data: [], error: null }),
+    });
+    const fakeFrom = vi.fn().mockReturnValue({ select: selectSpy });
+    await fetchRemovedPlatformBrands({ from: fakeFrom } as any);
+    expect(selectSpy).toHaveBeenCalledWith('tab, brand, platform, removed_at');
+  });
+
   it('bulkUpsertBrandSchedule uses the passed-in client for the upsert', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ upsert });
