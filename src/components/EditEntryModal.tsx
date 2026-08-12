@@ -138,6 +138,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const [error, setError] = useState<string | null>(null);
   const [pasteFlash, setPasteFlash] = useState(false);
 
+  // Some tabs' imported data carries TP's score under two differently-named raw
+  // columns ('TP Score added' and 'Score added') — same value, just an inconsistent
+  // Sheet-column name across tabs (see PLATFORM_SCORE_COLS in tab-configs.ts). When
+  // an entry has both, show one merged input instead of two duplicate score boxes.
+  // The unused sibling key is left completely untouched (never cleared) on save.
+  const hasLegacyTpScore = headers.includes('TP Score added') && headers.includes('Score added');
+  const [tpScoreActiveKey] = useState<'TP Score added' | 'Score added' | null>(() =>
+    hasLegacyTpScore ? (entry.data['TP Score added'] ? 'TP Score added' : 'Score added') : null,
+  );
+
   async function handleSave() {
     setSaving(true);
     setError(null);
@@ -190,6 +200,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const visibleHeaders = headers.filter(
     (h) => !(brandCol && h === brandCol && currentTab && availableBrands && availableBrands.length > 0)
       && !REVIEW_TEXT_KEY_NAMES.has(h)
+      && !(hasLegacyTpScore && h === 'TP Score added')
   );
 
   const sections: Record<'account' | 'tp' | 'ag' | 'cg' | 'yesno', string[]> = {
@@ -222,46 +233,51 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   }
 
   function renderField(h: string, cols: 5 | 6 = 6) {
+    // Merged TP score box (see hasLegacyTpScore above): reads/writes whichever raw
+    // key actually held the value at mount, under one neutral label.
+    const isMergedTpScore = hasLegacyTpScore && h === 'Score added';
+    const fieldKey = isMergedTpScore ? tpScoreActiveKey! : h;
+    const label = isMergedTpScore ? 'TP Score' : getColLabel(h, currentTab);
     return (
       <div key={h} className={isLinkCol(h) ? (cols === 5 ? 'col-span-2 sm:col-span-5' : 'col-span-2 sm:col-span-6') : ''}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">
-          {getColLabel(h, currentTab)}
+          {label}
         </label>
         {isStatusCol(h) ? (
           <SelectDropdown
-            value={fields[h]}
-            onChange={(v) => setFields((f) => ({ ...f, [h]: v }))}
+            value={fields[fieldKey]}
+            onChange={(v) => setFields((f) => ({ ...f, [fieldKey]: v }))}
             options={STATUS_OPTS}
             placeholder="— select status —"
             disabled={saving}
           />
         ) : isYesNoCol(h) ? (
           <SelectDropdown
-            value={fields[h]}
-            onChange={(v) => setFields((f) => ({ ...f, [h]: v }))}
+            value={fields[fieldKey]}
+            onChange={(v) => setFields((f) => ({ ...f, [fieldKey]: v }))}
             options={YES_NO_OPTS}
             placeholder="—"
             disabled={saving}
           />
         ) : isBrandNameCol(h) && availableBrands && availableBrands.length > 0 ? (
           <BrandSelectDropdown
-            value={fields[h]}
-            onChange={(v) => setFields((f) => ({ ...f, [h]: v }))}
+            value={fields[fieldKey]}
+            onChange={(v) => setFields((f) => ({ ...f, [fieldKey]: v }))}
             brands={availableBrands}
             disabled={saving}
           />
         ) : (
           <input
             type="text"
-            value={fields[h]}
+            value={fields[fieldKey]}
             disabled={saving}
             onChange={(e) => {
               const val = e.target.value;
               if (h === 'Account') {
                 const country = getCountryForAccount(val, selectedTab || entry.tab);
-                setFields((f) => ({ ...f, [h]: val, ...(country ? { Country: country } : {}) }));
+                setFields((f) => ({ ...f, [fieldKey]: val, ...(country ? { Country: country } : {}) }));
               } else {
-                setFields((f) => ({ ...f, [h]: val }));
+                setFields((f) => ({ ...f, [fieldKey]: val }));
               }
             }}
             placeholder={isLinkCol(h) ? 'https://…' : '—'}
