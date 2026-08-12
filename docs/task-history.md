@@ -3097,3 +3097,55 @@ reverted to their pre-abbreviation text; nothing else in either file touched. Li
 read-only against the same real Hanan entry: section headings read "Trust Pilot"/"AskGamblers"/
 "Casino Guru" while the fields underneath still read "TP Added"/"TP Page Removed Status" etc.
 Full test suite and build pass.
+
+---
+
+## Task 211: Brand Page Removal Notification — Migrate Resend to Gmail API
+**Date:** August 12, 2026
+
+Task 210's live test confirmed sandbox Resend structurally can't deliver to anyone but the
+account owner's own verified email (`{"sent":1,"failed":10}` — only Leo received it), and the
+user has no DNS access to verify a real sending domain there. Rather than stay stuck on that
+limitation, the user asked to switch providers: `notify-brand-removed` now sends via the Gmail
+API using a real mailbox (`sandbox@optinetsolutions.com`), which has no equivalent sandbox
+restriction and can reach every approved user directly.
+
+`sendBrandRemovedNotification` (`supabase/functions/notify-brand-removed/index.ts`) no longer
+calls Resend's HTTP API; it exchanges a stored OAuth refresh token for a short-lived access token
+(`https://oauth2.googleapis.com/token`) once per invocation, then POSTs to
+`gmail.googleapis.com/gmail/v1/users/me/messages/send` once per approved profile (kept
+per-recipient via `Promise.allSettled`, preserving Task 210's partial-failure resilience — one
+bad address still can't sink everyone else's delivery). Each send builds its own base64url RFC
+2822 message (`buildRawMessage`): the body is base64-encoded and the subject RFC 2047
+encoded-word wrapped (needed for the subject's non-ASCII en dash) so the outer message is pure
+ASCII before the final base64url wrap Gmail's `raw` field requires. Same email content/subject as
+Task 210 — only the transport changed, `NotifyBrandRemovedPayload` is untouched, so
+`brandRemovedNotification.ts` and `BrandGroup.tsx`'s call site needed no changes at all.
+
+Env vars: `RESEND_API_KEY`/`RESEND_FROM_EMAIL` replaced by `GMAIL_CLIENT_ID`,
+`GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`, `GMAIL_SENDER_EMAIL` (all required — the function
+500s with "Notifications not configured" if any is missing, matching the old Resend guard).
+`.env.example` and `src/lib/supabase.ts`'s `NOTIFY_BRAND_REMOVED_URL` comment updated to match.
+The function's own Deno suite was rewritten for the new transport (5 tests: per-recipient send,
+zero-profile no-op, partial failure, total failure, and a new case for an OAuth token-refresh
+failure) plus a test-local MIME decoder to verify the base64url `raw` payload round-trips to the
+expected `To`/`Subject`/body. Full suite (1066 vitest tests), `deno check`, the function's own
+Deno suite (5 tests), and `npm run build` all pass. Tier 2 — confined to one Edge Function plus
+its env/doc references, no shared dashboard logic touched.
+
+**Live and verified same day.** The user completed the Google Cloud OAuth setup (project, Gmail
+API enabled, OAuth consent screen with `sandbox@optinetsolutions.com` as a test user, `gmail.send`
+scope, OAuth client, OAuth Playground consent flow for the refresh token) and ran `supabase
+secrets set GMAIL_CLIENT_ID=... GMAIL_CLIENT_SECRET=... GMAIL_REFRESH_TOKEN=...
+GMAIL_SENDER_EMAIL=sandbox@optinetsolutions.com` themselves in a terminal (a first attempt to run
+it in the Supabase dashboard's SQL Editor failed with a Postgres syntax error, since it's a CLI
+command, not SQL). `supabase functions deploy notify-brand-removed` then run from this session
+(CLI was already linked to the project). Live-verified end to end via a disposable test entry in
+Hanan (brand "ZZZ TEST DELETE ME Notify Check", TP status Published, matching Task 210's
+precedent): flagging TP Page Removed and saving fired the real deployed function, confirmed via
+the browser's network panel — `{"sent":11,"failed":0}`, all 11 approved profiles, not just the
+account owner. Entry and the resulting `removed_platform_brands` row both fully deleted
+afterward (the row needed a follow-up authenticated-session delete — the first delete attempt
+used the anon key/role and returned 204 but silently no-op'd under RLS, the same class of gap
+documented for this project's other tables; confirmed gone via a second read after deleting with
+the logged-in user's own access token).

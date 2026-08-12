@@ -43,7 +43,8 @@ export const AI_ASSISTANT_URL = import.meta.env?.VITE_AI_ASSISTANT_URL ?? '';
 export const TRANSLATE_REVIEW_URL = import.meta.env?.VITE_TRANSLATE_REVIEW_URL ?? '';
 
 // notify-brand-removed Edge Function URL. Set in Vercel env once the
-// notify-brand-removed function is deployed (also needs RESEND_API_KEY set via
-// `supabase secrets set RESEND_API_KEY=...`). Empty string means a newly-flagged
+// notify-brand-removed function is deployed (also needs GMAIL_CLIENT_ID/
+// GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN/GMAIL_SENDER_EMAIL set via
+// `supabase secrets set ...`). Empty string means a newly-flagged
 // "page removed" checkbox saves fine but the notification silently no-ops.
 export const NOTIFY_BRAND_REMOVED_URL = import.meta.env?.VITE_NOTIFY_BRAND_REMOVED_URL ?? '';
