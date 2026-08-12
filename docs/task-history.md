@@ -2807,3 +2807,45 @@ the export, so they can't drift again. Row filtering (search/brand/agent/proxy/c
 is unaffected either way. Full test suite (1044 tests) and build both pass.
 
 ---
+
+## Task 207: Update Brand Scheduling Planner — Per-Brand Hide & Platform Restriction
+**Date:** August 12, 2026
+
+Added the ability to fully hide a specific brand from the Schedule Planner grid, or restrict it to
+exactly one schedulable platform, per a PMS request naming 5 brands: Rooster Partners' NovaDreams
+(hide) and NovaDreams2 (TP only), and Revolution Casino's GOC (AG only), Midasluck (hide), and
+Revolution 1 (hide). Before seeding anything, queried live `entries.data.Brands` via the Supabase
+REST API for both tabs and found two real mismatches the PMS task's shorthand would have silently
+no-op'd on: Revolution Casino has no literal "GOC" brand (the real value is "God Of Casino") and no
+"Revolution 1" with a space (the real value is "Revolution1") — confirmed with the user before
+seeding, since brand matching here is case/whitespace-insensitive but not fuzzy about internal spaces
+or abbreviations.
+
+Two new tables (`schedule_hidden_brands`, `schedule_platform_restrictions`), same shape/RLS pattern
+as `removed_platform_brands` (generated `brand_key`, all 4 policies), seeded with the 5 corrected
+brand values — DB-seeded only, no admin UI, per explicit user decision. A single new pure resolver,
+`getSchedulableBrandPlatforms` (`src/lib/scheduleBrandConfig.ts`), is the one place "which platforms
+can this brand use" gets decided; three consumers call it so display and auto-generation can't drift
+apart: `SchedulePlanner.tsx`'s existing `brandPlatforms` choke point (a hidden brand naturally gets
+zero platforms, which the page's existing "drop empty-platform brands" rule already removes from the
+grid — no separate hide-check needed), `schedulerService.ts`'s `recalculatePauses`/
+`ensureWeekGenerated` (extended `TabContext` with two new optional fields, reusing the exact
+"pinned combo" trick already used for `removed_platform_brands`-flagged combos so a hidden/restricted
+brand's other platforms stop being auto-scheduled or auto-paused, with zero changes to
+`schedulerEngine.ts`), and the `generate-weekly-schedule` Edge Function's `buildTabContext` — updated
+even though that function is not yet deployed, so the cron path can't silently diverge from the
+browser path once it is (this project has shipped multiple data-accuracy bugs from exactly this kind
+of independently-written logic disagreeing).
+
+Built via 7-task Subagent-Driven Development with a task review after each task; all 7 approved
+clean. Full suite (1048 tests, 9 new) and build both pass; Edge Function's own Deno suite (6 tests, 2
+new) and `deno test` both pass. One real, pre-existing, unrelated bug was found and deliberately left
+unfixed: `deno check` on `generate-weekly-schedule/index.ts` fails on a `TS2307` from
+`src/lib/countryFlags.ts:1` (`import ... from './tab-configs'` missing the `.ts` extension Deno
+requires, reached transitively via `queries.ts`), introduced by an unrelated commit on 2026-08-08 —
+confirmed via `git stash` that the failure predates and is unrelated to this task's changes. Worth a
+one-line follow-up fix, low urgency since the function it affects isn't deployed yet. Spec:
+`docs/superpowers/specs/2026-08-11-schedule-planner-brand-visibility-design.md`. Plan:
+`docs/superpowers/plans/2026-08-11-schedule-planner-brand-visibility.md`.
+
+---
