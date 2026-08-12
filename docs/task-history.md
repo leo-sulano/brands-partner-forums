@@ -3055,3 +3055,13 @@ above Account Details. Full test suite and build pass; live-verified read-only (
 closed via Cancel — no writes) against two real production entries: a Hanan (TP/AG/CG) row
 confirmed all three checkboxes now sit directly after their platform's own Added field, and a
 Wizard of Odds row confirmed WO Page Removed sits right after WO Date inside Account Details.
+
+Same-day, fifth follow-up: reworked what the checkbox's own value box shows. Previously it read
+"Removed"/"Not removed" next to the checkbox, with the date only shown parenthetically in the
+label above (e.g. "TrustPilot Page Removed Status (12/08/2026)"). Per the user's clarification —
+checkbox stays where it is, but its own value should be the date, not static status text — the
+label is now just "{Platform} Page Removed Status" (date removed), and the box shows the checkbox
+next to the actual date (e.g. "12/08/2026") when checked, or "—" when not. Live-verified against
+the same real, already-TP-flagged Hanan entry: TP correctly showed the checked box with
+"29/07/2026", AG/CG (unflagged) showed the unchecked box with "—". Read-only check, no writes;
+closed via Cancel. Full test suite and build pass.

@@ -262,13 +262,13 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   }
 
   function renderPageRemovedField(platform: Platform) {
+    const date = removedPlatforms.has(platform) && initialRemovedPlatformDates?.[platform]
+      ? formatCellValue(initialRemovedPlatformDates[platform]!)
+      : null;
     return (
       <div key={`removed-${platform}`}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">
           {PLATFORM_LABEL[platform]} Page Removed Status
-          {removedPlatforms.has(platform) && initialRemovedPlatformDates?.[platform]
-            ? ` (${formatCellValue(initialRemovedPlatformDates[platform]!)})`
-            : ''}
         </label>
         <div className="flex h-[38px] items-center gap-2 rounded-md border border-slate-200 px-3">
           <input
@@ -284,7 +284,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             }
             className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
           />
-          <span className="text-sm text-slate-700">{removedPlatforms.has(platform) ? 'Removed' : 'Not removed'}</span>
+          <span className="text-sm text-slate-700">{date ?? '—'}</span>
         </div>
       </div>
     );
