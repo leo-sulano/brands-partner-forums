@@ -384,7 +384,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
 
           {/* Trust Pilot */}
           <div>
-            <SectionHeading label="TP" />
+            <SectionHeading label="Trust Pilot" />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
               {tpFields.map(renderField)}
             </div>
@@ -393,7 +393,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           {/* AskGamblers (multi-platform only) */}
           {isMulti && (
             <div>
-              <SectionHeading label="AG" />
+              <SectionHeading label="AskGamblers" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {AG_FIELDS.map(renderField)}
               </div>
@@ -403,7 +403,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
           {/* Casino Guru (multi-platform only) */}
           {isMulti && (
             <div>
-              <SectionHeading label="CG" />
+              <SectionHeading label="Casino Guru" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {CG_FIELDS.map(renderField)}
               </div>

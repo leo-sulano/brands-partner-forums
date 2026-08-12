@@ -3086,3 +3086,14 @@ section names, not the identity/general sections. Live-verified read-only in bot
 real Hanan data (no writes, closed via full-page reload rather than the Cancel button — its ref
 went stale between snapshots, and a fresh navigation discards an unsaved modal exactly the same
 way). Full test suite and build pass.
+
+Same-day, eighth follow-up: reverted the section-heading abbreviation from the immediately
+preceding entry — a screenshot from the user showed the change and clarified that the section
+heading itself is the one exception that should keep the full platform name ("Trust Pilot"/
+"AskGamblers"/"Casino Guru"/"Wizard of Odds"); every other label inside that section (Added,
+Status, Links, Score, and the "Page Removed Status" field from earlier follow-ups) stays
+abbreviated. `SectionHeading` calls in both `EditEntryModal.tsx` and `AddReviewAccountModal.tsx`
+reverted to their pre-abbreviation text; nothing else in either file touched. Live-verified
+read-only against the same real Hanan entry: section headings read "Trust Pilot"/"AskGamblers"/
+"Casino Guru" while the fields underneath still read "TP Added"/"TP Page Removed Status" etc.
+Full test suite and build pass.
