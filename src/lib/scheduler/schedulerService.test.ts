@@ -143,7 +143,7 @@ describe('recalculatePauses', () => {
     expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
   });
 
-  it('does not evaluate or pause a brand whose brand is hidden from Schedule Planner', async () => {
+  it('does not evaluate or pause a brand hidden from Schedule Planner', async () => {
     const ctx: TabContext = {
       brands: ['WinMega'],
       activePlatforms: ['tp'],
@@ -607,6 +607,28 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-03', platform: 'tp' });
+  });
+
+  it('generates no rows for a brand restricted to a platform that is also flagged removed', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega', 'BrandB'],
+      activePlatforms: ['tp', 'ag'],
+      entries: [],
+      platformRestrictionMap: new Map([[scheduleBrandKey('BITP', 'WinMega'), 'ag']]),
+      removedPlatformBrandSet: new Set([platformRemovedKey('BITP', 'WinMega', 'ag')]),
+    };
+    await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    // WinMega's only allowed platform (ag, via the restriction) is also
+    // independently flagged removed, so both of its combos (ag via
+    // removedSet, tp via not being in the restricted schedulable set) are
+    // pinned out entirely — zero WinMega rows. BrandB is untouched by either
+    // exclusion and still gets its normal row per active platform (tp + ag).
+    expect(rows.every((r: { brand: string }) => r.brand === 'BrandB')).toBe(true);
+    expect(rows).toHaveLength(2);
+    expect(rows).toContainEqual(expect.objectContaining({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-03', platform: 'tp' }));
+    expect(rows).toContainEqual(expect.objectContaining({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-03', platform: 'ag' }));
   });
 
   it('only generates rows for a platform-restricted brand\'s allowed platform', async () => {

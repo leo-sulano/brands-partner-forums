@@ -128,6 +128,7 @@ export default function SchedulePlanner() {
     overrideMap: Map<string, OverrideState>;
     hiddenBrandSet: Set<string>;
     platformRestrictionMap: Map<string, Platform>;
+    flagsLoaded: boolean;
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
@@ -189,15 +190,30 @@ export default function SchedulePlanner() {
     // block resolves.
     setTabCtx(null);
     setPauses([]);
+    // Tracks whether all four flag-fetch calls below (removed-platform,
+    // override, hidden-brand, platform-restriction) succeeded this load. If
+    // any one of them falls back to an empty array after a transient
+    // failure, the scheduler-invocation effect must not treat that empty
+    // result as "no exclusions apply" — see the tabCtx doc comment above for
+    // why recalculatePauses/ensureWeekGenerated must never run against a
+    // stale/empty exclusion set. The page itself still renders best-effort
+    // with whatever did load; only the write-triggering scheduler call is
+    // gated on this.
+    let flagsLoaded = true;
+    const withFlagFallback = <T,>(p: Promise<T[]>): Promise<T[]> =>
+      p.catch(() => {
+        flagsLoaded = false;
+        return [];
+      });
     (async () => {
       try {
         const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
-          fetchRemovedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
-          fetchBrandPlatformOverrides(tab).catch(() => []),
-          fetchScheduleHiddenBrands(tab).catch(() => []),
-          fetchScheduleRestrictedBrands(tab).catch(() => []),
+          withFlagFallback(fetchRemovedPlatformBrands()),
+          withFlagFallback(fetchBrandPlatformOverrides(tab)),
+          withFlagFallback(fetchScheduleHiddenBrands(tab)),
+          withFlagFallback(fetchScheduleRestrictedBrands(tab)),
         ]);
         if (canceled) return;
         const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
@@ -221,6 +237,7 @@ export default function SchedulePlanner() {
           overrideMap: buildOverrideMap(overrideRows),
           hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
           platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
+          flagsLoaded,
         });
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
@@ -262,7 +279,7 @@ export default function SchedulePlanner() {
       try {
         const isCurrentWeek = isCurrentWeekStart(weekStartISO);
         const ctxReadyForTab = tabCtx !== null && tabCtx.tab === tab;
-        if (isCurrentWeek && isApproved && ctxReadyForTab && tabCtx!.brands.length > 0 && tabCtx!.activePlatforms.length > 0) {
+        if (isCurrentWeek && isApproved && ctxReadyForTab && tabCtx!.flagsLoaded && tabCtx!.brands.length > 0 && tabCtx!.activePlatforms.length > 0) {
           // recalculatePauses and ensureWeekGenerated are a paired backend
           // operation: recalculatePauses's DB deletes (clearing resumed
           // pauses) are already irreversible by the time it returns, so a

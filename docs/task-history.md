@@ -2838,7 +2838,7 @@ browser path once it is (this project has shipped multiple data-accuracy bugs fr
 of independently-written logic disagreeing).
 
 Built via 7-task Subagent-Driven Development with a task review after each task; all 7 approved
-clean. Full suite (1048 tests, 9 new) and build both pass; Edge Function's own Deno suite (6 tests, 2
+clean. Full suite (1049 tests, 17 new) and build both pass; Edge Function's own Deno suite (6 tests, 2
 new) and `deno test` both pass. One real, pre-existing, unrelated bug was found and deliberately left
 unfixed: `deno check` on `generate-weekly-schedule/index.ts` fails on a `TS2307` from
 `src/lib/countryFlags.ts:1` (`import ... from './tab-configs'` missing the `.ts` extension Deno

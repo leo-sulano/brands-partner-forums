@@ -738,6 +738,20 @@ Brands Partner Forum/
   documented, not fixed, as of the 2026-08-04 Phase 2 review — a real fix means either changing
   `src/lib/scoreSummary.ts`'s shared behavior (out of scope, affects the live dashboard) or
   accepting the divergence.
+- Ask AI's `get_schedule`/`get_paused_combos` tools (`supabase/functions/ai-assistant/tools.ts`)
+  don't consult the new `schedule_hidden_brands`/`schedule_platform_restrictions` tables (Task
+  207, per-brand hide & platform restriction) — they read raw `brand_schedule`/
+  `brand_platform_pause` rows filtered only by `tab`/`week_start`, with no awareness of either
+  exclusion mechanism. Because that feature deliberately does no retroactive cleanup of existing
+  rows, a user can ask the assistant "what's <hidden brand> scheduled for this week?" and get a
+  stale, confidently-wrong answer for a brand the Schedule Planner UI no longer shows at all —
+  the same class of cross-surface drift the standing cross-dashboard consistency rule above is
+  meant to catch, and an unconsidered gap in Task 207's scope rather than a deliberate exclusion.
+  Not fixed here since `ai-assistant` is a separate, already-deployed live system out of scope for
+  a documentation-only review pass. Fix direction: filter both tools' results through the same
+  `getSchedulableBrandPlatforms` (`src/lib/scheduleBrandConfig.ts`) exclusion logic Schedule
+  Planner itself uses, or at minimum add a caveat to `get_schedule`'s tool description warning its
+  rows may include brands the UI has since hidden or restricted.
 
 <!-- gitnexus:start -->
 # GitNexus MCP
