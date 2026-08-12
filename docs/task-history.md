@@ -2886,4 +2886,65 @@ before staging that this task's diff against the latest `HEAD` was byte-for-byte
 diff computed against the pre-concurrent-commits base, i.e. no silent conflict or lost update in
 `EditEntryModal.tsx`'s shared region, before committing.
 
+## Task 209: Brand Page Removal — Email Notification + Page Removed Status
+**Date:** August 12, 2026
+
+Added an email notification and an export column for the existing `removed_platform_brands`
+"page removed" flag. When a user checks a platform's "Page Removed Status" checkbox in the
+Edit Entry modal and saves, every approved dashboard user (`profiles.approved = true`) now gets
+an email via a new `notify-brand-removed` Edge Function (Resend HTTP API) — best-effort; a
+failed send never rolls back the flag write, surfaced instead via the existing error-Toast
+pattern. The checkbox's label (previously "{Platform} page removed") is now
+"{Platform} Page Removed Status", and once checked, shows the removal date
+(`removed_at`, which already existed on the table unused until now) — e.g.
+"TrustPilot Page Removed Status (12/08/2026)".
+
+Brand Tabs' CSV/Excel export gains one new synthetic column per platform active on the tab
+(`TP Page Removed Status`, `AG Page Removed Status`, etc. — `PLATFORM_SHORT_LABEL`, matching
+every other export column's short-code convention, not the modal/email's full-name
+`PLATFORM_LABEL`), holding the formatted removal date or blank. These aren't `entries.data`
+keys — `exportHeaders` (`BrandGroup.tsx`, from Task 208) now injects them into its header list
+*before* the existing scoping/bucketing step, letting `entryFieldSections.ts`'s `sectionOf`
+place and platform-filter them via its existing `"tp "`/`"ag "`/`"cg "`-prefix heuristics with
+zero new placement code — a design-time simplification caught during the spec's own
+self-review. `buildBrandRowsForExport` (`brandExport.ts`) gained an optional resolver
+parameter so it can special-case these synthetic headers without becoming brand/tab-aware
+itself; a new `buildRemovedPlatformBrandDateMap` (`removedPlatformBrands.ts`) sits alongside —
+not replacing — the existing `buildRemovedPlatformBrandSet` (9 files import that function;
+its signature was left untouched). `fetchRemovedPlatformBrands` now additionally selects
+`removed_at`, additive and safe for its 3 existing consumers.
+
+The Edge Function itself deliberately imports nothing from `src/lib` — the client
+(`BrandGroup.tsx`, via a new `src/lib/brandRemovedNotification.ts` mirroring
+`reviewTranslation.ts`'s exact request pattern) sends every human-readable string already
+formatted (tab display name, full platform label, formatted date, deep link), so the Deno
+function can't drift from `src/lib`'s own label/date-formatting logic — the same
+duplication-avoidance reasoning already applied elsewhere in this project (Task 180 and
+others).
+
+Full test suite and build pass; the new function's own Deno suite (3 tests) and `deno check`
+both pass. Two issues were caught and fixed during this task's final verification pass, both in
+`notify-brand-removed/index.ts`: (1) it originally imported `SupabaseClient` from a hardcoded
+`https://esm.sh/@supabase/supabase-js@2` URL while `index_test.ts` imported the same type via the
+bare `@supabase/supabase-js` specifier that the function's own `deno.json` import map resolves to
+`npm:@supabase/supabase-js@2` — two different module instances of the same nominal type, which
+`deno check`/`deno test` rejected with a `TS2345` "protected property" mismatch; fixed by
+importing via the bare specifier in `index.ts` too, matching the working pattern already used by
+`generate-weekly-schedule/index.ts`. (2) Under this project's other Edge Function
+(`generate-weekly-schedule`, Task 178) the same class of gap was already documented: the
+module-level `Deno.serve(...)` call binds a socket at import time, so `deno test` on a directory
+whose test file imports from `index.ts` needs `--allow-net` (and `--allow-env`, for
+`Deno.env.get`) — the bare `deno test supabase/functions/notify-brand-removed/` fails with
+`NotCapable` under a non-interactive shell; the working command is
+`deno test --allow-net --allow-env supabase/functions/notify-brand-removed/` (3 passed, 0
+failed). **Not yet live** — same as the AI Assistant/SSO callback before it, this requires
+manual setup no agent can perform: create a Resend account, verify a sending domain (or accept
+sandbox-only delivery to the Resend account owner's own email in the meantime), then
+`supabase secrets set RESEND_API_KEY=... RESEND_FROM_EMAIL=...`, `supabase functions deploy
+notify-brand-removed`, and set `VITE_NOTIFY_BRAND_REMOVED_URL` in Vercel. Until then, checking
+the "Page Removed Status" checkbox still saves correctly and shows the date in both the modal
+and the export — only the email itself doesn't go out (surfaced to the user via the existing
+error Toast). Spec: `docs/superpowers/specs/2026-08-12-brand-page-removal-notification-design.md`.
+Plan: `docs/superpowers/plans/2026-08-12-brand-page-removal-notification.md`.
+
 ---
