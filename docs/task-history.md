@@ -2923,14 +2923,18 @@ duplication-avoidance reasoning already applied elsewhere in this project (Task 
 others).
 
 Full test suite and build pass; the new function's own Deno suite (3 tests) and `deno check`
-both pass. Two issues were caught and fixed during this task's final verification pass, both in
+both pass. Two issues were caught during this task's final verification pass, both in
 `notify-brand-removed/index.ts`: (1) it originally imported `SupabaseClient` from a hardcoded
 `https://esm.sh/@supabase/supabase-js@2` URL while `index_test.ts` imported the same type via the
 bare `@supabase/supabase-js` specifier that the function's own `deno.json` import map resolves to
 `npm:@supabase/supabase-js@2` — two different module instances of the same nominal type, which
-`deno check`/`deno test` rejected with a `TS2345` "protected property" mismatch; fixed by
-importing via the bare specifier in `index.ts` too, matching the working pattern already used by
-`generate-weekly-schedule/index.ts`. (2) Under this project's other Edge Function
+`deno check`/`deno test` rejected with a `TS2345` "protected property" mismatch. This task's
+*first* attempt at final verification correctly went BLOCKED with no commit rather than assert a
+false "tests pass" claim once it hit this; the fix — importing via the bare specifier in
+`index.ts` too, matching the working pattern already used by `generate-weekly-schedule/index.ts`
+— landed in a separate, prior commit (`99f6faf`, "fix: use consistent import specifier for
+SupabaseClient in notify-brand-removed"), not in this docs commit, before this task's retry
+re-verified clean and committed the docs. (2) Under this project's other Edge Function
 (`generate-weekly-schedule`, Task 178) the same class of gap was already documented: the
 module-level `Deno.serve(...)` call binds a socket at import time, so `deno test` on a directory
 whose test file imports from `index.ts` needs `--allow-net` (and `--allow-env`, for
