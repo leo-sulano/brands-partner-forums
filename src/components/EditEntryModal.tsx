@@ -76,6 +76,18 @@ const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) =>
   { col: 'CG Review Link', fallback: getBrandCgUrl },
 ];
 
+// The raw header that carries each platform's "Added" date — the Page Removed
+// field for that platform is inserted right after it. WO's own header
+// ('Wizard of Odds') has no dedicated section (see entryFieldSections'
+// sectionOf) and lands in the Account Details bucket instead of a WO-specific
+// one, so its Page Removed field is looked for there too.
+const PLATFORM_ADDED_HEADER: Record<Platform, string> = {
+  tp: 'Trust Pilot',
+  ag: 'Ask Gambler review added',
+  cg: 'Casino Guru review added',
+  wo: 'Wizard of Odds',
+};
+
 export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
   const [removedPlatforms, setRemovedPlatforms] = useState<Set<Platform>>(new Set(initialRemovedPlatforms ?? []));
   const [overrides, setOverrides] = useState<Partial<Record<Platform, 'pause' | 'active'>>>(initialOverrides ?? {});
@@ -249,6 +261,46 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     );
   }
 
+  function renderPageRemovedField(platform: Platform) {
+    return (
+      <div key={`removed-${platform}`}>
+        <label className="mb-1.5 block text-xs font-medium text-slate-500">
+          {PLATFORM_LABEL[platform]} Page Removed Status
+          {removedPlatforms.has(platform) && initialRemovedPlatformDates?.[platform]
+            ? ` (${formatCellValue(initialRemovedPlatformDates[platform]!)})`
+            : ''}
+        </label>
+        <div className="flex h-[38px] items-center gap-2 rounded-md border border-slate-200 px-3">
+          <input
+            type="checkbox"
+            checked={removedPlatforms.has(platform)}
+            disabled={saving}
+            onChange={(e) =>
+              setRemovedPlatforms((prev) => {
+                const next = new Set(prev);
+                if (e.target.checked) next.add(platform); else next.delete(platform);
+                return next;
+              })
+            }
+            className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
+          />
+          <span className="text-sm text-slate-700">{removedPlatforms.has(platform) ? 'Removed' : 'Not removed'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Renders a section's fields, inserting `platform`'s Page Removed field
+  // right after its "Added" header (PLATFORM_ADDED_HEADER) — only fires when
+  // that header is actually present in this section's list.
+  function renderSectionFields(sectionHeaders: string[], platform: Platform, cols: 5 | 6 = 6) {
+    return sectionHeaders.flatMap((h) => {
+      const out = [renderField(h, cols)];
+      if (h === PLATFORM_ADDED_HEADER[platform]) out.push(renderPageRemovedField(platform));
+      return out;
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onKeyDown={handleKey} onPaste={handlePaste}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
@@ -319,27 +371,6 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               {brandCol && availableBrands && availableBrands.length > 0 && tabPlatforms.length > 0 && (
                 <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 pb-1 sm:col-span-6">
                   {tabPlatforms.map((p) => (
-                    <label key={p} className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={removedPlatforms.has(p)}
-                        disabled={saving}
-                        onChange={(e) =>
-                          setRemovedPlatforms((prev) => {
-                            const next = new Set(prev);
-                            if (e.target.checked) next.add(p); else next.delete(p);
-                            return next;
-                          })
-                        }
-                        className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
-                      />
-                      {PLATFORM_LABEL[p]} Page Removed Status
-                      {removedPlatforms.has(p) && initialRemovedPlatformDates?.[p]
-                        ? ` (${formatCellValue(initialRemovedPlatformDates[p]!)})`
-                        : ''}
-                    </label>
-                  ))}
-                  {tabPlatforms.map((p) => (
                     <label key={`override-${p}`} className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
                       {PLATFORM_LABEL[p]} scheduling:
                       <select
@@ -371,7 +402,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Account Details" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                {reorderAccountFields(sections.account).map((h) => renderField(h, 5))}
+                {renderSectionFields(reorderAccountFields(sections.account), 'wo', 5)}
               </div>
             </>
           )}
@@ -381,7 +412,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label={currentTab === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.tp.map((h) => renderField(h))}
+                {renderSectionFields(sections.tp, 'tp')}
               </div>
               {(tabPlatforms.includes('tp') || tabPlatforms.includes('wo')) && (
                 <div className="mt-3">
@@ -400,7 +431,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="AskGamblers" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.ag.map((h) => renderField(h))}
+                {renderSectionFields(sections.ag, 'ag')}
               </div>
               {tabPlatforms.includes('ag') && (
                 <div className="mt-3">
@@ -419,7 +450,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Casino Guru" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {sections.cg.map((h) => renderField(h))}
+                {renderSectionFields(sections.cg, 'cg')}
               </div>
               {tabPlatforms.includes('cg') && (
                 <div className="mt-3">

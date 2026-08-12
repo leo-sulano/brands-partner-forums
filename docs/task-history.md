@@ -3037,3 +3037,21 @@ reverted to its pre-feature form. Deliberately kept the other half of the prior 
 `PlatformRemovedBadge`'s hover-tooltip date and the `removedPlatformBadges` helper — since this
 request was scoped to the table column only, not the badge tooltip. Build, full test suite, and a
 live check on Hanan (confirming the columns are gone and layout matches pre-feature) all pass.
+
+Same-day, fourth follow-up: moved each platform's "Page Removed Status" checkbox in the Edit
+Entry modal — previously grouped together in one row above Account Details — to sit right after
+that platform's own "Added" field within its own section (TP Page Removed right after TP Added
+in the Trust Pilot section, AG right after AG Added in AskGamblers, CG right after CG Added in
+Casino Guru). New `PLATFORM_ADDED_HEADER` constant (`EditEntryModal.tsx`) maps each platform to
+the exact raw header carrying its "Added" date; new `renderPageRemovedField`/`renderSectionFields`
+helpers insert the checkbox field immediately after that header wherever it appears in a section's
+field list. WO is a special case worth documenting: `entryFieldSections.ts`'s `sectionOf` has no
+dedicated WO bucket (a pre-existing, undocumented-until-now quirk — WO's own fields, including its
+"Added" field, land in the 'account' bucket, not a WO-specific one), so `WO Page Removed` is
+threaded through the Account Details grid instead, right after "WO Date" — same real position
+(immediately after WO's Added field) despite the different bucket. The scheduling-override
+dropdowns that used to share a row with the checkboxes are untouched, still rendered together
+above Account Details. Full test suite and build pass; live-verified read-only (opened, inspected,
+closed via Cancel — no writes) against two real production entries: a Hanan (TP/AG/CG) row
+confirmed all three checkboxes now sit directly after their platform's own Added field, and a
+Wizard of Odds row confirmed WO Page Removed sits right after WO Date inside Account Details.
