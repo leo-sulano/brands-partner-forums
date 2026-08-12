@@ -220,6 +220,30 @@ export async function fetchRemovedPlatformBrands(
   return (data ?? []) as { tab: string; brand: string; platform: Platform }[];
 }
 
+export async function fetchScheduleHiddenBrands(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<{ tab: string; brand: string }[]> {
+  const { data, error } = await client
+    .from('schedule_hidden_brands')
+    .select('tab, brand')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as { tab: string; brand: string }[];
+}
+
+export async function fetchScheduleRestrictedBrands(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<{ tab: string; brand: string; allowed_platform: Platform }[]> {
+  const { data, error } = await client
+    .from('schedule_platform_restrictions')
+    .select('tab, brand, allowed_platform')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as { tab: string; brand: string; allowed_platform: Platform }[];
+}
+
 export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   const { data, error } = await supabase
     .from('entries')

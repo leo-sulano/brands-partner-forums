@@ -22,6 +22,8 @@ import {
   fetchBrandSchedule,
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
+  fetchScheduleHiddenBrands,
+  fetchScheduleRestrictedBrands,
   bulkUpsertBrandSchedule,
   computeTabKpisFromEntries,
   fetchBrandPlatformOverrides,
@@ -94,6 +96,30 @@ describe('queries.ts injectable Supabase client', () => {
     await fetchBrandPlatformOverrides('X', { from: fakeFrom } as any);
     expect(fakeFrom).toHaveBeenCalledWith('brand_platform_override');
     expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchScheduleHiddenBrands uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
+    await fetchScheduleHiddenBrands('X', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_hidden_brands');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchScheduleHiddenBrands falls back to the singleton when no client is passed', async () => {
+    singletonFrom.mockReturnValue(chain({ data: [], error: null }));
+    await fetchScheduleHiddenBrands('X');
+    expect(singletonFrom).toHaveBeenCalledWith('schedule_hidden_brands');
+  });
+
+  it('fetchScheduleRestrictedBrands uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({
+      data: [{ tab: 'X', brand: 'GOC', allowed_platform: 'ag' }],
+      error: null,
+    }));
+    const rows = await fetchScheduleRestrictedBrands('X', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_platform_restrictions');
+    expect(singletonFrom).not.toHaveBeenCalled();
+    expect(rows).toEqual([{ tab: 'X', brand: 'GOC', allowed_platform: 'ag' }]);
   });
 
   it('setBrandPlatformOverride upserts into brand_platform_override', async () => {
