@@ -2849,3 +2849,41 @@ one-line follow-up fix, low urgency since the function it affects isn't deployed
 `docs/superpowers/plans/2026-08-11-schedule-planner-brand-visibility.md`.
 
 ---
+
+## Task 208: Brand Tabs Export — Full Edit-Modal Field Set, Grouped Account/TP/AG/CG/Behavior Flags
+**Date:** August 12, 2026
+
+Follow-up to Task 206 (export columns follow the Platform filter): the user pointed out Score
+columns (TP/AG/CG Score) were still missing from the export, and asked for every field the Edit
+Entry modal exposes — not just the table's on-screen column whitelist — in a fixed group order:
+Account Details first, then each active platform's own columns (TP, then AG, then CG), then
+Behavior Flags last.
+
+`BrandGroup.tsx`'s export previously drew from the table's whitelisted `headers`/`visibleHeaders`
+(from `TAB_COLUMN_CONFIGS`), which never included Score columns or the Edit modal's "Behavior
+Flags" fields (Backup Codes, Photo in Account?, Native Language?, etc.) since those were never
+part of the table's column whitelist to begin with — only `fullHeaders` (the raw `tab_schemas`
+list the Edit modal reads from) has them. New `exportHeaders` now starts from the union of
+`fullHeaders` and `headers`, drops `id`/`Casino Password` (same exclusions the Edit modal already
+applies), buckets every column into account/tp/ag/cg/yesno, and concatenates in that fixed order —
+still narrowed to only the selected platform(s) when the on-screen Platform filter is active on a
+multi-platform tab (Task 206's behavior, preserved).
+
+The account/tp/ag/cg/yesno categorization itself (`sectionOf`, plus its backing
+`TP_SECTION`/`AG_SECTION`/`CG_SECTION`/`YES_NO_COLS`/`BEHAVIOR_EXTRA_COLS` sets) previously lived
+only inside `EditEntryModal.tsx`. Rather than write a second, independent copy for the export path
+— this project's own recurring failure mode (Tasks 173/174/180) — it was extracted verbatim into a
+new shared `src/lib/entryFieldSections.ts`, and `EditEntryModal.tsx` now imports it instead of
+defining its own copy, so the modal's field grouping and the export's column grouping can't
+independently drift. New `entryFieldSections.test.ts` (6 tests) locks down the categorization,
+including both TP score column name variants and the Agent-vs-AG false-positive guard. Full test
+suite (1055 tests) and build both pass.
+
+Landed while a separate concurrent session was actively committing directly to `main` on unrelated
+work in the same working directory (Schedule Planner hide/restrict rollout, a TP-score-merge fix,
+and the exact "Behavior Flags" column move this task's shared module now reads from) — verified
+before staging that this task's diff against the latest `HEAD` was byte-for-byte identical to the
+diff computed against the pre-concurrent-commits base, i.e. no silent conflict or lost update in
+`EditEntryModal.tsx`'s shared region, before committing.
+
+---

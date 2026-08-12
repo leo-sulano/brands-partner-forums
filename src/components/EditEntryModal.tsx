@@ -9,6 +9,7 @@ import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
 import { PLATFORM_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import { isYesNoCol, sectionOf } from '../lib/entryFieldSections';
 
 const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
@@ -33,79 +34,14 @@ const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(
 
 const ACCOUNT_FIELD_PRIORITY = ['Account', 'Country', 'Proxy Used', 'Email', 'Password', 'Account Name', 'Account Surname', 'Agent'];
 
-const YES_NO_COLS = new Set([
-  'Register from Google acount',
-  'Leaving Review After redirected from  welcome Email',
-  'Sticky IP (Mobile) (Y/N)',
-  'Photo in Account?',
-  'Opening the account via "usefull"',
-  'Opening the account via "Register" when leaving review',
-  'Scrolling and houvering?',
-  'Smart Paste?/ Paste as human typing?',
-  'Native Language?',
-]);
-
-const TP_SECTION = new Set([
-  'Score added', 'Trust Pilot', 'TP Review Status', 'Link to the profile',
-  'Removed / Not Published / stil published date', 'Removed/ Not Pub./Published',
-  'TP Score added',
-]);
-
-const AG_SECTION = new Set([
-  'Ask Gambler review added', 'AG Review Status', 'AG Review Link',
-  'AG User', 'AG Password', 'AG Link', 'AG Added',
-]);
-
-const CG_SECTION = new Set([
-  'Casino Guru review added', 'CG Review Status', 'CG Review Link',
-  'CG User', 'CG Password', 'CG Link', 'CG Added',
-]);
-
 const BRAND_NAME_COLS = new Set(['Brands', 'Brand Name', 'Brand']);
 
-// Moved into the Behavior Flags section alongside YES_NO_COLS — these aren't
-// yes/no dropdowns, so they still render as plain/sensitive text inputs via
-// isYesNoCol below, just bucketed under a different section heading. Covers
-// both the raw sheet-import header ('Desktop/Mobile') and the newer key
-// AddReviewAccountModal writes ('Mobile or deskstop ?') for the same field.
-const BEHAVIOR_EXTRA_COLS = new Set([
-  'Backup Codes',
-  'Authenticator Backup',
-  'Redirection from Search Engine (which one?)',
-  'Redirection Word used (Casino, Trustpilot)',
-  'Redirection Word Used',
-  'Reveiw Language',
-  'Desktop/Mobile',
-  'Mobile or deskstop ?',
-  'Mentioning time frames',
-  'Mentioning Amounts?',
-  'Mentioning Agent name?',
-  'Short review / Long',
-  'Short review  / Long',
-]);
-
 function isStatusCol(h: string) { return h.toLowerCase().includes('status'); }
-function isYesNoCol(h: string) { return YES_NO_COLS.has(h) || YES_NO_COLS.has(h.replace(/^`/, '')); }
-function isBehaviorExtraCol(h: string) {
-  return BEHAVIOR_EXTRA_COLS.has(h) || BEHAVIOR_EXTRA_COLS.has(h.trim().replace(/\s+/g, ' '));
-}
 function isLinkCol(h: string) {
   const l = h.toLowerCase();
   return l.includes('link') || l.includes('url') || l.includes('profile');
 }
 function isBrandNameCol(h: string) { return BRAND_NAME_COLS.has(h); }
-
-function sectionOf(h: string): 'account' | 'tp' | 'ag' | 'cg' | 'yesno' {
-  if (isYesNoCol(h) || isBehaviorExtraCol(h)) return 'yesno';
-  if (AG_SECTION.has(h)) return 'ag';
-  if (CG_SECTION.has(h)) return 'cg';
-  if (TP_SECTION.has(h)) return 'tp';
-  const l = h.toLowerCase();
-  if (l.includes('ask gambler') || (l.startsWith('ag ') && !l.includes('agent'))) return 'ag';
-  if (l.includes('casino guru') || l.startsWith('cg ')) return 'cg';
-  if (l.includes('trust pilot') || l.startsWith('tp ') || l === 'score added') return 'tp';
-  return 'account';
-}
 
 function SectionHeading({ label }: { label: string }) {
   return (

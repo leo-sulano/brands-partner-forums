@@ -29,6 +29,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
 import type { Entry } from '../types/entry';
+import { sectionOf } from '../lib/entryFieldSections';
 
 // Checked case-insensitively against header names for tabs with no whitelist config.
 const HIDDEN_COLS = new Set(['id', 'last_sync_tag', 'score added', 'review status']);
@@ -1003,6 +1004,30 @@ export default function BrandGroup() {
     : headers
   ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
 
+  // Export uses the tab's full field set (fullHeaders, from tab_schemas — Score and
+  // Behavior Flags columns included, the same fields the Edit Entry modal exposes),
+  // not just the table's narrower column whitelist. Columns are reordered into the
+  // same Account Details → TP → AG → CG → Behavior Flags grouping the Edit Entry
+  // modal uses (shared via entryFieldSections' sectionOf so the two can't drift),
+  // and — like the on-screen table's visibleHeaders — narrowed to only the selected
+  // platforms' own columns when a specific Platform filter is active.
+  const exportHeaders = (() => {
+    const allFields = Array.from(new Set([...fullHeaders, ...headers]))
+      .filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
+    const scoped = (platformFilter.length > 0 && activePlatforms.length > 1)
+      ? allFields.filter((h) => {
+          const sec = sectionOf(h);
+          return sec !== 'tp' && sec !== 'ag' && sec !== 'cg' ? true : platformFilter.includes(sec);
+        })
+      : allFields;
+    const buckets: Record<'account' | 'tp' | 'ag' | 'cg' | 'yesno', string[]> = {
+      account: [], tp: [], ag: [], cg: [], yesno: [],
+    };
+    for (const h of scoped) buckets[sectionOf(h)].push(h);
+    return [...buckets.account, ...buckets.tp, ...buckets.ag, ...buckets.cg, ...buckets.yesno]
+      .filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
+  })();
+
   const removedPlatformBrandSet = useMemo(() => buildRemovedPlatformBrandSet(removedPlatformBrandRows), [removedPlatformBrandRows]);
   function isPlatformRemoved(brandName: string | null | undefined, platform: Platform): boolean {
     return !!brandName && removedPlatformBrandSet.has(platformRemovedKey(decodedTab, brandName, platform));
@@ -1670,8 +1695,8 @@ export default function BrandGroup() {
         </div>
         <div className="flex items-center gap-2">
           <ExportMenuButton
-            headers={visibleHeaders.map((h) => getColLabel(h, decodedTab))}
-            getRows={() => buildBrandRowsForExport(sorted, visibleHeaders, decodedTab)}
+            headers={exportHeaders.map((h) => getColLabel(h, decodedTab))}
+            getRows={() => buildBrandRowsForExport(sorted, exportHeaders, decodedTab)}
             filenameBase={tabToSlug(decodedTab)}
             disabled={loading}
           />
