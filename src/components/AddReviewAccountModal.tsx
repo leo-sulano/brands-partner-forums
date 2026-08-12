@@ -47,16 +47,20 @@ const ACCOUNT_FIELDS: FieldDef[] = [
   { key: 'Password',             label: 'Password',             sensitive: true },
   { key: 'Account Name',         label: 'Account Name' },
   { key: 'Account Surname',      label: 'Account Surname' },
-  { key: 'Backup Codes',         label: 'Backup Codes',         sensitive: true },
-  { key: 'Authenticator Backup', label: 'Authenticator Backup', sensitive: true },
   { key: 'Process',              label: 'Process' },
   { key: 'Details',              label: 'Details',              span: true },
   // Brand Name + Brand Link are injected dynamically below — their underlying
   // key depends on which tab is selected (see getBrandNameCol/getBrandLinkCol).
-  { key: 'Reveiw Language',                              label: 'Review Language' },
-  { key: 'Mobile or deskstop ?',                         label: 'Mobile or Desktop' },
+];
+
+// Rendered in the Behavior Flags section, alongside YES_NO_FIELDS.
+const BEHAVIOR_EXTRA_FIELDS: FieldDef[] = [
+  { key: 'Backup Codes',         label: 'Backup Codes',         sensitive: true },
+  { key: 'Authenticator Backup', label: 'Authenticator Backup', sensitive: true },
   { key: 'Redirection from Search Engine (which one?)',  label: 'Redirection (Search Engine)' },
   { key: 'Redirection Word used (Casino, Trustpilot)',   label: 'Redirection Word Used' },
+  { key: 'Reveiw Language',                              label: 'Review Language' },
+  { key: 'Mobile or deskstop ?',                         label: 'Mobile or Desktop' },
   { key: 'Mentioning time frames',                       label: 'Mentioning Time Frames' },
   { key: 'Mentioning Amounts?',                          label: 'Mentioning Amounts?' },
   { key: 'Mentioning Agent name?',                       label: 'Mentioning Agent Name?' },
@@ -116,6 +120,7 @@ const ALL_KEYS = [
   ...TP_FIELDS.map((f) => f.key),
   ...AG_FIELDS.map((f) => f.key),
   ...CG_FIELDS.map((f) => f.key),
+  ...BEHAVIOR_EXTRA_FIELDS.map((f) => f.key),
   ...YES_NO_FIELDS.map((f) => f.key),
 ];
 
@@ -223,7 +228,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
         brandField, ...(brandLinkField ? [brandLinkField] : []),
         ...ACCOUNT_FIELDS, ...TP_FIELDS,
         ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
-        ...YES_NO_FIELDS,
+        ...BEHAVIOR_EXTRA_FIELDS, ...YES_NO_FIELDS,
       ];
       const out: Record<string, string | null> = {};
       for (const f of saveFields) out[f.key] = fields[f.key] || null;
@@ -405,11 +410,11 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             </div>
           )}
 
-          {/* Yes / No Flags */}
+          {/* Behavior Flags */}
           <div>
             <SectionHeading label="Behavior Flags" />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-              {YES_NO_FIELDS.map(renderField)}
+              {[...BEHAVIOR_EXTRA_FIELDS, ...YES_NO_FIELDS].map(renderField)}
             </div>
           </div>
 

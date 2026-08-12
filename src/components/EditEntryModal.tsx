@@ -63,8 +63,32 @@ const CG_SECTION = new Set([
 
 const BRAND_NAME_COLS = new Set(['Brands', 'Brand Name', 'Brand']);
 
+// Moved into the Behavior Flags section alongside YES_NO_COLS — these aren't
+// yes/no dropdowns, so they still render as plain/sensitive text inputs via
+// isYesNoCol below, just bucketed under a different section heading. Covers
+// both the raw sheet-import header ('Desktop/Mobile') and the newer key
+// AddReviewAccountModal writes ('Mobile or deskstop ?') for the same field.
+const BEHAVIOR_EXTRA_COLS = new Set([
+  'Backup Codes',
+  'Authenticator Backup',
+  'Redirection from Search Engine (which one?)',
+  'Redirection Word used (Casino, Trustpilot)',
+  'Redirection Word Used',
+  'Reveiw Language',
+  'Desktop/Mobile',
+  'Mobile or deskstop ?',
+  'Mentioning time frames',
+  'Mentioning Amounts?',
+  'Mentioning Agent name?',
+  'Short review / Long',
+  'Short review  / Long',
+]);
+
 function isStatusCol(h: string) { return h.toLowerCase().includes('status'); }
 function isYesNoCol(h: string) { return YES_NO_COLS.has(h) || YES_NO_COLS.has(h.replace(/^`/, '')); }
+function isBehaviorExtraCol(h: string) {
+  return BEHAVIOR_EXTRA_COLS.has(h) || BEHAVIOR_EXTRA_COLS.has(h.trim().replace(/\s+/g, ' '));
+}
 function isLinkCol(h: string) {
   const l = h.toLowerCase();
   return l.includes('link') || l.includes('url') || l.includes('profile');
@@ -72,7 +96,7 @@ function isLinkCol(h: string) {
 function isBrandNameCol(h: string) { return BRAND_NAME_COLS.has(h); }
 
 function sectionOf(h: string): 'account' | 'tp' | 'ag' | 'cg' | 'yesno' {
-  if (isYesNoCol(h)) return 'yesno';
+  if (isYesNoCol(h) || isBehaviorExtraCol(h)) return 'yesno';
   if (AG_SECTION.has(h)) return 'ag';
   if (CG_SECTION.has(h)) return 'cg';
   if (TP_SECTION.has(h)) return 'tp';
