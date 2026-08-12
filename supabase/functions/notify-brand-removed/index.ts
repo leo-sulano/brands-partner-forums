@@ -4,7 +4,7 @@
 // Deliberately holds no imports from src/lib — a thin proxy to Resend that
 // receives every human-readable string it needs already formatted, so it
 // can't drift from src/lib's own PLATFORM_LABEL/formatCellValue/tabToSlug.
-import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 function getEnvVars() {
   return {
