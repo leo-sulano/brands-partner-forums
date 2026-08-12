@@ -3028,3 +3028,12 @@ orphaned `removed_platform_brands` row via a direct REST call — leaving no res
 column-position spot-check on the single-platform Wizard of Odds tab. Tier 2 — confined to
 `BrandGroup.tsx`'s own table rendering and `PlatformRemovedBadge.tsx`; no `queries.ts`,
 `scoreSummary.ts`, or date/status/platform filtering logic touched.
+
+Same-day, third follow-up: the on-screen table columns above were reverted — user clarified the
+removal date should live in the Edit Entry modal only (checkbox label), not as a persistent Brand
+Tabs table column. Removed `PAGE_REMOVED_COL_PLATFORM`, `withPageRemovedColumns`, the `colGroup`/
+`isNoSortCol` extensions, and the cell-rendering branch from `BrandGroup.tsx`; `visibleHeaders`
+reverted to its pre-feature form. Deliberately kept the other half of the prior commit —
+`PlatformRemovedBadge`'s hover-tooltip date and the `removedPlatformBadges` helper — since this
+request was scoped to the table column only, not the badge tooltip. Build, full test suite, and a
+live check on Hanan (confirming the columns are gone and layout matches pre-feature) all pass.
