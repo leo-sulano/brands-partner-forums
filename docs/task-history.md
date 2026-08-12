@@ -2886,6 +2886,8 @@ before staging that this task's diff against the latest `HEAD` was byte-for-byte
 diff computed against the pre-concurrent-commits base, i.e. no silent conflict or lost update in
 `EditEntryModal.tsx`'s shared region, before committing.
 
+---
+
 ## Task 209: Brand Page Removal — Email Notification + Page Removed Status
 **Date:** August 12, 2026
 
