@@ -15,6 +15,7 @@ const PAYLOAD = {
   brand: 'Prive Casino',
   tabLabel: 'TP Brand Injection',
   platformShortLabel: 'TP',
+  removedAtLabel: '12/08/2026',
 };
 
 describe('notifyBrandRemoved', () => {

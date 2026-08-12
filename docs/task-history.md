@@ -2984,3 +2984,10 @@ correct rather than working them in. `NotifyBrandRemovedPayload` narrowed from 6
 other reader. Full test suite, `deno check`, and the function's own Deno suite (4 tests, extended
 with a mixed-success case) all pass; function redeployed twice (once per fix). Tier 2 — contained
 to one Edge Function plus its two direct callers, no shared dashboard logic touched.
+
+Immediate follow-up same day: the corporate-format rewrite above had dropped the removal date the
+original design carried, matching the user's exact template literally — the user then asked for
+it back. Re-added `removedAtLabel` (client-formatted via the same `formatCellValue(new
+Date().toISOString())` call the pre-rewrite version used) as a 4th required payload field across
+all three touch points, appended to the flagged-Removed sentence: "...has been flagged as Removed
+on {date}." Tests, `deno check`, and build re-verified green; function redeployed a third time.

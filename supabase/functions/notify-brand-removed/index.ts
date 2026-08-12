@@ -31,6 +31,7 @@ export interface NotifyBrandRemovedPayload {
   brand: string;
   tabLabel: string;
   platformShortLabel: string;
+  removedAtLabel: string;
 }
 
 // One Resend call per recipient, not one call with every recipient in `to` —
@@ -56,7 +57,7 @@ export async function sendBrandRemovedNotification(
     '',
     'This is an automated notification from the Forums Dashboard.',
     '',
-    `The brand page ${payload.brand} on ${payload.platformShortLabel}, under ${payload.tabLabel}, has been flagged as Removed.`,
+    `The brand page ${payload.brand} on ${payload.platformShortLabel}, under ${payload.tabLabel}, has been flagged as Removed on ${payload.removedAtLabel}.`,
     '',
     'Please review the brand page and take the necessary action.',
     '',
@@ -99,15 +100,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } catch {
     return jsonResponse({ error: 'Invalid request body' }, 400);
   }
-  const { brand, tabLabel, platformShortLabel } = body ?? {};
-  if (!brand || !tabLabel || !platformShortLabel) {
+  const { brand, tabLabel, platformShortLabel, removedAtLabel } = body ?? {};
+  if (!brand || !tabLabel || !platformShortLabel || !removedAtLabel) {
     return jsonResponse({ error: 'Missing required field' }, 400);
   }
 
   try {
     const client = createClient(env.SUPABASE_URL, env.SERVICE_ROLE);
     const result = await sendBrandRemovedNotification(
-      { brand, tabLabel, platformShortLabel },
+      { brand, tabLabel, platformShortLabel, removedAtLabel },
       client,
       env.RESEND_API_KEY,
     );

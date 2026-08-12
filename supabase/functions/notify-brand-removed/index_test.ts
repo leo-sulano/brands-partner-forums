@@ -19,6 +19,7 @@ const PAYLOAD: NotifyBrandRemovedPayload = {
   brand: 'Prive Casino',
   tabLabel: 'TP Brand Injection',
   platformShortLabel: 'TP',
+  removedAtLabel: '12/08/2026',
 };
 
 Deno.test('sendBrandRemovedNotification sends one Resend call per approved profile email', async () => {
@@ -40,7 +41,7 @@ Deno.test('sendBrandRemovedNotification sends one Resend call per approved profi
       '',
       'This is an automated notification from the Forums Dashboard.',
       '',
-      'The brand page Prive Casino on TP, under TP Brand Injection, has been flagged as Removed.',
+      'The brand page Prive Casino on TP, under TP Brand Injection, has been flagged as Removed on 12/08/2026.',
       '',
       'Please review the brand page and take the necessary action.',
       '',

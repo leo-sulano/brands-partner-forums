@@ -2632,6 +2632,7 @@ export default function BrandGroup() {
                             brand: brandName,
                             tabLabel: tabDisplayName(targetTab),
                             platformShortLabel: PLATFORM_SHORT_LABEL[p],
+                            removedAtLabel: formatCellValue(new Date().toISOString()),
                           });
                         } catch {
                           setToast({
