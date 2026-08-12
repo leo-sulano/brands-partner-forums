@@ -8,11 +8,11 @@ import { PLATFORM_LABEL, PLATFORM_SHORT_LABEL, type Platform } from '../lib/scor
 // review's status, not the brand's page existing at all. A brand can show
 // more than one of these side by side if it's been delisted on more than one
 // platform independently.
-export default function PlatformRemovedBadge({ platform }: { platform: Platform }) {
+export default function PlatformRemovedBadge({ platform, removedAtLabel }: { platform: Platform; removedAtLabel?: string }) {
   return (
     <span
       className="relative ml-1.5 inline-flex shrink-0 items-center text-[11px] font-semibold leading-none text-slate-600"
-      title={`${PLATFORM_LABEL[platform]} page removed`}
+      title={removedAtLabel ? `${PLATFORM_LABEL[platform]} page removed on ${removedAtLabel}` : `${PLATFORM_LABEL[platform]} page removed`}
     >
       {PLATFORM_SHORT_LABEL[platform]}
       <span className="absolute -right-1.5 -top-1 flex size-2.5 items-center justify-center rounded-full bg-rose-600">

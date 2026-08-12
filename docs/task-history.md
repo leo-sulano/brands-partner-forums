@@ -2991,3 +2991,40 @@ it back. Re-added `removedAtLabel` (client-formatted via the same `formatCellVal
 Date().toISOString())` call the pre-rewrite version used) as a 4th required payload field across
 all three touch points, appended to the flagged-Removed sentence: "...has been flagged as Removed
 on {date}." Tests, `deno check`, and build re-verified green; function redeployed a third time.
+
+Second same-day follow-up: added a real on-screen "{Platform} Page Removed" column to Brand Tabs'
+table itself (distinct from Task 209's export-only "{Platform} Page Removed Status" columns), one
+per platform active on the tab, holding the removal date or "—". User confirmed via follow-up
+that every active platform should get its own column, and picked grouping each new column right
+after that platform's own existing columns (e.g. TP Page Removed sits right after TP Status) over
+appending all of them at the table's end. New `withPageRemovedColumns` (`BrandGroup.tsx`) finds
+each platform's last existing column in the already-narrowed header list and inserts the synthetic
+column right after it; `colGroup` extended to classify the new columns into their platform's group
+so the existing header/body spacer logic (`withGroupSpacers`/`countGroupSpacers`) groups them
+correctly with no separate code. WO has no dedicated column group in this table (pre-existing —
+its real columns are already all 'identity', same precedent Task 209's export noted), so `WO Page
+Removed` is simply appended at the end; live-verified on the Wizard of Odds tab. Also honors the
+current Platform-filter selection, narrowing to just the selected platform's own column exactly
+like TP/AG/CG's real columns already do. Cell rendering (reading from the same
+`removedPlatformBrandDateMap` the export/modal already use) is placed *before* the `isApproved`
+inline-edit branch — placing it after would have let an approved user accidentally start editing a
+column with no backing `entries.data` key, silently attempting to write a bogus field on save; the
+new columns are also added to `isNoSortCol` since there's no real per-entry value to sort by.
+
+Same-day, second request: `PlatformRemovedBadge` (the small red-X badge already shown next to a
+flagged brand's name) now shows the removal date in its hover tooltip too — e.g. "TrustPilot page
+removed on 12/08/2026" instead of just "TrustPilot page removed". New optional `removedAtLabel`
+prop, wired through a new `removedPlatformBadges(brandName)` helper in `BrandGroup.tsx` that
+consolidates the 6 near-identical `removedPlatformsFor(...).map(...)` call sites (Brand /
+TP URL PAGE, URL PAGE, and Brands/Brand Name/Brand columns, ×2 variants each) into one, computing
+each platform's date via the same `removedPlatformDateFor` the new table column above also reads
+— so the column and the badge tooltip can't disagree.
+
+Full test suite and build pass (no dedicated render tests exist for `BrandGroup.tsx` or
+`PlatformRemovedBadge` in this project); live-verified in the browser end to end via a disposable
+test brand in Hanan (created, TP-flagged, confirmed "TP Page Removed" showed `12/08/2026` while
+AG/CG stayed "—", confirmed the badge tooltip read the date, then fully deleted — entry, and the
+orphaned `removed_platform_brands` row via a direct REST call — leaving no residual state), plus a
+column-position spot-check on the single-platform Wizard of Odds tab. Tier 2 — confined to
+`BrandGroup.tsx`'s own table rendering and `PlatformRemovedBadge.tsx`; no `queries.ts`,
+`scoreSummary.ts`, or date/status/platform filtering logic touched.

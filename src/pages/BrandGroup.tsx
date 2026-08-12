@@ -66,7 +66,7 @@ function isLinkCol(header: string) {
 
 function isNoSortCol(header: string) {
   const noSortCols = new Set(['Account Name', 'URL PAGE', 'Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE']);
-  return isLinkCol(header) || noSortCols.has(header);
+  return isLinkCol(header) || noSortCols.has(header) || header in PAGE_REMOVED_COL_PLATFORM;
 }
 
 function StatusPill({ value }: { value: string }) {
@@ -238,14 +238,53 @@ const PLATFORM_OWN_COLS: Record<'tp' | 'ag' | 'cg', Set<string>> = {
   cg: new Set(['Casino Guru review added', 'CG Review Status', 'CG Review Link', 'CG User']),
 };
 
+// Synthetic, on-screen-table-only columns (not entries.data keys) showing
+// when a brand's page on that platform was flagged removed — one per
+// platform active on the tab. Reverse-lookup drives both cell rendering and
+// column grouping/no-sort classification below.
+const PAGE_REMOVED_COL_PLATFORM: Record<string, Platform> = {
+  'TP Page Removed': 'tp',
+  'AG Page Removed': 'ag',
+  'CG Page Removed': 'cg',
+  'WO Page Removed': 'wo',
+};
+
 // Which logical group a column belongs to — identity columns (Account, Brand,
 // etc.) vs. each platform's own columns. Drives the equal-spacing gaps between
 // groups in the table header/body (see withGroupSpacers/countGroupSpacers).
 function colGroup(h: string): 'tp' | 'ag' | 'cg' | 'identity' {
-  if (PLATFORM_OWN_COLS.tp.has(h)) return 'tp';
-  if (PLATFORM_OWN_COLS.ag.has(h)) return 'ag';
-  if (PLATFORM_OWN_COLS.cg.has(h)) return 'cg';
+  if (PLATFORM_OWN_COLS.tp.has(h) || h === 'TP Page Removed') return 'tp';
+  if (PLATFORM_OWN_COLS.ag.has(h) || h === 'AG Page Removed') return 'ag';
+  if (PLATFORM_OWN_COLS.cg.has(h) || h === 'CG Page Removed') return 'cg';
   return 'identity';
+}
+
+// Inserts a "{Platform} Page Removed" synthetic column right after each
+// platform's own last column, for every platform in `platforms` (usually
+// every platform active on the tab, narrowed to the current Platform filter
+// selection when one is active — mirrors the narrowing already applied to
+// `headers` above). WO has no dedicated column group (see colGroup/
+// PLATFORM_OWN_COLS — WO-only tabs' real columns are all 'identity' too, the
+// same precedent Task 209's export columns already established), so its
+// column is simply appended at the end.
+function withPageRemovedColumns(baseHeaders: string[], platforms: Platform[]): string[] {
+  const lastIndexByPlatform = new Map<'tp' | 'ag' | 'cg', number>();
+  baseHeaders.forEach((h, i) => {
+    (['tp', 'ag', 'cg'] as const).forEach((p) => {
+      if (PLATFORM_OWN_COLS[p].has(h)) lastIndexByPlatform.set(p, i);
+    });
+  });
+  const out: string[] = [];
+  baseHeaders.forEach((h, i) => {
+    out.push(h);
+    (['tp', 'ag', 'cg'] as const).forEach((p) => {
+      if (platforms.includes(p) && lastIndexByPlatform.get(p) === i) {
+        out.push(`${PLATFORM_SHORT_LABEL[p]} Page Removed`);
+      }
+    });
+  });
+  if (platforms.includes('wo')) out.push(`${PLATFORM_SHORT_LABEL.wo} Page Removed`);
+  return out;
 }
 
 // Inserts a spacer element (built by spacerFactory) between consecutive
@@ -995,15 +1034,19 @@ export default function BrandGroup() {
 
   // Hide other platforms' columns when one or more specific platforms are selected —
   // shows the union of every selected platform's own columns, hiding the rest.
-  const visibleHeaders = (platformFilter.length > 0 && activePlatforms.length > 1
-    ? headers.filter((h) => {
-        for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as ['tp' | 'ag' | 'cg', Set<string>][]) {
-          if (!platformFilter.includes(key) && cols.has(h)) return false;
-        }
-        return true;
-      })
-    : headers
-  ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
+  const platformFilterActive = platformFilter.length > 0 && activePlatforms.length > 1;
+  const visibleHeaders = withPageRemovedColumns(
+    (platformFilterActive
+      ? headers.filter((h) => {
+          for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as ['tp' | 'ag' | 'cg', Set<string>][]) {
+            if (!platformFilter.includes(key) && cols.has(h)) return false;
+          }
+          return true;
+        })
+      : headers
+    ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h)),
+    platformFilterActive ? getTabPlatforms(decodedTab).filter((p) => platformFilter.includes(p)) : getTabPlatforms(decodedTab),
+  );
 
   // Export uses the tab's full field set (fullHeaders, from tab_schemas — Score and
   // Behavior Flags columns included, the same fields the Edit Entry modal exposes),
@@ -1053,6 +1096,14 @@ export default function BrandGroup() {
   );
   function removedPlatformDateFor(brandName: string | null | undefined, platform: Platform): string | undefined {
     return brandName ? removedPlatformBrandDateMap.get(platformRemovedKey(decodedTab, brandName, platform)) : undefined;
+  }
+  // One PlatformRemovedBadge per platform flagged for this brand, each carrying
+  // its own removal date for the badge's hover tooltip.
+  function removedPlatformBadges(brandName: string | null | undefined) {
+    return removedPlatformsFor(brandName).map((p) => {
+      const date = removedPlatformDateFor(brandName, p);
+      return <PlatformRemovedBadge key={p} platform={p} removedAtLabel={date ? formatCellValue(date) : undefined} />;
+    });
   }
   // Every platform actually active on this tab that's currently flagged for this
   // brand, mapped to when it was flagged — feeds the Edit Entry modal's date-aware
@@ -2258,7 +2309,7 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
-                              {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                              {removedPlatformBadges(brandName)}
                             </td>
                           );
                         }
@@ -2266,7 +2317,7 @@ export default function BrandGroup() {
                           return (
                             <td key={h} className="px-[10px] py-2">
                               <span className="text-slate-600 text-sm">{brandName}</span>
-                              {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                              {removedPlatformBadges(brandName)}
                             </td>
                           );
                         }
@@ -2291,14 +2342,14 @@ export default function BrandGroup() {
                                   <ExternalLink className="size-3 shrink-0" />
                                   {pageName}
                                 </a>
-                                {removedPlatformsFor(pageName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                                {removedPlatformBadges(pageName)}
                               </td>
                             );
                           }
                           return (
                             <td key={h} className="px-[10px] py-2 whitespace-nowrap">
                               <span className="text-slate-600 text-sm">{pageName}</span>
-                              {removedPlatformsFor(pageName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                              {removedPlatformBadges(pageName)}
                             </td>
                           );
                         }
@@ -2338,14 +2389,14 @@ export default function BrandGroup() {
                                 <ExternalLink className="size-3 shrink-0" />
                                 {brandName}
                               </a>
-                              {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                              {removedPlatformBadges(brandName)}
                             </td>
                           );
                         }
                         return (
                           <td key={h} className="px-[10px] py-2">
                             <CellValue header={h} value={brandName} rowData={entry.data} tab={decodedTab} />
-                            {removedPlatformsFor(brandName).map((p) => <PlatformRemovedBadge key={p} platform={p} />)}
+                            {removedPlatformBadges(brandName)}
                           </td>
                         );
                       }
@@ -2355,6 +2406,20 @@ export default function BrandGroup() {
                         return (
                           <td key={h} className="px-[10px] py-2">
                             <CellValue header={h} value={entry.data[h] ?? null} rowData={entry.data} tab={decodedTab} />
+                          </td>
+                        );
+                      }
+
+                      // Page Removed columns: synthetic, not an entries.data key — must be
+                      // handled before the isApproved inline-edit branch below, or a click
+                      // would try to inline-edit a field that doesn't exist on the entry.
+                      if (h in PAGE_REMOVED_COL_PLATFORM) {
+                        const platform = PAGE_REMOVED_COL_PLATFORM[h];
+                        const brandName = brandCol ? entry.data[brandCol] : null;
+                        const date = removedPlatformDateFor(brandName, platform);
+                        return (
+                          <td key={h} className="px-[10px] py-2 whitespace-nowrap">
+                            {date ? <span className="text-sm text-rose-600">{formatCellValue(date)}</span> : <span className="text-slate-400">—</span>}
                           </td>
                         );
                       }
