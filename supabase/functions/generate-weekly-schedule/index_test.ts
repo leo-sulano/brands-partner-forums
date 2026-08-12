@@ -74,6 +74,32 @@ Deno.test('buildTabContext populates overrideMap from its table', async () => {
   assertEquals(ctx.overrideMap?.get('Hanan::winmega::tp'), 'pause');
 });
 
+Deno.test('buildTabContext populates hiddenBrandSet from schedule_hidden_brands', async () => {
+  const client = fakeClient({
+    entries: [entry('Rooster Partners', '1', { Brands: 'Novadreams' })],
+    tab_schemas: [{ headers: ['Brands'] }],
+    removed_platform_brands: [],
+    brand_platform_override: [],
+    schedule_hidden_brands: [{ tab: 'Rooster Partners', brand: 'Novadreams' }],
+    schedule_platform_restrictions: [],
+  });
+  const ctx = await buildTabContext('Rooster Partners', client);
+  assertEquals(ctx.hiddenBrandSet?.has('Rooster Partners::novadreams'), true);
+});
+
+Deno.test('buildTabContext populates platformRestrictionMap from schedule_platform_restrictions', async () => {
+  const client = fakeClient({
+    entries: [entry('Revolution Casino', '1', { Brands: 'God Of Casino' })],
+    tab_schemas: [{ headers: ['Brands'] }],
+    removed_platform_brands: [],
+    brand_platform_override: [],
+    schedule_hidden_brands: [],
+    schedule_platform_restrictions: [{ tab: 'Revolution Casino', brand: 'God Of Casino', allowed_platform: 'ag' }],
+  });
+  const ctx = await buildTabContext('Revolution Casino', client);
+  assertEquals(ctx.platformRestrictionMap?.get('Revolution Casino::god of casino'), 'ag');
+});
+
 Deno.test('generateAllTabs continues past a single tab failure', async () => {
   const calls: string[] = [];
   const fakeGenerate = async (tab: string) => {

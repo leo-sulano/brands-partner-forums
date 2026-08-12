@@ -12,9 +12,10 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { OPERATIONAL_TABS } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, invalidateTabCache } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
+import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
 
@@ -28,11 +29,13 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 // re-exercising recalculatePauses/ensureWeekGenerated, which already have
 // full coverage in schedulerService.test.ts.
 export async function buildTabContext(tab: string, client: SupabaseClient): Promise<TabContext> {
-  const [rawEntries, headers, removedPlatformBrandRows, overrideRows] = await Promise.all([
+  const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
     fetchRawEntriesByTab(tab, client),
     fetchTabHeaders(tab, client),
     fetchRemovedPlatformBrands(client),
     fetchBrandPlatformOverrides(tab, client),
+    fetchScheduleHiddenBrands(tab, client),
+    fetchScheduleRestrictedBrands(tab, client),
   ]);
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
   const uniqueBrands = [...new Set(
@@ -50,6 +53,8 @@ export async function buildTabContext(tab: string, client: SupabaseClient): Prom
       removedPlatformBrandRows as { tab: string; brand: string; platform: Platform }[],
     ),
     overrideMap: buildOverrideMap(overrideRows),
+    hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
+    platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
   };
 }
 
