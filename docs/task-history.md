@@ -2791,3 +2791,19 @@ Full test suite (1028 tests, 27 new across the 4 new lib modules) and build both
 `docs/superpowers/plans/2026-08-11-data-export.md`.
 
 ---
+
+## Task 206: Brand Tabs Export — Columns Follow the Platform Filter Again
+**Date:** August 12, 2026
+
+A same-day follow-up commit (`34394f7`) had changed Brand Tabs export to always include every
+column for the tab (Account Details through Behavior Flags, every platform) regardless of the
+on-screen Platform filter, reasoning that a full-record export was more useful than one narrowed to
+whatever platform happened to be selected on screen. The user asked for the opposite: export columns
+should match the selected Platform filter, the same way the on-screen table's `visibleHeaders` narrow
+to the union of selected platforms' own columns. Reverted by deleting the separate `exportHeaders`
+(which always used the unfiltered `headers` list) and pointing `ExportMenuButton`'s `headers`/
+`getRows` at the existing `visibleHeaders` instead — one shared column list for both the table and
+the export, so they can't drift again. Row filtering (search/brand/agent/proxy/country/status/date)
+is unaffected either way. Full test suite (1044 tests) and build both pass.
+
+---
