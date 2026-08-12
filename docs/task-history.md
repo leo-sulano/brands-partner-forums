@@ -3073,3 +3073,14 @@ code — "TrustPilot/AskGamblers/CasinoGuru/Wizard of Odds Page Removed Status" 
 modal ("{Platform} scheduling:") still uses the full name — not part of this request. Live-verified
 read-only against the same real Hanan entry (TP/AG/CG all showed the short-code label); full test
 suite and build pass.
+
+Same-day, seventh follow-up: extended abbreviation to the platform section headings themselves —
+"Trust Pilot"/"AskGamblers"/"Casino Guru" (and, on the Wizard of Odds tab, "Wizard of Odds") are
+now "TP"/"AG"/"CG"/"WO" in both `EditEntryModal.tsx` and, for cross-modal consistency, the mirrored
+`AddReviewAccountModal.tsx` (whose single "TP" section already covers the WO tab too — a
+pre-existing simplification unrelated to this change, left as-is). "Account Details" and
+"Behavior Flags" headings are untouched — this only affects the 3 (or on WO tabs, 1) platform
+section names, not the identity/general sections. Live-verified read-only in both modals against
+real Hanan data (no writes, closed via full-page reload rather than the Cancel button — its ref
+went stale between snapshots, and a fresh navigation discards an unsaved modal exactly the same
+way). Full test suite and build pass.

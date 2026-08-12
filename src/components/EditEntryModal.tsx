@@ -410,7 +410,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           {/* Trust Pilot / Wizard of Odds */}
           {sections.tp.length > 0 && (
             <>
-              <SectionHeading label={currentTab === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
+              <SectionHeading label={currentTab === 'Wizard of Odds' ? 'WO' : 'TP'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {renderSectionFields(sections.tp, 'tp')}
               </div>
@@ -429,7 +429,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           {/* AskGamblers */}
           {sections.ag.length > 0 && (
             <>
-              <SectionHeading label="AskGamblers" />
+              <SectionHeading label="AG" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {renderSectionFields(sections.ag, 'ag')}
               </div>
@@ -448,7 +448,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           {/* Casino Guru */}
           {sections.cg.length > 0 && (
             <>
-              <SectionHeading label="Casino Guru" />
+              <SectionHeading label="CG" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {renderSectionFields(sections.cg, 'cg')}
               </div>
