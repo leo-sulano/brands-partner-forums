@@ -67,6 +67,7 @@ interface Props {
   brandCol?: string | null;
   brandProfiles?: Record<string, Record<string, string>>;
   initialRemovedPlatforms?: Platform[];
+  initialRemovedPlatformDates?: Partial<Record<Platform, string>>;
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
 }
 
@@ -75,7 +76,7 @@ const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) =>
   { col: 'CG Review Link', fallback: getBrandCgUrl },
 ];
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms, initialOverrides }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
   const [removedPlatforms, setRemovedPlatforms] = useState<Set<Platform>>(new Set(initialRemovedPlatforms ?? []));
   const [overrides, setOverrides] = useState<Partial<Record<Platform, 'pause' | 'active'>>>(initialOverrides ?? {});
   const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
@@ -332,7 +333,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                         }
                         className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
                       />
-                      {PLATFORM_LABEL[p]} page removed
+                      {PLATFORM_LABEL[p]} Page Removed Status
+                      {removedPlatforms.has(p) && initialRemovedPlatformDates?.[p]
+                        ? ` (${formatCellValue(initialRemovedPlatformDates[p]!)})`
+                        : ''}
                     </label>
                   ))}
                   {tabPlatforms.map((p) => (
