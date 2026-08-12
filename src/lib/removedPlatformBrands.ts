@@ -33,3 +33,9 @@ export function buildRemovedPlatformBrandSet(
 ): Set<string> {
   return new Set(rows.map((r) => platformRemovedKey(r.tab, r.brand, r.platform)));
 }
+
+export function buildRemovedPlatformBrandDateMap(
+  rows: { tab: string; brand: string; platform: Platform; removed_at: string }[],
+): Map<string, string> {
+  return new Map(rows.map((r) => [platformRemovedKey(r.tab, r.brand, r.platform), r.removed_at]));
+}
