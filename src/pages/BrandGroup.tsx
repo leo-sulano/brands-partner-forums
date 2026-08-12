@@ -22,7 +22,8 @@ import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/schedu
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
@@ -2623,7 +2624,25 @@ export default function BrandGroup() {
                   // setBrandPlatformRemoved in src/lib/queries.ts).
                   for (const p of getTabPlatforms(decodedTab)) {
                     if (wasRemoved.has(p) !== nowRemoved.has(p)) {
-                      await setBrandPlatformRemoved(targetTab, brandName, p, nowRemoved.has(p));
+                      const willBeRemoved = nowRemoved.has(p);
+                      await setBrandPlatformRemoved(targetTab, brandName, p, willBeRemoved);
+                      if (willBeRemoved) {
+                        try {
+                          await notifyBrandRemoved({
+                            brand: brandName,
+                            tabLabel: tabDisplayName(targetTab),
+                            platformLabel: PLATFORM_LABEL[p],
+                            removedBy: session?.user.email ?? null,
+                            removedAtLabel: formatCellValue(new Date().toISOString()),
+                            link: `${window.location.origin}/brands/${tabToSlug(targetTab)}?brand=${encodeURIComponent(brandName)}`,
+                          });
+                        } catch {
+                          setToast({
+                            message: `${brandName}'s ${PLATFORM_LABEL[p]} page was flagged removed, but the notification email failed to send.`,
+                            kind: 'error',
+                          });
+                        }
+                      }
                     }
                   }
                 }
