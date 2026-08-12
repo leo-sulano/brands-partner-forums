@@ -46,11 +46,11 @@ describe('notifyBrandRemoved', () => {
 
   it('throws on a non-OK response', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, json: async () => ({}) });
-    await expect(notifyBrandRemoved(PAYLOAD)).rejects.toThrow();
+    await expect(notifyBrandRemoved(PAYLOAD)).rejects.toThrow('Failed to send the brand-removed notification email.');
   });
 
   it('throws when fetch itself rejects', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('network down'));
-    await expect(notifyBrandRemoved(PAYLOAD)).rejects.toThrow();
+    await expect(notifyBrandRemoved(PAYLOAD)).rejects.toThrow('Failed to send the brand-removed notification email.');
   });
 });

@@ -9,6 +9,8 @@ export interface NotifyBrandRemovedPayload {
   link: string;
 }
 
+const NOTIFICATION_FAILURE_MESSAGE = 'Failed to send the brand-removed notification email.';
+
 // Best-effort — the caller (BrandGroup.tsx) already succeeded in writing the
 // removed_platform_brands flag before calling this; a failure here must never
 // be mistaken for the flag write itself failing.
@@ -21,14 +23,21 @@ export async function notifyBrandRemoved(payload: NotifyBrandRemovedPayload): Pr
     /* fall back to anon key */
   }
 
-  const res = await fetch(NOTIFY_BRAND_REMOVED_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      apikey: SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) throw new Error('Failed to send the brand-removed notification email.');
+  try {
+    const res = await fetch(NOTIFY_BRAND_REMOVED_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        apikey: SUPABASE_ANON_KEY,
+      },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(NOTIFICATION_FAILURE_MESSAGE);
+  } catch (err) {
+    if (err instanceof Error && err.message === NOTIFICATION_FAILURE_MESSAGE) {
+      throw err;
+    }
+    throw new Error(NOTIFICATION_FAILURE_MESSAGE);
+  }
 }
