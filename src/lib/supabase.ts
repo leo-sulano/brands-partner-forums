@@ -41,3 +41,9 @@ export const AI_ASSISTANT_URL = import.meta.env?.VITE_AI_ASSISTANT_URL ?? '';
 // `translate-review` function is deployed. Empty string means the Translate button's
 // click always fails with the standard "unable to translate" message.
 export const TRANSLATE_REVIEW_URL = import.meta.env?.VITE_TRANSLATE_REVIEW_URL ?? '';
+
+// notify-brand-removed Edge Function URL. Set in Vercel env once the
+// notify-brand-removed function is deployed (also needs RESEND_API_KEY set via
+// `supabase secrets set RESEND_API_KEY=...`). Empty string means a newly-flagged
+// "page removed" checkbox saves fine but the notification silently no-ops.
+export const NOTIFY_BRAND_REMOVED_URL = import.meta.env?.VITE_NOTIFY_BRAND_REMOVED_URL ?? '';
