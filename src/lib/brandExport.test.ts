@@ -48,4 +48,24 @@ describe('buildBrandRowsForExport', () => {
     const rows = buildBrandRowsForExport(entries, ['Account'], 'Hanan');
     expect(rows).toEqual([['first'], ['second']]);
   });
+
+  it('uses the resolver value when it returns non-null for a header', () => {
+    const entries = [makeEntry({ Account: 'acct1' })];
+    const resolver = (_entry: Entry, header: string) => (header === 'TP Page Removed Status' ? '05/08/2026' : null);
+    const rows = buildBrandRowsForExport(entries, ['Account', 'TP Page Removed Status'], 'Hanan', resolver);
+    expect(rows).toEqual([['acct1', '05/08/2026']]);
+  });
+
+  it('falls back to entry.data when the resolver returns null for a header', () => {
+    const entries = [makeEntry({ Account: 'acct1', 'TP Review Status': 'Live' })];
+    const resolver = () => null;
+    const rows = buildBrandRowsForExport(entries, ['Account', 'TP Review Status'], 'Hanan', resolver);
+    expect(rows).toEqual([['acct1', 'Live']]);
+  });
+
+  it('behaves exactly as before when no resolver is passed (regression lock)', () => {
+    const entries = [makeEntry({ Account: 'acct1' })];
+    const rows = buildBrandRowsForExport(entries, ['Account'], 'Hanan');
+    expect(rows).toEqual([['acct1']]);
+  });
 });
