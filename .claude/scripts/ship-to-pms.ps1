@@ -57,6 +57,13 @@ function Invoke-PmsCreate($title, $desc, $labelText, $taskDate) {
     } else {
         $dueDate = (Get-Date).ToString('yyyy-MM-dd')
     }
+    # API rejects description over 5000 chars ("Too big: expected string to have <=5000 characters").
+    # This silently dropped several long task-history entries in the past since create errors are
+    # swallowed below - truncate instead of losing the card entirely; full detail stays in the repo.
+    if ($desc.Length -gt 5000) {
+        $suffix = "`n`n...[truncated - full write-up in docs/task-history.md]"
+        $desc = $desc.Substring(0, 5000 - $suffix.Length) + $suffix
+    }
     $res = Invoke-PmsJson 'POST' "https://pms-nu-eight.vercel.app/api/projects/$PMS_PROJECT/tasks" ([ordered]@{
         title       = $title
         description = $desc
@@ -105,7 +112,9 @@ foreach ($n in $synced) { $newSynced.Add($n) }
 # --- Parse all unsynced tasks ---
 $parsed = [System.Collections.Generic.List[PSCustomObject]]::new()
 foreach ($section in $sections) {
-    $m = [regex]::Match($section, '## Task (\d+): (.+)')
+    # Optional parenthetical (e.g. "## Task 197 (PMS Task 5): ...") between the number and colon
+    # must be matched too, or the whole heading fails to parse and the task is silently dropped.
+    $m = [regex]::Match($section, '## Task (\d+)(?:\s*\([^)]*\))?: (.+)')
     if (-not $m.Success) { continue }
 
     $num   = [int]$m.Groups[1].Value
@@ -121,7 +130,7 @@ foreach ($section in $sections) {
     $date = if ($dm.Success) { $dm.Groups[1].Value.Trim() -replace '–.*','' } else { $null }
 
     # Strip heading, group, and date lines to isolate description
-    $desc = $section -replace '(?s).*## Task \d+: [^\r\n]+\r?\n', ''
+    $desc = $section -replace '(?s).*## Task \d+(?:\s*\([^)]*\))?: [^\r\n]+\r?\n', ''
     $desc = ($desc -replace '\*\*Group:\*\*[^\n]+\n?', '').Trim()
     $desc = ($desc -replace '\*\*Date:\*\*[^\n]+\n?', '').Trim()
 
