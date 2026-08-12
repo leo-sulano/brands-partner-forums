@@ -13,6 +13,7 @@ import {
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
 import { overrideKey, type OverrideState } from '../scheduleOverrides.ts';
+import { getSchedulableBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
@@ -35,6 +36,14 @@ export interface TabContext {
   // pause unconditionally. Optional, same "defaults to nothing overridden"
   // convention as the other two sets.
   overrideMap?: Map<string, OverrideState>;
+  // Keys from scheduleBrandKey(tab, brand) for every brand hidden from
+  // Schedule Planner entirely (schedule_hidden_brands). Optional, same
+  // "defaults to nothing hidden" convention as the other two sets/maps.
+  hiddenBrandSet?: Set<string>;
+  // scheduleBrandKey(tab, brand) -> the one platform this brand may be
+  // scheduled on (schedule_platform_restrictions). Optional, same
+  // "defaults to unrestricted" convention.
+  platformRestrictionMap?: Map<string, Platform>;
 }
 
 function brandOf(entry: Entry): string {
@@ -146,6 +155,8 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
   const overrideMap = ctx.overrideMap ?? new Map<string, OverrideState>();
+  const hiddenSet = ctx.hiddenBrandSet ?? new Set<string>();
+  const restrictionMap = ctx.platformRestrictionMap ?? new Map<string, Platform>();
 
   // Computed once per active platform (not per brand) since each call scans
   // all of ctx.entries — reused by the success-rate pause check below.
@@ -158,12 +169,18 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
 
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
+    const schedulablePlatforms = getSchedulableBrandPlatforms(tab, brand, ctx.activePlatforms, hiddenSet, restrictionMap);
     for (const platform of ctx.activePlatforms) {
       // A page flagged removed has nothing to pause/resume — leave any
       // existing pause row untouched (harmless while hidden; a real resume
       // still applies correctly if the flag is ever cleared) and never
       // evaluate it for a new pause.
       if (removedSet.has(platformRemovedKey(tab, brand, platform))) continue;
+
+      // A brand hidden from Schedule Planner, or restricted to a different
+      // platform than this one, has nothing to pause/resume here either --
+      // same rationale as the removed-platform skip above.
+      if (!schedulablePlatforms.includes(platform)) continue;
 
       // Manual override beats every automatic check below -- checked before
       // the existing/alreadyHasRow/consecutive-removed/success-rate chain
@@ -316,11 +333,19 @@ export async function ensureWeekGenerated(
   // Mon/Thu-style TP schedule written to brand_schedule every week even
   // though it's hidden from the UI.
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
+  const hiddenSet = ctx.hiddenBrandSet ?? new Set<string>();
+  const restrictionMap = ctx.platformRestrictionMap ?? new Map<string, Platform>();
   const removedCombos: PinnedCombo[] = [];
+  const excludedCombos: PinnedCombo[] = [];
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
+    const schedulablePlatforms = getSchedulableBrandPlatforms(tab, brand, ctx.activePlatforms, hiddenSet, restrictionMap);
     for (const platform of ctx.activePlatforms) {
-      if (removedSet.has(platformRemovedKey(tab, brand, platform))) removedCombos.push({ brandKey, platform });
+      if (removedSet.has(platformRemovedKey(tab, brand, platform))) {
+        removedCombos.push({ brandKey, platform });
+      } else if (!schedulablePlatforms.includes(platform)) {
+        excludedCombos.push({ brandKey, platform });
+      }
     }
   }
 
@@ -334,7 +359,7 @@ export async function ensureWeekGenerated(
   const slots = generateWeekSchedule({
     brands: ctx.brands,
     activePlatforms: ctx.activePlatforms,
-    pinnedBrandPlatforms: [...alreadyHasRowCombos, ...removedCombos],
+    pinnedBrandPlatforms: [...alreadyHasRowCombos, ...removedCombos, ...excludedCombos],
     pausedBrandPlatforms,
     resumingBrandPlatforms: resumedThisWeek,
     carryover,

@@ -3,6 +3,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from './sched
 import type { PinnedCombo } from './schedulerEngine';
 import { platformRemovedKey } from '../removedPlatformBrands';
 import { overrideKey } from '../scheduleOverrides';
+import { scheduleBrandKey } from '../scheduleBrandConfig';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -140,6 +141,40 @@ describe('recalculatePauses', () => {
     };
     await recalculatePauses('BITP', '2026-08-03', ctx);
     expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+  });
+
+  it('does not evaluate or pause a brand whose brand is hidden from Schedule Planner', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega'],
+      activePlatforms: ['tp'],
+      entries: [
+        entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+      ],
+      hiddenBrandSet: new Set([scheduleBrandKey('BITP', 'WinMega')]),
+    };
+    await recalculatePauses('BITP', '2026-08-03', ctx);
+    expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
+  });
+
+  it('only evaluates a platform-restricted brand for its allowed platform, skipping the rest', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega'],
+      activePlatforms: ['tp', 'ag'],
+      entries: [
+        entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
+        entry({ Brands: 'WinMega', 'AG Review Status': 'removed', 'Ask Gambler review added': '2026-07-28' }),
+        entry({ Brands: 'WinMega', 'AG Review Status': 'refused', 'Ask Gambler review added': '2026-07-24' }),
+      ],
+      platformRestrictionMap: new Map([[scheduleBrandKey('BITP', 'WinMega'), 'ag']]),
+    };
+    await recalculatePauses('BITP', '2026-08-03', ctx);
+    // Both TP and AG independently qualify for the consecutive-removed pause
+    // trigger, but WinMega is restricted to AG only -- TP must never be
+    // evaluated or paused.
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
+    expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'WinMega', 'ag', '2026-08-03', expect.any(String), undefined);
   });
 
   it('forwards an explicitly-passed client through to the query functions', async () => {
@@ -558,5 +593,33 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-03', platform: 'tp' });
+  });
+
+  it('does not generate rows for a brand hidden from Schedule Planner, but still generates for others', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega', 'BrandB'],
+      activePlatforms: ['tp'],
+      entries: [],
+      hiddenBrandSet: new Set([scheduleBrandKey('BITP', 'WinMega')]),
+    };
+    await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'BrandB', week_start: '2026-08-03', platform: 'tp' });
+  });
+
+  it('only generates rows for a platform-restricted brand\'s allowed platform', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega'],
+      activePlatforms: ['tp', 'ag'],
+      entries: [],
+      platformRestrictionMap: new Map([[scheduleBrandKey('BITP', 'WinMega'), 'ag']]),
+    };
+    await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'ag' });
   });
 });
