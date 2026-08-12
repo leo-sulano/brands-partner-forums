@@ -11,11 +11,14 @@ import {
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
   fetchBrandPlatformOverrides,
+  fetchScheduleHiddenBrands,
+  fetchScheduleRestrictedBrands,
   type BrandPlatformPause,
 } from '../lib/queries';
 import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, isCurrentWeekStart, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
+import { buildHiddenBrandSet, buildPlatformRestrictionMap, getSchedulableBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
@@ -123,6 +126,8 @@ export default function SchedulePlanner() {
     entries: Entry[];
     removedPlatformBrandSet: Set<string>;
     overrideMap: Map<string, OverrideState>;
+    hiddenBrandSet: Set<string>;
+    platformRestrictionMap: Map<string, Platform>;
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
@@ -186,11 +191,13 @@ export default function SchedulePlanner() {
     setPauses([]);
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows, overrideRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           fetchRemovedPlatformBrands().catch(() => [] as { tab: string; brand: string; platform: Platform }[]),
           fetchBrandPlatformOverrides(tab).catch(() => []),
+          fetchScheduleHiddenBrands(tab).catch(() => []),
+          fetchScheduleRestrictedBrands(tab).catch(() => []),
         ]);
         if (canceled) return;
         const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
@@ -212,6 +219,8 @@ export default function SchedulePlanner() {
           entries: rawEntries,
           removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
           overrideMap: buildOverrideMap(overrideRows),
+          hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
+          platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
         });
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
@@ -268,6 +277,8 @@ export default function SchedulePlanner() {
             entries: tabCtx!.entries,
             removedPlatformBrandSet: tabCtx!.removedPlatformBrandSet,
             overrideMap: tabCtx!.overrideMap,
+            hiddenBrandSet: tabCtx!.hiddenBrandSet,
+            platformRestrictionMap: tabCtx!.platformRestrictionMap,
           };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
           await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
@@ -315,7 +326,10 @@ export default function SchedulePlanner() {
   // removed-evidence, or addable).
   function brandPlatforms(brand: string): Platform[] {
     const removedSet = tabCtx?.removedPlatformBrandSet ?? new Set<string>();
-    return activePlatforms.filter((p) => !removedSet.has(platformRemovedKey(tab, brand, p)));
+    const hiddenSet = tabCtx?.hiddenBrandSet ?? new Set<string>();
+    const restrictionMap = tabCtx?.platformRestrictionMap ?? new Map<string, Platform>();
+    const schedulable = getSchedulableBrandPlatforms(tab, brand, activePlatforms, hiddenSet, restrictionMap);
+    return schedulable.filter((p) => !removedSet.has(platformRemovedKey(tab, brand, p)));
   }
 
   // The inverse of brandPlatforms — every active platform actually flagged
