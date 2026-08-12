@@ -2631,10 +2631,7 @@ export default function BrandGroup() {
                           await notifyBrandRemoved({
                             brand: brandName,
                             tabLabel: tabDisplayName(targetTab),
-                            platformLabel: PLATFORM_LABEL[p],
-                            removedBy: session?.user.email ?? null,
-                            removedAtLabel: formatCellValue(new Date().toISOString()),
-                            link: `${window.location.origin}/brands/${tabToSlug(targetTab)}?brand=${encodeURIComponent(brandName)}`,
+                            platformShortLabel: PLATFORM_SHORT_LABEL[p],
                           });
                         } catch {
                           setToast({

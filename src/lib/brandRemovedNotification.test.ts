@@ -14,10 +14,7 @@ import { notifyBrandRemoved } from './brandRemovedNotification';
 const PAYLOAD = {
   brand: 'Prive Casino',
   tabLabel: 'TP Brand Injection',
-  platformLabel: 'TrustPilot',
-  removedBy: 'leo@optinetsolutions.com',
-  removedAtLabel: '12/08/2026',
-  link: 'https://dashboard.example.com/brands/tp-brand-injection?brand=Prive%20Casino',
+  platformShortLabel: 'TP',
 };
 
 describe('notifyBrandRemoved', () => {

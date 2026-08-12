@@ -30,44 +30,59 @@ function jsonResponse(body: unknown, status = 200): Response {
 export interface NotifyBrandRemovedPayload {
   brand: string;
   tabLabel: string;
-  platformLabel: string;
-  removedBy: string | null;
-  removedAtLabel: string;
-  link: string;
+  platformShortLabel: string;
 }
 
+// One Resend call per recipient, not one call with every recipient in `to` —
+// Resend's sandbox sender (no verified domain) 403s the ENTIRE call if `to`
+// contains anyone but the account's own verified email, which would silently
+// block every approved user's notification, including the account owner's.
+// Sending individually means a still-unverified domain only drops the
+// recipients Resend itself refuses, instead of failing the whole batch.
 export async function sendBrandRemovedNotification(
   payload: NotifyBrandRemovedPayload,
   client: SupabaseClient,
   resendApiKey: string,
   fetchFn: typeof fetch = fetch,
-): Promise<{ sent: number }> {
+): Promise<{ sent: number; failed: number }> {
   const { data, error } = await client.from('profiles').select('email').eq('approved', true);
   if (error) throw error;
   const emails = ((data ?? []) as { email: string }[]).map((r) => r.email).filter(Boolean);
-  if (emails.length === 0) return { sent: 0 };
+  if (emails.length === 0) return { sent: 0, failed: 0 };
 
-  const subject = `[Forums Dashboard] ${payload.brand} — ${payload.platformLabel} page removed on ${payload.tabLabel}`;
+  const subject = `Brand Page Removal Notification – ${payload.brand}`;
   const text = [
-    `${payload.platformLabel}'s page for "${payload.brand}" (${payload.tabLabel}) was flagged as removed.`,
+    'Dear Team,',
     '',
-    `Flagged by: ${payload.removedBy ?? 'unknown'}`,
-    `Removed on: ${payload.removedAtLabel}`,
+    'This is an automated notification from the Forums Dashboard.',
     '',
-    `View this brand: ${payload.link}`,
+    `The brand page ${payload.brand} on ${payload.platformShortLabel}, under ${payload.tabLabel}, has been flagged as Removed.`,
+    '',
+    'Please review the brand page and take the necessary action.',
+    '',
+    'Thank you,',
+    'Forums Dashboard',
   ].join('\n');
 
   const env = getEnvVars();
-  const res = await fetchFn('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendApiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: emails, subject, text }),
-  });
-  if (!res.ok) throw new Error(`Resend ${res.status}`);
-  return { sent: emails.length };
+  const results = await Promise.allSettled(
+    emails.map((email) =>
+      fetchFn('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ from: env.RESEND_FROM_EMAIL, to: [email], subject, text }),
+      }).then((res) => {
+        if (!res.ok) throw new Error(`Resend ${res.status}`);
+      }),
+    ),
+  );
+  const sent = results.filter((r) => r.status === 'fulfilled').length;
+  const failed = results.length - sent;
+  if (sent === 0) throw new Error(`Resend: 0/${emails.length} sent`);
+  return { sent, failed };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -84,15 +99,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } catch {
     return jsonResponse({ error: 'Invalid request body' }, 400);
   }
-  const { brand, tabLabel, platformLabel, removedBy, removedAtLabel, link } = body ?? {};
-  if (!brand || !tabLabel || !platformLabel || !removedAtLabel || !link) {
+  const { brand, tabLabel, platformShortLabel } = body ?? {};
+  if (!brand || !tabLabel || !platformShortLabel) {
     return jsonResponse({ error: 'Missing required field' }, 400);
   }
 
   try {
     const client = createClient(env.SUPABASE_URL, env.SERVICE_ROLE);
     const result = await sendBrandRemovedNotification(
-      { brand, tabLabel, platformLabel, removedBy: removedBy ?? null, removedAtLabel, link },
+      { brand, tabLabel, platformShortLabel },
       client,
       env.RESEND_API_KEY,
     );

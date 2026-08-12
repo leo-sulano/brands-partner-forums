@@ -18,24 +18,36 @@ function fakeProfilesClient(emails: string[]): SupabaseClient {
 const PAYLOAD: NotifyBrandRemovedPayload = {
   brand: 'Prive Casino',
   tabLabel: 'TP Brand Injection',
-  platformLabel: 'TrustPilot',
-  removedBy: 'leo@optinetsolutions.com',
-  removedAtLabel: '12/08/2026',
-  link: 'https://dashboard.example.com/brands/tp-brand-injection?brand=Prive%20Casino',
+  platformShortLabel: 'TP',
 };
 
-Deno.test('sendBrandRemovedNotification sends one Resend call to every approved profile email', async () => {
+Deno.test('sendBrandRemovedNotification sends one Resend call per approved profile email', async () => {
   const client = fakeProfilesClient(['a@example.com', 'b@example.com']);
-  const calls: unknown[] = [];
+  const calls: { to: string[]; subject: string; text: string }[] = [];
   const fakeFetch = async (_url: string, init: RequestInit) => {
     calls.push(JSON.parse(init.body as string));
     return new Response(JSON.stringify({ id: 'abc' }), { status: 200 });
   };
   const result = await sendBrandRemovedNotification(PAYLOAD, client, 're_test_key', fakeFetch as typeof fetch);
-  assertEquals(result.sent, 2);
-  assertEquals(calls.length, 1);
-  assertEquals((calls[0] as { to: string[] }).to, ['a@example.com', 'b@example.com']);
-  assertEquals((calls[0] as { subject: string }).subject, '[Forums Dashboard] Prive Casino — TrustPilot page removed on TP Brand Injection');
+  assertEquals(result, { sent: 2, failed: 0 });
+  assertEquals(calls.length, 2);
+  assertEquals(calls.map((c) => c.to[0]).sort(), ['a@example.com', 'b@example.com']);
+  assertEquals(calls[0].subject, 'Brand Page Removal Notification – Prive Casino');
+  assertEquals(
+    calls[0].text,
+    [
+      'Dear Team,',
+      '',
+      'This is an automated notification from the Forums Dashboard.',
+      '',
+      'The brand page Prive Casino on TP, under TP Brand Injection, has been flagged as Removed.',
+      '',
+      'Please review the brand page and take the necessary action.',
+      '',
+      'Thank you,',
+      'Forums Dashboard',
+    ].join('\n'),
+  );
 });
 
 Deno.test('sendBrandRemovedNotification sends nothing and returns sent:0 when no approved profiles exist', async () => {
@@ -43,16 +55,26 @@ Deno.test('sendBrandRemovedNotification sends nothing and returns sent:0 when no
   let fetchCalled = false;
   const fakeFetch = async () => { fetchCalled = true; return new Response('{}', { status: 200 }); };
   const result = await sendBrandRemovedNotification(PAYLOAD, client, 're_test_key', fakeFetch as typeof fetch);
-  assertEquals(result.sent, 0);
+  assertEquals(result, { sent: 0, failed: 0 });
   assertEquals(fetchCalled, false);
 });
 
-Deno.test('sendBrandRemovedNotification throws when Resend responds non-2xx', async () => {
+Deno.test('sendBrandRemovedNotification delivers to recipients Resend accepts and only throws if all fail', async () => {
+  const client = fakeProfilesClient(['ok@example.com', 'sandbox-blocked@example.com']);
+  const fakeFetch = async (_url: string, init: RequestInit) => {
+    const { to } = JSON.parse(init.body as string) as { to: string[] };
+    return new Response('{}', { status: to[0] === 'ok@example.com' ? 200 : 403 });
+  };
+  const result = await sendBrandRemovedNotification(PAYLOAD, client, 're_test_key', fakeFetch as typeof fetch);
+  assertEquals(result, { sent: 1, failed: 1 });
+});
+
+Deno.test('sendBrandRemovedNotification throws when every recipient fails', async () => {
   const client = fakeProfilesClient(['a@example.com']);
   const fakeFetch = async () => new Response('{"message":"invalid"}', { status: 422 });
   await assertRejects(
     () => sendBrandRemovedNotification(PAYLOAD, client, 're_test_key', fakeFetch as typeof fetch),
     Error,
-    'Resend 422',
+    'Resend: 0/1 sent',
   );
 });

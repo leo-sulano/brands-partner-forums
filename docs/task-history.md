@@ -2952,3 +2952,35 @@ error Toast). Spec: `docs/superpowers/specs/2026-08-12-brand-page-removal-notifi
 Plan: `docs/superpowers/plans/2026-08-12-brand-page-removal-notification.md`.
 
 ---
+
+## Task 210: Brand Page Removal Notification — Live Deploy, Corporate Email Format, Sandbox Delivery Fix
+**Date:** August 12, 2026
+
+Took Task 209's `notify-brand-removed` Edge Function live and fixed two gaps only visible once
+real delivery was attempted. `RESEND_API_KEY` secret set, function deployed, and
+`VITE_NOTIFY_BRAND_REMOVED_URL` set in both Vercel and the local `.env` (the latter was missing
+entirely — local dev's `fetch('')` silently POSTed to the current page path and 404'd, caught via
+a live disposable-test-brand walkthrough in Hanan, created and fully cleaned up including the
+orphaned `removed_platform_brands` row afterward).
+
+Live testing then surfaced a real design gap: `sendBrandRemovedNotification` sent one Resend call
+with every approved profile's email in `to:` at once — confirmed via direct Resend API calls that
+a `to:` array containing anyone but the sandbox sender's own verified account email (no domain is
+verified in Resend yet, and none will be — the user has no DNS access to `optinetsolutions.com`
+and is intentionally staying on the sandbox sender) gets the **entire** call rejected with a 403,
+so with the project's real approved-profile count (11, most simply offline — not the 3 shown in
+the header's "Online users" widget) nobody was notified, not even the account owner. Rewritten to
+send one Resend call per recipient via `Promise.allSettled`, each independent; the function now
+returns `{ sent, failed }` and only throws (surfacing the existing error Toast) if every recipient
+fails. Confirmed live: `{"sent":1,"failed":10}` on a real flag-and-save.
+
+Also rewrote the email content to the user's exact requested corporate-memo format (subject
+`Brand Page Removal Notification – {Brand}`; body "Dear Team, ... The brand page {Brand} on
+{TP/AG/CG/WO}, under {Brand Tab}, has been flagged as Removed. ..."), deliberately dropping the
+link/flagged-by/removed-at lines the original design had — user confirmed dropping them was
+correct rather than working them in. `NotifyBrandRemovedPayload` narrowed from 6 fields to 3
+(`brand`, `tabLabel`, `platformShortLabel`) across `brandRemovedNotification.ts`,
+`notify-brand-removed/index.ts`, and `BrandGroup.tsx`'s call site, since the dropped fields had no
+other reader. Full test suite, `deno check`, and the function's own Deno suite (4 tests, extended
+with a mixed-success case) all pass; function redeployed twice (once per fix). Tier 2 — contained
+to one Edge Function plus its two direct callers, no shared dashboard logic touched.

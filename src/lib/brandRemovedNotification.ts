@@ -3,10 +3,7 @@ import { supabase, SUPABASE_ANON_KEY, NOTIFY_BRAND_REMOVED_URL } from './supabas
 export interface NotifyBrandRemovedPayload {
   brand: string;
   tabLabel: string;
-  platformLabel: string;
-  removedBy: string | null;
-  removedAtLabel: string;
-  link: string;
+  platformShortLabel: string;
 }
 
 const NOTIFICATION_FAILURE_MESSAGE = 'Failed to send the brand-removed notification email.';
