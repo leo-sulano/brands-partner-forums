@@ -17,12 +17,12 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
-import { platformRemovedKey, buildRemovedPlatformBrandSet, normalizeBrandKey } from '../lib/removedPlatformBrands';
+import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
@@ -585,7 +585,7 @@ export default function BrandGroup() {
   const [countryFilter, setCountryFilter] = useState<string[]>([]);
   const { isApproved, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
-  const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform }[]>([]);
+  const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform; removed_at: string }[]>([]);
   const [overrideRows, setOverrideRows] = useState<{ tab: string; brand_key: string; platform: Platform; override_state: OverrideState }[]>([]);
   const [accountUsage, setAccountUsage] = useState<Map<string, Record<Platform, number>>>(new Map());
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
@@ -1011,8 +1011,15 @@ export default function BrandGroup() {
   // modal uses (shared via entryFieldSections' sectionOf so the two can't drift),
   // and — like the on-screen table's visibleHeaders — narrowed to only the selected
   // platforms' own columns when a specific Platform filter is active.
+  // Per-platform "Page Removed Status" export columns (Task 5 of the Aug-12 Brand
+  // Page Removal spec) — synthetic, not entries.data keys. Injected into allFields
+  // *before* scoping/bucketing so sectionOf's existing "tp "/"ag "/"cg "-prefix
+  // heuristics place them in the right section (WO falls to 'account', matching
+  // every other WO field's existing precedent) and the existing Platform-filter
+  // check narrows them exactly like TP/AG/CG's real columns, with no new logic.
+  const removedStatusHeaders = getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Page Removed Status`);
   const exportHeaders = (() => {
-    const allFields = Array.from(new Set([...fullHeaders, ...headers]))
+    const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders]))
       .filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
     const scoped = (platformFilter.length > 0 && activePlatforms.length > 1)
       ? allFields.filter((h) => {
@@ -1037,6 +1044,26 @@ export default function BrandGroup() {
   function removedPlatformsFor(brandName: string | null | undefined): Platform[] {
     if (!brandName) return [];
     return getTabPlatforms(decodedTab).filter((p) => isPlatformRemoved(brandName, p));
+  }
+
+  const removedPlatformBrandDateMap = useMemo(
+    () => buildRemovedPlatformBrandDateMap(removedPlatformBrandRows),
+    [removedPlatformBrandRows],
+  );
+  function removedPlatformDateFor(brandName: string | null | undefined, platform: Platform): string | undefined {
+    return brandName ? removedPlatformBrandDateMap.get(platformRemovedKey(decodedTab, brandName, platform)) : undefined;
+  }
+  // Every platform actually active on this tab that's currently flagged for this
+  // brand, mapped to when it was flagged — feeds the Edit Entry modal's date-aware
+  // checkbox label (Task 4) and the export's synthetic Page Removed Status columns.
+  function removedPlatformDatesFor(brandName: string | null | undefined): Partial<Record<Platform, string>> {
+    if (!brandName) return {};
+    const out: Partial<Record<Platform, string>> = {};
+    for (const p of getTabPlatforms(decodedTab)) {
+      const date = removedPlatformDateFor(brandName, p);
+      if (date) out[p] = date;
+    }
+    return out;
   }
 
   const overrideMap = useMemo(() => buildOverrideMap(overrideRows), [overrideRows]);
@@ -1662,6 +1689,8 @@ export default function BrandGroup() {
   // reason.
   const initialRemovedPlatformsForEditEntry: Platform[] =
     editEntry && brandCol ? removedPlatformsFor(editEntry.data[brandCol]) : [];
+  const initialRemovedPlatformDatesForEditEntry: Partial<Record<Platform, string>> =
+    editEntry && brandCol ? removedPlatformDatesFor(editEntry.data[brandCol]) : {};
   const initialOverridesForEditEntry: Partial<Record<Platform, OverrideState>> =
     editEntry && brandCol ? overridesFor(editEntry.data[brandCol]) : {};
 
@@ -1696,7 +1725,14 @@ export default function BrandGroup() {
         <div className="flex items-center gap-2">
           <ExportMenuButton
             headers={exportHeaders.map((h) => getColLabel(h, decodedTab))}
-            getRows={() => buildBrandRowsForExport(sorted, exportHeaders, decodedTab)}
+            getRows={() => buildBrandRowsForExport(sorted, exportHeaders, decodedTab, (entry, header) => {
+              const platform = (Object.entries(PLATFORM_SHORT_LABEL) as [Platform, string][])
+                .find(([, label]) => `${label} Page Removed Status` === header)?.[0];
+              if (!platform || !brandCol) return null;
+              const brandName = entry.data[brandCol];
+              const date = removedPlatformDateFor(brandName, platform);
+              return date ? formatCellValue(date) : '';
+            })}
             filenameBase={tabToSlug(decodedTab)}
             disabled={loading}
           />
@@ -2552,6 +2588,7 @@ export default function BrandGroup() {
           brandCol={brandCol}
           brandProfiles={brandProfiles}
           initialRemovedPlatforms={initialRemovedPlatformsForEditEntry}
+          initialRemovedPlatformDates={initialRemovedPlatformDatesForEditEntry}
           initialOverrides={initialOverridesForEditEntry}
           onClose={() => setEditEntry(null)}
           onSave={async (fields, newTab, removedPlatforms, overrides) => {
