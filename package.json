@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "capture:demo": "node scripts/capture-getting-started.mjs"
+    "capture:demo": "node scripts/capture-getting-started.mjs",
+    "export:brand-urls": "node scripts/export-brand-urls.mjs"
   },
   "dependencies": {
     "@fontsource-variable/public-sans": "^5.2.7",
