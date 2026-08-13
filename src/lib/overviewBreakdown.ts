@@ -24,24 +24,37 @@ export interface BreakdownCard {
   members?: BreakdownCard[];
 }
 
-export function topNWithOther(merged: Record<string, CountBreakdown>, topN: number): BreakdownCard[] {
-  const all: BreakdownCard[] = Object.entries(merged)
+// pinnedLastKey (e.g. Proxy Breakdown's "no proxy" key) is excluded from ranking/topN/"Other"
+// entirely and appended as its own trailing card, so it always renders last regardless of volume
+// instead of competing for a top-N slot like a real value. Omit it (Country Breakdown does) to
+// keep the plain rank-by-volume behavior.
+export function topNWithOther(merged: Record<string, CountBreakdown>, topN: number, pinnedLastKey?: string): BreakdownCard[] {
+  const entries = Object.entries(merged);
+  const pinnedEntry = pinnedLastKey ? entries.find(([key]) => key === pinnedLastKey) : undefined;
+  const rankable = pinnedEntry ? entries.filter(([key]) => key !== pinnedLastKey) : entries;
+
+  const all: BreakdownCard[] = rankable
     .map(([key, v]) => ({ key, label: v.label, live: v.live, removed: v.removed, isOther: false }))
     .sort((a, b) => (b.live + b.removed) - (a.live + a.removed));
 
   const top = all.slice(0, topN);
   const rest = all.slice(topN);
-  if (rest.length === 0) return top;
-
-  const other: BreakdownCard = {
-    key: '__other__',
-    label: 'Other',
-    live: rest.reduce((s, r) => s + r.live, 0),
-    removed: rest.reduce((s, r) => s + r.removed, 0),
-    isOther: true,
-    members: rest,
-  };
-  return [...top, other];
+  const cards = [...top];
+  if (rest.length > 0) {
+    cards.push({
+      key: '__other__',
+      label: 'Other',
+      live: rest.reduce((s, r) => s + r.live, 0),
+      removed: rest.reduce((s, r) => s + r.removed, 0),
+      isOther: true,
+      members: rest,
+    });
+  }
+  if (pinnedEntry) {
+    const [key, v] = pinnedEntry;
+    cards.push({ key, label: v.label, live: v.live, removed: v.removed, isOther: false });
+  }
+  return cards;
 }
 
 export function mergeDistinctValues(lists: string[][]): string[] {

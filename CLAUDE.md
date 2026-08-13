@@ -61,7 +61,19 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-07 (newest):* Fixed a data-accuracy bug the user caught via a live screenshot:
+- *2026-08-13 (newest):* Per user feedback on a live screenshot, Proxy Breakdown's "No Proxy"
+  card (added earlier the same day, see the `resolveProxyLabel`/No Proxy group work referenced in
+  Known Issues) now always renders last, regardless of its volume — overriding that work's plan
+  doc, which had deliberately decided against special pinning. `overviewBreakdown.ts`'s
+  `topNWithOther` gained an optional `pinnedLastKey` param: the pinned key is excluded from
+  ranking/top-N/"Other" entirely and appended as its own trailing card, so a real provider now
+  fills the top-8 slot "No Proxy" would otherwise have occupied by outranking it on volume.
+  Country Breakdown's call is unchanged (no key passed) and still ranks "Unknown" by volume like
+  any other card. The "X of Y accounts have a proxy recorded" caption was already accurate as of
+  the same day's final-review fix (computed from the merged breakdown minus the No Proxy bucket,
+  not from card totals) — confirmed against the user's screenshot (2,982 of 4,307) rather than
+  re-fixed. 2 new tests in `overviewBreakdown.test.ts`; full suite (1077 tests) and build pass.
+- *2026-08-07 (prior):* Fixed a data-accuracy bug the user caught via a live screenshot:
   Overview's per-tab card and Score Summary reported different Live/Removed/Total counts for the
   same tab/platform/date-range (FTP/TrustPilot, 01/05–31/07/2026: 281 total on Overview vs. 190 on
   Score Summary). Root cause: three independently-written date-range-inclusion checks disagreed on

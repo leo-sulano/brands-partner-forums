@@ -498,7 +498,7 @@ export default function Overview() {
   const countryMerged = mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry));
   const proxyMerged = mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy));
   const countryCards = topNWithOther(countryMerged, Infinity);
-  const proxyCards   = topNWithOther(proxyMerged,   BREAKDOWN_TOP_N);
+  const proxyCards   = topNWithOther(proxyMerged,   BREAKDOWN_TOP_N, canonicalProxyKey(NO_PROXY_LABEL));
   const countryCoverage = Object.entries(countryMerged)
     .filter(([key]) => key !== 'unknown')
     .reduce((s, [, v]) => s + v.live + v.removed, 0);

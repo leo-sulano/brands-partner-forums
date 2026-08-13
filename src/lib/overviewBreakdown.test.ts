@@ -78,6 +78,24 @@ describe('topNWithOther', () => {
     expect(topNWithOther({}, 8)).toEqual([]);
   });
 
+  it('pins pinnedLastKey as the trailing card regardless of its volume, excluding it from topN ranking so a real value fills its slot', () => {
+    const merged: Record<string, CountBreakdown> = {
+      noproxy: { label: 'No Proxy', live: 5, removed: 20 },
+      a: { label: 'A', live: 3, removed: 0 },
+      b: { label: 'B', live: 2, removed: 0 },
+      c: { label: 'C', live: 1, removed: 0 },
+    };
+    const cards = topNWithOther(merged, 2, 'noproxy');
+    expect(cards.map((c) => c.key)).toEqual(['a', 'b', '__other__', 'noproxy']);
+    expect(cards[3]).toEqual({ key: 'noproxy', label: 'No Proxy', live: 5, removed: 20, isOther: false });
+  });
+
+  it('pinnedLastKey with no matching entry in merged is a no-op', () => {
+    const merged: Record<string, CountBreakdown> = { a: { label: 'A', live: 1, removed: 0 } };
+    const cards = topNWithOther(merged, 8, 'missing');
+    expect(cards).toEqual([{ key: 'a', label: 'A', live: 1, removed: 0, isOther: false }]);
+  });
+
   it('with topN=Infinity, returns every card individually and never produces an "Other" card (Overview.tsx relies on this for Country Breakdown)', () => {
     const merged: Record<string, CountBreakdown> = {
       a: { label: 'A', live: 10, removed: 0 },
