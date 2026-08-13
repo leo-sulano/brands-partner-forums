@@ -178,3 +178,117 @@ def test_notify_brand_removed_sends_the_real_payload_shape(monkeypatch):
         "removedAtLabel": "13/08/2026",
     }
     assert captured["headers"]["Authorization"].startswith("Bearer ")
+
+
+def test_run_flags_and_notifies_a_newly_detected_removal(monkeypatch):
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {"winmega.com": "https://www.trustpilot.com/review/winmega.com"},
+        "tab_brand_urls": {},
+        "tab_display_names": {},
+    })
+
+    fake_driver = object()
+    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": fake_driver)
+    monkeypatch.setattr(cbpr, "load_page", lambda driver, url: None)
+    monkeypatch.setattr(cbpr, "is_brand_page_removed", lambda driver: True)
+
+    flagged = []
+    notified = []
+    monkeypatch.setattr(cbpr, "flag_brand_removed", lambda tab, brand, platform: flagged.append((tab, brand, platform)))
+    monkeypatch.setattr(cbpr, "notify_brand_removed", lambda brand, tab_label_value, platform_short_label, removed_at_label: notified.append(brand))
+
+    summary = cbpr.run(dry_run=False)
+
+    assert flagged == [("Hanan", "WinMega.com", "tp")]
+    assert notified == ["WinMega.com"]
+    assert summary == {"checked": 1, "newly_flagged": 1, "already_flagged": 0, "no_url": 0, "errors": 0}
+
+
+def test_run_skips_already_flagged_brands(monkeypatch):
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: {("Hanan", "winmega.com")})
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {"winmega.com": "https://www.trustpilot.com/review/winmega.com"},
+        "tab_brand_urls": {},
+        "tab_display_names": {},
+    })
+    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": object())
+
+    called = []
+    monkeypatch.setattr(cbpr, "load_page", lambda driver, url: called.append(url))
+
+    summary = cbpr.run(dry_run=False)
+
+    assert called == []
+    assert summary == {"checked": 0, "newly_flagged": 0, "already_flagged": 1, "no_url": 0, "errors": 0}
+
+
+def test_run_dry_run_never_writes(monkeypatch):
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {"winmega.com": "https://www.trustpilot.com/review/winmega.com"},
+        "tab_brand_urls": {},
+        "tab_display_names": {},
+    })
+    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": object())
+    monkeypatch.setattr(cbpr, "load_page", lambda driver, url: None)
+    monkeypatch.setattr(cbpr, "is_brand_page_removed", lambda driver: True)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("must not write during a dry run")
+
+    monkeypatch.setattr(cbpr, "flag_brand_removed", fail)
+    monkeypatch.setattr(cbpr, "notify_brand_removed", fail)
+
+    summary = cbpr.run(dry_run=True)
+
+    assert summary["newly_flagged"] == 1  # counted, just not written
+
+
+def test_run_treats_a_load_error_as_skip_not_removed(monkeypatch):
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {"winmega.com": "https://www.trustpilot.com/review/winmega.com"},
+        "tab_brand_urls": {},
+        "tab_display_names": {},
+    })
+    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": object())
+
+    def raise_load(driver, url):
+        raise RuntimeError("proxy timeout")
+
+    monkeypatch.setattr(cbpr, "load_page", raise_load)
+
+    flagged = []
+    monkeypatch.setattr(cbpr, "flag_brand_removed", lambda *a: flagged.append(a))
+
+    summary = cbpr.run(dry_run=False)
+
+    assert flagged == []
+    assert summary["errors"] == 1
+
+
+def test_run_skips_brands_with_no_configured_url(monkeypatch):
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Hanan", "data": {"Brands": "Some Untracked Brand"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {}, "tab_brand_urls": {}, "tab_display_names": {},
+    })
+
+    summary = cbpr.run(dry_run=False)
+
+    assert summary == {"checked": 0, "newly_flagged": 0, "already_flagged": 0, "no_url": 1, "errors": 0}

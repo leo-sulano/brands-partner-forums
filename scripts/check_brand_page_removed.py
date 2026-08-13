@@ -11,12 +11,18 @@ Env vars required:
     SUPABASE_SERVICE_ROLE_KEY
     NOTIFY_BRAND_REMOVED_URL
 """
+import argparse
 import json
+import logging
 import os
+import time
+from datetime import datetime, timezone
 from typing import Optional
 
 import requests
 from selenium.webdriver.common.by import By
+
+from check_review_status import build_driver  # reuse, don't duplicate proxy rotation
 
 REMOVED_HEADING_TEXT = "This profile has been removed"
 
@@ -155,3 +161,91 @@ def notify_brand_removed(
         },
     )
     r.raise_for_status()
+
+
+_error_logger = logging.getLogger("check_brand_page_removed")
+_error_logger.setLevel(logging.ERROR)
+_handler = logging.FileHandler(os.path.join(os.path.dirname(__file__), "status_check_errors.log"))
+_handler.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
+_error_logger.addHandler(_handler)
+
+POST_LOAD_SLEEP = 6
+
+
+def load_page(driver, url: str) -> None:
+    driver.get(url)
+    time.sleep(POST_LOAD_SLEEP)
+
+
+def run(dry_run: bool = False, tab_filter: Optional[str] = None) -> dict:
+    brand_urls = load_brand_urls()
+    already_flagged = fetch_removed_keys("tp")
+    entries = fetch_all_entries()
+    pairs = distinct_tab_brands(entries)
+    if tab_filter:
+        pairs = {(tab, brand) for tab, brand in pairs if tab == tab_filter}
+
+    summary = {"checked": 0, "newly_flagged": 0, "already_flagged": 0, "no_url": 0, "errors": 0}
+    driver = None
+    for tab, brand in sorted(pairs):
+        brand_key = brand.strip().lower()
+        if (tab, brand_key) in already_flagged:
+            summary["already_flagged"] += 1
+            continue
+
+        url = get_brand_tp_url(brand, tab, brand_urls)
+        if not url:
+            summary["no_url"] += 1
+            continue
+
+        if driver is None:
+            driver = build_driver()
+
+        summary["checked"] += 1
+        try:
+            load_page(driver, url)
+            removed = is_brand_page_removed(driver)
+        except Exception as exc:
+            summary["errors"] += 1
+            _error_logger.error("[TP-removal] %s -> %r", url, exc)
+            continue
+
+        if not removed:
+            continue
+
+        summary["newly_flagged"] += 1
+        print(f"  REMOVED: {tab} / {brand} -> {url}")
+        if dry_run:
+            continue
+        flag_brand_removed(tab, brand, "tp")
+        removed_at_label = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+        try:
+            notify_brand_removed(brand, tab_label(tab, brand_urls), "TP", removed_at_label)
+        except Exception as exc:
+            _error_logger.error("[TP-removal-notify] %s/%s -> %r", tab, brand, exc)
+
+    if driver is not None:
+        try:
+            driver.quit()
+        except Exception:
+            pass
+    return summary
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Daily TrustPilot brand-page-removal checker")
+    ap.add_argument("--tab", help="Restrict to a specific tab name")
+    ap.add_argument("--dry-run", action="store_true", help="Print detections without writing/notifying")
+    args = ap.parse_args()
+
+    print("Checking TrustPilot brand pages for removal...")
+    summary = run(dry_run=args.dry_run, tab_filter=args.tab)
+    print(
+        f"Checked {summary['checked']}, newly flagged {summary['newly_flagged']}, "
+        f"already flagged (skipped) {summary['already_flagged']}, "
+        f"no URL {summary['no_url']}, errors {summary['errors']}"
+    )
+
+
+if __name__ == "__main__":
+    main()

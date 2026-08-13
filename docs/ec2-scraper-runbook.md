@@ -148,6 +148,81 @@ tail -40 ~/scraper_tp_weekly.log ~/scraper_ag_weekly.log ~/scraper_cg_weekly.log
 
 ---
 
+## Daily TrustPilot Brand-Page-Removal Check
+
+`check_brand_page_removed.py` (added 2026-08-13) is a different kind of check
+than everything above. The `check_*_status.py` scripts (including TP's own
+weekly run in the job above) track the status of *individual reviews*
+(published/pending/refused/removed) on a brand's TrustPilot page that is
+still live. `check_brand_page_removed.py` instead detects the *whole page*
+being delisted -- TrustPilot's real "This profile has been removed" state.
+When it finds one, it does exactly what a human checking the Edit Entry
+modal's "Removed" checkbox would: flags `removed_platform_brands` for
+`platform='tp'` and fires the same brand-removed-notification email the
+dashboard's manual checkbox triggers. It only ever *adds* `removed_platform_brands`
+rows -- it never clears one, even if a later run finds the page live again --
+and it skips (never re-checks, never re-notifies) any `(tab, brand)` already
+flagged removed for `platform='tp'`.
+
+**Crontab entry (add by hand -- not folded into `run_weekly_all_platforms.sh`,
+since this check is daily while that job is weekly):**
+```
+0 1 * * * cd /path/to/scripts && python3 check_brand_page_removed.py >> brand_removal_check.log 2>&1
+```
+01:00 UTC daily (09:00 Asia/Manila) -- same time-of-day convention as the
+Monday weekly job above, just every day instead of once a week, since a
+fully-delisted brand page is worth catching same-day rather than waiting up
+to a week. `/path/to/scripts` is wherever `check_brand_page_removed.py`
+lives on the box, alongside its `.env` and `brand_urls.generated.json`
+(`load_brand_urls()`'s default path resolves relative to the script's own
+directory) -- normally `/home/ec2-user`, same as every other script in this
+runbook.
+
+**Env vars:** everything `check_review_status.py` already needs
+(`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`) plus one more, added to
+`~/.env`:
+```
+NOTIFY_BRAND_REMOVED_URL=https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/notify-brand-removed
+```
+Same value as the frontend's `VITE_NOTIFY_BRAND_REMOVED_URL`, minus the
+`VITE_` prefix -- this script isn't Vite-bundled, so it never sees a
+`VITE_`-prefixed var and needs its own plain copy.
+
+**Flags:**
+```bash
+python3 check_brand_page_removed.py --dry-run                              # print detections, write/notify nothing
+python3 check_brand_page_removed.py --dry-run --tab "TP Brand Injection"   # restrict to one tab
+python3 check_brand_page_removed.py                                        # real run: flags rows AND emails the team
+```
+
+**⚠️ Always `--dry-run` first, every time you touch this script or its
+inputs.** Unlike `check_review_status.py`'s dry-run (which only guards
+Supabase writes), this script's notification path is already live in
+production -- a real (non-dry-run) invocation that misfires sends the
+`notify-brand-removed` email to the whole team immediately, once per brand
+it flags. There's no separate "notify-only" dry-run; `--dry-run` is the one
+thing standing between a bug here and a mass false-positive email.
+
+**Deploy note -- `brand_urls.generated.json` needs regenerating by hand:**
+this script resolves each brand's TrustPilot URL from
+`scripts/brand_urls.generated.json`, a static JSON export of the frontend's
+`tab-configs.ts` URL maps (`npm run export:brand-urls`, i.e.
+`node scripts/export-brand-urls.mjs`). The EC2 box has no Node toolchain, so
+it cannot regenerate this file in place. Whenever `tab-configs.ts`'s URL
+maps change, regenerate it locally -- from a machine with the repo checked
+out and Node installed, not on the EC2 box -- and re-upload it the same way
+other script files are re-uploaded (see
+[Updating the Script](#updating-the-script)):
+```bash
+npm run export:brand-urls
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\brand_urls.generated.json" ec2-user@54.179.186.205:~/brand_urls.generated.json
+```
+Forgetting this doesn't throw an error -- brands with a stale or missing URL
+just land silently in the `no_url` summary bucket, not `errors`, so nothing
+in the log looks wrong.
+
+---
+
 ## Brand Schedule Groups
 
 Added 2026-08-11 to spread the weekly all-platform run's load: every brand is deterministically
