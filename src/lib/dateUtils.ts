@@ -39,3 +39,42 @@ export function isoToDisplay(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
+
+// The raw sheet-import headers that hold a review's "added"/removal date and
+// nothing else — Add/Edit Entry guard these against free text (see
+// isValidDateText below) so a date column can't silently collect values like
+// "TBD" or "pending" that every date-range filter/sort in this app would then
+// just skip as unparseable.
+export const DATE_ENTRY_HEADERS = new Set([
+  'Trust Pilot',
+  'Ask Gambler review added',
+  'Casino Guru review added',
+  'Wizard of Odds',
+  'Removed / Not Published / stil published date',
+]);
+
+// Real-calendar-date check for DD/MM/YYYY or YYYY-MM-DD text, used to gate
+// what Add/Edit Entry will save into DATE_ENTRY_HEADERS columns. Deliberately
+// stricter than parseCellDate/`new Date(...)`: JS's native parser rolls
+// invalid dates over into the next month (e.g. "2026-02-30" silently becomes
+// March 2) and accepts a wide range of non-date text as a timestamp, neither
+// of which is "a valid date" in the sense a data-entry guardrail needs.
+// Blank is valid — every one of these columns is optional.
+export function isValidDateText(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) return isRealCalendarDate(+slash[3], +slash[2], +slash[1]);
+
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return isRealCalendarDate(+iso[1], +iso[2], +iso[3]);
+
+  return false;
+}
+
+function isRealCalendarDate(year: number, month: number, day: number): boolean {
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false;
+  const d = new Date(year, month - 1, day);
+  return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+}

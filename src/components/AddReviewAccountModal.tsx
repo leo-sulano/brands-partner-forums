@@ -6,6 +6,7 @@ import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
 import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount, getBrandNameCol, getBrandLinkCol, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
+import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 
 const STATUS_OPTS = [
   { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
@@ -152,6 +153,15 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pasteFlash, setPasteFlash] = useState(false);
+  const [dateErrors, setDateErrors] = useState<Set<string>>(new Set());
+
+  function validateDateField(key: string, value: string) {
+    setDateErrors((prev) => {
+      const next = new Set(prev);
+      if (DATE_ENTRY_HEADERS.has(key) && !isValidDateText(value)) next.add(key); else next.delete(key);
+      return next;
+    });
+  }
 
   const isMulti = hasMultiPlatform(selectedTab);
   const showAgentField = getTabColumns(selectedTab)?.includes('Agent') ?? false;
@@ -220,16 +230,24 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   }
 
   async function handleSave() {
-    setSaving(true);
     setError(null);
+    const saveFields = [
+      ...(showAgentField ? [AGENT_FIELD] : []),
+      brandField, ...(brandLinkField ? [brandLinkField] : []),
+      ...ACCOUNT_FIELDS, ...TP_FIELDS,
+      ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
+      ...BEHAVIOR_EXTRA_FIELDS, ...YES_NO_FIELDS,
+    ];
+    const invalid = saveFields
+      .map((f) => f.key)
+      .filter((key) => DATE_ENTRY_HEADERS.has(key) && !isValidDateText(fields[key] ?? ''));
+    if (invalid.length > 0) {
+      setDateErrors(new Set(invalid));
+      setError('Enter a valid date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.');
+      return;
+    }
+    setSaving(true);
     try {
-      const saveFields = [
-        ...(showAgentField ? [AGENT_FIELD] : []),
-        brandField, ...(brandLinkField ? [brandLinkField] : []),
-        ...ACCOUNT_FIELDS, ...TP_FIELDS,
-        ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
-        ...BEHAVIOR_EXTRA_FIELDS, ...YES_NO_FIELDS,
-      ];
       const out: Record<string, string | null> = {};
       for (const f of saveFields) out[f.key] = fields[f.key] || null;
       await insertEntry(selectedTab, out);
@@ -311,21 +329,31 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
             </button>
           </div>
         ) : (
-          <input
-            type="text"
-            value={fields[f.key]}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (f.key === 'Account') {
-                const country = getCountryForAccount(val, selectedTab);
-                setFields((s) => ({ ...s, [f.key]: val, ...(country ? { Country: country } : {}) }));
-              } else {
-                setFields((s) => ({ ...s, [f.key]: val }));
-              }
-            }}
-            placeholder={f.link ? 'https://…' : '—'}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20"
-          />
+          <>
+            <input
+              type="text"
+              value={fields[f.key]}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (f.key === 'Account') {
+                  const country = getCountryForAccount(val, selectedTab);
+                  setFields((s) => ({ ...s, [f.key]: val, ...(country ? { Country: country } : {}) }));
+                } else {
+                  setFields((s) => ({ ...s, [f.key]: val }));
+                }
+              }}
+              onBlur={() => { if (DATE_ENTRY_HEADERS.has(f.key)) validateDateField(f.key, fields[f.key]); }}
+              placeholder={f.link ? 'https://…' : DATE_ENTRY_HEADERS.has(f.key) ? 'DD/MM/YYYY' : '—'}
+              className={`w-full rounded-md border px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 ${
+                dateErrors.has(f.key)
+                  ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-400/20'
+                  : 'border-slate-200 focus:border-blue-400 focus:ring-blue-400/20'
+              }`}
+            />
+            {dateErrors.has(f.key) && (
+              <p className="mt-1 text-xs text-rose-600">Enter a valid date (DD/MM/YYYY or YYYY-MM-DD).</p>
+            )}
+          </>
         )}
       </div>
     );

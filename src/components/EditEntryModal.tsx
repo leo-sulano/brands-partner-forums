@@ -10,6 +10,7 @@ import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
 import { PLATFORM_LABEL, PLATFORM_SHORT_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { isYesNoCol, sectionOf } from '../lib/entryFieldSections';
+import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 
 const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
@@ -110,6 +111,15 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pasteFlash, setPasteFlash] = useState(false);
+  const [dateErrors, setDateErrors] = useState<Set<string>>(new Set());
+
+  function validateDateField(h: string, value: string) {
+    setDateErrors((prev) => {
+      const next = new Set(prev);
+      if (DATE_ENTRY_HEADERS.has(h) && !isValidDateText(value)) next.add(h); else next.delete(h);
+      return next;
+    });
+  }
 
   // Some tabs' imported data carries TP's score under two differently-named raw
   // columns ('TP Score added' and 'Score added') — same value, just an inconsistent
@@ -122,8 +132,14 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   );
 
   async function handleSave() {
-    setSaving(true);
     setError(null);
+    const invalid = headers.filter((h) => DATE_ENTRY_HEADERS.has(h) && !isValidDateText(fields[h] ?? ''));
+    if (invalid.length > 0) {
+      setDateErrors(new Set(invalid));
+      setError('Enter a valid date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.');
+      return;
+    }
+    setSaving(true);
     try {
       const out: Record<string, string | null> = {};
       for (const h of headers) out[h] = fields[h] || null;
@@ -240,22 +256,32 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             disabled={saving}
           />
         ) : (
-          <input
-            type="text"
-            value={fields[fieldKey]}
-            disabled={saving}
-            onChange={(e) => {
-              const val = e.target.value;
-              if (h === 'Account') {
-                const country = getCountryForAccount(val, selectedTab || entry.tab);
-                setFields((f) => ({ ...f, [fieldKey]: val, ...(country ? { Country: country } : {}) }));
-              } else {
-                setFields((f) => ({ ...f, [fieldKey]: val }));
-              }
-            }}
-            placeholder={isLinkCol(h) ? 'https://…' : '—'}
-            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
-          />
+          <>
+            <input
+              type="text"
+              value={fields[fieldKey]}
+              disabled={saving}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (h === 'Account') {
+                  const country = getCountryForAccount(val, selectedTab || entry.tab);
+                  setFields((f) => ({ ...f, [fieldKey]: val, ...(country ? { Country: country } : {}) }));
+                } else {
+                  setFields((f) => ({ ...f, [fieldKey]: val }));
+                }
+              }}
+              onBlur={() => { if (DATE_ENTRY_HEADERS.has(h)) validateDateField(h, fields[fieldKey]); }}
+              placeholder={isLinkCol(h) ? 'https://…' : DATE_ENTRY_HEADERS.has(h) ? 'DD/MM/YYYY' : '—'}
+              className={`w-full rounded-md border px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 disabled:opacity-50 ${
+                dateErrors.has(h)
+                  ? 'border-rose-300 focus:border-rose-400 focus:ring-rose-400/20'
+                  : 'border-slate-200 focus:border-blue-400 focus:ring-blue-400/20'
+              }`}
+            />
+            {dateErrors.has(h) && (
+              <p className="mt-1 text-xs text-rose-600">Enter a valid date (DD/MM/YYYY or YYYY-MM-DD).</p>
+            )}
+          </>
         )}
       </div>
     );
