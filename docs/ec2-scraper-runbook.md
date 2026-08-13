@@ -221,6 +221,25 @@ Forgetting this doesn't throw an error -- brands with a stale or missing URL
 just land silently in the `no_url` summary bucket, not `errors`, so nothing
 in the log looks wrong.
 
+**Before enabling the cron job -- smoke-check the notify function once:**
+same spirit as the [Chrome version check](#chrome-version-mismatch) below --
+a one-time manual verification before trusting the automated path. `--dry-run`
+never calls the notify function (that path structurally can't execute during
+a dry run), so the only way to confirm `NOTIFY_BRAND_REMOVED_URL` is reachable
+and the key is valid is a direct request. Use a deliberately-invalid payload
+so it fails validation instead of emailing the whole team:
+```bash
+curl -X POST "$NOTIFY_BRAND_REMOVED_URL" \
+  -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+Expect back `{"error":"Missing required field"}` (or similar) -- that
+confirms the endpoint is reachable and auth succeeds. **Do not** post a real
+`{"brand": ..., "tabLabel": ..., "platformShortLabel": ..., "removedAtLabel": ...}`
+payload here -- that sends a real notification email to the whole team.
+
 ---
 
 ## Brand Schedule Groups

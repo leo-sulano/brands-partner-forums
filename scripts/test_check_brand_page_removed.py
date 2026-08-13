@@ -1,8 +1,17 @@
 from unittest.mock import MagicMock
 
+import pytest
 from selenium.common.exceptions import NoSuchElementException
 
 import check_brand_page_removed as cbpr
+
+
+@pytest.fixture(autouse=True)
+def _notify_brand_removed_url_env(monkeypatch):
+    """run() now validates NOTIFY_BRAND_REMOVED_URL up front (Finding 2 of
+    the final review). Default it to present for every test except the ones
+    specifically exercising the missing-var case, which delenv it themselves."""
+    monkeypatch.setenv("NOTIFY_BRAND_REMOVED_URL", "https://example.com/notify-brand-removed")
 
 
 def test_is_brand_page_removed_true_for_the_real_removed_heading():
@@ -292,3 +301,74 @@ def test_run_skips_brands_with_no_configured_url(monkeypatch):
     summary = cbpr.run(dry_run=False)
 
     assert summary == {"checked": 0, "newly_flagged": 0, "already_flagged": 0, "no_url": 1, "errors": 0}
+
+
+def test_run_treats_a_resolved_non_trustpilot_url_as_no_url(monkeypatch):
+    # Finding 1: brand_urls.generated.json's tab_brand_urls is the frontend's
+    # generic brand-link map, not TrustPilot-only. Real cases: every "Wizard
+    # of Odds" tab entry points to wizardofodds.com (that tab has no TP
+    # platform at all), and Revolution Casino's "god of casino" entry points
+    # to askgamblers.com ("God Of Casino has no Trustpilot page (AG only)").
+    # A resolved non-TP URL must land in no_url, never get the TP-specific
+    # removal check run against it.
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Wizard of Odds", "data": {"Brands": "RocketSpin"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {"rocketspin": "https://www.trustpilot.com/review/rocketspin.com"},
+        "tab_brand_urls": {
+            "Wizard of Odds": {
+                "rocketspin": "https://wizardofodds.com/online-casinos/reviews/rocketspin-casino/",
+            },
+        },
+        "tab_display_names": {},
+    })
+
+    called = []
+    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": called.append("build_driver") or object())
+    monkeypatch.setattr(cbpr, "load_page", lambda driver, url: called.append(url))
+
+    summary = cbpr.run(dry_run=False)
+
+    assert called == []  # never loaded the page or built a driver
+    assert summary == {"checked": 0, "newly_flagged": 0, "already_flagged": 0, "no_url": 1, "errors": 0}
+
+
+def test_run_treats_an_askgamblers_only_url_as_no_url(monkeypatch):
+    # Revolution Casino's "god of casino" case specifically -- AG-only, no TP page.
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Revolution Casino", "data": {"Brands": "god of casino"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {},
+        "tab_brand_urls": {
+            "Revolution Casino": {
+                "god of casino": "https://www.askgamblers.com/online-casinos/reviews/god-of-casino",
+            },
+        },
+        "tab_display_names": {},
+    })
+
+    summary = cbpr.run(dry_run=False)
+
+    assert summary == {"checked": 0, "newly_flagged": 0, "already_flagged": 0, "no_url": 1, "errors": 0}
+
+
+def test_run_raises_if_notify_url_missing_before_doing_any_work(monkeypatch):
+    # Finding 2: validate NOTIFY_BRAND_REMOVED_URL up front, before the loop
+    # (and before any network/Selenium work), so a missing var is a loud,
+    # immediate failure instead of a silently-lost notification discovered
+    # mid-run on the first real removal.
+    monkeypatch.delenv("NOTIFY_BRAND_REMOVED_URL", raising=False)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("must not do any work before validating NOTIFY_BRAND_REMOVED_URL")
+
+    monkeypatch.setattr(cbpr, "load_brand_urls", fail)
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", fail)
+    monkeypatch.setattr(cbpr, "fetch_all_entries", fail)
+
+    with pytest.raises(RuntimeError, match="NOTIFY_BRAND_REMOVED_URL"):
+        cbpr.run(dry_run=False)

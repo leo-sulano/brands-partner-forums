@@ -178,6 +178,17 @@ def load_page(driver, url: str) -> None:
 
 
 def run(dry_run: bool = False, tab_filter: Optional[str] = None) -> dict:
+    if "NOTIFY_BRAND_REMOVED_URL" not in os.environ:
+        # Validate before any real work starts (network calls, Selenium).
+        # notify_brand_removed() reads this env var lazily, per-brand, AFTER
+        # flag_brand_removed() has already written the row -- discovering a
+        # missing var there would permanently lose that brand's notification,
+        # since a flagged (tab, brand) is skipped on every future run and
+        # never re-notified even after the var is fixed.
+        raise RuntimeError(
+            "NOTIFY_BRAND_REMOVED_URL env var is required but not set. "
+            "Set it before running -- see scripts/.env.example."
+        )
     brand_urls = load_brand_urls()
     already_flagged = fetch_removed_keys("tp")
     entries = fetch_all_entries()
@@ -194,7 +205,13 @@ def run(dry_run: bool = False, tab_filter: Optional[str] = None) -> dict:
             continue
 
         url = get_brand_tp_url(brand, tab, brand_urls)
-        if not url:
+        if not url or "trustpilot.com" not in url:
+            # brand_urls.generated.json is the frontend's generic brand-link
+            # map, not TrustPilot-only -- tab_brand_urls overrides can point
+            # to askgamblers.com/wizardofodds.com for brands/tabs with no TP
+            # page at all. Treat those exactly like "no URL configured"
+            # rather than running the TP-specific removal check against a
+            # page that was never TrustPilot.
             summary["no_url"] += 1
             continue
 
