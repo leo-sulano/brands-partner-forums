@@ -61,7 +61,18 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-13 (newest):* Follow-up to the entry directly below, same session: after confirming
+- *2026-08-13 (newest):* Brand Tabs' `displayKpis`/`displayTotals` now show real counts for
+  flagged-removed brand/platform combinations when the Brand filter is explicitly narrowed to one
+  or more brands (`brandFilter.length > 0`), such as when a user views a brand's own tab via
+  clicking its name or the `?brand=` deep link. A `brandScoped` flag in each computation skips
+  the `removed_platform_brands` exclusion whenever the filter is active; the empty-filter (default
+  whole-tab view) keeps today's exclusion behavior unchanged, so global KPI cards continue
+  correctly excluding flagged-removed platform/brand pages. Score Summary/Overview/
+  `scoreSummary.ts` are untouched. Full suite (396 tests) and build pass. No live Supabase
+  credentials available in this session, so browser verification was deferred. Spec:
+  `docs/superpowers/specs/2026-08-13-brand-tabs-removed-platform-count-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-13-brand-tabs-removed-platform-count.md`. Task 214.
+- *2026-08-13 (prior):* Follow-up to the entry directly below, same session: after confirming
   the "2,982 of 4,307 accounts have a proxy recorded" caption's exclusion of the "No Proxy"
   bucket was intentional (a same-day final-review fix), the user asked to include "No Proxy" in
   the coverage count instead. `Overview.tsx`'s `proxyCoverage` no longer filters out the

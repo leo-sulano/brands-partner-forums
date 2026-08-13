@@ -1407,6 +1407,14 @@ export default function BrandGroup() {
   // own date-range check (passesPlatformDateFilter) so they always reflect
   // active filters without double-applying a second, coarser date filter.
   const displayKpis = (() => {
+    // When one or more brands are explicitly selected via the Brand filter
+    // (or the ?brand= deep link, which sets the same state), the user is
+    // deliberately looking at that brand's own page — show its real
+    // historical counts on a flagged-removed platform instead of excluding
+    // it, same as the rest of the app already does for an unfiltered/global
+    // view. Empty brandFilter (default whole-tab view) keeps today's
+    // exclusion behavior unchanged.
+    const brandScoped = brandFilter.length > 0;
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
       const statusCol = key === 'tp'
         ? (headers.find((h) => TP_STATUS_VARIANTS.has(h)) ?? null)
@@ -1416,8 +1424,11 @@ export default function BrandGroup() {
       for (const e of ratingFiltered) {
         // A brand whose page on THIS platform has been delisted entirely
         // shouldn't count toward this card's Live/Removed totals — independent
-        // per platform, matching the same exclusion applied in Score Summary.
-        if (brandCol && isPlatformRemoved(e.data[brandCol], key)) continue;
+        // per platform, matching the same exclusion applied in Score Summary —
+        // unless the user has explicitly filtered down to specific brand(s)
+        // (brandScoped), in which case they're looking at that brand's own
+        // page and want its real numbers.
+        if (!brandScoped && brandCol && isPlatformRemoved(e.data[brandCol], key)) continue;
         if (dateActive && !passesPlatformDateFilter(e.data, key, dateFrom, dateTo)) continue;
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
@@ -1463,10 +1474,14 @@ export default function BrandGroup() {
     // (same "empty/no-overlap selection === everything" rule as relevantPlatforms).
     const matchingSelection = tabPlatforms.filter((p) => platformFilter.includes(p));
     const totalsPlatforms = matchingSelection.length > 0 ? matchingSelection : tabPlatforms;
+    // Same brand-filter-scoped rule as displayKpis above — kept as an
+    // independent computation here (not shared) since these two blocks
+    // already had no earlier shared helper before this change.
+    const brandScoped = brandFilter.length > 0;
     let live = 0, removed = 0;
     for (const e of ratingFiltered) {
       const statuses = totalsPlatforms
-        .filter((p) => !(brandCol && isPlatformRemoved(e.data[brandCol], p)))
+        .filter((p) => brandScoped || !(brandCol && isPlatformRemoved(e.data[brandCol], p)))
         .filter((p) => !dateActive || passesPlatformDateFilter(e.data, p, dateFrom, dateTo))
         .map((p) => platformStatusCol(headers, p))
         .filter((col): col is string => !!col)

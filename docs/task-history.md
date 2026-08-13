@@ -3226,3 +3226,27 @@ of the 4 active providers — a decommissioned provider, or a genuinely new one 
 individually filterable or visible as its own breakdown card on either page. Spec-sanctioned per
 the design, but not previously flagged as a change from prior behavior, where every non-blank
 value got its own card/filter option.
+
+---
+
+## Task 214: Brand-Filter-Scoped Real Counts on displayKpis and displayTotals
+
+**Date:** August 13, 2026
+
+Brand Tabs' KPI card counts (`displayKpis`) and aggregate total cards (`displayTotals`) now show
+real historical Live/Removed counts for a flagged-removed brand/platform combination when the
+Brand filter is explicitly narrowed to one or more brands (`brandFilter.length > 0`) — e.g., when
+a user clicks a brand name to view its own tab or navigates via the `?brand=` deep link. In both
+computations, a new `brandScoped` flag skips the `removed_platform_brands` exclusion whenever the
+filter is active. The empty-filter default view (whole-tab aggregate) keeps today's behavior
+unchanged — the exclusion still applies, so global KPI cards correctly exclude flagged-removed
+platform/brand pages. Score Summary/Overview/`scoreSummary.ts` are untouched. Tier 2 — confined to
+`BrandGroup.tsx`, no changes to `queries.ts`, `scoreSummary.ts`, or any shared filtering logic.
+
+No dedicated unit tests exist for `BrandGroup.tsx` (established project pattern for page-level
+computed state, verified via build and full test regression). Full test suite (396 tests) passes
+with no regressions. `npm run build` clean. No live Supabase credentials available in this session,
+so live browser verification (confirming a flagged brand's real counts appear when filtering to that
+brand alone, and the aggregate excludes it when the filter is cleared) was deferred. Spec:
+`docs/superpowers/specs/2026-08-13-brand-tabs-removed-platform-count-design.md`. Plan:
+`docs/superpowers/plans/2026-08-13-brand-tabs-removed-platform-count.md`.
