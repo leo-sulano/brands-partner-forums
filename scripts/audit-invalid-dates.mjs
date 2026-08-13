@@ -33,7 +33,12 @@ function loadEnv() {
     }
     for (const line of text.split(/\r?\n/)) {
       const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-      if (m && !(m[1] in out)) out[m[1]] = m[2];
+      if (!m || m[1] in out) continue;
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1);
+      }
+      out[m[1]] = v;
     }
   }
   return out;
@@ -98,10 +103,15 @@ async function fetchAllEntries(supabase) {
   for (const tab of OPERATIONAL_TABS) {
     let offset = 0;
     for (;;) {
+      // Explicit order is required for stable pagination — without one,
+      // Postgrest doesn't guarantee page N+1 excludes rows already returned
+      // in page N, which produced exact duplicate rows in an earlier run of
+      // this script (same id appearing twice in the findings list).
       const { data, error } = await supabase
         .from('entries')
         .select('id, tab, data')
         .eq('tab', tab)
+        .order('id', { ascending: true })
         .range(offset, offset + PAGE_SIZE - 1);
       if (error) throw new Error(`[${tab}] ${error.message ?? JSON.stringify(error)}`);
       rows.push(...(data ?? []));
