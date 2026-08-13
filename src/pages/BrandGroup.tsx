@@ -25,7 +25,7 @@ import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/t
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
-import { canonicalProxyKey, resolveProxyLabel, NO_PROXY_LABEL } from '../lib/proxyAliases';
+import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
@@ -1287,7 +1287,7 @@ export default function BrandGroup() {
         for (const e of entries) {
           const label = resolveProxyLabel(e.data['Proxy Used']);
           const key = canonicalProxyKey(label);
-          if (!seen.has(key)) seen.set(key, label);
+          if (!seen.has(key)) seen.set(key, canonicalProxyName(label));
         }
         return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
       })()

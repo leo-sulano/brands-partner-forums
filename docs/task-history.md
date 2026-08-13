@@ -3209,3 +3209,20 @@ dimension. Full suite (1073 tests) and `npm run build` pass. No schema changes; 
 classification logic, no live/manual verification needed. Spec:
 `docs/superpowers/specs/2026-08-13-no-proxy-group-design.md`. Plan:
 `docs/superpowers/plans/2026-08-13-no-proxy-group.md`.
+
+`resolveProxyLabel`'s shipped implementation deliberately differs from what the spec's own
+snippet specified: the spec ran `canonicalProxyName(trimmed)` before the active-provider check,
+but that's an exact alias lookup, not a prefix match, and would have failed the spec's own test
+(`resolveProxyLabel('proylite-1')` expecting `'proylite-1'`, since `canonicalProxyName('proylite-1')`
+doesn't match the alias key `'proylite'` exactly). The shipped code instead scans `PROXY_ALIASES`
+as a case-insensitive prefix match and returns the original, uncorrected spelling on a match —
+canonicalization for display still happens downstream via `canonicalProxyName` (restored as
+`BrandGroup.tsx`'s stored dropdown/breakdown label, matching `queries.ts`'s own `labelFn` usage),
+not inside `resolveProxyLabel` itself. The test-description citation two paragraphs up is
+corrected here too: it's `proxyAliases.test.ts:47`, not `:60`. One more consequence worth calling
+out as a real behavior change rather than a Minor: a real proxy value that doesn't start with any
+of the 4 active providers — a decommissioned provider, or a genuinely new one not yet added to
+`ACTIVE_PROXY_PROVIDERS` — now folds into "No Proxy" the same as a blank value, so it's no longer
+individually filterable or visible as its own breakdown card on either page. Spec-sanctioned per
+the design, but not previously flagged as a change from prior behavior, where every non-blank
+value got its own card/filter option.

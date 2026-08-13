@@ -17,7 +17,7 @@ import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownC
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
-import { NO_PROXY_LABEL } from '../lib/proxyAliases';
+import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
@@ -495,10 +495,16 @@ export default function Overview() {
   // Country Breakdown shows every distinct country as its own row — no
   // "Other" aggregate — so a value never has to be looked up inside a
   // folded-together bucket. Proxy Breakdown keeps the top-8-plus-Other cap.
-  const countryCards = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry)), Infinity);
-  const proxyCards   = topNWithOther(mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy)),   BREAKDOWN_TOP_N);
-  const countryCoverage = countryCards.reduce((s, c) => s + c.live + c.removed, 0);
-  const proxyCoverage   = proxyCards.reduce((s, c) => s + c.live + c.removed, 0);
+  const countryMerged = mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry));
+  const proxyMerged = mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy));
+  const countryCards = topNWithOther(countryMerged, Infinity);
+  const proxyCards   = topNWithOther(proxyMerged,   BREAKDOWN_TOP_N);
+  const countryCoverage = Object.entries(countryMerged)
+    .filter(([key]) => key !== 'unknown')
+    .reduce((s, [, v]) => s + v.live + v.removed, 0);
+  const proxyCoverage = Object.entries(proxyMerged)
+    .filter(([key]) => key !== canonicalProxyKey(NO_PROXY_LABEL))
+    .reduce((s, [, v]) => s + v.live + v.removed, 0);
 
   function openDimensionSlice(
     card: { key: string; label: string; isOther: boolean },

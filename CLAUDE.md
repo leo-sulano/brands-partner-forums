@@ -641,7 +641,9 @@ Brands Partner Forum/
   — the live `StatusCheckScope` API only accepts one value per field, so selecting e.g. 2 proxies
   and clicking Check Status runs an unscoped (all-proxies) sweep for that field rather than
   guessing which of the 2 to send, which can be a much longer-running check than the user expects
-  from the visible filter. No UI hint currently surfaces this.
+  from the visible filter. No UI hint currently surfaces this. A lone "No Proxy" proxy-filter
+  selection triggers the same unscoped-sweep fallback for the identical reason — the live API has
+  no concept of "No Proxy" either, so there's nothing real to send it as the single scoped value.
 - On a multi-platform brand tab (Rooster Partners, Revolution Casino, SilverPlay, Hanan) with
   `platformFilter === 'all'` and a date range set, `BrandGroup.tsx`'s visible **table rows**
   (`applyDateFilter`, around the `platformFilter === 'all'` branch) still use the old
@@ -752,6 +754,14 @@ Brands Partner Forum/
   `getSchedulableBrandPlatforms` (`src/lib/scheduleBrandConfig.ts`) exclusion logic Schedule
   Planner itself uses, or at minimum add a caveat to `get_schedule`'s tool description warning its
   rows may include brands the UI has since hidden or restricted.
+- `ACTIVE_PROXY_PROVIDERS` (`src/lib/proxyAliases.ts`) is a hardcoded 4-provider list; a real
+  proxy value that doesn't match one now folds into "No Proxy" with no per-value filterability and
+  no error/telemetry if a new provider is onboarded without updating this list.
+- Ask AI's `get_success_rate_by_field`/similar tool (`supabase/functions/ai-assistant/tools.ts`,
+  buckets by raw `Proxy Used` value) is unaware of the new `resolveProxyLabel`/"No Proxy"
+  classification — it can now disagree with what the dashboard shows for a proxy success-rate
+  question. Documentation only; out of scope for this branch since it's a separately-deployed Deno
+  function.
 
 <!-- gitnexus:start -->
 # GitNexus MCP

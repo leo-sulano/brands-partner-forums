@@ -27,6 +27,8 @@ export function isRedactedProxyValue(rawProxy: string): boolean {
   return /^\*+$/.test(rawProxy.trim());
 }
 
+// Adding a 5th active provider requires listing it here — any Proxy Used value that doesn't
+// start with one of these names folds silently into NO_PROXY_LABEL, with no warning or telemetry.
 const ACTIVE_PROXY_PROVIDERS = ['Enigma', 'Proxio', 'Proxylite', 'SpyderProxy'];
 
 export const NO_PROXY_LABEL = 'No Proxy';

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases';
+import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel, NO_PROXY_LABEL } from './proxyAliases';
 
 describe('canonicalProxyKey', () => {
   it('merges a known alias onto the same key as its canonical spelling', () => {
@@ -52,5 +52,16 @@ describe('resolveProxyLabel', () => {
   it('resolves an unrecognized/decommissioned provider value to "No Proxy"', () => {
     expect(resolveProxyLabel('OldVPN-7')).toBe('No Proxy');
     expect(resolveProxyLabel('RandomHost22')).toBe('No Proxy');
+  });
+
+  it('composes with canonicalProxyKey to key blank, redacted, and unrecognized values identically', () => {
+    const noProxyKey = canonicalProxyKey(NO_PROXY_LABEL);
+    expect(canonicalProxyKey(resolveProxyLabel(''))).toBe(noProxyKey);
+    expect(canonicalProxyKey(resolveProxyLabel('*****'))).toBe(noProxyKey);
+    expect(canonicalProxyKey(resolveProxyLabel('OldVPN-7'))).toBe(noProxyKey);
+  });
+
+  it('composes with canonicalProxyName to display the canonical spelling for a matched typo alias', () => {
+    expect(canonicalProxyName(resolveProxyLabel('Proylite'))).toBe('Proxylite');
   });
 });
