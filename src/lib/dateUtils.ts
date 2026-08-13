@@ -60,9 +60,26 @@ export const DATE_ENTRY_HEADERS = new Set([
 // March 2) and accepts a wide range of non-date text as a timestamp, neither
 // of which is "a valid date" in the sense a data-entry guardrail needs.
 // Blank is valid — every one of these columns is optional.
+//
+// Two case-insensitive status sentinels are also accepted alongside real
+// dates: "No Review" and "On Pause" (optionally "on pause as from
+// D/M/YYYY"). A live-data audit (2026-08-14) found these are deliberate,
+// heavily-used vocabulary — 4,805 and 346 rows respectively across every
+// multi-platform tab — not typos; an earlier version of this guardrail
+// rejected them outright and would have blocked legitimate saves. The "as
+// from" date is checked leniently in either D/M or M/D order since the
+// handful of real examples use both.
 export function isValidDateText(value: string): boolean {
   const trimmed = value.trim();
   if (!trimmed) return true;
+  if (/^no review$/i.test(trimmed)) return true;
+
+  const pause = trimmed.match(/^on pause(?:\s+as from\s+(\d{1,2})\/(\d{1,2})\/(\d{4}))?$/i);
+  if (pause) {
+    if (!pause[1]) return true;
+    const a = +pause[1], b = +pause[2], y = +pause[3];
+    return isRealCalendarDate(y, a, b) || isRealCalendarDate(y, b, a);
+  }
 
   const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slash) return isRealCalendarDate(+slash[3], +slash[2], +slash[1]);
