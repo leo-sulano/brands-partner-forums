@@ -56,7 +56,6 @@ export function resolveProxyLabel(rawProxy: string | null | undefined): string {
     }
   }
 
-  // Otherwise, check if the canonicalized name is an active provider
-  const canonicalName = canonicalProxyName(trimmed);
-  return isActiveProxyProvider(canonicalName) ? canonicalName : NO_PROXY_LABEL;
+  // Otherwise, check if the value directly starts with an active provider
+  return isActiveProxyProvider(trimmed) ? trimmed : NO_PROXY_LABEL;
 }
