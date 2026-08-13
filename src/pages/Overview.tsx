@@ -503,7 +503,6 @@ export default function Overview() {
     .filter(([key]) => key !== 'unknown')
     .reduce((s, [, v]) => s + v.live + v.removed, 0);
   const proxyCoverage = Object.entries(proxyMerged)
-    .filter(([key]) => key !== canonicalProxyKey(NO_PROXY_LABEL))
     .reduce((s, [, v]) => s + v.live + v.removed, 0);
 
   function openDimensionSlice(

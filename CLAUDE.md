@@ -61,7 +61,18 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-13 (newest):* Per user feedback on a live screenshot, Proxy Breakdown's "No Proxy"
+- *2026-08-13 (newest):* Follow-up to the entry directly below, same session: after confirming
+  the "2,982 of 4,307 accounts have a proxy recorded" caption's exclusion of the "No Proxy"
+  bucket was intentional (a same-day final-review fix), the user asked to include "No Proxy" in
+  the coverage count instead. `Overview.tsx`'s `proxyCoverage` no longer filters out the
+  `NO_PROXY_LABEL` key, so it now sums every bucket and always equals `totalAccounts` (4,307 of
+  4,307) — the caption reads 100%, the same behavior Country Breakdown's "Unknown" caption
+  already has and that the original No Proxy group design flagged as an accepted, deliberate
+  consequence of every entry always resolving to some bucket. `countryCoverage`'s equivalent
+  filter is untouched. Full suite (1077 tests) and build pass; no test asserted the old
+  filtered-out value (page-level presentational logic, verified via build per this project's
+  established pattern for `Overview.tsx`/`BrandGroup.tsx`).
+- *2026-08-13 (prior):* Per user feedback on a live screenshot, Proxy Breakdown's "No Proxy"
   card (added earlier the same day, see the `resolveProxyLabel`/No Proxy group work referenced in
   Known Issues) now always renders last, regardless of its volume — overriding that work's plan
   doc, which had deliberately decided against special pinning. `overviewBreakdown.ts`'s
@@ -69,10 +80,8 @@ Brands Partner Forum/
   ranking/top-N/"Other" entirely and appended as its own trailing card, so a real provider now
   fills the top-8 slot "No Proxy" would otherwise have occupied by outranking it on volume.
   Country Breakdown's call is unchanged (no key passed) and still ranks "Unknown" by volume like
-  any other card. The "X of Y accounts have a proxy recorded" caption was already accurate as of
-  the same day's final-review fix (computed from the merged breakdown minus the No Proxy bucket,
-  not from card totals) — confirmed against the user's screenshot (2,982 of 4,307) rather than
-  re-fixed. 2 new tests in `overviewBreakdown.test.ts`; full suite (1077 tests) and build pass.
+  any other card. 2 new tests in `overviewBreakdown.test.ts`; full suite (1077 tests) and build
+  pass.
 - *2026-08-07 (prior):* Fixed a data-accuracy bug the user caught via a live screenshot:
   Overview's per-tab card and Score Summary reported different Live/Removed/Total counts for the
   same tab/platform/date-range (FTP/TrustPilot, 01/05–31/07/2026: 281 total on Overview vs. 190 on
