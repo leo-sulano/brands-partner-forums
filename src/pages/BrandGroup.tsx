@@ -25,7 +25,7 @@ import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/t
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
-import { canonicalProxyKey, canonicalProxyName } from '../lib/proxyAliases';
+import { canonicalProxyKey, resolveProxyLabel, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
@@ -1285,11 +1285,9 @@ export default function BrandGroup() {
     ? (() => {
         const seen = new Map<string, string>();
         for (const e of entries) {
-          const v = e.data['Proxy Used'];
-          if (v && v.trim()) {
-            const key = canonicalProxyKey(v);
-            if (!seen.has(key)) seen.set(key, canonicalProxyName(v));
-          }
+          const label = resolveProxyLabel(e.data['Proxy Used']);
+          const key = canonicalProxyKey(label);
+          if (!seen.has(key)) seen.set(key, label);
         }
         return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
       })()
@@ -1332,7 +1330,7 @@ export default function BrandGroup() {
     : brandFiltered;
 
   const proxyFiltered = proxyFilter.length > 0
-    ? agentFiltered.filter((e) => proxyFilter.some((pf) => canonicalProxyKey(e.data['Proxy Used'] ?? '') === canonicalProxyKey(pf)))
+    ? agentFiltered.filter((e) => proxyFilter.some((pf) => canonicalProxyKey(resolveProxyLabel(e.data['Proxy Used'])) === canonicalProxyKey(pf)))
     : agentFiltered;
 
   const countryFiltered = countryFilter.length > 0
@@ -1608,7 +1606,7 @@ export default function BrandGroup() {
         ? [...new Set(brandFilter.flatMap((bf) => getBrandGroup(decodedTab, bf) ?? [bf]))]
         : undefined,
       agent: agentFilter.length === 1 ? agentFilter[0] : undefined,
-      proxy: proxyFilter.length === 1 ? proxyFilter[0] : undefined,
+      proxy: proxyFilter.length === 1 && proxyFilter[0] !== NO_PROXY_LABEL ? proxyFilter[0] : undefined,
       country: countryFilter.length === 1 ? countryFilter[0] : undefined,
     };
     try {
