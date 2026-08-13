@@ -3149,3 +3149,13 @@ afterward (the row needed a follow-up authenticated-session delete — the first
 used the anon key/role and returned 204 but silently no-op'd under RLS, the same class of gap
 documented for this project's other tables; confirmed gone via a second read after deleting with
 the logged-in user's own access token).
+
+---
+
+## Task 212: Rename AG/CG Review-Link Column Headers to "Page"
+**Date:** August 13, 2026
+
+`COLUMN_LABELS` in `tab-configs.ts` mapped `'AG Review Link'`/`'CG Review Link'` to the display
+labels `'AG Link'`/`'CG Link'`; renamed to `'AG Page'`/`'CG Page'` per the user's request. Tier 1 —
+confined to the one shared label map, consumed only by `getColLabel` (Brand Tabs table header,
+CSV/Excel export headers, Edit Entry modal field label); `npm run build` passes.
