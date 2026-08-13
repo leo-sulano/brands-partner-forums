@@ -633,6 +633,21 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **AG/CG/WO automated brand-page-removal detection not built — spike research found no evidence to build on.**
+  Following the TP automated-removal-detection feature (2026-08-13,
+  `docs/superpowers/specs/2026-08-13-automated-brand-page-removal-detection-design.md`), a same-day
+  spike investigated extending it to AskGamblers, CasinoGuru, and Wizard of Odds. Tested 4 real
+  brands already confirmed dead on TrustPilot (Pribet, WinMega, RealSpin, Silver Play) against their
+  AskGamblers and CasinoGuru pages via a live stealth-browser probe: all 4 still show fully live,
+  populated review pages on both platforms (real ratings, review counts, Safety Index scores) — no
+  removed/delisted state found. This suggests AG/CG may not delist a review page when the underlying
+  business closes at all, unlike TrustPilot, which would mean "check if removed" isn't a meaningful
+  thing to detect there (not just "not yet verified"). Wizard of Odds has no known-dead brand to test
+  against at all; only a fabricated never-existed URL was checked, which returns a generic "404 Page
+  Not Found" — a real signal, but for "never existed," not "was removed," so it's unconfirmed whether
+  WO ever actually delists a published review either. Decision: do not build detection for any of the
+  3 on this evidence. Revisit only if/when a real removed example turns up on one of them (naturally,
+  or if someone already knows of one) — do not re-derive a signature from a fabricated 404 alone.
 - **Brand Tabs' KPI cards can disagree with the table when brand-filtered + status-filtered (Task 214).**
   Task 214 made `displayKpis`/`displayTotals` (`BrandGroup.tsx`) show real non-zero Live/Removed
   counts for a flagged-removed brand/platform whenever the Brand filter is non-empty. `matchesPlatform`
