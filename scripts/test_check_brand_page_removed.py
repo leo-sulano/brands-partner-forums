@@ -71,3 +71,110 @@ def test_tab_label_uses_display_name_when_present():
 
 def test_tab_label_falls_back_to_raw_tab_name():
     assert cbpr.tab_label("Rooster Partners", BRAND_URLS_FIXTURE) == "Rooster Partners"
+
+
+class _FakeResponse:
+    def __init__(self, payload=None, status_ok=True):
+        self._payload = payload
+        self._status_ok = status_ok
+
+    def raise_for_status(self):
+        if not self._status_ok:
+            raise RuntimeError("HTTP error")
+
+    def json(self):
+        return self._payload
+
+
+def test_fetch_all_entries_paginates_until_a_short_page(monkeypatch):
+    page1 = [{"id": i, "tab": "Hanan", "data": {}} for i in range(1000)]
+    page2 = [{"id": 1000, "tab": "Hanan", "data": {}}]
+    calls = []
+
+    def fake_get(url, headers, params):
+        calls.append(params)
+        return _FakeResponse(page1 if params["offset"] == 0 else page2)
+
+    monkeypatch.setattr(cbpr.requests, "get", fake_get)
+
+    result = cbpr.fetch_all_entries()
+
+    assert len(result) == 1001
+    assert len(calls) == 2
+
+
+def test_distinct_tab_brands_dedupes_and_skips_blank_brand():
+    entries = [
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+        {"tab": "Hanan", "data": {"Brands": ""}},
+        {"tab": "TP Brand Injection", "data": {"Brand / TP URL PAGE": "Prive Casino"}},
+    ]
+    result = cbpr.distinct_tab_brands(entries)
+    assert result == {
+        ("Hanan", "WinMega.com"),
+        ("TP Brand Injection", "Prive Casino"),
+    }
+
+
+def test_fetch_removed_keys_returns_tab_brand_key_pairs(monkeypatch):
+    def fake_get(url, headers, params):
+        assert params["platform"] == "eq.tp"
+        return _FakeResponse([
+            {"tab": "Hanan", "brand_key": "winmega.com"},
+            {"tab": "TP Brand Injection", "brand_key": "prive casino"},
+        ])
+
+    monkeypatch.setattr(cbpr.requests, "get", fake_get)
+
+    result = cbpr.fetch_removed_keys("tp")
+
+    assert result == {("Hanan", "winmega.com"), ("TP Brand Injection", "prive casino")}
+
+
+def test_flag_brand_removed_upserts_with_merge_duplicates(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers, params, json):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["params"] = params
+        captured["json"] = json
+        return _FakeResponse()
+
+    monkeypatch.setattr(cbpr.requests, "post", fake_post)
+
+    cbpr.flag_brand_removed("Hanan", "WinMega.com", "tp")
+
+    assert captured["params"]["on_conflict"] == "tab,brand_key,platform"
+    assert "resolution=merge-duplicates" in captured["headers"]["Prefer"]
+    assert captured["json"] == [{
+        "tab": "Hanan",
+        "brand": "WinMega.com",
+        "platform": "tp",
+        "removed_by": "Automated Check",
+    }]
+
+
+def test_notify_brand_removed_sends_the_real_payload_shape(monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers, json):
+        captured["url"] = url
+        captured["headers"] = headers
+        captured["json"] = json
+        return _FakeResponse()
+
+    monkeypatch.setattr(cbpr.requests, "post", fake_post)
+    monkeypatch.setenv("NOTIFY_BRAND_REMOVED_URL", "https://example.com/notify-brand-removed")
+
+    cbpr.notify_brand_removed("WinMega.com", "Hanan", "TP", "13/08/2026")
+
+    assert captured["url"] == "https://example.com/notify-brand-removed"
+    assert captured["json"] == {
+        "brand": "WinMega.com",
+        "tabLabel": "Hanan",
+        "platformShortLabel": "TP",
+        "removedAtLabel": "13/08/2026",
+    }
+    assert captured["headers"]["Authorization"].startswith("Bearer ")

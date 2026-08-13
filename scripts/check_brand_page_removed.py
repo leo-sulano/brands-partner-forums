@@ -15,6 +15,7 @@ import json
 import os
 from typing import Optional
 
+import requests
 from selenium.webdriver.common.by import By
 
 REMOVED_HEADING_TEXT = "This profile has been removed"
@@ -55,3 +56,102 @@ def get_brand_tp_url(brand: str, tab: str, brand_urls: dict) -> Optional[str]:
 def tab_label(tab: str, brand_urls: dict) -> str:
     """Mirrors src/lib/tabs.ts's tabDisplayName exactly."""
     return brand_urls.get("tab_display_names", {}).get(tab, tab)
+
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+
+# Same priority order as BRAND_COLS in src/pages/BrandGroup.tsx and
+# check_review_status.py -- keep all three in sync.
+BRAND_COLS = ["Brands", "Brand Name", "Brand", "Brand / TP URL PAGE", "URL PAGE", "Account Name"]
+
+
+def find_brand_col(data: dict) -> Optional[str]:
+    for col in BRAND_COLS:
+        if col in data:
+            return col
+    return None
+
+
+def _headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+    }
+
+
+def fetch_all_entries() -> list:
+    """GET every entries row's tab/data, paginated (PostgREST caps at 1000/request)."""
+    PAGE = 1000
+    rows: list = []
+    offset = 0
+    while True:
+        r = requests.get(
+            f"{SUPABASE_URL}/rest/v1/entries",
+            headers=_headers(),
+            params={"select": "id,tab,data", "order": "id", "limit": PAGE, "offset": offset},
+        )
+        r.raise_for_status()
+        batch = r.json()
+        rows.extend(batch)
+        if len(batch) < PAGE:
+            break
+        offset += PAGE
+    return rows
+
+
+def distinct_tab_brands(entries: list) -> set:
+    pairs = set()
+    for row in entries:
+        tab = row.get("tab") or ""
+        data = row.get("data") or {}
+        brand_col = find_brand_col(data)
+        brand = (data.get(brand_col) or "").strip() if brand_col else ""
+        if tab and brand:
+            pairs.add((tab, brand))
+    return pairs
+
+
+def fetch_removed_keys(platform: str) -> set:
+    r = requests.get(
+        f"{SUPABASE_URL}/rest/v1/removed_platform_brands",
+        headers=_headers(),
+        params={"select": "tab,brand_key", "platform": f"eq.{platform}"},
+    )
+    r.raise_for_status()
+    return {(row["tab"], row["brand_key"]) for row in r.json()}
+
+
+def flag_brand_removed(tab: str, brand: str, platform: str) -> None:
+    """Same effect as a human checking the Edit Entry modal's box --
+    setBrandPlatformRemoved's exact upsert shape (src/lib/queries.ts)."""
+    r = requests.post(
+        f"{SUPABASE_URL}/rest/v1/removed_platform_brands",
+        headers={**_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+        params={"on_conflict": "tab,brand_key,platform"},
+        json=[{"tab": tab, "brand": brand, "platform": platform, "removed_by": "Automated Check"}],
+    )
+    r.raise_for_status()
+
+
+def notify_brand_removed(
+    brand: str, tab_label_value: str, platform_short_label: str, removed_at_label: str,
+) -> None:
+    """Same payload shape src/lib/brandRemovedNotification.ts sends."""
+    url = os.environ["NOTIFY_BRAND_REMOVED_URL"]
+    r = requests.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {SUPABASE_KEY}",
+            "apikey": SUPABASE_KEY,
+            "Content-Type": "application/json",
+        },
+        json={
+            "brand": brand,
+            "tabLabel": tab_label_value,
+            "platformShortLabel": platform_short_label,
+            "removedAtLabel": removed_at_label,
+        },
+    )
+    r.raise_for_status()
