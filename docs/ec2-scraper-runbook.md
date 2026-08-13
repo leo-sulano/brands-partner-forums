@@ -43,7 +43,7 @@ ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.1
 ```bash
 df -h /                                                # disk usage — investigate if over ~80%
 ps aux | grep -E 'status_server|check_review_status'   # is the API server up? anything stuck running?
-crontab -l                                             # should show 3 jobs: weekly all-platform scraper, tmp sweep, weekly dnf clean
+crontab -l                                             # should show 4 jobs: weekly all-platform scraper, daily brand-removal check, tmp sweep, weekly dnf clean
 tail -30 ~/scraper.log                                 # last scraper run — any errors?
 tail -30 ~/server.log                                  # status server — any errors?
 ```
