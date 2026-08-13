@@ -354,23 +354,29 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.live).toBe(1);
   });
 
-  it('byProxy buckets live/removed per proxy and skips entries with a blank Proxy Used value', () => {
+  it('byProxy buckets a blank Proxy Used value under a literal "No Proxy" bucket instead of skipping it (regression: previously excluded from byProxy entirely)', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': '' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
-    expect(kpis.byProxy).toEqual({ 'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 } });
+    expect(kpis.byProxy).toEqual({
+      'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 },
+      'no proxy': { label: 'No Proxy', live: 0, removed: 1 },
+    });
   });
 
-  it('byProxy and proxies treat a redacted "*****" Proxy Used value the same as blank', () => {
+  it('byProxy and proxies fold a redacted "*****" Proxy Used value into "No Proxy", same as blank', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': '*****' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
-    expect(kpis.byProxy).toEqual({ 'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 } });
-    expect(kpis.proxies).toEqual(['Enigma-US1']);
+    expect(kpis.byProxy).toEqual({
+      'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 },
+      'no proxy': { label: 'No Proxy', live: 0, removed: 1 },
+    });
+    expect(kpis.proxies).toEqual(['Enigma-US1', 'No Proxy']);
   });
 
   it('countries and proxies distinct lists are built from unfiltered entries, independent of any active country/proxy filter', () => {
@@ -381,6 +387,30 @@ describe('computeTabKpisFromEntries', () => {
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Germany'])!;
     expect(kpis.countries).toEqual(['France', 'Germany']);
     expect(kpis.proxies).toEqual(['Enigma-US1', 'Enigma-US2']);
+  });
+
+  it('folds a Proxy Used value that does not start with any active provider name into "No Proxy"', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'OldVPN-7' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+    expect(kpis.byProxy).toEqual({
+      'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 },
+      'no proxy': { label: 'No Proxy', live: 0, removed: 1 },
+    });
+    expect(kpis.proxies).toEqual(['Enigma-US1', 'No Proxy']);
+  });
+
+  it('proxyFilter set to "No Proxy" matches blank, redacted, and unrecognized-provider entries', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': '' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': '*****' }),
+      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'RandomHost22' }),
+      entry('4', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, ['No Proxy'])!;
+    expect(kpis.live).toBe(3);
   });
 
   it('returns null when platformFilter names a platform the tab has no column for', () => {
