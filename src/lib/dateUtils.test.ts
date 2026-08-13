@@ -45,30 +45,16 @@ describe('isValidDateText', () => {
     expect(isValidDateText('05-01-2026')).toBe(false);
   });
 
-  // Live-data audit (2026-08-14) found these are deliberate status text used
-  // thousands of times on real AG/CG/TP Added values, not typos — an earlier
-  // version of this guardrail wrongly rejected them.
-  it('accepts the "No Review" status sentinel, case-insensitively', () => {
-    expect(isValidDateText('No Review')).toBe(true);
-    expect(isValidDateText('no review')).toBe(true);
-    expect(isValidDateText('NO REVIEW')).toBe(true);
-  });
-
-  it('accepts the "On Pause" status sentinel, with or without an "as from" date', () => {
-    expect(isValidDateText('ON PAUSE')).toBe(true);
-    expect(isValidDateText('on pause')).toBe(true);
-    expect(isValidDateText('ON PAUSE as from 10/16/2025')).toBe(true); // M/D/YYYY
-    expect(isValidDateText('ON PAUSE as from 08/29/2025')).toBe(true); // M/D/YYYY
-    expect(isValidDateText('on pause as from 20/11/2025')).toBe(true); // D/M/YYYY
-  });
-
-  it('rejects an "On Pause as from" date that is invalid in both D/M and M/D order', () => {
-    expect(isValidDateText('ON PAUSE as from 13/32/2025')).toBe(false);
-  });
-
-  it('rejects near-miss text that only superficially resembles the sentinels', () => {
-    expect(isValidDateText('No Review Yet')).toBe(false);
-    expect(isValidDateText('Paused')).toBe(false);
+  // 2026-08-14: a brief version of this guardrail accepted "No Review"/"On
+  // Pause" as status sentinels after a live-data audit found them on
+  // thousands of rows. The user explicitly reversed that: these columns must
+  // hold a real date or nothing, so both are rejected like any other text —
+  // the live values were cleared to null rather than kept as an exception
+  // (see scripts/clear-nondates.mjs).
+  it('rejects the former "No Review"/"On Pause" status sentinels — dates only now', () => {
+    expect(isValidDateText('No Review')).toBe(false);
+    expect(isValidDateText('ON PAUSE')).toBe(false);
+    expect(isValidDateText('ON PAUSE as from 10/16/2025')).toBe(false);
   });
 });
 

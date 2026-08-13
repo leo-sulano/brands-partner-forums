@@ -64,15 +64,6 @@ function isRealCalendarDate(year, month, day) {
 function isValidDateText(value) {
   const trimmed = (value ?? '').trim();
   if (!trimmed) return true;
-  if (/^no review$/i.test(trimmed)) return true;
-
-  const pause = trimmed.match(/^on pause(?:\s+as from\s+(\d{1,2})\/(\d{1,2})\/(\d{4}))?$/i);
-  if (pause) {
-    if (!pause[1]) return true;
-    const a = +pause[1], b = +pause[2], y = +pause[3];
-    return isRealCalendarDate(y, a, b) || isRealCalendarDate(y, b, a);
-  }
-
   const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (slash) return isRealCalendarDate(+slash[3], +slash[2], +slash[1]);
   const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -175,10 +166,12 @@ async function main() {
     console.log(`  ${count.toString().padStart(4)}  ${JSON.stringify(value)}`);
   }
 
-  console.log('\nFull list (for manual fix):');
-  for (const f of findings) {
+  const LIST_CAP = 60;
+  console.log(`\nFull list (capped at ${LIST_CAP} of ${findings.length}):`);
+  for (const f of findings.slice(0, LIST_CAP)) {
     console.log(`  [${f.tab}] ${f.header} = ${JSON.stringify(f.value)}  (brand: ${f.brand || '—'}, id: ${f.id})`);
   }
+  if (findings.length > LIST_CAP) console.log(`  … and ${findings.length - LIST_CAP} more.`);
 }
 
 main().catch((err) => {
