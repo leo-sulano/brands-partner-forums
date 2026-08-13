@@ -3253,3 +3253,32 @@ so live browser verification (confirming a flagged brand's real counts appear wh
 brand alone, and the aggregate excludes it when the filter is cleared) was deferred. Spec:
 `docs/superpowers/specs/2026-08-13-brand-tabs-removed-platform-count-design.md`. Plan:
 `docs/superpowers/plans/2026-08-13-brand-tabs-removed-platform-count.md`.
+
+---
+
+## Task 215: Real Counts on Single-Brand Tabs Without a Brand Filter
+
+**Date:** August 13, 2026
+
+Follow-up to Task 214, reported live via a SilverPlay screenshot: its TrustPilot card still read
+0 Live / 0 Removed / — Success Rate with no way to reach the Task 214 fix. Root cause: SilverPlay
+currently has exactly one distinct brand, and the Brand filter dropdown (`BrandGroup.tsx:~1962`)
+only renders when `uniqueBrands.length > 1` — SilverPlay is also in the separate, pre-existing
+`NO_BRAND_FILTER_TABS` set, which suppresses the dropdown unconditionally regardless of brand
+count. Either way, `brandFilter` could never become non-empty on this tab, so `brandScoped`
+(Task 214) could never turn true.
+
+Fix: `brandScoped` (`BrandGroup.tsx:~1419`) now also fires when `uniqueBrands.length === 1` — a
+single-brand tab's whole-tab view already IS that one brand's page, so no filter should be needed
+to see its real numbers. The moment a second brand appears on a tab, `uniqueBrands.length` becomes
+2 and this auto-trigger turns off, reverting to Task 214's original behavior (explicit Brand filter
+required) — consistent with the Brand filter dropdown's own `uniqueBrands.length > 1` visibility
+rule. `NO_BRAND_FILTER_TABS` and `matchesPlatform` are untouched; Score Summary/Overview/
+`scoreSummary.ts` remain out of scope, same as Task 214.
+
+Tier 2 (light path per this project's process tiering) — one-line condition extension to code
+just shipped and reviewed in Task 214, confined to `BrandGroup.tsx`. Implemented directly with one
+self-review pass rather than the full spec/plan/subagent pipeline. Full test suite (396 tests) and
+`npm run build` both pass, no regressions. No live Supabase credentials available in this session,
+so live verification against SilverPlay's real TrustPilot data was deferred — same limitation as
+Task 214.

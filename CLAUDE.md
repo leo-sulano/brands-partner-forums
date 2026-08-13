@@ -61,7 +61,20 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-13 (newest):* Brand Tabs' `displayKpis`/`displayTotals` now show real counts for
+- *2026-08-13 (newest):* Follow-up to Task 214 (below), reported live via a SilverPlay screenshot:
+  its TrustPilot card still read 0/0/— with no way to reach that fix, since SilverPlay currently
+  has exactly one distinct brand and its Brand filter dropdown never renders for a single-brand tab
+  (`uniqueBrands.length > 1` gate) — SilverPlay is also in the separate `NO_BRAND_FILTER_TABS` set,
+  which suppresses it regardless of brand count either way — so `brandFilter` could never become
+  non-empty there and `brandScoped` could never fire. `brandScoped` (`BrandGroup.tsx:~1419`) now
+  also fires when `uniqueBrands.length === 1`, since a single-brand tab's whole-tab view already IS
+  that one brand's page. The moment a second brand appears on a tab this auto-trigger turns off,
+  reverting to Task 214's original explicit-Brand-filter requirement. Tier 2 (light path) — a
+  one-line condition extension to code just shipped/reviewed in Task 214, implemented directly with
+  one self-review pass rather than the full pipeline. Full suite (396 tests) and build pass; no live
+  Supabase credentials available in this session, so live verification against SilverPlay's real
+  data was deferred, same as Task 214. Task 215.
+- *2026-08-13 (prior):* Brand Tabs' `displayKpis`/`displayTotals` now show real counts for
   flagged-removed brand/platform combinations when the Brand filter is explicitly narrowed to one
   or more brands (`brandFilter.length > 0`), such as when a user views a brand's own tab via
   clicking its name or the `?brand=` deep link. A `brandScoped` flag in each computation skips
