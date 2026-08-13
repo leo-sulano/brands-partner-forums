@@ -1411,12 +1411,19 @@ export default function BrandGroup() {
   // deliberately looking at that brand's own page — show its real
   // historical counts on a flagged-removed platform instead of excluding
   // it, same as the rest of the app already does for an unfiltered/global
-  // view. Empty brandFilter (default whole-tab view) keeps today's
-  // exclusion behavior unchanged. Shared by displayKpis and displayTotals
-  // below — matchesPlatform's own exclusion (line ~1397) deliberately does
-  // NOT read this flag, which is the source of the divergence noted in the
-  // comment above displayTotals.
-  const brandScoped = brandFilter.length > 0;
+  // view. Also true when the tab has exactly one brand (uniqueBrands.length
+  // === 1): the whole-tab view already IS that one brand's page, and the
+  // Brand filter dropdown itself only renders for uniqueBrands.length > 1
+  // (see ~line 1962), so a single-brand tab could otherwise never reach
+  // brandScoped through the filter at all. The moment a second brand
+  // appears, this auto-trigger turns off and reverts to requiring an
+  // explicit Brand filter selection, matching the multi-brand behavior
+  // below. Empty brandFilter on a multi-brand tab (default whole-tab view)
+  // keeps today's exclusion behavior unchanged. Shared by displayKpis and
+  // displayTotals below — matchesPlatform's own exclusion (line ~1397)
+  // deliberately does NOT read this flag, which is the source of the
+  // divergence noted in the comment above displayTotals.
+  const brandScoped = brandFilter.length > 0 || uniqueBrands.length === 1;
 
   const displayKpis = (() => {
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
