@@ -1406,6 +1406,18 @@ export default function BrandGroup() {
   // Platform card counts — computed from ratingFiltered with each platform's
   // own date-range check (passesPlatformDateFilter) so they always reflect
   // active filters without double-applying a second, coarser date filter.
+  // When one or more brands are explicitly selected via the Brand filter
+  // (or the ?brand= deep link, which sets the same state), the user is
+  // deliberately looking at that brand's own page — show its real
+  // historical counts on a flagged-removed platform instead of excluding
+  // it, same as the rest of the app already does for an unfiltered/global
+  // view. Empty brandFilter (default whole-tab view) keeps today's
+  // exclusion behavior unchanged. Shared by displayKpis and displayTotals
+  // below — matchesPlatform's own exclusion (line ~1397) deliberately does
+  // NOT read this flag, which is the source of the divergence noted in the
+  // comment above displayTotals.
+  const brandScoped = brandFilter.length > 0;
+
   const displayKpis = (() => {
     function countPlatform(key: 'tp' | 'ag' | 'cg') {
       const statusCol = key === 'tp'
@@ -1416,8 +1428,11 @@ export default function BrandGroup() {
       for (const e of ratingFiltered) {
         // A brand whose page on THIS platform has been delisted entirely
         // shouldn't count toward this card's Live/Removed totals — independent
-        // per platform, matching the same exclusion applied in Score Summary.
-        if (brandCol && isPlatformRemoved(e.data[brandCol], key)) continue;
+        // per platform, matching the same exclusion applied in Score Summary —
+        // unless the user has explicitly filtered down to specific brand(s)
+        // (brandScoped), in which case they're looking at that brand's own
+        // page and want its real numbers.
+        if (!brandScoped && brandCol && isPlatformRemoved(e.data[brandCol], key)) continue;
         if (dateActive && !passesPlatformDateFilter(e.data, key, dateFrom, dateTo)) continue;
         const v = (e.data[statusCol] ?? '').toLowerCase();
         if (isLive(v)) live++;
@@ -1455,6 +1470,9 @@ export default function BrandGroup() {
   // a single row that's e.g. Live on both TP and AG when both are selected. This is
   // the same OR-across-selected-platforms rule `filtered`/`matchesPlatform` above
   // already apply to the table itself, so the cards can no longer disagree with it.
+  // Exception: when brandScoped is true, these cards' numbers and the table's visible
+  // rows below CAN diverge on a flagged brand/platform, since matchesPlatform's own
+  // exclusion (line ~1397) is deliberately unchanged.
   const displayTotals = (() => {
     // Local `activePlatforms` only ever tracks tp/ag/cg (never 'wo') and is empty for
     // the Wizard of Odds tab specifically — use the shared getTabPlatforms(tab) helper
@@ -1466,7 +1484,7 @@ export default function BrandGroup() {
     let live = 0, removed = 0;
     for (const e of ratingFiltered) {
       const statuses = totalsPlatforms
-        .filter((p) => !(brandCol && isPlatformRemoved(e.data[brandCol], p)))
+        .filter((p) => brandScoped || !(brandCol && isPlatformRemoved(e.data[brandCol], p)))
         .filter((p) => !dateActive || passesPlatformDateFilter(e.data, p, dateFrom, dateTo))
         .map((p) => platformStatusCol(headers, p))
         .filter((col): col is string => !!col)
