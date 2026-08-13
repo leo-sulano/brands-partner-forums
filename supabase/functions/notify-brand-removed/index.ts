@@ -38,6 +38,7 @@ export interface NotifyBrandRemovedPayload {
   tabLabel: string;
   platformShortLabel: string;
   removedAtLabel: string;
+  brandTabUrl: string;
 }
 
 export interface GmailCredentials {
@@ -125,6 +126,8 @@ export async function sendBrandRemovedNotification(
     '',
     `The brand page ${payload.brand} on ${payload.platformShortLabel}, under ${payload.tabLabel}, has been flagged as Removed on ${payload.removedAtLabel}.`,
     '',
+    `View it here: ${payload.brandTabUrl}`,
+    '',
     'Please review the brand page and take the necessary action.',
     '',
     'Thank you,',
@@ -171,15 +174,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } catch {
     return jsonResponse({ error: 'Invalid request body' }, 400);
   }
-  const { brand, tabLabel, platformShortLabel, removedAtLabel } = body ?? {};
-  if (!brand || !tabLabel || !platformShortLabel || !removedAtLabel) {
+  const { brand, tabLabel, platformShortLabel, removedAtLabel, brandTabUrl } = body ?? {};
+  if (!brand || !tabLabel || !platformShortLabel || !removedAtLabel || !brandTabUrl) {
     return jsonResponse({ error: 'Missing required field' }, 400);
   }
 
   try {
     const client = createClient(env.SUPABASE_URL, env.SERVICE_ROLE);
     const result = await sendBrandRemovedNotification(
-      { brand, tabLabel, platformShortLabel, removedAtLabel },
+      { brand, tabLabel, platformShortLabel, removedAtLabel, brandTabUrl },
       client,
       {
         clientId: env.GMAIL_CLIENT_ID,

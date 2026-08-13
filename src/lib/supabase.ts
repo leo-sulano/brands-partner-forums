@@ -48,3 +48,12 @@ export const TRANSLATE_REVIEW_URL = import.meta.env?.VITE_TRANSLATE_REVIEW_URL ?
 // `supabase secrets set ...`). Empty string means a newly-flagged
 // "page removed" checkbox saves fine but the notification silently no-ops.
 export const NOTIFY_BRAND_REMOVED_URL = import.meta.env?.VITE_NOTIFY_BRAND_REMOVED_URL ?? '';
+
+// Base URL of this dashboard's own deployment, for building links back into
+// the app (e.g. the notify-brand-removed email's link to the flagged brand's
+// own tab). Same VITE_SITE_URL Login.tsx/Signup.tsx already use for OAuth
+// redirects; falls back to window.location.origin so it still resolves
+// correctly without the env var set in a given environment.
+export const SITE_URL = (
+  import.meta.env?.VITE_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+).replace(/\/$/, '');

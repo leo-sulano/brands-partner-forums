@@ -5,6 +5,7 @@ export interface NotifyBrandRemovedPayload {
   tabLabel: string;
   platformShortLabel: string;
   removedAtLabel: string;
+  brandTabUrl: string;
 }
 
 const NOTIFICATION_FAILURE_MESSAGE = 'Failed to send the brand-removed notification email.';

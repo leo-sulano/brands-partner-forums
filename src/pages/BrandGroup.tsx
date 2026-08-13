@@ -24,6 +24,7 @@ import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPla
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
+import { SITE_URL } from '../lib/supabase';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { useAuth } from '../contexts/AuthContext';
@@ -2664,6 +2665,7 @@ export default function BrandGroup() {
                             tabLabel: tabDisplayName(targetTab),
                             platformShortLabel: PLATFORM_SHORT_LABEL[p],
                             removedAtLabel: formatCellValue(new Date().toISOString()),
+                            brandTabUrl: `${SITE_URL}/brands/${tabToSlug(targetTab)}?brand=${encodeURIComponent(brandName)}`,
                           });
                         } catch {
                           setToast({

@@ -16,6 +16,7 @@ const PAYLOAD = {
   tabLabel: 'TP Brand Injection',
   platformShortLabel: 'TP',
   removedAtLabel: '12/08/2026',
+  brandTabUrl: 'https://brands-partner-forums.vercel.app/brands/tp-brand-injection?brand=Prive%20Casino',
 };
 
 describe('notifyBrandRemoved', () => {

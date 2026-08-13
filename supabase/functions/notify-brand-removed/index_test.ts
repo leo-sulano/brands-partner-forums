@@ -20,6 +20,7 @@ const PAYLOAD: NotifyBrandRemovedPayload = {
   tabLabel: 'TP Brand Injection',
   platformShortLabel: 'TP',
   removedAtLabel: '12/08/2026',
+  brandTabUrl: 'https://brands-partner-forums.vercel.app/brands/tp-brand-injection?brand=Prive%20Casino',
 };
 
 const CREDENTIALS: GmailCredentials = {
@@ -87,6 +88,8 @@ Deno.test('sendBrandRemovedNotification sends one Gmail API call per approved pr
       'This is an automated notification from the Forums Dashboard.',
       '',
       'The brand page Prive Casino on TP, under TP Brand Injection, has been flagged as Removed on 12/08/2026.',
+      '',
+      'View it here: https://brands-partner-forums.vercel.app/brands/tp-brand-injection?brand=Prive%20Casino',
       '',
       'Please review the brand page and take the necessary action.',
       '',
