@@ -3159,3 +3159,53 @@ the logged-in user's own access token).
 labels `'AG Link'`/`'CG Link'`; renamed to `'AG Page'`/`'CG Page'` per the user's request. Tier 1 —
 confined to the one shared label map, consumed only by `getColLabel` (Brand Tabs table header,
 CSV/Excel export headers, Edit Entry modal field label); `npm run build` passes.
+
+---
+
+## Task 213: Add "No Proxy" Group to Proxy Filters and Breakdown
+**Date:** August 13, 2026
+
+Added `resolveProxyLabel(rawProxy)` and a `NO_PROXY_LABEL = 'No Proxy'` constant to
+`src/lib/proxyAliases.ts`, mirroring the existing `resolveCountryLabel` → `'Unknown'` pattern in
+`countryFlags.ts`. It folds blank, redacted (`*****`), and any value not starting with one of the
+4 active proxy providers (Enigma, Proxio, Proxylite, SpyderProxy — case-insensitive,
+alias-typo-corrected) into `"No Proxy"`; a recognized value passes through unchanged, so
+per-instance granularity (e.g. "Enigma-US1" vs "Enigma-US2" as separate entries) is preserved.
+Additive only — no regrouping of existing buckets.
+
+`queries.ts`'s `computeTabKpisFromEntries` now routes its 4 proxy-related call sites (filter
+matching, the `proxies` distinct list, and the `byProxy` live/removed breakdown) through
+`resolveProxyLabel` instead of the deleted local `proxyValue()` helper, so "No Proxy" now surfaces
+as a real, filterable bucket in Overview's Proxy filter dropdown and Proxy Breakdown section
+rather than silently dropping blank/redacted/unrecognized values. `Overview.tsx` gives the "No
+Proxy" card the same neutral treatment (muted gray, no favicon-guess lookup, plain Shield icon)
+Country Breakdown already gives its "Unknown" card, in both the tile grid and the click-through
+slice modal.
+
+`BrandGroup.tsx` (Brand Tabs' own independent per-tab Proxy filter) was brought into consistency:
+its `uniqueProxies` dropdown builder and `proxyFiltered` matching predicate now also route through
+`resolveProxyLabel`, so it offers the same "No Proxy" option and matches the same rows Overview
+does — as a side effect this fixed a pre-existing latent gap where this page never checked for
+redacted (`*****`) values the way Overview already did. Check Status (which sends the sole
+selected proxy filter value to a live external API with no concept of "No Proxy") now falls back
+to unscoped (`undefined`) when the lone selection is "No Proxy" (`BrandGroup.tsx:1609`), the same
+fallback already used when 2+ real values are selected.
+
+Built via 4 subagent-driven tasks with per-task review (Task 1 had one Important dead-code
+finding — a leftover `canonicalProxyName` fallback in `resolveProxyLabel` — fixed in one round and
+re-reviewed clean); all 4 passed clean otherwise. A final whole-branch review re-grepped
+`data['Proxy Used']`/`d['Proxy Used']` across `queries.ts` and `BrandGroup.tsx` and confirmed
+every remaining raw read is legitimate — either a table-cell display (`BrandGroup.tsx:2363`) or
+the Check Status scope value (`BrandGroup.tsx:1609`) — with no missed filter/breakdown/dropdown
+path. Three Minor notes deferred as known/accepted: a test description at
+`proxyAliases.test.ts:60` doesn't perfectly match what it asserts (inherited from the plan's own
+brief text, harmless); `uniqueDisplayValues`/`addToBreakdown`'s blank-value guards in
+`queries.ts` are now unreachable dead code specifically for the proxy path (still live for the
+country path), since `resolveProxyLabel` never returns blank; and Overview's "Proxy Breakdown — X
+of Y accounts have a proxy recorded" caption will now always read 100% once every entry always
+resolves to some bucket, matching the pre-existing behavior of Country Breakdown's identical
+caption via its own "Unknown" bucket — left as-is for consistency rather than fixed on only one
+dimension. Full suite (1073 tests) and `npm run build` pass. No schema changes; pure client-side
+classification logic, no live/manual verification needed. Spec:
+`docs/superpowers/specs/2026-08-13-no-proxy-group-design.md`. Plan:
+`docs/superpowers/plans/2026-08-13-no-proxy-group.md`.
