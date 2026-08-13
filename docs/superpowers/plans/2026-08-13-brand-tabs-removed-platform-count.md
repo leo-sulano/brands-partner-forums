@@ -27,7 +27,7 @@
 - Modify: `src/pages/BrandGroup.tsx:1458-1479` (`displayTotals`)
 
 **Interfaces:**
-- Consumes: existing `brandFilter: Platform[]` component state (already defined at `src/pages/BrandGroup.tsx:558`), existing `isPlatformRemoved(brandName, platform): boolean` (line 1040), existing `brandCol`, `ratingFiltered`, `tabPlatforms`, `platformFilter`.
+- Consumes: existing `brandFilter: string[]` component state (already defined at `src/pages/BrandGroup.tsx:558`), existing `isPlatformRemoved(brandName, platform): boolean` (line 1040), existing `brandCol`, `ratingFiltered`, `tabPlatforms`, `platformFilter`.
 - Produces: no new exports — `displayKpis: { tp: {live, removed}, ag: {...}, cg: {...} }` and `displayTotals: { total, live, removed }` keep their existing shapes; only the values they compute change under the new condition.
 
 This task has no dedicated unit test to write-first against — `BrandGroup.tsx` has no test file today (confirmed: no `BrandGroup.test.*` exists anywhere in `src/`), matching this project's established pattern of verifying this specific file's page-level computed values via `npm run build` + `npm test` (regression coverage for everything else) + a live Playwright check, not new unit tests. Steps below follow that pattern instead of TDD red/green.

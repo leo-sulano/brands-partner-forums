@@ -3240,7 +3240,10 @@ a user clicks a brand name to view its own tab or navigates via the `?brand=` de
 computations, a new `brandScoped` flag skips the `removed_platform_brands` exclusion whenever the
 filter is active. The empty-filter default view (whole-tab aggregate) keeps today's behavior
 unchanged — the exclusion still applies, so global KPI cards correctly exclude flagged-removed
-platform/brand pages. Score Summary/Overview/`scoreSummary.ts` are untouched. Tier 2 — confined to
+platform/brand pages. On a multi-platform tab, `displayTotals`'s OR-across-platforms bucketing
+means re-admitting a flagged platform's status can also shift which bucket (Live vs. Removed) a
+row lands in, not merely raise a zero count to a positive one. Score Summary/Overview/
+`scoreSummary.ts` are untouched. Tier 2 — confined to
 `BrandGroup.tsx`, no changes to `queries.ts`, `scoreSummary.ts`, or any shared filtering logic.
 
 No dedicated unit tests exist for `BrandGroup.tsx` (established project pattern for page-level

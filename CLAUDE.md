@@ -67,8 +67,11 @@ Brands Partner Forum/
   clicking its name or the `?brand=` deep link. A `brandScoped` flag in each computation skips
   the `removed_platform_brands` exclusion whenever the filter is active; the empty-filter (default
   whole-tab view) keeps today's exclusion behavior unchanged, so global KPI cards continue
-  correctly excluding flagged-removed platform/brand pages. Score Summary/Overview/
-  `scoreSummary.ts` are untouched. Full suite (396 tests) and build pass. No live Supabase
+  correctly excluding flagged-removed platform/brand pages. On a multi-platform tab,
+  `displayTotals`'s OR-across-platforms bucketing means re-admitting a flagged platform's status can
+  also shift which bucket (Live vs. Removed) a row lands in, not merely raise a zero count to a
+  positive one. Score Summary/Overview/`scoreSummary.ts` are untouched. Full suite (396 tests) and
+  build pass. No live Supabase
   credentials available in this session, so browser verification was deferred. Spec:
   `docs/superpowers/specs/2026-08-13-brand-tabs-removed-platform-count-design.md`. Plan:
   `docs/superpowers/plans/2026-08-13-brand-tabs-removed-platform-count.md`. Task 214.
@@ -630,6 +633,18 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **Brand Tabs' KPI cards can disagree with the table when brand-filtered + status-filtered (Task 214).**
+  Task 214 made `displayKpis`/`displayTotals` (`BrandGroup.tsx`) show real non-zero Live/Removed
+  counts for a flagged-removed brand/platform whenever the Brand filter is non-empty. `matchesPlatform`
+  (`BrandGroup.tsx:~1397`), which gates which rows the table shows, was deliberately left unchanged
+  and still excludes those same rows whenever a status filter is also active. Concretely: a KPI card
+  can show a non-zero count directly above a table reading "No entries match your filters." — reachable
+  via Score Summary's own brand/status deep links (`?platform=<p>&brand=<brand>&status=live` or
+  `&status=removed`, `ScoreSummaryPanel.tsx:~621`/`~633`) or via this page's own KPI-click-through
+  (`TotalBreakdownModal`, `BrandGroup.tsx:~2703-2704`, which sets `statusFilter` from a card click). A
+  fix would mean symmetrically guarding `matchesPlatform` with the same `brandScoped` condition, which
+  needs a product decision first — it changes what scoping `matchesPlatform` was deliberately never
+  given, and was explicitly out of scope for Task 214.
 - Schedule Planner's CSV/Excel export (`src/lib/scheduler/scheduleExport.ts`) reads each day's status
   only from the `brand_schedule` plan row (`rowsByPlatform[platform]?.[day]`), not from the same
   confirmed/removed real-evidence overlay or past-day "ghosting" the calendar grid itself displays on
