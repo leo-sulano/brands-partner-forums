@@ -70,28 +70,12 @@ export function extractNestedObject(source, constName) {
 }
 
 export function buildBrandUrlMaps({ tabConfigsSource, tabsSource }) {
-  const tryExtractFlatObject = (source, name) => {
-    try {
-      return extractFlatObject(source, name);
-    } catch {
-      return {};
-    }
-  };
-
-  const tryExtractNestedObject = (source, name) => {
-    try {
-      return extractNestedObject(source, name);
-    } catch {
-      return {};
-    }
-  };
-
   return {
-    brand_tp_urls: tryExtractFlatObject(tabConfigsSource, 'BRAND_TP_URLS'),
-    brand_ag_urls: tryExtractFlatObject(tabConfigsSource, 'BRAND_AG_URLS'),
-    brand_cg_urls: tryExtractFlatObject(tabConfigsSource, 'BRAND_CG_URLS'),
-    tab_brand_urls: tryExtractNestedObject(tabConfigsSource, 'TAB_BRAND_URLS'),
-    tab_display_names: tryExtractFlatObject(tabsSource, 'TAB_DISPLAY_NAMES'),
+    brand_tp_urls: extractFlatObject(tabConfigsSource, 'BRAND_TP_URLS'),
+    brand_ag_urls: extractFlatObject(tabConfigsSource, 'BRAND_AG_URLS'),
+    brand_cg_urls: extractFlatObject(tabConfigsSource, 'BRAND_CG_URLS'),
+    tab_brand_urls: extractNestedObject(tabConfigsSource, 'TAB_BRAND_URLS'),
+    tab_display_names: extractFlatObject(tabsSource, 'TAB_DISPLAY_NAMES'),
   };
 }
 

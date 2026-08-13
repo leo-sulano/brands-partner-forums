@@ -7,6 +7,14 @@ export const BRAND_TP_URLS: Record<string, string> = {
   'lucky7even':            'https://www.trustpilot.com/review/www.lucky7even.com',
 };
 
+const BRAND_AG_URLS: Record<string, string> = {
+  'lucky7even':        'https://www.askgamblers.com/online-casinos/reviews/lucky7even-casino',
+};
+
+const BRAND_CG_URLS: Record<string, string> = {
+  'lucky7even':        'https://casinoguru-en.com/lucky7even-casino-review',
+};
+
 const TAB_BRAND_URLS: Record<string, Record<string, string>> = {
   'Wizard of Odds': {
     'rocketspin':      'https://wizardofodds.com/online-casinos/reviews/rocketspin-casino/',
