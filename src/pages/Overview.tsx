@@ -17,6 +17,7 @@ import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownC
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
+import { NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
@@ -505,7 +506,8 @@ export default function Overview() {
     kind: 'live' | 'removed',
   ) {
     if (card.isOther) return;
-    const iconUrl = dimension === 'country' ? countryFlagImageUrl(card.label) : proxyIconUrl(card.label);
+    const isNoProxy = dimension === 'proxy' && card.label === NO_PROXY_LABEL;
+    const iconUrl = dimension === 'country' ? countryFlagImageUrl(card.label) : (isNoProxy ? null : proxyIconUrl(card.label));
     const FallbackIcon = dimension === 'country' ? Globe : Shield;
     const icon = iconUrl
       ? <img src={iconUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -873,14 +875,15 @@ export default function Overview() {
         ) : (
           <BreakdownStatGrid
             tiles={proxyCards.map((card): StatTile => {
-              const color = card.isOther ? '#64748b' : categoricalColorForKey(card.key);
-              const iconUrl = card.isOther ? null : proxyIconUrl(card.label);
+              const isNoProxy = card.label === NO_PROXY_LABEL;
+              const color = card.isOther || isNoProxy ? '#64748b' : categoricalColorForKey(card.key);
+              const iconUrl = card.isOther || isNoProxy ? null : proxyIconUrl(card.label);
               return {
                 key: card.key,
                 label: card.label,
                 live: card.live,
                 removed: card.removed,
-                muted: card.isOther,
+                muted: card.isOther || isNoProxy,
                 accentColor: color,
                 icon: iconUrl
                   ? <img src={iconUrl} alt={card.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
