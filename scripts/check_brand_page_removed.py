@@ -216,7 +216,13 @@ def run(dry_run: bool = False, tab_filter: Optional[str] = None) -> dict:
             continue
 
         if driver is None:
-            driver = build_driver()
+            # headless=True: unlike AG/CG, TrustPilot sits behind no Cloudflare
+            # challenge that requires a real display -- the existing weekly
+            # job already runs check_review_status.py's TP check with
+            # --headless in production (run_weekly_all_platforms.sh) with no
+            # issue. Defaulting to headful here would require an Xvfb/DISPLAY
+            # setup this script has no reason to depend on.
+            driver = build_driver(headless=True)
 
         summary["checked"] += 1
         try:

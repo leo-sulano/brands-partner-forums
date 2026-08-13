@@ -201,7 +201,7 @@ def test_run_flags_and_notifies_a_newly_detected_removal(monkeypatch):
     })
 
     fake_driver = object()
-    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": fake_driver)
+    monkeypatch.setattr(cbpr, "build_driver", lambda headless=False, proxy="": fake_driver)
     monkeypatch.setattr(cbpr, "load_page", lambda driver, url: None)
     monkeypatch.setattr(cbpr, "is_brand_page_removed", lambda driver: True)
 
@@ -217,6 +217,39 @@ def test_run_flags_and_notifies_a_newly_detected_removal(monkeypatch):
     assert summary == {"checked": 1, "newly_flagged": 1, "already_flagged": 0, "no_url": 0, "errors": 0}
 
 
+def test_run_builds_the_driver_headless(monkeypatch):
+    # Regression lock: discovered live on scraper-leo (2026-08-13) that the
+    # default headful build_driver() call requires a display this EC2 box
+    # doesn't provide outside AG/CG's Xvfb setup -- TrustPilot itself needs
+    # no Cloudflare-evasion headful mode (check_review_status.py's own TP
+    # weekly job already runs --headless successfully in production).
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
+        {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
+    ])
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: set())
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: {
+        "brand_tp_urls": {"winmega.com": "https://www.trustpilot.com/review/winmega.com"},
+        "tab_brand_urls": {},
+        "tab_display_names": {},
+    })
+
+    calls = []
+
+    def fake_build_driver(headless=False, proxy=""):
+        calls.append(headless)
+        return object()
+
+    monkeypatch.setattr(cbpr, "build_driver", fake_build_driver)
+    monkeypatch.setattr(cbpr, "load_page", lambda driver, url: None)
+    monkeypatch.setattr(cbpr, "is_brand_page_removed", lambda driver: False)
+    monkeypatch.setattr(cbpr, "flag_brand_removed", lambda *a: (_ for _ in ()).throw(AssertionError("not reached")))
+    monkeypatch.setattr(cbpr, "notify_brand_removed", lambda *a: (_ for _ in ()).throw(AssertionError("not reached")))
+
+    cbpr.run(dry_run=False)
+
+    assert calls == [True]
+
+
 def test_run_skips_already_flagged_brands(monkeypatch):
     monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: [
         {"tab": "Hanan", "data": {"Brands": "WinMega.com"}},
@@ -227,7 +260,7 @@ def test_run_skips_already_flagged_brands(monkeypatch):
         "tab_brand_urls": {},
         "tab_display_names": {},
     })
-    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": object())
+    monkeypatch.setattr(cbpr, "build_driver", lambda headless=False, proxy="": object())
 
     called = []
     monkeypatch.setattr(cbpr, "load_page", lambda driver, url: called.append(url))
@@ -248,7 +281,7 @@ def test_run_dry_run_never_writes(monkeypatch):
         "tab_brand_urls": {},
         "tab_display_names": {},
     })
-    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": object())
+    monkeypatch.setattr(cbpr, "build_driver", lambda headless=False, proxy="": object())
     monkeypatch.setattr(cbpr, "load_page", lambda driver, url: None)
     monkeypatch.setattr(cbpr, "is_brand_page_removed", lambda driver: True)
 
@@ -273,7 +306,7 @@ def test_run_treats_a_load_error_as_skip_not_removed(monkeypatch):
         "tab_brand_urls": {},
         "tab_display_names": {},
     })
-    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": object())
+    monkeypatch.setattr(cbpr, "build_driver", lambda headless=False, proxy="": object())
 
     def raise_load(driver, url):
         raise RuntimeError("proxy timeout")
@@ -326,7 +359,7 @@ def test_run_treats_a_resolved_non_trustpilot_url_as_no_url(monkeypatch):
     })
 
     called = []
-    monkeypatch.setattr(cbpr, "build_driver", lambda proxy="": called.append("build_driver") or object())
+    monkeypatch.setattr(cbpr, "build_driver", lambda headless=False, proxy="": called.append("build_driver") or object())
     monkeypatch.setattr(cbpr, "load_page", lambda driver, url: called.append(url))
 
     summary = cbpr.run(dry_run=False)
