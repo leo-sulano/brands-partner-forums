@@ -10,9 +10,17 @@ per-platform "page removed" checkbox in the Edit Entry modal. It does not
 change how removal is detected — a human still has to notice it first. This
 spec adds the missing piece: an automated daily check that detects the
 removal itself and writes the same flag, so the email fires without anyone
-having to notice manually. It depends on that spec's Edge Function
-(`notify-brand-removed`) but does not require it to be deployed to be useful
-on its own — see "Setup required."
+having to notice manually.
+
+**Correction to that spec's description, confirmed by reading the actual
+shipped code (`supabase/functions/notify-brand-removed/index.ts`,
+`src/lib/brandRemovedNotification.ts`, `src/pages/BrandGroup.tsx:2637`):** the
+implemented notification path diverged from that spec's Resend-based design
+— it sends via the **Gmail API** (Resend's sandbox-sender domain restriction
+was a blocker) with payload shape **`{ brand, tabLabel, platformShortLabel,
+removedAtLabel }`**, not `{ tab, brand, platform, removedBy }`. This spec's
+own "Write path" section below reflects the real, shipped contract, not the
+2026-08-12 spec's original description.
 
 ## Current behavior (for reference)
 
@@ -87,8 +95,14 @@ whichever comes first; not designed further here).
    removed for `platform='tp'`, the job **directly writes**
    `removed_platform_brands` (`removed_by = 'Automated Check'`) — the same
    effect as a human checking the box — then calls the `notify-brand-removed`
-   Edge Function (2026-08-12 spec) with the same payload shape the frontend
-   sends, so the existing email path fires without any app-side code change.
+   Edge Function with `{ brand, tabLabel, platformShortLabel: 'TP',
+   removedAtLabel }` (the exact shape `BrandGroup.tsx:2637` already sends),
+   so the existing Gmail-based email path fires without any app-side code
+   change. `tabLabel` uses the same `tabDisplayName(tab)` mapping the
+   frontend uses (`'TP Affiliate'` → `'FTP'`, `'TP Brand Injection'` →
+   `'BITP'`, everything else passes through unchanged) and `removedAtLabel`
+   is the detection moment formatted `dd/mm/yyyy`, matching
+   `formatCellValue`'s existing date rendering.
 3. A `(tab, brand, platform)` already flagged removed is skipped entirely —
    no re-check, no repeat notification. This is a one-way, additive job.
 4. The job **never clears** a flag, even if a later check finds the page
@@ -122,12 +136,16 @@ Chrome + proxy rotation, `--tab`/`--dry-run` CLI flags, same error logging to
 3. For each remaining `(tab, brand)`, load its TP URL with the stealth
    driver, check for the rendered "This profile has been removed" `<h1>`.
    - Found → upsert `removed_platform_brands` (POST with
-     `Prefer: resolution=merge-duplicates`), then POST to
-     `notify-brand-removed` with `{ tab, brand, platform: 'tp', removedBy:
-     'Automated Check' }`. If the notify call fails, log it and continue —
-     the flag write already succeeded and is never rolled back (matching the
-     2026-08-12 spec's own best-effort framing, just logged instead of
-     Toast-shown since this runs headless).
+     `Prefer: resolution=merge-duplicates`,
+     `on_conflict=tab,brand_key,platform` — mirroring
+     `setBrandPlatformRemoved`'s own upsert exactly), then POST to
+     `notify-brand-removed` with `{ brand, tabLabel, platformShortLabel: 'TP',
+     removedAtLabel }` (`Authorization: Bearer <SUPABASE_SERVICE_ROLE_KEY>` —
+     the function only checks the header's presence, and Supabase's
+     platform-level JWT check accepts the service-role key). If the notify
+     call fails, log it and continue — the flag write already succeeded and
+     is never rolled back (matching the frontend's own best-effort framing,
+     just logged instead of Toast-shown since this runs headless).
    - Not found (page loads normally, no removed heading) → no write, move
      on.
    - Load/detection error → log to `status_check_errors.log`, move on. Same
@@ -197,16 +215,20 @@ comfortably fits a daily cron slot.
 
 ## Setup required (cannot be done by an agent)
 
-1. This feature's email step depends on `notify-brand-removed` being
-   deployed (2026-08-12 spec's own pending setup: Resend account, API key,
-   `supabase secrets set RESEND_API_KEY`, `supabase functions deploy
-   notify-brand-removed`) — until then, the daily job still correctly writes
-   `removed_platform_brands` (so the dashboard's existing badges/exclusions
-   work immediately), it just logs a failed notify call every time until
-   that Edge Function exists.
+1. ~~`notify-brand-removed` deployment~~ — confirmed already live and fully
+   configured (verified during this spec's research: an OPTIONS preflight
+   returns 200, and a POST with a deliberately invalid payload returns
+   `{"error":"Missing required field"}` rather than `{"error":"Notifications
+   not configured"}` — the latter is returned before payload validation runs,
+   so its absence confirms `GMAIL_CLIENT_ID`/`GMAIL_CLIENT_SECRET`/
+   `GMAIL_REFRESH_TOKEN`/`GMAIL_SENDER_EMAIL` are all already set). No
+   notification-side setup is pending; this correction supersedes the
+   2026-08-12 spec's Resend-based "Setup required" list.
 2. New crontab entry on `scraper-leo` (`crontab -e`, per
    `docs/ec2-scraper-runbook.md`'s existing pattern) — needs to be added by
    hand on the actual EC2 box, same as the pending `generate-weekly-schedule`
    cron from the 2026-08-06 task.
 3. First live run should be `--dry-run` first, reviewed by a human, before
-   ever being trusted to auto-flag and email unattended.
+   ever being trusted to auto-flag and email unattended — since the
+   notification path is already fully live, a `--dry-run` mistake that
+   isn't actually a no-op would email the whole team for real.
