@@ -42,6 +42,11 @@ export const AI_ASSISTANT_URL = import.meta.env?.VITE_AI_ASSISTANT_URL ?? '';
 // click always fails with the standard "unable to translate" message.
 export const TRANSLATE_REVIEW_URL = import.meta.env?.VITE_TRANSLATE_REVIEW_URL ?? '';
 
+// Review removal assessment Edge Function URL (gpt-4o proxy). Set in Vercel env once the
+// `review-removal-assessment` function is deployed. Empty string means the assessment
+// feature fails with the standard "unable to assess" message.
+export const REVIEW_REMOVAL_ASSESSMENT_URL = import.meta.env?.VITE_REVIEW_REMOVAL_ASSESSMENT_URL ?? '';
+
 // notify-brand-removed Edge Function URL. Set in Vercel env once the
 // notify-brand-removed function is deployed (also needs GMAIL_CLIENT_ID/
 // GMAIL_CLIENT_SECRET/GMAIL_REFRESH_TOKEN/GMAIL_SENDER_EMAIL set via
