@@ -3282,3 +3282,30 @@ self-review pass rather than the full spec/plan/subagent pipeline. Full test sui
 `npm run build` both pass, no regressions. No live Supabase credentials available in this session,
 so live verification against SilverPlay's real TrustPilot data was deferred — same limitation as
 Task 214.
+
+---
+
+## Task 216: Deep Link to Brand Tab in Removed-Notification Email
+
+**Date:** August 13, 2026
+
+The brand-removed notification email now includes a direct link back to the flagged brand's own
+tab in the dashboard (e.g. `/brands/hanan?brand=WinMega.com`) — reported as a request after the
+user received a real notification email for WinMega.com (Hanan tab) with no way to jump straight
+to it. `NotifyBrandRemovedPayload` (both `src/lib/brandRemovedNotification.ts` and the edge
+function's own duplicate interface — deliberately kept in sync by hand, not a shared import, per
+that file's existing "thin proxy" design) gained a required `brandTabUrl` field; `BrandGroup.tsx`'s
+save handler builds it via the same `tabToSlug`/`?brand=` deep-link pattern every other in-app link
+already uses (`ScoreSummaryPanel.tsx`, `Overview.tsx`, etc.), now against a new `SITE_URL` export
+in `src/lib/supabase.ts` (reuses the existing `VITE_SITE_URL` env var Login.tsx/Signup.tsx already
+set for OAuth redirects, with the same `window.location.origin` fallback). The edge function's
+email body gained one new line ("View it here: <url>") between the removal notice and the
+call-to-action; stayed plain text (not HTML) per explicit user preference.
+
+Both `brandRemovedNotification.test.ts` and the edge function's own `index_test.ts` were updated to
+cover the new field. Full suite (1089 tests) and `tsc --noEmit` pass; the edge function's own Deno
+tests (`deno test --allow-env --allow-net`) pass (5/5). Tier 2 (light path) — confined to one call
+site plus its two payload-interface definitions, no shared date/status/platform filtering logic
+touched — implemented directly with one self-review pass. Not yet deployed: the
+`notify-brand-removed` function needs `supabase functions deploy notify-brand-removed` before a
+real removal triggers an email containing the new link.
