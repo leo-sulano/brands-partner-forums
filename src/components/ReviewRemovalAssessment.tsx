@@ -1,0 +1,202 @@
+import { useEffect, useMemo, useState } from 'react';
+import { Bot, Loader2, ChevronDown } from 'lucide-react';
+import type { Entry } from '../types/entry';
+import { isYesNoCol, isBehaviorExtraCol } from '../lib/entryFieldSections';
+import {
+  hashAssessmentInput,
+  requestReviewRemovalAssessment,
+  type ReviewRemovalAssessmentResult,
+  type AssessmentSignal,
+} from '../lib/reviewRemovalAssessment';
+import { saveReviewAnalysis } from '../lib/queries';
+
+const ASSESSMENT_FAILURE_MESSAGE = 'Unable to generate an AI assessment right now. Please try again later.';
+
+interface Props {
+  entry: Entry;
+  tab: string;
+  platform: 'tp' | 'wo';
+  status: string;
+  reviewText: string;
+  headers: string[];
+  fields: Record<string, string>;
+  disabled?: boolean;
+}
+
+const OVERALL_META: Record<ReviewRemovalAssessmentResult['overall_result'], { emoji: string; label: string }> = {
+  likely_publishable: { emoji: '🟢', label: 'Likely Publishable' },
+  uncertain: { emoji: '🟡', label: 'Uncertain / Insufficient Evidence' },
+  likely_removal_risk: { emoji: '🔴', label: 'Likely Removal Risk' },
+  no_clear_removal_reason: { emoji: '⚪', label: 'No Clear Removal Reason' },
+};
+
+const CONTENT_STATUS_META: Record<ReviewRemovalAssessmentResult['content_assessment']['status'], { emoji: string; label: string }> = {
+  compliant: { emoji: '🟢', label: 'Compliant' },
+  potential_concern: { emoji: '🟡', label: 'Potential Concern' },
+  likely_violation: { emoji: '🔴', label: 'Likely Policy Issue' },
+};
+
+const BEHAVIORAL_STATUS_META: Record<ReviewRemovalAssessmentResult['behavioral_assessment']['status'], { emoji: string; label: string }> = {
+  normal: { emoji: '🟢', label: 'Normal' },
+  potential_concern: { emoji: '🟠', label: 'Potential Concern' },
+  high_risk: { emoji: '🔴', label: 'High Risk' },
+  insufficient_data: { emoji: '⚪', label: 'Insufficient Data' },
+};
+
+function riskBucket(score: number): { emoji: string; label: string } {
+  if (score >= 70) return { emoji: '🔴', label: 'High' };
+  if (score >= 40) return { emoji: '🟠', label: 'Medium' };
+  return { emoji: '🟢', label: 'Low' };
+}
+
+function behavioralFieldsFrom(headers: string[], fields: Record<string, string>): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const h of headers) {
+    if (isYesNoCol(h) || isBehaviorExtraCol(h)) out[h] = fields[h] || null;
+  }
+  return out;
+}
+
+function SignalBadge({ signal }: { signal: AssessmentSignal }) {
+  const icon = signal.severity === 'low' ? '✓' : '⚠';
+  const color = signal.severity === 'high'
+    ? 'border-rose-200 bg-rose-50 text-rose-700'
+    : signal.severity === 'medium'
+      ? 'border-amber-200 bg-amber-50 text-amber-700'
+      : 'border-slate-200 bg-slate-50 text-slate-600';
+  return (
+    <span title={signal.evidence} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${color}`}>
+      {icon} {signal.name}
+    </span>
+  );
+}
+
+export default function ReviewRemovalAssessment({ entry, tab, platform, status, reviewText, headers, fields, disabled }: Props) {
+  const [result, setResult] = useState<ReviewRemovalAssessmentResult | null>(
+    (entry.ai_review_analysis as ReviewRemovalAssessmentResult | undefined) ?? null,
+  );
+  // Tracked as state (not read directly off the `entry` prop on every render)
+  // so a successful analyze/re-analyze can update the "last saved" baseline
+  // without mutating the prop object — React props are treated as read-only.
+  const [savedHash, setSavedHash] = useState<string | null>(entry.ai_review_analysis_hash ?? null);
+  const [currentHash, setCurrentHash] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  const behavioralFields = useMemo(() => behavioralFieldsFrom(headers, fields), [headers, fields]);
+
+  useEffect(() => {
+    let cancelled = false;
+    hashAssessmentInput({ platform, reviewText, behavioralFields }).then((h) => {
+      if (!cancelled) setCurrentHash(h);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [platform, reviewText, behavioralFields]);
+
+  const isStale = result !== null && currentHash !== null && savedHash !== currentHash;
+  const hasFreshResult = result !== null && !isStale;
+
+  async function handleAnalyze() {
+    if (!reviewText.trim() || loading) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const { analysis, model } = await requestReviewRemovalAssessment({ platform, status, reviewText, behavioralFields });
+      const hash = currentHash ?? (await hashAssessmentInput({ platform, reviewText, behavioralFields }));
+      await saveReviewAnalysis(entry.id, tab, analysis, hash, model);
+      setResult(analysis);
+      setSavedHash(hash);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : ASSESSMENT_FAILURE_MESSAGE);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!reviewText.trim() && !result) return null;
+
+  return (
+    <div className="mt-3 rounded-md border border-slate-200 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-slate-500">AI Review Removal Assessment</span>
+        <button
+          type="button"
+          onClick={handleAnalyze}
+          disabled={disabled || loading || !reviewText.trim()}
+          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
+        >
+          {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Bot className="size-3.5" />}
+          {loading ? 'Analyzing…' : hasFreshResult ? '↻ Re-analyze' : '🤖 Analyze Review'}
+        </button>
+      </div>
+
+      {error && (
+        <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
+      )}
+
+      {result && (
+        <div className="mt-3 space-y-2">
+          {isStale && (
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+              Outdated — review data changed since this assessment was generated.
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700">
+            <span>Risk: {riskBucket(result.risk_score).emoji} {riskBucket(result.risk_score).label}</span>
+            <span>Assessment: {OVERALL_META[result.overall_result].emoji} {OVERALL_META[result.overall_result].label}</span>
+            <span>Confidence: {result.confidence.charAt(0).toUpperCase() + result.confidence.slice(1)}</span>
+          </div>
+
+          <div className="text-xs text-slate-600">
+            <div><span className="font-medium text-slate-700">Likely Reason:</span> {result.likely_reason || '—'}</div>
+            <div className="mt-0.5"><span className="font-medium text-slate-700">Why:</span> {result.why_it_may_have_been_removed || '—'}</div>
+          </div>
+
+          {(result.content_assessment.signals.length > 0 || result.behavioral_assessment.signals.length > 0) && (
+            <div className="flex flex-wrap gap-1.5">
+              {[...result.content_assessment.signals, ...result.behavioral_assessment.signals]
+                .sort((a, b) => (b.severity === 'high' ? 1 : 0) - (a.severity === 'high' ? 1 : 0))
+                .slice(0, 6)
+                .map((s, i) => <SignalBadge key={`${s.name}-${i}`} signal={s} />)}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          >
+            <ChevronDown className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            {expanded ? 'Hide AI Assessment' : 'View AI Assessment'}
+          </button>
+
+          {expanded && (
+            <div className="space-y-2 rounded-md bg-slate-50 p-3 text-xs text-slate-600">
+              <div>
+                <span className="font-medium text-slate-700">
+                  Content Assessment ({CONTENT_STATUS_META[result.content_assessment.status].emoji} {CONTENT_STATUS_META[result.content_assessment.status].label}):
+                </span>{' '}
+                {result.content_assessment.summary}
+              </div>
+              <div>
+                <span className="font-medium text-slate-700">
+                  Behavioral Assessment ({BEHAVIORAL_STATUS_META[result.behavioral_assessment.status].emoji} {BEHAVIORAL_STATUS_META[result.behavioral_assessment.status].label}):
+                </span>{' '}
+                {result.behavioral_assessment.summary}
+              </div>
+              <div><span className="font-medium text-slate-700">Policy Category:</span> {result.policy_category || '—'}</div>
+              <div><span className="font-medium text-slate-700">Evidence:</span> {result.evidence_summary || '—'}</div>
+              <div><span className="font-medium text-slate-700">Alternative Explanation:</span> {result.alternative_explanation || '—'}</div>
+              <div><span className="font-medium text-slate-700">Recommendation:</span> {result.recommendation || '—'}</div>
+              <div className="pt-1 text-[11px] italic text-slate-400">{result.assessment_note}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
