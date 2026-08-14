@@ -8,7 +8,8 @@ import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
-import { PLATFORM_LABEL, PLATFORM_SHORT_LABEL, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import ReviewRemovalAssessment from './ReviewRemovalAssessment';
+import { PLATFORM_LABEL, PLATFORM_SHORT_LABEL, PLATFORM_REVIEW_TEXT_KEYS, PLATFORM_STATUS_KEYS, pick, type Platform } from '../lib/scoreSummary';
 import { isYesNoCol, sectionOf } from '../lib/entryFieldSections';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 
@@ -440,15 +441,29 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {renderSectionFields(sections.tp, 'tp')}
               </div>
-              {(tabPlatforms.includes('tp') || tabPlatforms.includes('wo')) && (
-                <div className="mt-3">
-                  <ReviewTextBlock
-                    value={fields[tabPlatforms.includes('wo') ? 'WO Review Text' : 'TP Review Text'] ?? ''}
-                    onChange={(v) => setFields((f) => ({ ...f, [tabPlatforms.includes('wo') ? 'WO Review Text' : 'TP Review Text']: v }))}
-                    disabled={saving}
-                  />
-                </div>
-              )}
+              {(tabPlatforms.includes('tp') || tabPlatforms.includes('wo')) && (() => {
+                const activePlatform: Platform = tabPlatforms.includes('wo') ? 'wo' : 'tp';
+                const reviewTextKey = activePlatform === 'wo' ? 'WO Review Text' : 'TP Review Text';
+                return (
+                  <div className="mt-3">
+                    <ReviewTextBlock
+                      value={fields[reviewTextKey] ?? ''}
+                      onChange={(v) => setFields((f) => ({ ...f, [reviewTextKey]: v }))}
+                      disabled={saving}
+                    />
+                    <ReviewRemovalAssessment
+                      entry={entry}
+                      tab={selectedTab || currentTab || entry.tab}
+                      platform={activePlatform}
+                      status={pick(fields, PLATFORM_STATUS_KEYS[activePlatform]) ?? ''}
+                      reviewText={fields[reviewTextKey] ?? ''}
+                      headers={headers}
+                      fields={fields}
+                      disabled={saving}
+                    />
+                  </div>
+                );
+              })()}
             </>
           )}
 
