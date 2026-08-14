@@ -26,6 +26,10 @@ Deno.test('pick falls through key variants and skips blanks', () => {
   assertEquals(pick({}, ['Brand']), null);
 });
 
+Deno.test('pick treats a whitespace-only value as present, not blank (matches src/lib/scoreSummary.ts pick(), no trim)', () => {
+  assertEquals(pick({ 'Brand': ' ', 'Brands': 'Acme' }, ['Brand', 'Brands']), ' ');
+});
+
 Deno.test('parseScore accepts 1-5 only', () => {
   assertEquals(parseScore('4'), 4);
   assertEquals(parseScore('0'), null);
@@ -337,6 +341,19 @@ Deno.test('scoreSummary creates a bucket for a brand with only Removed entries (
   assertEquals(out[0].live, 0);
   assertEquals(out[0].removed, 2);
   assertEquals(out[0].successRate, 0);
+});
+
+Deno.test('scoreSummary floors successRate to a whole percent, matching the dashboard\'s successRatePct (not the raw unrounded rate)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'D', 'Review Status': 'Published', 'Score added': '3' } },
+    { id: '2', tab: 't', data: { Brand: 'D', 'Review Status': 'Live' } },
+    { id: '3', tab: 't', data: { Brand: 'D', 'Review Status': 'Removed' } },
+  ];
+  const out = scoreSummary(entries);
+  assertEquals(out[0].live, 2);
+  assertEquals(out[0].removed, 1);
+  // Raw rate is 2/3 * 100 = 66.666...; floored (not rounded) to 66.
+  assertEquals(out[0].successRate, 66);
 });
 
 Deno.test('get_score_summary defaults to tp platform when given an invalid value', async () => {

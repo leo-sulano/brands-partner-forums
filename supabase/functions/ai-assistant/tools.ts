@@ -12,18 +12,13 @@ import { resolveProxyLabel, canonicalProxyKey } from '../../../src/lib/proxyAlia
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, scheduleBrandKey } from '../../../src/lib/scheduleBrandConfig.ts';
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
-// KNOWN DIVERGENCE (documented, not fixed — see CLAUDE.md Known Issues): this ported
-// pick() trims a value before checking whether it's blank, but the real frontend's
-// pick() (src/lib/scoreSummary.ts) checks `v !== ''` with no trim. A whitespace-only
-// value (e.g. ' ') in a higher-precedence key is therefore dropped by the frontend
-// (excluded from that row entirely) but falls through to the next key here, sometimes
-// finding a real value the frontend never sees. Only reachable on TP, the only platform
-// with a multi-key precedence list. Not changed here to avoid altering ported behavior
-// out of scope for this fix wave.
+// Matches src/lib/scoreSummary.ts's pick() exactly: blank is `v === ''`, no trim —
+// a whitespace-only value counts as present, same as the frontend. Keep in sync
+// manually if either changes.
 export function pick(data: Record<string, any>, keys: readonly string[]): string | null {
   for (const k of keys) {
     const v = data?.[k];
-    if (v != null && String(v).trim() !== '') return String(v);
+    if (v != null && String(v) !== '') return String(v);
   }
   return null;
 }
@@ -454,7 +449,10 @@ export function scoreSummary(
     const average = rated === 0 ? null : Math.round((weighted / rated) * 10) / 10;
     const label = ratingLabel(average, maxScore);
     const successTotal = b.live + b.removed;
-    const successRate = successTotal === 0 ? null : (b.live / successTotal) * 100;
+    // Floored to a whole percent (except exactly 100 stays 100), matching
+    // src/lib/scoreSummary.ts's successRatePct. Keep in sync manually if either changes.
+    const rawRate = successTotal === 0 ? null : (b.live / successTotal) * 100;
+    const successRate = rawRate == null ? null : (rawRate === 100 ? 100 : Math.floor(rawRate));
     return {
       tab: b.tab, brand: b.brand, counts: b.counts, unrated: b.unrated,
       publishedTotal, rated, average, label, live: b.live, removed: b.removed, successRate,
