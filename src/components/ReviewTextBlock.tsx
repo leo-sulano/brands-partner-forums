@@ -53,7 +53,20 @@ export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
 
   return (
     <div className="space-y-2">
-      <label className="mb-1.5 block text-xs font-medium text-slate-500">Original Review</label>
+      <div className="mb-1.5 flex items-center justify-between">
+        <label className="block text-xs font-medium text-slate-500">Original Review</label>
+        {showButton && !translated && (
+          <button
+            type="button"
+            onClick={handleTranslate}
+            disabled={translating || disabled}
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
+          >
+            {translating ? <Loader2 className="size-3.5 animate-spin" /> : <Languages className="size-3.5" />}
+            {translating ? 'Translating…' : 'Translate to English'}
+          </button>
+        )}
+      </div>
       <textarea
         value={value}
         disabled={disabled}
@@ -63,18 +76,6 @@ export default function ReviewTextBlock({ value, onChange, disabled }: Props) {
         rows={4}
         className="w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-400/20 disabled:opacity-50"
       />
-
-      {showButton && !translated && (
-        <button
-          type="button"
-          onClick={handleTranslate}
-          disabled={translating || disabled}
-          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
-        >
-          {translating ? <Loader2 className="size-3.5 animate-spin" /> : <Languages className="size-3.5" />}
-          {translating ? 'Translating…' : 'Translate to English'}
-        </button>
-      )}
 
       {error && (
         <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
