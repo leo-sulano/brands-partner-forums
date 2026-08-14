@@ -3423,3 +3423,48 @@ path). Full test suite (1090 tests) and `npm run build` both pass. No live brows
 performed this session (no Supabase login credentials available) — worth confirming next time
 credentials are available that the sidebar nav order, active-tab highlighting, and every tab's icon
 (especially GRG) still render correctly end to end.
+
+---
+
+## Task 220: Close Ask AI's Proxy and Schedule Drift Gaps
+**Date:** August 14, 2026
+
+Closed both known Ask AI drift gaps documented in Known Issues: the assistant's
+(`supabase/functions/ai-assistant/`) proxy grouping and schedule tools each independently
+duplicated dashboard filtering logic and had silently fallen out of sync with it. Rather than
+hand-porting new Deno copies of that logic (the pattern that caused the drift in the first place —
+`tools.ts` already ports several `src/lib` helpers by hand, e.g. `pick()`), both fixes import the
+real, already-Deno-proven functions the dashboard and the `generate-weekly-schedule` edge function
+already depend on.
+
+`get_success_rate_by_field`'s proxy bucketing now routes every proxy value through the real
+`resolveProxyLabel` (`src/lib/proxyAliases.ts`) before grouping, so a blank or redacted (`*****`)
+value buckets under "No Proxy" exactly like the dashboard's own Proxy Breakdown and Brand Tabs
+filter — matching the whitelist-removal fix Task 218 shipped for the frontend the same day, which
+the assistant had not picked up. `get_schedule` and `get_paused_combos` now filter their
+`brand_schedule`/`brand_platform_pause` rows through new `fetchScheduleHiddenSet`/
+`fetchScheduleRestrictionMap` helpers built on the real `buildHiddenBrandSet`/
+`buildPlatformRestrictionMap` (`src/lib/scheduleBrandConfig.ts`), so a brand hidden from Schedule
+Planner, or restricted to a subset of platforms there, is excluded/narrowed the same way in the
+assistant's answers — closing the exact gap flagged in Known Issues after Task 207 shipped
+per-brand hide & platform restriction without updating these two tools. A legacy `platform: null`
+row is kept even for a platform-restricted brand, matching the dashboard UI's own treatment of
+pre-platform-tagged rows.
+
+`CLAUDE.md`'s cross-dashboard-consistency bullet (under "Development Guidelines") gained a new
+sentence closing the informal exemption that let this happen twice: Ask AI's separate deployment
+step was being treated as an excuse to defer the underlying code change itself, not just the
+`supabase functions deploy` command — Task 207 and Task 218 each instead deferred the `tools.ts`
+change and logged it as a Known Issue rather than fixing it in the same task. The rule now states
+explicitly that only the deploy command may be deferred as a pending manual step; a task that
+changes logic `tools.ts` duplicates must update `tools.ts` (with tests) in the same task.
+
+Verification: `deno check tools.ts index.ts` clean; `deno test --allow-env --allow-net` passes
+76/76 (5 new cases: 1 proxy-bucketing test, 4 schedule/paused-combo hidden/restricted-brand
+tests); `npm run build` succeeds from repo root, re-confirming `proxyAliases.ts`/
+`scheduleBrandConfig.ts` still compile cleanly for the frontend now that this plan added new
+Deno-side importers of both. **Not yet deployed** — `supabase functions deploy ai-assistant`
+remains a pending manual step, deliberately out of scope for this task; the live assistant keeps
+the old, un-fixed behavior until that command is run. Spec:
+`docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan:
+`docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`.
