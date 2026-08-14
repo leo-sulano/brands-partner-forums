@@ -12,6 +12,7 @@ import type { Entry } from '../types/entry.ts';
 import type { Profile } from '../types/profile.ts';
 import type { BrandEntry, TabKpis, CountBreakdown } from '../types/brand-entry.ts';
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
+import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -605,6 +606,30 @@ export async function updateEntryData(
     .eq('id', id);
   if (upErr) throw upErr;
 
+  invalidateTabCache(tab);
+}
+
+// Caches a generated AI Review Removal Assessment on the entry. Deliberately
+// not routed through logChange/edit_log — this is a derived/cached artifact
+// regenerated from the entry's own existing fields, not a user edit to
+// business data (see design spec's "Storage" section).
+export async function saveReviewAnalysis(
+  id: string,
+  tab: string,
+  analysis: ReviewRemovalAssessmentResult,
+  hash: string,
+  model: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('entries')
+    .update({
+      ai_review_analysis: analysis,
+      ai_review_analysis_hash: hash,
+      ai_review_analysis_model: model,
+      ai_review_analysis_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) throw error;
   invalidateTabCache(tab);
 }
 

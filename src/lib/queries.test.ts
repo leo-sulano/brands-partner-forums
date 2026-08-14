@@ -29,10 +29,12 @@ import {
   fetchBrandPlatformOverrides,
   setBrandPlatformOverride,
   clearBrandPlatformOverride,
+  saveReviewAnalysis,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
 import type { Entry } from '../types/entry.ts';
+import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
 // method returns the same builder, and awaiting it anywhere in the chain
@@ -539,5 +541,34 @@ describe('computeTabKpisFromEntries', () => {
     const omitted = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
     const empty = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, []);
     expect(empty).toEqual(omitted);
+  });
+});
+
+const SAMPLE_ANALYSIS = { overall_result: 'no_clear_removal_reason' } as unknown as ReviewRemovalAssessmentResult;
+
+describe('saveReviewAnalysis', () => {
+  it('updates the 4 analysis columns for the given entry id', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+
+    await saveReviewAnalysis('entry-1', 'Rooster Partners', SAMPLE_ANALYSIS, 'hash-abc', 'gpt-4o');
+
+    expect(singletonFrom).toHaveBeenCalledWith('entries');
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      ai_review_analysis: SAMPLE_ANALYSIS,
+      ai_review_analysis_hash: 'hash-abc',
+      ai_review_analysis_model: 'gpt-4o',
+    }));
+    expect(eq).toHaveBeenCalledWith('id', 'entry-1');
+  });
+
+  it('throws if the update fails', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+
+    await expect(saveReviewAnalysis('entry-1', 'Rooster Partners', SAMPLE_ANALYSIS, 'hash-abc', 'gpt-4o'))
+      .rejects.toThrow('db down');
   });
 });
