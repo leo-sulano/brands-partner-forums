@@ -8,7 +8,7 @@
 // is the only impure part — it needs a Supabase client.
 // deno-lint-ignore-file no-explicit-any
 
-import { resolveProxyLabel, canonicalProxyKey } from '../../../src/lib/proxyAliases.ts';
+import { resolveProxyLabel, canonicalProxyKey, canonicalProxyName } from '../../../src/lib/proxyAliases.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, scheduleBrandKey } from '../../../src/lib/scheduleBrandConfig.ts';
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
@@ -71,14 +71,21 @@ export interface FieldGroupCount {
 }
 
 export function groupByField(entries: EntryRow[], field: string): FieldGroupCount[] {
-  const buckets = new Map<string, number>();
+  // "Proxy Used" is grouped case-insensitively (canonicalProxyKey/canonicalProxyName),
+  // matching every other proxy-grouping path in the codebase. Every other field stays
+  // a plain case-sensitive raw-value group.
+  const buckets = new Map<string, { label: string; count: number }>();
   for (const e of entries) {
-    const value = String(e.data?.[field] ?? '').trim();
-    if (!value) continue;
-    buckets.set(value, (buckets.get(value) ?? 0) + 1);
+    const raw = String(e.data?.[field] ?? '').trim();
+    if (!raw) continue;
+    const bucketKey = field === 'Proxy Used' ? canonicalProxyKey(raw) : raw;
+    const label = field === 'Proxy Used' ? canonicalProxyName(raw) : raw;
+    const existing = buckets.get(bucketKey);
+    if (existing) existing.count += 1;
+    else buckets.set(bucketKey, { label, count: 1 });
   }
-  return [...buckets.entries()]
-    .map(([value, count]) => ({ value, count }))
+  return [...buckets.values()]
+    .map(({ label, count }) => ({ value: label, count }))
     .sort((a, b) => b.count - a.count);
 }
 

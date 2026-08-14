@@ -838,6 +838,24 @@ Deno.test('groupByField excludes rows with a blank or missing value for the fiel
   assertEquals(groupByField(entries, 'Brands'), [{ value: 'Trybet', count: 1 }]);
 });
 
+Deno.test('groupByField merges case-variant "Proxy Used" values into one group (case-insensitive, matching dashboard grouping); other fields stay case-sensitive', () => {
+  const proxyEntries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'enigma' } },
+    { id: '3', tab: 't', data: { 'Proxy Used': 'ENIGMA' } },
+  ];
+  assertEquals(groupByField(proxyEntries, 'Proxy Used'), [{ value: 'Enigma', count: 3 }]);
+
+  const brandEntries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brands: 'Trybet' } },
+    { id: '2', tab: 't', data: { Brands: 'trybet' } },
+  ];
+  assertEquals(groupByField(brandEntries, 'Brands'), [
+    { value: 'Trybet', count: 1 },
+    { value: 'trybet', count: 1 },
+  ]);
+});
+
 Deno.test('query_entries with field_filters narrows rows before returning them', async () => {
   const rows: EntryRow[] = [
     { id: '1', tab: 't', data: { Agent: 'ANN', Brands: 'Trybet' } },
