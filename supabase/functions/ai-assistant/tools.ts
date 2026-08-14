@@ -628,7 +628,13 @@ export const TOOL_DEFS = [
         'pre-platform-tracking week. Rows represent the plan, not confirmed history — ' +
         'for a week that has already passed, a row does not by itself confirm a post ' +
         'actually happened; cross-check with query_entries or get_score_summary for ' +
-        'real evidence before asserting a past post occurred.',
+        'real evidence before asserting a past post occurred. Rows are also silently ' +
+        'filtered: a brand+platform combo that is hidden from Schedule Planner, ' +
+        'restricted to a different platform, or has a flagged-removed page (see ' +
+        'get_removed_platform_flags) will never appear here, even in a week it would ' +
+        'otherwise be scheduled. If a user asks about a combo missing from the results, ' +
+        'say it may be hidden, platform-restricted, or removed rather than concluding ' +
+        'it was never scheduled or doesn\'t exist.',
       parameters: {
         type: 'object',
         properties: {
@@ -651,7 +657,9 @@ export const TOOL_DEFS = [
         'A pause row is only cleaned up when someone opens that tab in the app, so a ' +
         'paused_week_start from a week before the current one may be an expired pause no ' +
         'longer actually in effect — compare it against the current-date system message ' +
-        'before asserting a combo is still paused.',
+        'before asserting a combo is still paused. The same hidden/restricted/removed ' +
+        'filtering as get_schedule applies here too — a combo missing from this list may ' +
+        'be excluded for one of those reasons rather than genuinely not paused.',
       parameters: {
         type: 'object',
         properties: { tab: { type: 'string' } },
