@@ -224,6 +224,22 @@ Deno.test('successRateByField skips rows with no value for the requested field',
   assertEquals(out[0].value, 'ANN');
 });
 
+Deno.test('successRateByField buckets blank and redacted proxy values under "No Proxy"', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': '', 'Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': '*****', 'Review Status': 'Removed' } },
+    { id: '3', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'proxy');
+  const noProxy = out.find((r) => r.value === 'No Proxy')!;
+  assertEquals(noProxy.live, 1);
+  assertEquals(noProxy.removed, 1);
+  assertEquals(noProxy.total, 2);
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.total, 1);
+});
+
 Deno.test('successRateByField sorts best rate first, zero-total last', () => {
   const entries: EntryRow[] = [
     { id: '1', tab: 't', data: { Country: 'A', 'Review Status': 'Removed' } },

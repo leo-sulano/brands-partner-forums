@@ -6,6 +6,8 @@
 // Supabase client.
 // deno-lint-ignore-file no-explicit-any
 
+import { resolveProxyLabel } from '../../../src/lib/proxyAliases.ts';
+
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
 // KNOWN DIVERGENCE (documented, not fixed — see CLAUDE.md Known Issues): this ported
 // pick() trims a value before checking whether it's blank, but the real frontend's
@@ -291,7 +293,9 @@ export function successRateByField(
   const fieldKeys = FIELD_KEYS[field];
   const buckets = new Map<string, { live: number; removed: number }>();
   for (const e of entries) {
-    const value = (pick(e.data, fieldKeys) ?? '').trim();
+    const value = field === 'proxy'
+      ? resolveProxyLabel(pick(e.data, fieldKeys))
+      : (pick(e.data, fieldKeys) ?? '').trim();
     if (!value) continue;
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
 
