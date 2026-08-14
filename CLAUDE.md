@@ -61,7 +61,15 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-14 (newest):* Follow-up to the entry directly below, same session: closed the 3
+- *2026-08-14 (newest):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,
+  version 33, confirmed `ACTIVE` via `supabase functions list`) — all 5 Ask AI drift/parity fixes
+  from the 2 entries directly below (Task 220 + its same-day follow-up) are now live, closing the
+  "not yet deployed" caveat both of those entries carried. The deploy log shows `tools.ts`'s
+  cross-directory imports (`src/lib/scheduleBrandConfig.ts`, `removedPlatformBrands.ts`,
+  `proxyAliases.ts`) were bundled successfully, resolving the "unproven at real deploy time" risk
+  the Known Issues entry below used to flag — also now noted as a resolved precedent on the
+  still-pending `generate-weekly-schedule` deploy item.
+- *2026-08-14 (prior):* Follow-up to the entry directly below, same session: closed the 3
   remaining known Ask AI gaps that Task 220's own plan had deliberately left out of scope or that
   its final review had parked as residual. `pick()` (`supabase/functions/ai-assistant/tools.ts`)
   no longer trims before its blank check, matching `src/lib/scoreSummary.ts`'s real `pick()`
@@ -75,11 +83,8 @@ Brands Partner Forum/
   instead of wrongly claiming a brand "doesn't exist" per the system prompt's anti-hallucination
   rule — wording-only, no schema change. Each fixed as an independently-approved bounded task (no
   spec/plan docs) directly in this session, not via Subagent-Driven Development. `deno check`
-  clean, full Deno suite passes (82 tests). Still **not yet deployed** — `supabase functions
-  deploy ai-assistant` remains pending, same as the entry below. See the combined Known Issues
-  entry above (now describing all of this as closed) for the still-open deploy-time-unproven
-  import-path risk.
-- *2026-08-14 (prior):* Closed 2 known Ask AI (`supabase/functions/ai-assistant/`) drift gaps: `get_success_rate_by_field`'s proxy grouping now buckets blank/redacted/case-variant values under one "No Proxy"/canonical bucket via the real `resolveProxyLabel`/`canonicalProxyKey` (`src/lib/proxyAliases.ts`), and `get_schedule`/`get_paused_combos` now exclude hidden, platform-restricted, and flagged-removed brands via the real `src/lib/scheduleBrandConfig.ts` helpers plus the file's existing `removed_platform_brands` helpers — both by importing the same real, already-Deno-proven `src/lib` functions the dashboard and `generate-weekly-schedule` use, instead of new hand-ported copies. Also added one CLAUDE.md sentence (in the cross-dashboard-consistency bullet, under Development Guidelines) explicitly closing the informal "Ask AI is separately deployed, so it's out of scope" exemption that let 2 prior tasks (207, 218) each defer a similar gap instead of fixing it. Built via Subagent-Driven Development (3 tasks + a final whole-branch review that found and fixed 2 more instances of the same drift class the branch was meant to close). Full suite passes, `deno check` clean. **Not yet deployed** — `supabase functions deploy ai-assistant` remains pending. Spec: `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan: `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`. Task 220.
+  clean, full Deno suite passes (82 tests). Deployed the same day — see the entry above.
+- *2026-08-14 (prior):* Closed 2 known Ask AI (`supabase/functions/ai-assistant/`) drift gaps: `get_success_rate_by_field`'s proxy grouping now buckets blank/redacted/case-variant values under one "No Proxy"/canonical bucket via the real `resolveProxyLabel`/`canonicalProxyKey` (`src/lib/proxyAliases.ts`), and `get_schedule`/`get_paused_combos` now exclude hidden, platform-restricted, and flagged-removed brands via the real `src/lib/scheduleBrandConfig.ts` helpers plus the file's existing `removed_platform_brands` helpers — both by importing the same real, already-Deno-proven `src/lib` functions the dashboard and `generate-weekly-schedule` use, instead of new hand-ported copies. Also added one CLAUDE.md sentence (in the cross-dashboard-consistency bullet, under Development Guidelines) explicitly closing the informal "Ask AI is separately deployed, so it's out of scope" exemption that let 2 prior tasks (207, 218) each defer a similar gap instead of fixing it. Built via Subagent-Driven Development (3 tasks + a final whole-branch review that found and fixed 2 more instances of the same drift class the branch was meant to close). Full suite passes, `deno check` clean. Deployed the same day — see the newest entry above. Spec: `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan: `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`. Task 220.
 - *2026-08-14 (prior):* Follow-up to the entry directly below, same session: collapsed Brand Tab
   registration from 3 independently-maintained lists across 3 files down to 2 single-sourced ones.
   `OPERATIONAL_TABS` (`src/lib/tabs.ts`) now derives from `Object.keys(TAB_COLUMN_CONFIGS)`
@@ -811,7 +816,11 @@ Brands Partner Forum/
   cron.job where jobname = 'generate-weekly-schedule-monday';`. See Task 9 of
   `docs/superpowers/plans/2026-08-05-schedule-planner-weekly-cron.md` for the full manual
   deploy checklist, including a one-time manual invocation to confirm it writes real
-  `brand_schedule` rows before waiting for the first real Monday.
+  `brand_schedule` rows before waiting for the first real Monday. One prior open question is now
+  answered: whether a bundler can actually resolve this function's `../../../src/lib/*` imports at
+  real deploy time was unconfirmed (this function itself has never been deployed) — `ai-assistant`
+  deployed successfully with the same import pattern on 2026-08-14 (see the Ask AI item above), so
+  that specific worry no longer applies when this deploy is finally run.
 - `entries` is fully public-readable via the `anon` key across **all** tabs, not just TP Brand
   Injection, and its `data` jsonb contains credential fields (`Password`, `Backup Codes`,
   `Authenticator Backup` — see `AddReviewAccountModal.tsx`). This is a pre-existing condition,
@@ -883,13 +892,17 @@ Brands Partner Forum/
   longer trims before its blank check (matches `src/lib/scoreSummary.ts`'s real `pick()` exactly)
   and `get_score_summary`'s `successRate` is now floored to a whole percent like the dashboard's
   `successRatePct` — closing the last 2 items from the 2026-08-04 Phase 2 review that used to sit
-  just above this bullet. **Not yet deployed:** `supabase functions deploy ai-assistant` remains
-  a pending manual step — all of this exists only in code/tests until that command runs.
-  Deploy-time risk to watch: this is only the 2nd Deno function in this repo to import across into
-  `src/lib/*` via a relative `../../../src/lib/` path — the 1st, `generate-weekly-schedule`, has
-  itself never been deployed (see the item above), so this import pattern is unproven at actual
-  deploy time for a bundler; watch the first post-Task-220 `ai-assistant` deploy for a
-  module-resolution failure on that path. Spec/plan for the original Task 220 scope:
+  just above this bullet. **Deployed 2026-08-14** (`supabase functions deploy ai-assistant`,
+  version 33 — confirmed `ACTIVE` via `supabase functions list`) — all 5 fixes are live. This also
+  resolved the deploy-time risk this bullet used to flag: `ai-assistant` was only the 2nd Deno
+  function in this repo to import across into `src/lib/*` via a relative `../../../src/lib/` path
+  (the 1st, `generate-weekly-schedule`, still hasn't been deployed — see the item below), so
+  whether a bundler could actually resolve that pattern at real deploy time (as opposed to just
+  `deno check`) was unconfirmed; the deploy log shows `scheduleBrandConfig.ts`,
+  `removedPlatformBrands.ts`, and `proxyAliases.ts` were all uploaded as bundled assets alongside
+  `tools.ts`/`index.ts`, so the pattern is now proven safe at deploy time — worth noting when
+  `generate-weekly-schedule`'s own pending deploy (below) is finally run. Spec/plan for the
+  original Task 220 scope:
   `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`,
   `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md` — the 3 same-day follow-up fixes
   (`pick()`/`successRate` parity, `groupByField` case-insensitivity, tool-description disclosure)

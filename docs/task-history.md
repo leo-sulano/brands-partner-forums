@@ -3524,6 +3524,30 @@ as closed; a new Recent Changes entry is added above Task 220's. Verification: `
 tools.ts index.ts` clean after each of the 3 fixes; full Deno suite ends at 82/82 (79 from the
 merged Task 220 branch + 3 new). No `npm run build` run for the 2 code fixes (frontend files
 untouched) or the description-only fix; not needed per this project's established pattern for
-Deno-function-only changes. **Still not deployed** — `supabase functions deploy ai-assistant`
-remains the one pending manual step for all 5 gaps (Task 220's and this task's) to take effect
-live; nothing in this task changed that.
+Deno-function-only changes. **Still not deployed** at the time this task shipped — `supabase
+functions deploy ai-assistant` was the one pending manual step for all 5 gaps (Task 220's and this
+task's) to take effect live. Deployed later the same day; see Task 222.
+
+---
+
+## Task 222: Deploy `ai-assistant` (Tasks 220-221's Fixes Now Live)
+**Date:** August 14, 2026
+
+User asked to deploy after Task 221 shipped. Ran `supabase functions deploy ai-assistant` from
+the repo root — confirmed via `supabase functions list` as `ACTIVE`, version 33, updated
+2026-08-14. This is the one deploy step Tasks 220 and 221 both deliberately deferred; all 5 fixes
+(schedule hidden/restricted/removed-brand filtering, proxy "No Proxy"/case-insensitive bucketing
+in both `get_success_rate_by_field` and `groupByField`, `pick()`/`successRate` parity with
+`src/lib/scoreSummary.ts`, and the 2 tool-description disclosure updates) are now live for real
+users of the Ask AI chat widget.
+
+Also resolved a standing open question from Task 220's Known Issues entry: whether a Supabase
+Edge Function bundler can actually resolve a relative `../../../src/lib/*` cross-directory import
+at real deploy time, as opposed to only passing `deno check` locally. `generate-weekly-schedule`
+established this import pattern first but has itself never been deployed, so it was unconfirmed
+whether the pattern would survive a real deploy. The `ai-assistant` deploy log explicitly listed
+`src/lib/scheduleBrandConfig.ts`, `src/lib/removedPlatformBrands.ts`, and `src/lib/proxyAliases.ts`
+as uploaded assets alongside `tools.ts`/`index.ts`, confirming the bundler follows the import graph
+correctly. `CLAUDE.md`'s Known Issues updated in both places: the Ask AI entry now says Deployed
+instead of Not yet deployed, and the still-pending `generate-weekly-schedule` deploy item now notes
+this precedent resolves its own import-path risk. No code changes in this task — deploy only.
