@@ -1,12 +1,14 @@
 // supabase/functions/ai-assistant/tools.ts
-// Read-only tools the assistant can call. Pure helpers (field picking, score
-// parsing, row mapping, filtering, score summary) are ported from
-// src/lib/queries.ts and src/lib/scoreSummary.ts so the assistant sees the same
-// data the dashboard does. runTool() is the only impure part — it needs a
-// Supabase client.
+// Read-only tools the assistant can call. Most pure helpers (field picking, score
+// parsing, row mapping, filtering, score summary) are ported from src/lib/queries.ts
+// and src/lib/scoreSummary.ts so the assistant sees the same data the dashboard does.
+// A few (proxy "No Proxy"/case-fold resolution, schedule hidden/restricted-brand
+// filtering) are real imports from src/lib instead of ported copies, deliberately —
+// see the imports below and CLAUDE.md's cross-dashboard-consistency rule. runTool()
+// is the only impure part — it needs a Supabase client.
 // deno-lint-ignore-file no-explicit-any
 
-import { resolveProxyLabel } from '../../../src/lib/proxyAliases.ts';
+import { resolveProxyLabel, canonicalProxyKey } from '../../../src/lib/proxyAliases.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, scheduleBrandKey } from '../../../src/lib/scheduleBrandConfig.ts';
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
@@ -288,12 +290,14 @@ function filterHiddenOrRestricted<T extends { tab: string; brand: string; platfo
   rows: T[],
   hiddenSet: Set<string>,
   restrictionMap: Map<string, Platform>,
+  removedSet: Set<string>,
 ): T[] {
   return rows.filter((row) => {
     const key = scheduleBrandKey(row.tab, row.brand);
     if (hiddenSet.has(key)) return false;
     const restriction = restrictionMap.get(key);
     if (restriction && row.platform && row.platform !== restriction) return false;
+    if (row.platform && removedSet.has(platformRemovedKey(row.tab, row.brand, row.platform as Platform))) return false;
     return true;
   });
 }
@@ -320,12 +324,13 @@ export function successRateByField(
 ): FieldSuccessRate[] {
   const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   const fieldKeys = FIELD_KEYS[field];
-  const buckets = new Map<string, { live: number; removed: number }>();
+  const buckets = new Map<string, { label: string; live: number; removed: number }>();
   for (const e of entries) {
-    const value = field === 'proxy'
+    const label = field === 'proxy'
       ? resolveProxyLabel(pick(e.data, fieldKeys))
       : (pick(e.data, fieldKeys) ?? '').trim();
-    if (!value) continue;
+    if (!label) continue;
+    const bucketKey = field === 'proxy' ? canonicalProxyKey(label) : label;
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
 
     // matchedAny mirrors the frontend's computeSuccessRates gate (Task 5) —
@@ -343,18 +348,18 @@ export function successRateByField(
     }
     if (!matchedAny) continue;
 
-    let b = buckets.get(value);
+    let b = buckets.get(bucketKey);
     if (!b) {
-      b = { live: 0, removed: 0 };
-      buckets.set(value, b);
+      b = { label, live: 0, removed: 0 };
+      buckets.set(bucketKey, b);
     }
     if (matchedLive) b.live += 1;
     else if (matchedRemoved) b.removed += 1;
   }
-  return [...buckets.entries()]
-    .map(([value, { live, removed }]) => {
+  return [...buckets.values()]
+    .map(({ label, live, removed }) => {
       const total = live + removed;
-      return { value, live, removed, total, rate: total === 0 ? null : (live / total) * 100 };
+      return { value: label, live, removed, total, rate: total === 0 ? null : (live / total) * 100 };
     })
     .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1));
 }
@@ -763,26 +768,28 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       .select('tab, brand, platform, week_start, monday, tuesday, wednesday, thursday, friday');
     if (args?.tab) q = q.eq('tab', args.tab);
     if (args?.week_start) q = q.eq('week_start', args.week_start);
-    const [{ data, error }, hiddenSet, restrictionMap] = await Promise.all([
+    const [{ data, error }, hiddenSet, restrictionMap, removedSet] = await Promise.all([
       q,
       fetchScheduleHiddenSet(supabase),
       fetchScheduleRestrictionMap(supabase),
+      fetchRemovedPlatformBrandSet(supabase),
     ]);
     if (error) throw error;
-    return { schedule: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap) };
+    return { schedule: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap, removedSet) };
   }
   if (name === 'get_paused_combos') {
     let q = supabase
       .from('brand_platform_pause')
       .select('tab, brand, platform, paused_week_start, reason');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data, error }, hiddenSet, restrictionMap] = await Promise.all([
+    const [{ data, error }, hiddenSet, restrictionMap, removedSet] = await Promise.all([
       q,
       fetchScheduleHiddenSet(supabase),
       fetchScheduleRestrictionMap(supabase),
+      fetchRemovedPlatformBrandSet(supabase),
     ]);
     if (error) throw error;
-    return { paused: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap) };
+    return { paused: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap, removedSet) };
   }
   return { error: `unknown tool: ${name}` };
 }

@@ -240,6 +240,18 @@ Deno.test('successRateByField buckets blank and redacted proxy values under "No 
   assertEquals(enigma.total, 1);
 });
 
+Deno.test('successRateByField merges case-variant proxy values into one bucket (case-insensitive, matching dashboard grouping)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'enigma', 'Review Status': 'Live' } },
+    { id: '3', tab: 't', data: { 'Proxy Used': 'ENIGMA', 'Review Status': 'Removed' } },
+  ];
+  const out = successRateByField(entries, 'proxy');
+  assertEquals(out.length, 1);
+  assertEquals(out[0].live, 2);
+  assertEquals(out[0].removed, 1);
+});
+
 Deno.test('successRateByField sorts best rate first, zero-total last', () => {
   const entries: EntryRow[] = [
     { id: '1', tab: 't', data: { Country: 'A', 'Review Status': 'Removed' } },
@@ -659,6 +671,34 @@ Deno.test('get_schedule keeps a legacy (platform: null) row for a platform-restr
   const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Hanan', week_start: '2026-01-05' });
   assertEquals(result.schedule.length, 1);
   assertEquals(result.schedule[0].platform, null);
+});
+
+Deno.test("get_schedule excludes a brand whose platform page is flagged removed", async () => {
+  const tables = {
+    brand_schedule: [
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'ag', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ],
+    removed_platform_brands: [
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Hanan', week_start: '2026-08-03' });
+  assertEquals(result.schedule.length, 1);
+  assertEquals(result.schedule[0].platform, 'ag');
+});
+
+Deno.test("get_paused_combos excludes a brand whose platform page is flagged removed", async () => {
+  const tables = {
+    brand_platform_pause: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'ag', paused_week_start: '2026-07-27', reason: 'x' },
+    ],
+    removed_platform_brands: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'ag' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_paused_combos', {});
+  assertEquals(result.paused.length, 0);
 });
 
 Deno.test('get_paused_combos lists paused combos with reason, optionally filtered by tab', async () => {

@@ -3461,9 +3461,11 @@ changes logic `tools.ts` duplicates must update `tools.ts` (with tests) in the s
 
 Verification: `deno check tools.ts index.ts` clean; `deno test --allow-env --allow-net` passes
 76/76 (5 new cases: 1 proxy-bucketing test, 4 schedule/paused-combo hidden/restricted-brand
-tests); `npm run build` succeeds from repo root, re-confirming `proxyAliases.ts`/
-`scheduleBrandConfig.ts` still compile cleanly for the frontend now that this plan added new
-Deno-side importers of both. **Not yet deployed** — `supabase functions deploy ai-assistant`
+tests); `npm run build` succeeds from repo root, confirming the frontend still builds cleanly (a
+basic regression check — `tsconfig.app.json` excludes `supabase/**` from the frontend build
+entirely, so this does not re-verify the new Deno-side imports of `proxyAliases.ts`/
+`scheduleBrandConfig.ts`; `deno check`, above, is what actually re-verifies those). **Not yet
+deployed** — `supabase functions deploy ai-assistant`
 remains a pending manual step, deliberately out of scope for this task; the live assistant keeps
 the old, un-fixed behavior until that command is run. Spec:
 `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan:
