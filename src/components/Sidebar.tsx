@@ -2,13 +2,12 @@ import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
-  Syringe, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart,
-  Link2, Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X, Star, LifeBuoy,
+  Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X,
   CalendarDays,
-  type LucideIcon,
 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { useAuth } from '../contexts/AuthContext';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
@@ -16,21 +15,6 @@ const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   ag: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16',
   cg: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16',
   wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=64',
-};
-
-
-const TAB_ICONS: Record<string, LucideIcon> = {
-  'TP Brand Injection': Syringe,
-  'TP Affiliate':       Link2,
-  'Rooster Partners':   Handshake,
-  'Revolution Casino':  RotateCcw,
-  'Trybet':             Dices,
-  'SilverPlay':         Medal,
-  'SuprPlay Limited':   Gamepad2,
-  'HazEmirates UAE':    Plane,
-  'Hanan':              Heart,
-  'Wizard of Odds':     Star,
-  'GRG - Gulf Recovery Group': LifeBuoy,
 };
 
 const topLinks = [
@@ -122,7 +106,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         }
 
         {brandsOpen && OPERATIONAL_TABS.map((tab) => {
-          const Icon = TAB_ICONS[tab] ?? Syringe;
+          const Icon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
           const platforms = getTabPlatforms(tab);
           return (
             <NavLink

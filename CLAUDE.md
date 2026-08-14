@@ -61,7 +61,31 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-13 (newest):* The brand-removed notification email now includes a direct link back to
+- *2026-08-14 (newest):* Follow-up to the entry directly below, same session: collapsed Brand Tab
+  registration from 3 independently-maintained lists across 3 files down to 2 single-sourced ones.
+  `OPERATIONAL_TABS` (`src/lib/tabs.ts`) now derives from `Object.keys(TAB_COLUMN_CONFIGS)`
+  (`src/lib/tab-configs.ts`) instead of being a separately-maintained array — a tab now only needs
+  one entry (its column list in `TAB_COLUMN_CONFIGS`) to be fully registered everywhere. Also found
+  and fixed a live instance of the exact drift class this was meant to prevent: `TAB_ICONS` was
+  independently duplicated in `Sidebar.tsx` and `Overview.tsx`, and Overview's copy was already
+  missing `'GRG - Gulf Recovery Group'`, silently showing the wrong icon on that page only — moved
+  to one new shared `src/lib/tabIcons.ts` (kept separate from `tab-configs.ts` since that file is
+  also imported by the `generate-weekly-schedule` Deno edge function and can't safely depend on
+  `lucide-react`). Registering a new Brand Tab is still a code change + deploy, not a self-service
+  UI (a DB-driven admin form was considered and declined — new tabs are rare structural events, not
+  a frequent operational task). Full suite (1090 tests) and build pass. Task 219.
+- *2026-08-14 (prior):* Removed the hardcoded 4-provider whitelist that gated `resolveProxyLabel`
+  (`src/lib/proxyAliases.ts`) — any non-blank, non-redacted `Proxy Used` value now passes through
+  as its own real identity (typo-corrected via the existing `PROXY_ALIASES` map only) instead of
+  silently folding into "No Proxy" when it didn't match one of the 4 listed names. Since Brand
+  Tabs' proxy filter, `queries.ts`'s tab-KPI proxy filtering, and Overview's Proxy Breakdown all
+  already read through this one shared function, a newly-onboarded proxy provider now
+  automatically becomes its own filter option and breakdown bucket everywhere with zero other code
+  changes. Prompted by a user question about whether new Proxy/Country/Agent/Platform/Brand-Tab
+  values auto-propagate across the dashboard; investigation found Country, Agent, Platforms, and
+  new-brand-within-a-tab already worked this way — Proxy was the one real gap. Bounded task, full
+  suite (1090 tests) and build pass. Task 218.
+- *2026-08-13 (prior):* The brand-removed notification email now includes a direct link back to
   the flagged brand's own tab in the dashboard (e.g. `/brands/hanan?brand=WinMega.com`), reported
   as a request after the user received a real notification email for WinMega.com (Hanan tab) with
   no way to jump straight to it. `NotifyBrandRemovedPayload` (both `src/lib/
@@ -849,9 +873,6 @@ Brands Partner Forum/
   `getSchedulableBrandPlatforms` (`src/lib/scheduleBrandConfig.ts`) exclusion logic Schedule
   Planner itself uses, or at minimum add a caveat to `get_schedule`'s tool description warning its
   rows may include brands the UI has since hidden or restricted.
-- `ACTIVE_PROXY_PROVIDERS` (`src/lib/proxyAliases.ts`) is a hardcoded 4-provider list; a real
-  proxy value that doesn't match one now folds into "No Proxy" with no per-value filterability and
-  no error/telemetry if a new provider is onboarded without updating this list.
 - Ask AI's `get_success_rate_by_field`/similar tool (`supabase/functions/ai-assistant/tools.ts`,
   buckets by raw `Proxy Used` value) is unaware of the new `resolveProxyLabel`/"No Proxy"
   classification — it can now disagree with what the dashboard shows for a proxy success-rate

@@ -1,18 +1,13 @@
-export const OPERATIONAL_TABS = [
-  'TP Brand Injection',
-  'TP Affiliate',
-  'Rooster Partners',
-  'Revolution Casino',
-  'Trybet',
-  'SilverPlay',
-  'SuprPlay Limited',
-  'HazEmirates UAE',
-  'Hanan',
-  'Wizard of Odds',
-  'GRG - Gulf Recovery Group',
-] as const;
+import { TAB_COLUMN_CONFIGS } from './tab-configs';
 
-export type OperationalTab = (typeof OPERATIONAL_TABS)[number];
+// The canonical list of registered Brand Tabs — derived from TAB_COLUMN_CONFIGS
+// (src/lib/tab-configs.ts) so a tab only has to be added in one place to be
+// registered everywhere (sidebar nav, routing, both entry modals, Overview,
+// Score Summary, Schedule Planner). Order matches that file's key order, which
+// is also sidebar nav order.
+export const OPERATIONAL_TABS: string[] = Object.keys(TAB_COLUMN_CONFIGS);
+
+export type OperationalTab = string;
 
 export function isOperationalTab(s: string): s is OperationalTab {
   return (OPERATIONAL_TABS as readonly string[]).includes(s);

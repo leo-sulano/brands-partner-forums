@@ -389,28 +389,28 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.proxies).toEqual(['Enigma-US1', 'Enigma-US2']);
   });
 
-  it('folds a Proxy Used value that does not start with any active provider name into "No Proxy"', () => {
+  it('surfaces a never-seen Proxy Used value as its own identity rather than folding it into "No Proxy"', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
-      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'OldVPN-7' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Proxy Used': 'BrandNewProvider-7' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
     expect(kpis.byProxy).toEqual({
       'enigma-us1': { label: 'Enigma-US1', live: 1, removed: 0 },
-      'no proxy': { label: 'No Proxy', live: 0, removed: 1 },
+      'brandnewprovider-7': { label: 'BrandNewProvider-7', live: 0, removed: 1 },
     });
-    expect(kpis.proxies).toEqual(['Enigma-US1', 'No Proxy']);
+    expect(kpis.proxies).toEqual(['BrandNewProvider-7', 'Enigma-US1']);
   });
 
-  it('proxyFilter set to "No Proxy" matches blank, redacted, and unrecognized-provider entries', () => {
+  it('proxyFilter set to "No Proxy" matches only blank and redacted entries, not a real (even never-seen) provider value', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': '' }),
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': '*****' }),
-      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'RandomHost22' }),
+      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'BrandNewProvider-7' }),
       entry('4', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Proxy Used': 'Enigma-US1' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, ['No Proxy'])!;
-    expect(kpis.live).toBe(3);
+    expect(kpis.live).toBe(2);
   });
 
   it('returns null when platformFilter names a platform the tab has no column for', () => {

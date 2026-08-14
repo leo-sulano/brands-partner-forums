@@ -27,37 +27,17 @@ export function isRedactedProxyValue(rawProxy: string): boolean {
   return /^\*+$/.test(rawProxy.trim());
 }
 
-// Adding a 5th active provider requires listing it here — any Proxy Used value that doesn't
-// start with one of these names folds silently into NO_PROXY_LABEL, with no warning or telemetry.
-const ACTIVE_PROXY_PROVIDERS = ['Enigma', 'Proxio', 'Proxylite', 'SpyderProxy'];
-
 export const NO_PROXY_LABEL = 'No Proxy';
 
-function isActiveProxyProvider(canonicalName: string): boolean {
-  const lower = canonicalName.toLowerCase();
-  return ACTIVE_PROXY_PROVIDERS.some((p) => lower.startsWith(p.toLowerCase()));
-}
-
-// A raw Proxy Used value, folded into the shared "No Proxy" bucket if it's blank, a redacted
-// placeholder, or doesn't start with one of the 4 currently-active proxy providers (after
-// typo-correction via PROXY_ALIASES) -- same rationale as resolveCountryLabel's "Unknown" in
-// countryFlags.ts: turns "no real active proxy" into one real, filterable, canonicalizable
-// identity instead of a value every proxy-identity consumer has to separately skip or fall
-// silent on.
+// A raw Proxy Used value, folded into the shared "No Proxy" bucket only if it's blank or a
+// redacted placeholder -- same rationale as resolveCountryLabel's "Unknown" in countryFlags.ts:
+// turns "no real proxy recorded" into one real, filterable, canonicalizable identity instead of
+// a value every proxy-identity consumer has to separately skip or fall silent on. Any other
+// value (after typo-correction via PROXY_ALIASES) passes through as its own real identity, so a
+// newly-onboarded provider automatically becomes its own filter option and breakdown bucket
+// everywhere, with no whitelist to update.
 export function resolveProxyLabel(rawProxy: string | null | undefined): string {
   const trimmed = (rawProxy ?? '').trim();
   if (!trimmed || isRedactedProxyValue(trimmed)) return NO_PROXY_LABEL;
-
-  // Check if the trimmed value starts with a known alias that maps to an active provider
-  const trimmedLower = trimmed.toLowerCase();
-  for (const [aliasKey, canonical] of Object.entries(PROXY_ALIASES)) {
-    if (trimmedLower.startsWith(aliasKey.toLowerCase())) {
-      if (isActiveProxyProvider(canonical)) {
-        return trimmed;
-      }
-    }
-  }
-
-  // Otherwise, check if the value directly starts with an active provider
-  return isActiveProxyProvider(trimmed) ? trimmed : NO_PROXY_LABEL;
+  return canonicalProxyName(trimmed);
 }

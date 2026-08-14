@@ -38,27 +38,26 @@ describe('resolveProxyLabel', () => {
     expect(resolveProxyLabel('*****')).toBe('No Proxy');
   });
 
-  it('passes through a value starting with an active provider name, case-insensitively', () => {
+  it('passes through any non-blank, non-redacted value unchanged, case-insensitively', () => {
     expect(resolveProxyLabel('Enigma-US1')).toBe('Enigma-US1');
     expect(resolveProxyLabel('proxio_de2')).toBe('proxio_de2');
     expect(resolveProxyLabel('SPYDERPROXY-uk3')).toBe('SPYDERPROXY-uk3');
   });
 
-  it('resolves a known typo alias to its canonical provider spelling before matching', () => {
+  it('resolves a known typo alias to its canonical provider spelling', () => {
     expect(resolveProxyLabel('proylite-1')).toBe('proylite-1');
-    expect(resolveProxyLabel('  Proylite  ')).toBe('Proylite');
+    expect(resolveProxyLabel('  Proylite  ')).toBe('Proxylite');
   });
 
-  it('resolves an unrecognized/decommissioned provider value to "No Proxy"', () => {
-    expect(resolveProxyLabel('OldVPN-7')).toBe('No Proxy');
-    expect(resolveProxyLabel('RandomHost22')).toBe('No Proxy');
+  it('passes through a brand-new, never-seen provider value as its own identity rather than folding into "No Proxy"', () => {
+    expect(resolveProxyLabel('NewProviderXYZ-eu1')).toBe('NewProviderXYZ-eu1');
+    expect(resolveProxyLabel('RandomHost22')).toBe('RandomHost22');
   });
 
-  it('composes with canonicalProxyKey to key blank, redacted, and unrecognized values identically', () => {
+  it('composes with canonicalProxyKey to key blank and redacted values identically', () => {
     const noProxyKey = canonicalProxyKey(NO_PROXY_LABEL);
     expect(canonicalProxyKey(resolveProxyLabel(''))).toBe(noProxyKey);
     expect(canonicalProxyKey(resolveProxyLabel('*****'))).toBe(noProxyKey);
-    expect(canonicalProxyKey(resolveProxyLabel('OldVPN-7'))).toBe(noProxyKey);
   });
 
   it('composes with canonicalProxyName to display the canonical spelling for a matched typo alias', () => {

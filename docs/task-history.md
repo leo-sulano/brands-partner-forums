@@ -3341,3 +3341,85 @@ shared logic. Implemented directly with one self-review pass rather than the ful
 subagent pipeline. Full test suite (1090 tests) and `npm run build` both pass. Live browser
 verification (confirming the toast and in-place rejection on a real Brand Tabs page) was not
 performed this session — no Supabase login credentials were available.
+
+---
+
+## Task 218: Remove Hardcoded Proxy-Provider Whitelist
+**Date:** August 14, 2026
+
+User asked whether adding a new proxy/country/agent/platform value could automatically flow
+through to filters and Overview's breakdown, worried about the dashboard showing inaccurate data
+if something new isn't wired in everywhere. Investigation found Country and Agent already work
+this way (both derived live from whatever values exist in the data, `BrandGroup.tsx:1286-1310`),
+and Platforms (TP/AG/CG/WO) are already unified through one canonical `getTabPlatforms(tab)`
+helper consumed consistently across Sidebar, Topbar, Overview, BrandGroup, EditEntryModal,
+SchedulePlanner, and the Ask AI edge function — no drift found. "New brand within an existing tab"
+was confirmed already free-typeable (2026-07-10). Proxy was the one real gap, matching an
+already-documented Known Issue: `resolveProxyLabel()` (`src/lib/proxyAliases.ts`) gated any
+`Proxy Used` value through a hardcoded 4-name whitelist (`ACTIVE_PROXY_PROVIDERS`), silently
+folding anything else into "No Proxy" with no filter option or breakdown bucket of its own.
+
+Removed the whitelist (and the now-unused `ACTIVE_PROXY_PROVIDERS`/`isActiveProxyProvider`)
+entirely: `resolveProxyLabel` now returns `NO_PROXY_LABEL` only for a blank or redacted (`*****`)
+value, and passes every other value through `canonicalProxyName` (typo-correction via the existing
+`PROXY_ALIASES` map only) as its own real identity. Because Brand Tabs' proxy filter, `queries.ts`'s
+tab-KPI proxy filtering, and Overview's Proxy Breakdown all already read through this one shared
+function, the fix propagates to every consumer automatically — no other file needed a change. A
+newly-onboarded proxy provider (or any typo'd one-off value) now shows up as its own filter option
+and its own Proxy Breakdown bucket the moment it appears in the data, with zero code changes.
+
+Updated `proxyAliases.test.ts` and `queries.test.ts` (2 tests each) that had asserted the old
+whitelist-rejection behavior (`'OldVPN-7'`/`'RandomHost22'` → "No Proxy") to instead assert the new
+pass-through behavior. Bounded task (brainstorming skill's bounded path, not the full spec/plan
+pipeline) — confined entirely to `proxyAliases.ts`'s exported behavior, with every real consumer
+already routing through it. Full test suite (1090 tests) and `npm run build` both pass. No live
+Supabase verification performed this session (no login credentials available) — worth a quick live
+check next time credentials are available: add an entry with a brand-new proxy value and confirm
+it appears as its own option in both the Brand Tabs proxy filter and Overview's Proxy Breakdown.
+
+---
+
+## Task 219: Single-Source Brand Tab Registration
+**Date:** August 14, 2026
+
+Follow-up to Task 218, same session: user asked whether adding a whole new top-level Brand Tab
+(e.g. a brand-new client group beyond Rooster Partners, Hanan, etc.) could also become automatic.
+Investigation found this can't be truly zero-code the way a proxy value can — a new tab needs a
+person to decide real structural facts (which platforms does it track? what's its column schema?)
+that nothing in existing data can infer. User confirmed the target: not a self-service UI, but
+collapsing the *scattered* registration surface (multiple hardcoded lists that had to independently
+agree) into as few single-sourced places as possible, so a tab can't exist in one list and be
+missing from another.
+
+Found two real, independent registration lists that could already drift: `OPERATIONAL_TABS`
+(`src/lib/tabs.ts`, a separately-maintained array) vs. `TAB_COLUMN_CONFIGS`
+(`src/lib/tab-configs.ts`, the per-tab column whitelist) — and, worse, a **live** instance of the
+exact bug class this whole conversation was about: `TAB_ICONS` was independently duplicated in both
+`Sidebar.tsx` and `Overview.tsx`, and Overview's copy was already missing `'GRG - Gulf Recovery
+Group'` entirely, silently falling back to the generic Syringe icon on that one page while Sidebar
+showed the correct LifeBuoy icon.
+
+Fixes: (1) `TAB_COLUMN_CONFIGS`'s key order was reordered (cosmetic only, zero behavior change) to
+match the existing sidebar nav order, then `OPERATIONAL_TABS` in `tabs.ts` was changed to derive
+directly from `Object.keys(TAB_COLUMN_CONFIGS)` instead of maintaining a second independent array —
+a tab now only needs one entry to be fully registered (sidebar nav, routing, both entry modals,
+Overview, Score Summary, Schedule Planner all already read from `OPERATIONAL_TABS`/
+`TAB_COLUMN_CONFIGS`). `OperationalTab` narrowed from a literal union type to a plain `string` alias
+as a result — confirmed via a full-codebase grep that nothing outside `tabs.ts` itself consumed the
+literal union, so no real type-safety loss. (2) Added a new frontend-only `src/lib/tabIcons.ts`
+(exports `TAB_ICONS`/`DEFAULT_TAB_ICON`) as the one shared icon map, imported by both `Sidebar.tsx`
+and `Overview.tsx` in place of their own copies — fixing the live GRG icon gap as a side effect.
+`tabIcons.ts` is deliberately kept separate from `tab-configs.ts` rather than merged into one config
+object, because `tab-configs.ts` is imported by the `generate-weekly-schedule` Deno edge function
+and can't safely depend on `lucide-react`.
+
+Net effect: registering a new Brand Tab is now one required entry in `TAB_COLUMN_CONFIGS` (its
+column list) plus one optional entry in `tabIcons.ts` (its icon, falls back to a generic one) — down
+from 3 independently-maintained lists across 3 files, 2 of which had already drifted. Still a code
+change + deploy, not a self-service UI, per the user's explicit choice (a DB-driven "+ Add Brand
+Tab" admin form was considered and declined as disproportionate — new tabs are rare, high-stakes
+structural events, not a frequent operational task). Bounded task (brainstorming skill's bounded
+path). Full test suite (1090 tests) and `npm run build` both pass. No live browser verification
+performed this session (no Supabase login credentials available) — worth confirming next time
+credentials are available that the sidebar nav order, active-tab highlighting, and every tab's icon
+(especially GRG) still render correctly end to end.

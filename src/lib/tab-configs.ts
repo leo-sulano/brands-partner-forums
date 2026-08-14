@@ -1,34 +1,44 @@
 // Per-tab column whitelists — controls which columns are shown and in what order.
 // Column names must match the exact header names in the Google Sheet.
 // Tabs not listed here fall back to showing all columns from tab_schemas.
-
+//
+// This map's key order is also the canonical Brand Tabs registration order —
+// OPERATIONAL_TABS (src/lib/tabs.ts) is derived directly from Object.keys() of
+// this object, so adding a tab here (with its column list) is the one required
+// step that registers it everywhere: sidebar nav, routing, both entry modals,
+// Overview, Score Summary, Schedule Planner. A sidebar icon is optional and
+// lives separately in src/lib/tabIcons.ts (a frontend-only file — this file is
+// also imported by a Deno edge function, so it must stay free of any
+// React/npm-package imports).
 export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
-  // 3-platform tabs
+  'TP Brand Injection': [
+    'Account',
+    'Country',
+    'Proxy Used',
+    'Account Name',
+    'Agent',
+    'Brand / TP URL PAGE',
+    'Trust Pilot',
+    'Link to the profile',
+    'Review Status',
+  ],
+  'TP Affiliate': [
+    'Account',
+    'Country',
+    'Proxy Used',
+    'Account Name',
+    'Agent',
+    'URL PAGE',
+    'Trust Pilot',
+    'Link to the profile',
+    'Review Status',
+  ],
   'Rooster Partners': [
     'Account',
     'Country',
     'Proxy Used',
     'Account Name',
     'Agent',
-    'Brands',
-    'Brand Link',
-    'Trust Pilot',
-    'Link to the profile',
-    'TP Review Status',
-    'Ask Gambler review added',
-    'AG Review Status',
-    'AG Review Link',
-    'AG User',
-    'Casino Guru review added',
-    'CG Review Status',
-    'CG Review Link',
-    'CG User',
-  ],
-  'Hanan': [
-    'Account',
-    'Country',
-    'Proxy Used',
-    'Account Name',
     'Brands',
     'Brand Link',
     'Trust Pilot',
@@ -62,29 +72,6 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'CG Review Link',
     'CG User',
   ],
-  // 1-platform tabs
-  'TP Brand Injection': [
-    'Account',
-    'Country',
-    'Proxy Used',
-    'Account Name',
-    'Agent',
-    'Brand / TP URL PAGE',
-    'Trust Pilot',
-    'Link to the profile',
-    'Review Status',
-  ],
-  'TP Affiliate': [
-    'Account',
-    'Country',
-    'Proxy Used',
-    'Account Name',
-    'Agent',
-    'URL PAGE',
-    'Trust Pilot',
-    'Link to the profile',
-    'Review Status',
-  ],
   'Trybet': [
     'Account',
     'Country',
@@ -96,7 +83,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Link to the profile',
     'Trust pilot Review Status',
   ],
-  'HazEmirates UAE': [
+  'SilverPlay': [
     'Account',
     'Country',
     'Proxy Used',
@@ -105,7 +92,15 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Brand Link',
     'Trust Pilot',
     'Link to the profile',
-    'Trust pilot Review Status',
+    'TP Review Status',
+    'Ask Gambler review added',
+    'AG Review Status',
+    'AG Review Link',
+    'AG User',
+    'Casino Guru review added',
+    'CG Review Status',
+    'CG Review Link',
+    'CG User',
   ],
   'SuprPlay Limited': [
     'Account',
@@ -119,7 +114,18 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Link to the profile',
     'Review Status',
   ],
-  'SilverPlay': [
+  'HazEmirates UAE': [
+    'Account',
+    'Country',
+    'Proxy Used',
+    'Account Name',
+    'Brands',
+    'Brand Link',
+    'Trust Pilot',
+    'Link to the profile',
+    'Trust pilot Review Status',
+  ],
+  'Hanan': [
     'Account',
     'Country',
     'Proxy Used',

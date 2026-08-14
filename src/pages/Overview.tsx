@@ -2,9 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { Link, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
-  Syringe, Link2, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, Star,
   Globe, Shield,
-  type LucideIcon,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
@@ -21,6 +19,7 @@ import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
 import type { TabKpis } from '../types/brand-entry';
 
@@ -79,19 +78,6 @@ const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: st
   ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200',  icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
   cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
   wo: { label: 'WO', cls: 'bg-indigo-50 text-indigo-600 border border-indigo-200', icon: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=16' },
-};
-
-const TAB_ICONS: Record<string, LucideIcon> = {
-  'TP Brand Injection': Syringe,
-  'TP Affiliate':       Link2,
-  'Rooster Partners':   Handshake,
-  'Revolution Casino':  RotateCcw,
-  'Trybet':             Dices,
-  'SilverPlay':         Medal,
-  'SuprPlay Limited':   Gamepad2,
-  'HazEmirates UAE':    Plane,
-  'Hanan':              Heart,
-  'Wizard of Odds':     Star,
 };
 
 type KpiModalKind = 'total' | 'live' | 'removed';
@@ -646,7 +632,7 @@ export default function Overview() {
           values={platformFilter}
           onChange={setPlatformFilter}
           options={[
-            { value: 'tp', label: 'TP' }, { value: 'ag', label: 'AG' }, { value: 'cg', label: 'CG' }, { value: 'wo', label: 'WO' },
+            { value: 'tp', label: 'TrustPilot' }, { value: 'ag', label: 'AskGamblers' }, { value: 'cg', label: 'CasinoGuru' }, { value: 'wo', label: 'Wizard of Odds' },
           ]}
         />
 
@@ -733,7 +719,7 @@ export default function Overview() {
                 ].filter((s) => s.count >= 1);
                 const barTotal = statusItems.reduce((s, i) => s + i.count, 0);
                 const pct = (n: number) => barTotal > 0 ? (n / barTotal) * 100 : 0;
-                const TabIcon = TAB_ICONS[tab] ?? Syringe;
+                const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
                 return (
                   <Link
                     key={tab}
