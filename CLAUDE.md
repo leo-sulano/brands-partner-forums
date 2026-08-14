@@ -61,7 +61,19 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-14 (newest):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,
+- *2026-08-14 (newest):* Added a new `get_review_texts` tool to Ask AI (`supabase/functions/
+  ai-assistant/`) so it can read real Published-vs-Removed review text on request for
+  content-improvement questions — the model does the comparison itself by reading raw text, no
+  server-side NLP. Excludes flagged-removed brands, documents known per-platform scraper text
+  caveats in its own description, and (per a final whole-branch review) queries with an explicit
+  order+cap for a deterministic sample and steers the model to prefer it over `query_entries` for
+  content questions. Proactive trend-spotting/suggestions to the team was explicitly scoped out as
+  a separate, later piece of work, per the user's own framing. **Not yet deployed** — `supabase
+  functions deploy ai-assistant` remains pending; the tool doesn't exist for real users until that
+  runs. Full Deno suite passes, `deno check` clean. Spec:
+  `docs/superpowers/specs/2026-08-14-ask-ai-review-text-comparison-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-14-ask-ai-review-text-comparison.md`. Task 223.
+- *2026-08-14 (prior):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,
   version 33, confirmed `ACTIVE` via `supabase functions list`) — all 5 Ask AI drift/parity fixes
   from the 2 entries directly below (Task 220 + its same-day follow-up) are now live, closing the
   "not yet deployed" caveat both of those entries carried. The deploy log shows `tools.ts`'s
@@ -862,6 +874,7 @@ Brands Partner Forum/
   check), but WO pause detection and the removed-post indicator's date-matching (Task 165)
   both still read actual status/date *values* through these same two keys, so a real
   mismatch there would still silently make both features inert for WO specifically.
+  `get_review_texts` (Task 223) is now a third dependent on this same unverified key.
 - Recharts pinned to v2; revisit if a major upgrade is available at install time.
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.
