@@ -39,7 +39,7 @@ const OUTPUT_SCHEMA = `{
   "evidence_summary": "<1-3 sentences summarizing all evidence considered, including what was NOT available>",
   "alternative_explanation": "<1-2 sentences on a non-policy explanation, e.g. platform moderation error>",
   "recommendation": "<1-2 sentences, actionable>",
-  "assessment_note": "This is an AI assessment based on the available review, dashboard data, behavioral signals, and Trustpilot's published guidelines. It does not confirm Trustpilot's private/internal moderation decision."
+  "assessment_note": "<leave this field's exact wording to the system — you do not need to fill this in accurately>"
 }`;
 
 const TP_GUIDELINE_CATEGORIES = `
@@ -100,6 +100,11 @@ Rules you MUST follow:
 - Give every signal an explicit severity (low/medium/high) and evidence.
 - Always state an overall confidence level (low/medium/high).
 `;
+
+const ASSESSMENT_NOTE_BY_PLATFORM: Record<'tp' | 'wo', string> = {
+  tp: "This is an AI assessment based on the available review, dashboard data, behavioral signals, and Trustpilot's published guidelines. It does not confirm Trustpilot's private/internal moderation decision.",
+  wo: "This is an AI assessment based on the available review, dashboard data, and behavioral signals. Wizard of Odds does not have a confirmed public review moderation policy, so this assessment does not reference one, and it does not confirm Wizard of Odds' private/internal moderation decision.",
+};
 
 function buildSystemPrompt(platform: 'tp' | 'wo', status: string): string {
   const removedLike = /remov|refus|reject/i.test(status);
@@ -187,6 +192,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       analysis = JSON.parse(raw);
     } catch {
       throw new Error('Model did not return valid JSON');
+    }
+    if (analysis && typeof analysis === 'object') {
+      (analysis as Record<string, unknown>).assessment_note = ASSESSMENT_NOTE_BY_PLATFORM[platform as 'tp' | 'wo'];
     }
     return jsonResponse({ analysis, model: MODEL });
   } catch (e) {
