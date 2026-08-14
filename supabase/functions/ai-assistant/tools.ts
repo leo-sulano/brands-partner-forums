@@ -467,6 +467,46 @@ export function scoreSummary(
   });
 }
 
+export interface ReviewTextRow {
+  brand: string;
+  text: string;
+}
+
+const REVIEW_TEXT_MAX_CHARS = 2000;
+
+// Ported from src/lib/scoreSummary.ts's PLATFORM_REVIEW_TEXT_KEYS — keep in
+// sync manually if either changes, same convention as this file's other
+// ported constants (FIELD_KEYS, PLATFORM_STATUS_KEYS).
+const PLATFORM_REVIEW_TEXT_KEYS: Record<Platform, readonly string[]> = {
+  tp: ['TP Review Text'],
+  ag: ['AG Review Text'],
+  cg: ['CG Review Text'],
+  wo: ['WO Review Text'],
+};
+
+export function reviewTextsByStatus(
+  entries: EntryRow[],
+  platform: Platform,
+  status: string,
+  removedPlatformBrands: Set<string> = new Set(),
+): { reviews: ReviewTextRow[]; total: number } {
+  const wantStatus = status.trim().toLowerCase();
+  const results: ReviewTextRow[] = [];
+  for (const e of entries) {
+    const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
+    if (brand && removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
+    const haveStatus = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+    if (haveStatus !== wantStatus) continue;
+    const text = pick(e.data, PLATFORM_REVIEW_TEXT_KEYS[platform]);
+    if (!text) continue;
+    const truncated = text.length > REVIEW_TEXT_MAX_CHARS
+      ? text.slice(0, REVIEW_TEXT_MAX_CHARS) + ' […truncated]'
+      : text;
+    results.push({ brand, text: truncated });
+  }
+  return { reviews: results, total: results.length };
+}
+
 // --- OpenAI tool schemas ---
 export const TOOL_DEFS = [
   {
@@ -666,6 +706,38 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_review_texts',
+      description:
+        'Returns real review text for a platform + status, for reading and comparing content ' +
+        '(e.g. "what tends to separate a Published TrustPilot review from a Removed one?"). ' +
+        'One platform and one status per call — call it again with a different status (or ' +
+        'platform) to compare groups; results are never combined across platforms since each ' +
+        'has a different review format/audience. status uses the same values as query_entries ' +
+        '("Published", "Removed", "Refused", "Not Done", "On Pause"). Rows with no recorded text ' +
+        'for that platform are skipped, and brands flagged removed on that platform (see ' +
+        'get_removed_platform_flags) are excluded. Known data-quality caveats to keep in mind ' +
+        'when reading results: TrustPilot text can occasionally be a review title rather than ' +
+        'the body; AskGamblers text can carry a trailing "Helpful (N)" vote-count line; ' +
+        'CasinoGuru text can carry an appended casino owner-reply, or be missing entirely on an ' +
+        'ambiguous page match — treat these as scraper noise, not a real content signal. Each ' +
+        'review is capped at 2000 characters (flagged with " […truncated]" if cut). total is ' +
+        'the real match count before the limit cap, so a capped result should be presented as ' +
+        '"showing N of total", not as exhaustive.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
+          platform: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] },
+          status: { type: 'string', description: 'exact status value, e.g. "Published" or "Removed" — same vocabulary as query_entries' },
+          limit: { type: 'number', description: 'max reviews to return, default 20, max 50' },
+        },
+        required: ['platform', 'status'],
+      },
+    },
+  },
 ];
 
 // --- tool dispatch (impure: needs a supabase client) ---
@@ -803,6 +875,22 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     ]);
     if (error) throw error;
     return { paused: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap, removedSet) };
+  }
+  if (name === 'get_review_texts') {
+    if (!args?.platform || !args?.status) {
+      return { error: 'platform and status are both required.' };
+    }
+    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+    if (!validPlatforms.includes(args.platform)) {
+      return { error: `platform must be one of: ${validPlatforms.join(', ')}` };
+    }
+    let q = supabase.from('entries').select('id, tab, data');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
+    if (error) throw error;
+    const { reviews, total } = reviewTextsByStatus(data ?? [], args.platform, args.status, removedSet);
+    const limit = Math.min(Number(args?.limit) || 20, 50);
+    return { reviews: reviews.slice(0, limit), total };
   }
   return { error: `unknown tool: ${name}` };
 }

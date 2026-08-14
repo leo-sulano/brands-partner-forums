@@ -18,6 +18,7 @@ import {
   collectFieldNames,
   matchesFieldFilters,
   groupByField,
+  reviewTextsByStatus,
   EntryRow,
 } from './tools.ts';
 
@@ -1017,4 +1018,96 @@ Deno.test('list_fields caps the underlying entries scan instead of pulling every
   }
   const result: any = await runTool(mockSupabase(rows), 'list_fields', {});
   assertEquals(result.fields.length, 500);
+});
+
+Deno.test('reviewTextsByStatus returns matching platform+status rows with brand and text', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'A', 'TP Review Status': 'Published', 'TP Review Text': 'Great service, fast payout.' } },
+    { id: '2', tab: 't', data: { Brand: 'B', 'TP Review Status': 'Removed', 'TP Review Text': 'Terrible, avoid.' } },
+    { id: '3', tab: 't', data: { Brand: 'C', 'AG Review Status': 'Published', 'AG Review Text': 'Different platform, should not match.' } },
+  ];
+  const out = reviewTextsByStatus(entries, 'tp', 'Published');
+  assertEquals(out.total, 1);
+  assertEquals(out.reviews, [{ brand: 'A', text: 'Great service, fast payout.' }]);
+});
+
+Deno.test('reviewTextsByStatus skips a row with no recorded text for the platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'A', 'TP Review Status': 'Published' } },
+  ];
+  const out = reviewTextsByStatus(entries, 'tp', 'Published');
+  assertEquals(out.reviews.length, 0);
+  assertEquals(out.total, 0);
+});
+
+Deno.test('reviewTextsByStatus excludes a brand flagged removed on that platform, not on a different platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'A', 'TP Review Status': 'Published', 'TP Review Text': 'Text A' } },
+    { id: '2', tab: 't', data: { Brand: 'A', 'AG Review Status': 'Published', 'AG Review Text': 'Text A on AG' } },
+  ];
+  const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'A', platform: 'tp' }]);
+  const tpOut = reviewTextsByStatus(entries, 'tp', 'Published', removedSet);
+  assertEquals(tpOut.reviews.length, 0);
+  const agOut = reviewTextsByStatus(entries, 'ag', 'Published', removedSet);
+  assertEquals(agOut.reviews.length, 1);
+});
+
+Deno.test('reviewTextsByStatus truncates text over 2000 characters and flags it, leaves shorter text untouched', () => {
+  const longText = 'x'.repeat(2500);
+  const shortText = 'a normal review';
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'A', 'TP Review Status': 'Published', 'TP Review Text': longText } },
+    { id: '2', tab: 't', data: { Brand: 'B', 'TP Review Status': 'Published', 'TP Review Text': shortText } },
+  ];
+  const out = reviewTextsByStatus(entries, 'tp', 'Published');
+  const truncated = out.reviews.find((r) => r.brand === 'A')!;
+  assertEquals(truncated.text.length, 2000 + ' […truncated]'.length);
+  assertEquals(truncated.text.endsWith(' […truncated]'), true);
+  const untouched = out.reviews.find((r) => r.brand === 'B')!;
+  assertEquals(untouched.text, shortText);
+});
+
+Deno.test('get_review_texts returns brand+text rows for a matching tab/platform/status', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Rooster Partners', data: { Brands: 'Lucky7even', 'TP Review Status': 'Published', 'TP Review Text': 'Solid platform.' } },
+      { id: '2', tab: 'Hanan', data: { Brands: 'Pribet.com', 'TP Review Status': 'Published', 'TP Review Text': 'Should not appear (different tab).' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { tab: 'Rooster Partners', platform: 'tp', status: 'Published' });
+  assertEquals(result.reviews, [{ brand: 'Lucky7even', text: 'Solid platform.' }]);
+  assertEquals(result.total, 1);
+});
+
+Deno.test('get_review_texts requires platform and status', async () => {
+  const tables = { entries: [] };
+  const missingPlatform: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { status: 'Published' });
+  assertEquals(typeof missingPlatform.error, 'string');
+  const missingStatus: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'tp' });
+  assertEquals(typeof missingStatus.error, 'string');
+});
+
+Deno.test('get_review_texts rejects an invalid platform value', async () => {
+  const tables = { entries: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'xyz', status: 'Published' });
+  assertEquals(typeof result.error, 'string');
+});
+
+Deno.test('get_review_texts total reflects the real match count even when limit caps the returned reviews', async () => {
+  const entries: EntryRow[] = [];
+  for (let i = 0; i < 5; i++) {
+    entries.push({ id: String(i), tab: 't', data: { Brands: `Brand${i}`, 'TP Review Status': 'Published', 'TP Review Text': `Review ${i}` } });
+  }
+  const tables = { entries, removed_platform_brands: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'tp', status: 'Published', limit: 2 });
+  assertEquals(result.reviews.length, 2);
+  assertEquals(result.total, 5);
+});
+
+Deno.test('get_review_texts returns an empty array, not an error, when nothing matches', async () => {
+  const tables = { entries: [], removed_platform_brands: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'tp', status: 'Removed' });
+  assertEquals(result.reviews, []);
+  assertEquals(result.total, 0);
 });
