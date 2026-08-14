@@ -7,6 +7,7 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { resolveProxyLabel } from '../../../src/lib/proxyAliases.ts';
+import { buildHiddenBrandSet, buildPlatformRestrictionMap, scheduleBrandKey } from '../../../src/lib/scheduleBrandConfig.ts';
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
 // KNOWN DIVERGENCE (documented, not fixed — see CLAUDE.md Known Issues): this ported
@@ -267,6 +268,34 @@ async function fetchRemovedPlatformBrandSet(supabase: any): Promise<Set<string>>
   const { data, error } = await supabase.from('removed_platform_brands').select('tab, brand, platform');
   if (error) throw error;
   return buildRemovedPlatformBrandSet(data ?? []);
+}
+
+async function fetchScheduleHiddenSet(supabase: any): Promise<Set<string>> {
+  const { data, error } = await supabase.from('schedule_hidden_brands').select('tab, brand');
+  if (error) throw error;
+  return buildHiddenBrandSet(data ?? []);
+}
+
+async function fetchScheduleRestrictionMap(supabase: any): Promise<Map<string, Platform>> {
+  const { data, error } = await supabase
+    .from('schedule_platform_restrictions')
+    .select('tab, brand, allowed_platform');
+  if (error) throw error;
+  return buildPlatformRestrictionMap(data ?? []);
+}
+
+function filterHiddenOrRestricted<T extends { tab: string; brand: string; platform: string | null }>(
+  rows: T[],
+  hiddenSet: Set<string>,
+  restrictionMap: Map<string, Platform>,
+): T[] {
+  return rows.filter((row) => {
+    const key = scheduleBrandKey(row.tab, row.brand);
+    if (hiddenSet.has(key)) return false;
+    const restriction = restrictionMap.get(key);
+    if (restriction && row.platform && row.platform !== restriction) return false;
+    return true;
+  });
 }
 
 const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
@@ -734,18 +763,26 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       .select('tab, brand, platform, week_start, monday, tuesday, wednesday, thursday, friday');
     if (args?.tab) q = q.eq('tab', args.tab);
     if (args?.week_start) q = q.eq('week_start', args.week_start);
-    const { data, error } = await q;
+    const [{ data, error }, hiddenSet, restrictionMap] = await Promise.all([
+      q,
+      fetchScheduleHiddenSet(supabase),
+      fetchScheduleRestrictionMap(supabase),
+    ]);
     if (error) throw error;
-    return { schedule: data ?? [] };
+    return { schedule: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap) };
   }
   if (name === 'get_paused_combos') {
     let q = supabase
       .from('brand_platform_pause')
       .select('tab, brand, platform, paused_week_start, reason');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const { data, error } = await q;
+    const [{ data, error }, hiddenSet, restrictionMap] = await Promise.all([
+      q,
+      fetchScheduleHiddenSet(supabase),
+      fetchScheduleRestrictionMap(supabase),
+    ]);
     if (error) throw error;
-    return { paused: data ?? [] };
+    return { paused: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap) };
   }
   return { error: `unknown tool: ${name}` };
 }

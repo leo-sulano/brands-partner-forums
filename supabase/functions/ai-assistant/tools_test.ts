@@ -617,6 +617,50 @@ Deno.test('get_schedule returns an empty array, not an error, when nothing match
   assertEquals(result.schedule.length, 0);
 });
 
+Deno.test("get_schedule excludes a hidden brand's row", async () => {
+  const tables = {
+    brand_schedule: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      { tab: 'Rooster Partners', brand: 'HiddenBrand', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ],
+    schedule_hidden_brands: [
+      { tab: 'Rooster Partners', brand: 'HiddenBrand' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Rooster Partners', week_start: '2026-08-03' });
+  assertEquals(result.schedule.length, 1);
+  assertEquals(result.schedule[0].brand, 'Lucky7even');
+});
+
+Deno.test("get_schedule excludes a platform-restricted brand's non-allowed-platform row, keeps the allowed one", async () => {
+  const tables = {
+    brand_schedule: [
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+      { tab: 'Hanan', brand: 'Pribet.com', platform: 'ag', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ],
+    schedule_platform_restrictions: [
+      { tab: 'Hanan', brand: 'Pribet.com', allowed_platform: 'tp' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Hanan', week_start: '2026-08-03' });
+  assertEquals(result.schedule.length, 1);
+  assertEquals(result.schedule[0].platform, 'tp');
+});
+
+Deno.test('get_schedule keeps a legacy (platform: null) row for a platform-restricted brand', async () => {
+  const tables = {
+    brand_schedule: [
+      { tab: 'Hanan', brand: 'Pribet.com', platform: null, week_start: '2026-01-05', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ],
+    schedule_platform_restrictions: [
+      { tab: 'Hanan', brand: 'Pribet.com', allowed_platform: 'tp' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Hanan', week_start: '2026-01-05' });
+  assertEquals(result.schedule.length, 1);
+  assertEquals(result.schedule[0].platform, null);
+});
+
 Deno.test('get_paused_combos lists paused combos with reason, optionally filtered by tab', async () => {
   const tables = {
     brand_platform_pause: [
@@ -631,6 +675,21 @@ Deno.test('get_paused_combos lists paused combos with reason, optionally filtere
   assertEquals(filtered.paused.length, 1);
   assertEquals(filtered.paused[0].brand, 'Pribet.com');
   assertEquals(filtered.paused[0].reason, 'success rate below threshold');
+});
+
+Deno.test("get_paused_combos excludes a hidden brand's paused combo", async () => {
+  const tables = {
+    brand_platform_pause: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'ag', paused_week_start: '2026-07-27', reason: 'x' },
+      { tab: 'Rooster Partners', brand: 'HiddenBrand', platform: 'ag', paused_week_start: '2026-07-27', reason: 'x' },
+    ],
+    schedule_hidden_brands: [
+      { tab: 'Rooster Partners', brand: 'HiddenBrand' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_paused_combos', {});
+  assertEquals(result.paused.length, 1);
+  assertEquals(result.paused[0].brand, 'Lucky7even');
 });
 
 Deno.test('isSensitiveField matches all known sensitive keys, case/whitespace-insensitive', () => {
