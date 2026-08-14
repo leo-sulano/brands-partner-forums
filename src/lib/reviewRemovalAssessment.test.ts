@@ -88,6 +88,15 @@ describe('hashAssessmentInput', () => {
     const b = await hashAssessmentInput({ platform: 'wo', reviewText: 'x', behavioralFields: {} });
     expect(a).not.toBe(b);
   });
+
+  it('produces a distinct hash for each of the 4 platforms given identical text/fields', async () => {
+    const hashes = await Promise.all(
+      (['tp', 'ag', 'cg', 'wo'] as const).map((platform) =>
+        hashAssessmentInput({ platform, reviewText: 'same review text', behavioralFields: { A: '1' } }),
+      ),
+    );
+    expect(new Set(hashes).size).toBe(4);
+  });
 });
 
 describe('isValidAssessmentResult', () => {

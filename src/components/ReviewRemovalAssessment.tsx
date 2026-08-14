@@ -11,11 +11,12 @@ import {
   type AssessmentSignal,
 } from '../lib/reviewRemovalAssessment';
 import { saveReviewAnalysis } from '../lib/queries';
+import type { Platform } from '../lib/scoreSummary';
 
 interface Props {
   entry: Entry;
   tab: string;
-  platform: 'tp' | 'wo';
+  platform: Platform;
   status: string;
   reviewText: string;
   headers: string[];

@@ -1,5 +1,6 @@
 import { supabase, SUPABASE_ANON_KEY, REVIEW_REMOVAL_ASSESSMENT_URL } from './supabase';
 import { isYesNoCol, isBehaviorExtraCol } from './entryFieldSections';
+import type { Platform } from './scoreSummary';
 
 export type OverallResult = 'likely_publishable' | 'uncertain' | 'likely_removal_risk' | 'no_clear_removal_reason';
 export type Confidence = 'low' | 'medium' | 'high';
@@ -29,7 +30,7 @@ export interface ReviewRemovalAssessmentResult {
 }
 
 export interface AssessmentInput {
-  platform: 'tp' | 'wo';
+  platform: Platform;
   reviewText: string;
   behavioralFields: Record<string, string | null>;
 }

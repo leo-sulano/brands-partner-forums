@@ -481,6 +481,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     onChange={(v) => setFields((f) => ({ ...f, ['AG Review Text']: v }))}
                     disabled={saving}
                   />
+                  <ReviewRemovalAssessment
+                    entry={entry}
+                    tab={entry.tab}
+                    platform="ag"
+                    status={pick(fields, PLATFORM_STATUS_KEYS.ag) ?? ''}
+                    reviewText={fields['AG Review Text'] ?? ''}
+                    headers={headers}
+                    fields={fields}
+                    disabled={saving}
+                  />
                 </div>
               )}
             </>
@@ -498,6 +508,16 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                   <ReviewTextBlock
                     value={fields['CG Review Text'] ?? ''}
                     onChange={(v) => setFields((f) => ({ ...f, ['CG Review Text']: v }))}
+                    disabled={saving}
+                  />
+                  <ReviewRemovalAssessment
+                    entry={entry}
+                    tab={entry.tab}
+                    platform="cg"
+                    status={pick(fields, PLATFORM_STATUS_KEYS.cg) ?? ''}
+                    reviewText={fields['CG Review Text'] ?? ''}
+                    headers={headers}
+                    fields={fields}
                     disabled={saving}
                   />
                 </div>

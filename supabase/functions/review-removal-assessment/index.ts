@@ -73,6 +73,38 @@ assessment (real, specific personal experience; free of promotional/spam
 language; not generic or templated).
 `;
 
+// Shared by both AskGamblers and Casino Guru — neither has a confirmed
+// public review-moderation policy equivalent to Trustpilot's, and this
+// dashboard's own prior research (a spike testing 4 brands already known
+// dead on Trustpilot against their AskGamblers/CasinoGuru pages) found all
+// 4 still fully live on both platforms — no removed/delisted state found.
+// That doesn't prove either platform never removes a review, but it is
+// real evidence worth weighing toward "no clear removal reason" rather
+// than assuming a policy violation, which is why it's surfaced here rather
+// than left as silent context only this codebase's maintainers know.
+function agCgPolicyCaveat(platformLabel: string): string {
+  return `
+${platformLabel} does not have a confirmed, publicly documented review
+moderation policy equivalent to Trustpilot's Guidelines for Reviewers. Do
+NOT invent or imply a specific ${platformLabel} policy. Set
+"policy_category" to "No confirmed ${platformLabel} policy framework
+available" and reason only from general genuine-review integrity
+principles for the content assessment (real, specific personal experience;
+free of promotional/spam language; not generic or templated).
+
+Additional context: prior research on this dashboard tested several
+brands already confirmed to have had their Trustpilot page removed, and
+found their ${platformLabel} pages still fully live and populated (real
+ratings, review counts intact) — no delisted/removed state was found. This
+is not proof ${platformLabel} never removes a review, but it is real
+evidence that ${platformLabel} may not delist a page just because the
+underlying business closed or was flagged elsewhere — weigh this when
+deciding between "likely_removal_risk" and "no_clear_removal_reason" for
+this platform specifically, and note it explicitly in "evidence_summary"
+or "alternative_explanation" when it's relevant to your conclusion.
+`;
+}
+
 const AI_RULES = `
 Rules you MUST follow:
 - Analyze evidence rather than assume a violation — a review being
@@ -84,12 +116,13 @@ Rules you MUST follow:
 - Explain exactly what evidence led to each conclusion; never assert a
   finding without pointing to the specific text or field supporting it.
 - Reference the applicable guideline category when possible (Trustpilot
-  reviews only).
+  reviews only — AskGamblers, Casino Guru, and Wizard of Odds have no
+  confirmed public policy, so use their caveat text instead).
 - If evidence is genuinely insufficient or the review looks compliant, say
   so plainly ("no_clear_removal_reason") — do not manufacture a
   justification.
-- Never fabricate a Trustpilot or Wizard of Odds policy beyond what is
-  given to you above.
+- Never fabricate a Trustpilot, AskGamblers, Casino Guru, or Wizard of Odds
+  policy beyond what is given to you above.
 - Never claim certainty about the platform's actual internal moderation
   decision — you only have partial, indirect evidence.
 - Never automatically classify a review as fake.
@@ -101,18 +134,34 @@ Rules you MUST follow:
 - Always state an overall confidence level (low/medium/high).
 `;
 
-const ASSESSMENT_NOTE_BY_PLATFORM: Record<'tp' | 'wo', string> = {
+type Platform = 'tp' | 'ag' | 'cg' | 'wo';
+
+const PLATFORM_LABEL: Record<Platform, string> = {
+  tp: 'Trustpilot',
+  ag: 'AskGamblers',
+  cg: 'Casino Guru',
+  wo: 'Wizard of Odds',
+};
+
+const ASSESSMENT_NOTE_BY_PLATFORM: Record<Platform, string> = {
   tp: "This is an AI assessment based on the available review, dashboard data, behavioral signals, and Trustpilot's published guidelines. It does not confirm Trustpilot's private/internal moderation decision.",
+  ag: "This is an AI assessment based on the available review, dashboard data, and behavioral signals. AskGamblers does not have a confirmed public review moderation policy, so this assessment does not reference one, and it does not confirm AskGamblers' private/internal moderation decision.",
+  cg: "This is an AI assessment based on the available review, dashboard data, and behavioral signals. Casino Guru does not have a confirmed public review moderation policy, so this assessment does not reference one, and it does not confirm Casino Guru's private/internal moderation decision.",
   wo: "This is an AI assessment based on the available review, dashboard data, and behavioral signals. Wizard of Odds does not have a confirmed public review moderation policy, so this assessment does not reference one, and it does not confirm Wizard of Odds' private/internal moderation decision.",
 };
 
-function buildSystemPrompt(platform: 'tp' | 'wo', status: string): string {
+function buildSystemPrompt(platform: Platform, status: string): string {
   const removedLike = /remov|refus|reject/i.test(status);
   const framing = removedLike
     ? `This review's current recorded status is "${status || 'unknown'}" (a removed/refused-type status). Frame "likely_reason" and "why_it_may_have_been_removed" as explaining why the review may have been removed — or state plainly that no clear reason is evident.`
     : `This review's current recorded status is "${status || 'unknown'}" (not a removed/refused-type status). Frame "likely_reason" and "why_it_may_have_been_removed" as a forward-looking risk read — what WOULD put this review at risk if it were reviewed today — or state that no meaningful risk is evident. Do not claim the review was actually removed.`;
 
-  const platformLabel = platform === 'wo' ? 'Wizard of Odds' : 'Trustpilot';
+  const platformLabel = PLATFORM_LABEL[platform];
+
+  let policySection: string;
+  if (platform === 'tp') policySection = TP_GUIDELINE_CATEGORIES;
+  else if (platform === 'wo') policySection = WO_POLICY_CAVEAT;
+  else policySection = agCgPolicyCaveat(platformLabel);
 
   return [
     `You are an evidence-based review compliance analyst for an internal dashboard. You analyze one ${platformLabel} review's content and its account's recorded behavioral data, and assess whether the available evidence explains a possible removal — or, if not removed, a removal risk.`,
@@ -121,7 +170,7 @@ function buildSystemPrompt(platform: 'tp' | 'wo', status: string): string {
     ``,
     framing,
     ``,
-    platform === 'tp' ? TP_GUIDELINE_CATEGORIES : WO_POLICY_CAVEAT,
+    policySection,
     AI_RULES,
     `Return ONLY a single JSON object matching exactly this shape (fill in every field; do not add or omit keys):`,
     OUTPUT_SCHEMA,
@@ -159,8 +208,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (CREDENTIAL_FIELD_NAMES.has(key)) delete behavioralFields[key];
   }
 
-  if (platform !== 'tp' && platform !== 'wo') {
-    return jsonResponse({ error: 'platform must be "tp" or "wo"' }, 400);
+  if (platform !== 'tp' && platform !== 'ag' && platform !== 'cg' && platform !== 'wo') {
+    return jsonResponse({ error: 'platform must be "tp", "ag", "cg", or "wo"' }, 400);
   }
   if (!reviewText.trim()) {
     return jsonResponse({ error: 'Missing reviewText' }, 400);
@@ -202,7 +251,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       throw new Error('Model did not return valid JSON');
     }
     if (analysis && typeof analysis === 'object') {
-      (analysis as Record<string, unknown>).assessment_note = ASSESSMENT_NOTE_BY_PLATFORM[platform as 'tp' | 'wo'];
+      (analysis as Record<string, unknown>).assessment_note = ASSESSMENT_NOTE_BY_PLATFORM[platform as Platform];
     }
     return jsonResponse({ analysis, model: MODEL });
   } catch (e) {
