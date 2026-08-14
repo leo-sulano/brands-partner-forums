@@ -61,16 +61,20 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-14 (newest):* Added a new `get_review_texts` tool to Ask AI (`supabase/functions/
+- *2026-08-14 (newest):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,
+  version 34, confirmed `ACTIVE` via `supabase functions list`) — Task 223's `get_review_texts`
+  tool is now live, closing the "not yet deployed" caveat the entry directly below carried. Same
+  cross-directory `src/lib` import bundling confirmed again in the deploy log, consistent with the
+  precedent Task 222 established.
+- *2026-08-14 (prior):* Added a new `get_review_texts` tool to Ask AI (`supabase/functions/
   ai-assistant/`) so it can read real Published-vs-Removed review text on request for
   content-improvement questions — the model does the comparison itself by reading raw text, no
   server-side NLP. Excludes flagged-removed brands, documents known per-platform scraper text
   caveats in its own description, and (per a final whole-branch review) queries with an explicit
   order+cap for a deterministic sample and steers the model to prefer it over `query_entries` for
   content questions. Proactive trend-spotting/suggestions to the team was explicitly scoped out as
-  a separate, later piece of work, per the user's own framing. **Not yet deployed** — `supabase
-  functions deploy ai-assistant` remains pending; the tool doesn't exist for real users until that
-  runs. Full Deno suite passes, `deno check` clean. Spec:
+  a separate, later piece of work, per the user's own framing. Full Deno suite passes, `deno check`
+  clean. Deployed the same day — see the entry above. Spec:
   `docs/superpowers/specs/2026-08-14-ask-ai-review-text-comparison-design.md`. Plan:
   `docs/superpowers/plans/2026-08-14-ask-ai-review-text-comparison.md`. Task 223.
 - *2026-08-14 (prior):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,

@@ -3606,3 +3606,18 @@ dependent on that unverified key, alongside WO pause detection and the removed-p
 (noted in the existing Known Issues bullet, not a new one). Spec:
 `docs/superpowers/specs/2026-08-14-ask-ai-review-text-comparison-design.md`. Plan:
 `docs/superpowers/plans/2026-08-14-ask-ai-review-text-comparison.md`.
+
+---
+
+## Task 224: Deploy `ai-assistant` (Task 223's get_review_texts Tool Now Live)
+**Date:** August 14, 2026
+
+User asked to deploy immediately after Task 223 merged. Ran `supabase functions deploy
+ai-assistant` from the repo root — confirmed via `supabase functions list` as `ACTIVE`, version 34
+(up from Task 222's version 33), updated 2026-08-14. The deploy log again listed `tools.ts`'s
+cross-directory `src/lib` imports (`scheduleBrandConfig.ts`, `removedPlatformBrands.ts`,
+`proxyAliases.ts`) as successfully bundled assets, consistent with Task 222's confirmation that
+this import pattern survives a real deploy, not just local `deno check`. `get_review_texts` is now
+reachable by real users of the Ask AI chat widget — a user can ask a content-comparison question
+("what tends to separate a Published TrustPilot review from a Removed one?") and the assistant can
+call the new tool for real data instead of guessing. No code changes in this task — deploy only.
