@@ -3309,3 +3309,35 @@ site plus its two payload-interface definitions, no shared date/status/platform 
 touched — implemented directly with one self-review pass. Not yet deployed: the
 `notify-brand-removed` function needs `supabase functions deploy notify-brand-removed` before a
 real removal triggers an email containing the new link.
+
+---
+
+## Task 217: Reject Invalid Dates in Brand Tabs' Inline Table Editor
+
+**Date:** August 14, 2026
+
+Reported live via a screenshot of the Brand Tabs display table: editing a TP/AG/CG/WO Added date
+directly in the table still accepted free text, even though commit `6b88b4e` ("Reject free-text
+entries in TP/AG/CG/WO Added and Removed date fields," Aug 13 2026 — not yet given its own numbered
+task-history entry as of this writing) had already added a `DD/MM/YYYY`-or-blank guard for these
+exact five columns. Root cause: that guard (`isValidDateText`/`DATE_ENTRY_HEADERS` in
+`dateUtils.ts`) was only ever wired into the Add Review Account and Edit Entry modals — Brand Tabs'
+own inline cell editor, `saveInlineEdit` (`BrandGroup.tsx:~1129`, the click-a-cell-to-edit path used
+directly on the display table), writes straight to Supabase via `updateEntryData` with no
+validation of any kind, so it was a second, independent write path the original fix never reached.
+
+Fix: `saveInlineEdit` now runs the identical `DATE_ENTRY_HEADERS.has(header) && !isValidDateText(value)`
+check before building the update payload. An invalid value shows an error `Toast` ("Enter a valid
+date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.") and the function returns without calling
+`updateEntryData` or touching local `entries` state — the cell's editor stays open on the rejected
+text (no `setEditingCell(null)`) so the user can correct it in place, matching the modals' "block
+save until valid" behavior as closely as an inline single-cell editor reasonably can. No changes to
+`dateUtils.ts` itself — this reuses the exact same exported guard, so the two write paths can't
+independently drift on what counts as a valid date again.
+
+Tier 2 (light path per this project's process tiering) — a contained bug fix closing a gap in
+already-shipped code, confined to one function in `BrandGroup.tsx` and reusing already-tested
+shared logic. Implemented directly with one self-review pass rather than the full spec/plan/
+subagent pipeline. Full test suite (1090 tests) and `npm run build` both pass. Live browser
+verification (confirming the toast and in-place rejection on a real Brand Tabs page) was not
+performed this session — no Supabase login credentials were available.

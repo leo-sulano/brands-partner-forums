@@ -27,6 +27,7 @@ import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
 import { SITE_URL } from '../lib/supabase';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel, NO_PROXY_LABEL } from '../lib/proxyAliases';
+import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
@@ -1127,6 +1128,10 @@ export default function BrandGroup() {
   }, [entries, brandCol]);
 
   async function saveInlineEdit(entry: Entry, header: string, value: string) {
+    if (DATE_ENTRY_HEADERS.has(header) && !isValidDateText(value)) {
+      setToast({ message: 'Enter a valid date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.', kind: 'error' });
+      return;
+    }
     const fields: Record<string, string | null> = { [header]: value || null };
     // When AG Added date is set, auto-populate AG Review Link from this brand's profile
     if (header === 'Ask Gambler review added' && value && brandCol) {
