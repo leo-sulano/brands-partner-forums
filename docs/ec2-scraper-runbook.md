@@ -20,6 +20,34 @@ Maintenance, troubleshooting, and update guide for the `scraper-leo` EC2 instanc
 
 ---
 
+## Co-tenant: LinkOps Worker (2026-08-14)
+
+This box also runs the **Link-Ops-Outreach** project's lead-scraping worker, deployed under
+PM2 as a separate process — entirely isolated from everything else in this runbook:
+
+| Field | Value |
+|---|---|
+| Directory | `~/linkops-worker/` (own `node_modules`, own `.env.local` — never touches `~/.env`) |
+| Process manager | PM2, process name `linkops-worker` (`pm2 logs linkops-worker`, `pm2 restart linkops-worker`) |
+| Runtime | Node.js 20 (installed via NodeSource, additive — does not affect the Python/dnf toolchain above) |
+| Source | `worker/` + `lib/leads/{sheets-service,enrichment}.ts` from the Link-Ops-Outreach repo |
+
+**Co-tenancy guard:** this box has a documented history of Chrome crashing under concurrent
+load (see [Weekly All-Platform Cron Job](#weekly-all-platform-cron-job), Task 128). To avoid
+colliding with this project's Chrome-heavy cron jobs (weekly all-platform + daily brand-removal
+check, both `0 1 * * *`/`0 1 * * 1` UTC), the LinkOps worker's `.env.local` sets
+`LINKOPS_AVOID_CRON_WINDOW=00:55-01:35` — it pauses claiming new jobs during that window and
+resumes automatically after. This is a no-op everywhere else (unset by default), so it's safe
+in the worker's own repo history.
+
+**Full detail** (update workflow, housekeeping, PM2 log rotation, when to reconsider a dedicated
+box) lives in the Link-Ops-Outreach repo's own `docs/ec2-worker-runbook.md`, not duplicated here.
+
+If this box ever needs to be replaced (see [Full Fresh Setup](#full-fresh-setup-if-the-instance-is-ever-replaced)),
+the LinkOps worker needs its own re-deploy — it is not part of that section's steps.
+
+---
+
 ## Connecting
 
 ```bash
@@ -302,6 +330,53 @@ scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo
 pkill -f status_server
 nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
 ```
+
+---
+
+## One-Time Full Backfill (bypass the group rotation)
+
+For a one-off job that needs every brand checked in one pass regardless of this week's active
+group — e.g. backfilling `TP Review Text` for every brand's Live *and* Removed entries in one
+sitting, rather than waiting up to 3 weeks for the rotation to cycle through everyone —
+`schedule_groups.py`'s `in_active_group()` honors a `SCHEDULE_GROUP_BYPASS` env var: when set
+(`1`/`true`/`yes`, case-insensitive), every brand is treated as in-scope, on every platform,
+for both the cron path and the manual dashboard "Check Status" button. There is no auto-expiry —
+it must be explicitly unset afterward or every future run (including the regular weekly cron)
+keeps checking everyone every time, defeating the whole point of the rotation.
+
+**1. Deploy the updated `schedule_groups.py`** (only this file changed — `check_review_status.py`/
+`check_ag_status.py`/`check_cg_status.py`/`check_wo_status.py`/`status_server.py` did not, so they
+don't need re-uploading):
+```bash
+scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\schedule_groups.py" ec2-user@54.179.186.205:~/schedule_groups.py
+```
+
+**2. Turn the bypass on** (SSH in first):
+```bash
+echo "SCHEDULE_GROUP_BYPASS=1" >> ~/.env
+pkill -f status_server
+nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+```
+The `pkill`/restart is required even though `status_server.py`'s own source didn't change —
+it's a long-running process that already has the old `schedule_groups.py` imported in memory,
+and Python won't pick up the new file (or the new env var) without a restart. A fresh
+`python3 check_review_status.py` cron invocation would pick up both automatically since it
+starts a new process, but the dashboard's "Check Status" button always goes through this
+already-running server.
+
+**3. Run the actual checks from the dashboard** — for each brand tab, filter Status to **Live**
+and click **Check Status** (TP), then switch the filter to **Removed** and click **Check Status**
+(TP) again. Repeat for all 11 tabs. Expect the Removed pass to leave many entries unchanged —
+if a review's page no longer shows any text on TrustPilot's live site, there is nothing left to
+fetch and `TP Review Text` simply stays whatever was last captured (or unset).
+
+**4. Turn the bypass back off** as soon as the backfill is done — do not leave it set:
+```bash
+sed -i '/^SCHEDULE_GROUP_BYPASS=/d' ~/.env
+pkill -f status_server
+nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+```
+Verify it's gone: `grep SCHEDULE_GROUP_BYPASS ~/.env` should print nothing.
 
 ---
 
