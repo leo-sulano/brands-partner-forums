@@ -61,7 +61,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-14 (newest):* Closed 2 known Ask AI (`supabase/functions/ai-assistant/`) drift gaps: `get_success_rate_by_field`'s proxy grouping now buckets blank/redacted/case-variant values under one "No Proxy"/canonical bucket via the real `resolveProxyLabel`/`canonicalProxyKey` (`src/lib/proxyAliases.ts`), and `get_schedule`/`get_paused_combos` now exclude hidden, platform-restricted, and flagged-removed brands via the real `src/lib/scheduleBrandConfig.ts` helpers plus the file's existing `removed_platform_brands` helpers — both by importing the same real, already-Deno-proven `src/lib` functions the dashboard and `generate-weekly-schedule` use, instead of new hand-ported copies. Also added one CLAUDE.md sentence (in the cross-dashboard-consistency bullet, under Development Guidelines) explicitly closing the informal "Ask AI is separately deployed, so it's out of scope" exemption that let 2 prior tasks (207, 218) each defer a similar gap instead of fixing it. Built via Subagent-Driven Development (3 tasks + a final whole-branch review that found and fixed 2 more instances of the same drift class the branch was meant to close — see the Known Issues entry above for the deploy-time caveat and 2 remaining deliberately-deferred residual gaps). Full suite passes (see this session's own verification numbers), `deno check` clean. **Not yet deployed** — `supabase functions deploy ai-assistant` remains pending. Spec: `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan: `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`. Task 220.
+- *2026-08-14 (newest):* Follow-up to the entry directly below, same session: closed the 3
+  remaining known Ask AI gaps that Task 220's own plan had deliberately left out of scope or that
+  its final review had parked as residual. `pick()` (`supabase/functions/ai-assistant/tools.ts`)
+  no longer trims before its blank check, matching `src/lib/scoreSummary.ts`'s real `pick()`
+  exactly (previously documented since the 2026-08-04 Phase 2 review); `get_score_summary`'s
+  `successRate` is now floored to a whole percent like the dashboard's `successRatePct` instead of
+  returned raw/unrounded. `groupByField` (the `query_entries group_by` path) now buckets
+  `"Proxy Used"` case-insensitively via `canonicalProxyKey`/`canonicalProxyName`
+  (`src/lib/proxyAliases.ts`), matching every other proxy-grouping path — every other field is
+  unaffected. `get_schedule`/`get_paused_combos`'s tool descriptions now disclose their silent
+  hidden/restricted/removed-brand filtering, so the model says "may be hidden/restricted/removed"
+  instead of wrongly claiming a brand "doesn't exist" per the system prompt's anti-hallucination
+  rule — wording-only, no schema change. Each fixed as an independently-approved bounded task (no
+  spec/plan docs) directly in this session, not via Subagent-Driven Development. `deno check`
+  clean, full Deno suite passes (82 tests). Still **not yet deployed** — `supabase functions
+  deploy ai-assistant` remains pending, same as the entry below. See the combined Known Issues
+  entry above (now describing all of this as closed) for the still-open deploy-time-unproven
+  import-path risk.
+- *2026-08-14 (prior):* Closed 2 known Ask AI (`supabase/functions/ai-assistant/`) drift gaps: `get_success_rate_by_field`'s proxy grouping now buckets blank/redacted/case-variant values under one "No Proxy"/canonical bucket via the real `resolveProxyLabel`/`canonicalProxyKey` (`src/lib/proxyAliases.ts`), and `get_schedule`/`get_paused_combos` now exclude hidden, platform-restricted, and flagged-removed brands via the real `src/lib/scheduleBrandConfig.ts` helpers plus the file's existing `removed_platform_brands` helpers — both by importing the same real, already-Deno-proven `src/lib` functions the dashboard and `generate-weekly-schedule` use, instead of new hand-ported copies. Also added one CLAUDE.md sentence (in the cross-dashboard-consistency bullet, under Development Guidelines) explicitly closing the informal "Ask AI is separately deployed, so it's out of scope" exemption that let 2 prior tasks (207, 218) each defer a similar gap instead of fixing it. Built via Subagent-Driven Development (3 tasks + a final whole-branch review that found and fixed 2 more instances of the same drift class the branch was meant to close). Full suite passes, `deno check` clean. **Not yet deployed** — `supabase functions deploy ai-assistant` remains pending. Spec: `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan: `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`. Task 220.
 - *2026-08-14 (prior):* Follow-up to the entry directly below, same session: collapsed Brand Tab
   registration from 3 independently-maintained lists across 3 files down to 2 single-sourced ones.
   `OPERATIONAL_TABS` (`src/lib/tabs.ts`) now derives from `Object.keys(TAB_COLUMN_CONFIGS)`
@@ -849,18 +867,33 @@ Brands Partner Forum/
   fallback too). Worth a follow-up look since it makes a correctly-saved new brand look like
   the save silently failed.
 - Supabase Auth still uses the default built-in email sender, which caps auth emails (signup confirmation, password reset, magic link) project-wide at a few per hour. Hit in practice 2026-07-08 trying to recover the `sandbox@optinetsolutions.com` account — both signup and password-reset threw "email rate limit exceeded" back to back. Fix: wire up a free custom SMTP provider (e.g. Resend, free tier, no card required) under Authentication → Emails / SMTP Settings to remove the cap. Immediate unblock without waiting: Authentication → Users → select user → Reset Password sets a new password directly, no email sent.
-- `get_score_summary`'s ported `pick()` (`supabase/functions/ai-assistant/tools.ts`) trims a
-  value before checking whether it's blank, while the real frontend's `pick()`
-  (`src/lib/scoreSummary.ts`) does not — a whitespace-only value in a higher-precedence status
-  key is therefore treated differently by each, which can make the assistant's numbers disagree
-  with the Score Summary page in rare cases (TP only, since it's the only platform with a
-  multi-key precedence list). Separately, `get_score_summary`'s `successRate` is returned
-  unrounded (e.g. `67.833...`) while the dashboard displays a floored whole percent, so the
-  assistant may state a slightly different-looking number for the same underlying rate. Both
-  documented, not fixed, as of the 2026-08-04 Phase 2 review — a real fix means either changing
-  `src/lib/scoreSummary.ts`'s shared behavior (out of scope, affects the live dashboard) or
-  accepting the divergence.
-- **Ask AI's schedule-hidden-brand and proxy-classification drift gaps were closed in code as of Task 220** (2026-08-14) — `get_schedule`/`get_paused_combos` (`supabase/functions/ai-assistant/tools.ts`) now filter through `schedule_hidden_brands`/`schedule_platform_restrictions` AND `removed_platform_brands`, matching `SchedulePlanner.tsx`'s real 3-part exclusion (hidden, restricted, flagged-removed), via the real `buildHiddenBrandSet`/`buildPlatformRestrictionMap`/`scheduleBrandKey` (`src/lib/scheduleBrandConfig.ts`) and `fetchRemovedPlatformBrandSet`/`platformRemovedKey` (already in `tools.ts`) instead of new hand-ported copies. `get_success_rate_by_field`'s proxy grouping now buckets through `resolveProxyLabel`/`canonicalProxyKey` (`src/lib/proxyAliases.ts`), matching the dashboard's own case-insensitive grouping. **Not yet deployed:** `supabase functions deploy ai-assistant` remains a pending manual step — the fix exists only in code/tests until that command runs. Deploy-time risk to watch: this is only the 2nd Deno function in this repo to import across into `src/lib/*` via a relative `../../../src/lib/` path — the 1st, `generate-weekly-schedule`, has itself never been deployed (see the item above), so this import pattern is unproven at actual deploy time for a bundler; watch the first post-Task-220 `ai-assistant` deploy for a module-resolution failure on that path. Two smaller, deliberately-deferred residual gaps found by the same review: (a) `query_entries`'s `group_by="Proxy Used"` path (`groupByField` in `tools.ts`) still buckets by raw, case-sensitive value — same class of gap as the proxy fix above, in a different tool — left alone since `groupByField` is deliberately generic-by-field with no per-field special-casing anywhere else in it; (b) none of Ask AI's tool descriptions disclose the hidden/restricted/removed-brand exclusions to the model, so a hidden or platform-removed brand can now read to the user as "doesn't exist" (per the system prompt's anti-hallucination rule) rather than "is hidden/restricted" — deliberately out of scope for Task 220, whose plan explicitly excluded touching tool descriptions/schemas/the system prompt. Spec/plan: `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`, `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`.
+- **All of Ask AI's known drift/parity gaps were closed in code as of Task 220 and its
+  same-day follow-up fixes** (2026-08-14) — `get_schedule`/`get_paused_combos`
+  (`supabase/functions/ai-assistant/tools.ts`) now filter through
+  `schedule_hidden_brands`/`schedule_platform_restrictions` AND `removed_platform_brands`,
+  matching `SchedulePlanner.tsx`'s real 3-part exclusion (hidden, restricted, flagged-removed),
+  via the real `buildHiddenBrandSet`/`buildPlatformRestrictionMap`/`scheduleBrandKey`
+  (`src/lib/scheduleBrandConfig.ts`) and `fetchRemovedPlatformBrandSet`/`platformRemovedKey`
+  (already in `tools.ts`) instead of new hand-ported copies, and both tools' descriptions now
+  disclose this filtering so the model says "may be hidden/restricted/removed" instead of
+  "doesn't exist" per the anti-hallucination system-prompt rule. `get_success_rate_by_field`'s
+  proxy grouping and `query_entries`'s `group_by="Proxy Used"` path (`groupByField`) both bucket
+  case-insensitively via `resolveProxyLabel`/`canonicalProxyKey`/`canonicalProxyName`
+  (`src/lib/proxyAliases.ts`), matching the dashboard's own grouping. `pick()` (`tools.ts`) no
+  longer trims before its blank check (matches `src/lib/scoreSummary.ts`'s real `pick()` exactly)
+  and `get_score_summary`'s `successRate` is now floored to a whole percent like the dashboard's
+  `successRatePct` — closing the last 2 items from the 2026-08-04 Phase 2 review that used to sit
+  just above this bullet. **Not yet deployed:** `supabase functions deploy ai-assistant` remains
+  a pending manual step — all of this exists only in code/tests until that command runs.
+  Deploy-time risk to watch: this is only the 2nd Deno function in this repo to import across into
+  `src/lib/*` via a relative `../../../src/lib/` path — the 1st, `generate-weekly-schedule`, has
+  itself never been deployed (see the item above), so this import pattern is unproven at actual
+  deploy time for a bundler; watch the first post-Task-220 `ai-assistant` deploy for a
+  module-resolution failure on that path. Spec/plan for the original Task 220 scope:
+  `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`,
+  `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md` — the 3 same-day follow-up fixes
+  (`pick()`/`successRate` parity, `groupByField` case-insensitivity, tool-description disclosure)
+  were done directly as bounded fixes in the same session, no separate spec/plan.
 
 <!-- gitnexus:start -->
 # GitNexus MCP

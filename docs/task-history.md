@@ -3470,3 +3470,60 @@ remains a pending manual step, deliberately out of scope for this task; the live
 the old, un-fixed behavior until that command is run. Spec:
 `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`. Plan:
 `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md`.
+
+*Note added same day, Task 221: this task's own final whole-branch review (part of the Subagent-
+Driven Development process, not a separate task) found and fixed 2 more gaps of the same class
+before merge — `get_schedule`/`get_paused_combos` were missing a 3rd exclusion rule
+(`removed_platform_brands`, alongside hidden/restricted), and `get_success_rate_by_field`'s proxy
+bucketing wasn't case-insensitive — both fixed in the same merged branch (commit `42b417e`), so
+the "76/76, 5 new cases" figures above reflect this task's state before that review, not the final
+merged state (79 tests). See Task 221 below for the 3 additional gaps closed in a same-day
+follow-up session.*
+
+---
+
+## Task 221: Close Ask AI's Remaining Known Gaps (pick()/successRate Parity, Proxy Case-Folding, Tool-Description Disclosure)
+**Date:** August 14, 2026
+
+Same-day follow-up to Task 220, asked directly ("let's work the gaps") after a status check on
+Ask AI confirmed 3 gaps were still open in CLAUDE.md's Known Issues: 2 explicitly deferred by
+Task 220's own plan (its Global Constraints ruled out touching `pick()`/`scoreSummary()` core
+logic and tool descriptions/schemas), and one — `groupByField`'s proxy case-sensitivity — parked
+as a residual gap by that task's final whole-branch review. Scoped as 3 independent bounded fixes
+(brainstorming skill flagged them as separate subsystems rather than one project) and implemented
+directly in this session, no spec/plan documents.
+
+**`pick()`/`successRate` parity:** `pick()` (`supabase/functions/ai-assistant/tools.ts`) no longer
+trims a value before its blank check, matching `src/lib/scoreSummary.ts`'s real `pick()` exactly
+(`v !== ''`, no trim) — a whitespace-only value in a higher-precedence key is now treated as
+present, same as the frontend, instead of falling through to the next key. `get_score_summary`'s
+`successRate` is now floored to a whole percent (`rate === 100 ? 100 : Math.floor(rate)`),
+hand-ported to match `src/lib/scoreSummary.ts`'s `successRatePct` exactly rather than importing
+that larger file. Neither change touches `src/lib/scoreSummary.ts` itself — the earlier "real fix
+means changing shared behavior, out of scope" framing turned out to be wrong; both divergences
+were fixable entirely within `tools.ts`'s own ported copies. 2 new tests.
+
+**`groupByField` proxy case-folding:** the `query_entries group_by="Proxy Used"` path now composes
+`canonicalProxyKey`/`canonicalProxyName` (`src/lib/proxyAliases.ts`) for grouping/display, mirroring
+the exact pattern the dashboard and `get_success_rate_by_field` already use — every other field
+passed to `group_by` is unaffected (still a plain case-sensitive raw-value group). 1 new test
+covering both the proxy-specific and unaffected-field cases together.
+
+**Tool-description disclosure:** `get_schedule` and `get_paused_combos`'s descriptions now state
+that a brand+platform combo can be silently absent because it's hidden, platform-restricted, or
+flagged-removed — and instruct the model to say so rather than concluding the combo "doesn't
+exist," which the system prompt's anti-hallucination rule would otherwise produce for any brand
+absent from a tool's results. Wording-only; no schema or logic change. `get_score_summary`/
+`get_success_rate_by_field` already disclosed their own (single) removed-brand exclusion, so this
+narrowed to just the 2 schedule tools once the actual current state was checked, rather than all
+tools uniformly as first assumed.
+
+CLAUDE.md's Known Issues entry for Ask AI (the combined bullet Task 220's final-review fix wave
+wrote) is updated to describe all 5 gaps — the 2 Task 220 shipped plus the 3 this task shipped —
+as closed; a new Recent Changes entry is added above Task 220's. Verification: `deno check
+tools.ts index.ts` clean after each of the 3 fixes; full Deno suite ends at 82/82 (79 from the
+merged Task 220 branch + 3 new). No `npm run build` run for the 2 code fixes (frontend files
+untouched) or the description-only fix; not needed per this project's established pattern for
+Deno-function-only changes. **Still not deployed** — `supabase functions deploy ai-assistant`
+remains the one pending manual step for all 5 gaps (Task 220's and this task's) to take effect
+live; nothing in this task changed that.
