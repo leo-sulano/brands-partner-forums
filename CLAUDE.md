@@ -837,6 +837,18 @@ Brands Partner Forum/
   real deploy time was unconfirmed (this function itself has never been deployed) — `ai-assistant`
   deployed successfully with the same import pattern on 2026-08-14 (see the Ask AI item above), so
   that specific worry no longer applies when this deploy is finally run.
+- **Pending manual deploy (2026-08-14):** the AI Review Removal Assessment feature's migration
+  (`supabase/migrations/20260814150000_add_ai_review_analysis.sql`) has not been applied to the live
+  database, and the `review-removal-assessment` Edge Function has not been deployed. The Vercel env
+  var it depends on (`VITE_REVIEW_REMOVAL_ASSESSMENT_URL`) has also not been set. **Setup required
+  before it works** (same pattern as `ai-assistant`/`translate-review`):
+  1. `supabase db push` (applies the new `ai_review_analysis`/`ai_review_analysis_hash`/
+     `ai_review_analysis_model`/`ai_review_analysis_at` columns on `entries`).
+  2. `supabase functions deploy review-removal-assessment` (`OPENAI_API_KEY` is already set —
+     shared with `ai-assistant`/`translate-review`).
+  3. Add `VITE_REVIEW_REMOVAL_ASSESSMENT_URL=<deployed function URL>` to Vercel env, then redeploy.
+  Until all 3 are done, the "🤖 Analyze Review" button in Edit Entry always fails with the standard
+  "Unable to generate an AI assessment right now. Please try again later." error message. Task 225.
 - `entries` is fully public-readable via the `anon` key across **all** tabs, not just TP Brand
   Injection, and its `data` jsonb contains credential fields (`Password`, `Backup Codes`,
   `Authenticator Backup` — see `AddReviewAccountModal.tsx`). This is a pre-existing condition,
@@ -878,7 +890,9 @@ Brands Partner Forum/
   check), but WO pause detection and the removed-post indicator's date-matching (Task 165)
   both still read actual status/date *values* through these same two keys, so a real
   mismatch there would still silently make both features inert for WO specifically.
-  `get_review_texts` (Task 223) is now a third dependent on this same unverified key.
+  `get_review_texts` (Task 223) is a third dependent, and the AI Review Removal Assessment feature's
+  WO framing (Task 225, `supabase/functions/review-removal-assessment/`) is now a fourth dependent on
+  this same unverified key.
 - Recharts pinned to v2; revisit if a major upgrade is available at install time.
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.

@@ -1,4 +1,5 @@
 import { supabase, SUPABASE_ANON_KEY, REVIEW_REMOVAL_ASSESSMENT_URL } from './supabase';
+import { isYesNoCol, isBehaviorExtraCol } from './entryFieldSections';
 
 export type OverallResult = 'likely_publishable' | 'uncertain' | 'likely_removal_risk' | 'no_clear_removal_reason';
 export type Confidence = 'low' | 'medium' | 'high';
@@ -33,7 +34,24 @@ export interface AssessmentInput {
   behavioralFields: Record<string, string | null>;
 }
 
-const ASSESSMENT_FAILURE_MESSAGE = 'Unable to generate an AI assessment right now. Please try again later.';
+export const ASSESSMENT_FAILURE_MESSAGE = 'Unable to generate an AI assessment right now. Please try again later.';
+
+// Real account-recovery secrets (confirmed `sensitive: true` in
+// AddReviewAccountModal.tsx) — these carry zero analytical value for a
+// review-removal assessment and must never be sent to an external AI
+// provider or persisted into `entries.ai_review_analysis`, a column on a
+// table this repo's own CLAUDE.md documents as fully public-readable via
+// the anon key.
+export const CREDENTIAL_FIELD_NAMES = new Set(['Backup Codes', 'Authenticator Backup']);
+
+export function collectBehavioralFields(headers: string[], fields: Record<string, string>): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const h of headers) {
+    if (CREDENTIAL_FIELD_NAMES.has(h)) continue;
+    if (isYesNoCol(h) || isBehaviorExtraCol(h)) out[h] = fields[h] || null;
+  }
+  return out;
+}
 
 async function sha256Hex(text: string): Promise<string> {
   const bytes = new TextEncoder().encode(text);

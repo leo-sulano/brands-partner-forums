@@ -34,7 +34,7 @@ const OUTPUT_SCHEMA = `{
     "signals": [{ "name": "<short label>", "severity": "low | medium | high", "evidence": "<which field/value supports this>" }]
   },
   "likely_reason": "<short phrase>",
-  "policy_category": "<one category from the list below, or the WO caveat text, or empty string if none applies>",
+  "policy_category": "<one category from the list provided above, or the WO caveat text, or empty string if none applies>",
   "why_it_may_have_been_removed": "<1-3 sentences>",
   "evidence_summary": "<1-3 sentences summarizing all evidence considered, including what was NOT available>",
   "alternative_explanation": "<1-2 sentences on a non-policy explanation, e.g. platform moderation error>",
@@ -150,6 +150,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const status = typeof body?.status === 'string' ? body.status : '';
   const reviewText = typeof body?.reviewText === 'string' ? body.reviewText : '';
   const behavioralFields = body?.behavioralFields && typeof body.behavioralFields === 'object' ? body.behavioralFields : {};
+
+  // Defense-in-depth: never trust the client alone to have excluded these.
+  // Backup Codes / Authenticator Backup are real account-recovery secrets
+  // and must never reach OpenAI or be echoed back for persistence.
+  const CREDENTIAL_FIELD_NAMES = new Set(['Backup Codes', 'Authenticator Backup']);
+  for (const key of Object.keys(behavioralFields)) {
+    if (CREDENTIAL_FIELD_NAMES.has(key)) delete behavioralFields[key];
+  }
 
   if (platform !== 'tp' && platform !== 'wo') {
     return jsonResponse({ error: 'platform must be "tp" or "wo"' }, 400);

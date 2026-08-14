@@ -453,7 +453,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     />
                     <ReviewRemovalAssessment
                       entry={entry}
-                      tab={selectedTab || currentTab || entry.tab}
+                      tab={entry.tab}
                       platform={activePlatform}
                       status={pick(fields, PLATFORM_STATUS_KEYS[activePlatform]) ?? ''}
                       reviewText={fields[reviewTextKey] ?? ''}

@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Bot, Loader2, ChevronDown } from 'lucide-react';
 import type { Entry } from '../types/entry';
-import { isYesNoCol, isBehaviorExtraCol } from '../lib/entryFieldSections';
 import {
+  ASSESSMENT_FAILURE_MESSAGE,
+  collectBehavioralFields,
   hashAssessmentInput,
+  isValidAssessmentResult,
   requestReviewRemovalAssessment,
   type ReviewRemovalAssessmentResult,
   type AssessmentSignal,
 } from '../lib/reviewRemovalAssessment';
 import { saveReviewAnalysis } from '../lib/queries';
-
-const ASSESSMENT_FAILURE_MESSAGE = 'Unable to generate an AI assessment right now. Please try again later.';
 
 interface Props {
   entry: Entry;
@@ -49,13 +49,7 @@ function riskBucket(score: number): { emoji: string; label: string } {
   return { emoji: '🟢', label: 'Low' };
 }
 
-function behavioralFieldsFrom(headers: string[], fields: Record<string, string>): Record<string, string | null> {
-  const out: Record<string, string | null> = {};
-  for (const h of headers) {
-    if (isYesNoCol(h) || isBehaviorExtraCol(h)) out[h] = fields[h] || null;
-  }
-  return out;
-}
+const SEVERITY_RANK: Record<AssessmentSignal['severity'], number> = { high: 0, medium: 1, low: 2 };
 
 function SignalBadge({ signal }: { signal: AssessmentSignal }) {
   const icon = signal.severity === 'low' ? '✓' : '⚠';
@@ -73,7 +67,7 @@ function SignalBadge({ signal }: { signal: AssessmentSignal }) {
 
 export default function ReviewRemovalAssessment({ entry, tab, platform, status, reviewText, headers, fields, disabled }: Props) {
   const [result, setResult] = useState<ReviewRemovalAssessmentResult | null>(
-    (entry.ai_review_analysis as ReviewRemovalAssessmentResult | undefined) ?? null,
+    isValidAssessmentResult(entry.ai_review_analysis) ? entry.ai_review_analysis : null,
   );
   // Tracked as state (not read directly off the `entry` prop on every render)
   // so a successful analyze/re-analyze can update the "last saved" baseline
@@ -84,7 +78,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
-  const behavioralFields = useMemo(() => behavioralFieldsFrom(headers, fields), [headers, fields]);
+  const behavioralFields = useMemo(() => collectBehavioralFields(headers, fields), [headers, fields]);
 
   useEffect(() => {
     let cancelled = false;
@@ -159,7 +153,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
           {(result.content_assessment.signals.length > 0 || result.behavioral_assessment.signals.length > 0) && (
             <div className="flex flex-wrap gap-1.5">
               {[...result.content_assessment.signals, ...result.behavioral_assessment.signals]
-                .sort((a, b) => (b.severity === 'high' ? 1 : 0) - (a.severity === 'high' ? 1 : 0))
+                .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
                 .slice(0, 6)
                 .map((s, i) => <SignalBadge key={`${s.name}-${i}`} signal={s} />)}
             </div>

@@ -10,6 +10,7 @@ vi.mock('./supabase', () => ({
 }));
 
 import {
+  collectBehavioralFields,
   hashAssessmentInput,
   isValidAssessmentResult,
   requestReviewRemovalAssessment,
@@ -38,6 +39,23 @@ const VALID_RESULT: ReviewRemovalAssessmentResult = {
   recommendation: 'No action needed based on available evidence.',
   assessment_note: 'This is an AI assessment based on the available review, dashboard data, behavioral signals, and Trustpilot\'s published guidelines. It does not confirm Trustpilot\'s private/internal moderation decision.',
 };
+
+describe('collectBehavioralFields', () => {
+  it('excludes credential fields (Backup Codes, Authenticator Backup) while keeping real behavioral fields', () => {
+    const headers = ['Backup Codes', 'Authenticator Backup', 'Sticky IP (Mobile) (Y/N)'];
+    const fields = {
+      'Backup Codes': 'ABCD-1234-EFGH-5678',
+      'Authenticator Backup': 'some-otp-secret',
+      'Sticky IP (Mobile) (Y/N)': 'No',
+    };
+
+    const result = collectBehavioralFields(headers, fields);
+
+    expect(result).not.toHaveProperty('Backup Codes');
+    expect(result).not.toHaveProperty('Authenticator Backup');
+    expect(result['Sticky IP (Mobile) (Y/N)']).toBe('No');
+  });
+});
 
 describe('hashAssessmentInput', () => {
   it('is deterministic for identical input', async () => {

@@ -3621,3 +3621,68 @@ this import pattern survives a real deploy, not just local `deno check`. `get_re
 reachable by real users of the Ask AI chat widget — a user can ask a content-comparison question
 ("what tends to separate a Published TrustPilot review from a Removed one?") and the assistant can
 call the new tool for real data instead of guessing. No code changes in this task — deploy only.
+
+---
+
+## Task 225: Add AI Review Removal Assessment (TP/WO)
+**Date:** August 14, 2026
+
+Built an AI-backed compliance/removal-risk assessment for a single TP or WO review entry, reached
+from `EditEntryModal`'s TP/WO section directly under `ReviewTextBlock`, wherever the active tab's
+platforms include `tp` or `wo` (`getTabPlatforms(tab)`). Clicking "🤖 Analyze Review" sends the
+entry's review text, its recorded status, and its already-surfaced "Behavior Flags" fields
+(`src/lib/entryFieldSections.ts`'s `YES_NO_COLS`/`BEHAVIOR_EXTRA_COLS`) to a new `gpt-4o`-backed
+`review-removal-assessment` Edge Function — a thin single-shot OpenAI proxy, no tool-calling loop,
+no DB access, mirroring `translate-review`'s shape. The model returns a three-layer structured JSON
+result (overall result + risk score + confidence, a content assessment against Trustpilot's real
+published Guidelines for Reviewers, and a behavioral assessment against the entry's own recorded
+flags) explicitly instructed to conclude "no clear removal reason" when the evidence doesn't
+support one, rather than reverse-engineering a justification for why a review was removed. Covers
+both Trustpilot and Wizard of Odds: TP reasons against the real fixed guideline-category list
+embedded in the system prompt; WO has no confirmed public review-moderation policy (matching this
+repo's existing "AG/CG/WO automated brand-page-removal detection" Known Issue), so the prompt tells
+the model this explicitly and reasons only from general genuine-review integrity principles instead
+of fabricating a WO-specific policy. The result is cached on 4 new `entries` columns
+(`ai_review_analysis` jsonb, `ai_review_analysis_hash`, `ai_review_analysis_model`,
+`ai_review_analysis_at`) via a new migration and a new `saveReviewAnalysis` in `src/lib/queries.ts`
+(deliberately no `logChange` audit-log entry — this is a derived/regenerable artifact, not a user
+edit to business data); staleness is detected by a SHA-256 hash (Web Crypto, no new dependency) over
+`{platform, reviewText, behavioralFields}` — deliberately excluding `status`, so a pure status flip
+(e.g. Pending → Removed) still surfaces the last cached assessment rather than discarding it.
+
+A final whole-branch review caught and fixed 2 real issues before merge. The first was a credential
+leak at Critical severity: `BEHAVIOR_EXTRA_COLS` includes `'Backup Codes'` and `'Authenticator
+Backup'` — real account-recovery secrets, `sensitive: true` in `AddReviewAccountModal.tsx` — and the
+component's field-collection helper included them unconditionally, sending their real values to
+OpenAI and letting the model quote them back as `evidence` for persistence into
+`entries.ai_review_analysis`, a column on a table this repo's own CLAUDE.md documents as fully
+public-readable via the anon key. This is the same leak class Task 174 already fixed once for Ask
+AI's `redactSensitive()`. Fixed by moving the field-collection logic out of the component's
+untested local helper into a new exported, unit-tested `collectBehavioralFields()` in
+`src/lib/reviewRemovalAssessment.ts`, which now excludes both fields via a new
+`CREDENTIAL_FIELD_NAMES` set — plus a server-side defense-in-depth filter in the edge function
+itself that deletes either key from the request body's `behavioralFields` before it ever reaches the
+OpenAI call, so a compromised or bypassed client still can't leak them. The second was an
+unvalidated-cached-result crash risk: the component's initial `result` state cast
+`entry.ai_review_analysis` directly with no shape check, so a future schema drift in a stored value
+would throw unguarded on lookups like `OVERALL_META[result.overall_result]` with no error boundary
+around the component, crashing the whole Edit Entry modal — fixed by routing the initial state
+through the already-existing `isValidAssessmentResult()` validator instead. Also fixed in the same
+pass: a signal-severity sort that only distinguished `'high'` from everything else (so with more
+than 6 signals a `'medium'` could be arbitrarily dropped in favor of an earlier `'low'`) replaced
+with a proper `SEVERITY_RANK` map; the component's `tab` prop changed from
+`selectedTab || currentTab || entry.tab` to plain `entry.tab`, so clicking "Analyze Review" always
+invalidates the cache of the tab the entry actually lives in, not a pending-unsaved "move to a
+different tab" destination; and one prompt-wording nit (`policy_category`'s schema comment said
+"from the list below" when the guideline list is actually inserted above the schema in
+`buildSystemPrompt`'s array).
+
+Full suite passes (425 tests) and `npm run build` completes with zero errors; `deno check
+supabase/functions/review-removal-assessment/index.ts` is clean. **Deployment deliberately
+deferred**, same "local first" pattern as other Known Issues in this repo's CLAUDE.md — 3 pending
+manual steps: `supabase db push` (apply `20260814150000_add_ai_review_analysis.sql`), `supabase
+functions deploy review-removal-assessment`, and adding `VITE_REVIEW_REMOVAL_ASSESSMENT_URL=<deployed
+URL>` to Vercel env (redeploy after). Until all 3 are done, "Analyze Review" always fails with the
+standard "Unable to generate an AI assessment right now" error message. Spec:
+`docs/superpowers/specs/2026-08-14-ai-review-removal-assessment-design.md`. Plan:
+`docs/superpowers/plans/2026-08-14-ai-review-removal-assessment.md`.
