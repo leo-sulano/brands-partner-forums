@@ -474,6 +474,12 @@ export interface ReviewTextRow {
 
 const REVIEW_TEXT_MAX_CHARS = 2000;
 
+// Aggregate character budget across a single reviewTextsByStatus() call's
+// returned reviews — worst case (limit: 50 x 2000 chars each) is ~100KB
+// re-sent on every one of up to 5 tool-loop iterations. total still reflects
+// every real match, not just what fit inside the budget.
+const REVIEW_TEXT_BUDGET_CHARS = 30000;
+
 // Ported from src/lib/scoreSummary.ts's PLATFORM_REVIEW_TEXT_KEYS — keep in
 // sync manually if either changes, same convention as this file's other
 // ported constants (FIELD_KEYS, PLATFORM_STATUS_KEYS).
@@ -492,6 +498,8 @@ export function reviewTextsByStatus(
 ): { reviews: ReviewTextRow[]; total: number } {
   const wantStatus = status.trim().toLowerCase();
   const results: ReviewTextRow[] = [];
+  let total = 0;
+  let budgetUsed = 0;
   for (const e of entries) {
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
     if (brand && removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
@@ -499,12 +507,19 @@ export function reviewTextsByStatus(
     if (haveStatus !== wantStatus) continue;
     const text = pick(e.data, PLATFORM_REVIEW_TEXT_KEYS[platform]);
     if (!text) continue;
+    total++;
+    if (budgetUsed >= REVIEW_TEXT_BUDGET_CHARS) continue;
     const truncated = text.length > REVIEW_TEXT_MAX_CHARS
       ? text.slice(0, REVIEW_TEXT_MAX_CHARS) + ' […truncated]'
       : text;
     results.push({ brand, text: truncated });
+    // Budgeted on the pre-truncation length, not truncated.length: this is
+    // strictly more conservative (truncated <= raw) so it still bounds the
+    // final payload size, while also protecting against a single
+    // pathologically long field's cost before REVIEW_TEXT_MAX_CHARS is applied.
+    budgetUsed += text.length;
   }
-  return { reviews: results, total: results.length };
+  return { reviews: results, total };
 }
 
 // --- OpenAI tool schemas ---
@@ -713,6 +728,10 @@ export const TOOL_DEFS = [
       description:
         'Returns real review text for a platform + status, for reading and comparing content ' +
         '(e.g. "what tends to separate a Published TrustPilot review from a Removed one?"). ' +
+        'Prefer this over query_entries for any question about review content — query_entries ' +
+        'can technically surface the same review-text field, but without this tool\'s ' +
+        'platform-scoped status matching, removed-brand exclusion, or the data-quality caveats ' +
+        'below. ' +
         'One platform and one status per call — call it again with a different status (or ' +
         'platform) to compare groups; results are never combined across platforms since each ' +
         'has a different review format/audience. status uses the same values as query_entries ' +
@@ -724,8 +743,10 @@ export const TOOL_DEFS = [
         'CasinoGuru text can carry an appended casino owner-reply, or be missing entirely on an ' +
         'ambiguous page match — treat these as scraper noise, not a real content signal. Each ' +
         'review is capped at 2000 characters (flagged with " […truncated]" if cut). total is ' +
-        'the real match count before the limit cap, so a capped result should be presented as ' +
-        '"showing N of total", not as exhaustive.',
+        'the match count within the rows scanned (up to 1000 per call, ordered by id — if a ' +
+        'tab/platform/status combination has more than that, total may undercount the true ' +
+        'dataset), before the limit cap; a capped result should be presented as "showing N of ' +
+        'total", not as exhaustive.',
       parameters: {
         type: 'object',
         properties: {
@@ -877,7 +898,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { paused: filterHiddenOrRestricted(data ?? [], hiddenSet, restrictionMap, removedSet) };
   }
   if (name === 'get_review_texts') {
-    if (!args?.platform || !args?.status) {
+    if (!args?.platform || !args?.status || !String(args.status).trim()) {
       return { error: 'platform and status are both required.' };
     }
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
@@ -886,6 +907,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     }
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
+    q = q.order('id').limit(1000);
     const [{ data, error }, removedSet] = await Promise.all([q, fetchRemovedPlatformBrandSet(supabase)]);
     if (error) throw error;
     const { reviews, total } = reviewTextsByStatus(data ?? [], args.platform, args.status, removedSet);

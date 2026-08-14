@@ -3551,3 +3551,58 @@ as uploaded assets alongside `tools.ts`/`index.ts`, confirming the bundler follo
 correctly. `CLAUDE.md`'s Known Issues updated in both places: the Ask AI entry now says Deployed
 instead of Not yet deployed, and the still-pending `generate-weekly-schedule` deploy item now notes
 this precedent resolves its own import-path risk. No code changes in this task — deploy only.
+
+---
+
+## Task 223: Add get_review_texts Tool to Ask AI (Content-Comparison Analysis)
+**Date:** August 14, 2026
+
+User asked for Ask AI to be able to analyze review content between Published and Removed for
+content-improvement purposes, with proactive trend-spotting/suggestions explicitly named as a
+separate, later goal (not built here — needs its own future design covering storage, cadence, and
+a delivery mechanism). Since there's no version history for review text (the scraper always
+overwrites, even a manual edit has no locked flag protecting it — see Task 199), the near-term
+scope is a group-level comparison: what does currently-Published review text look like vs
+currently-Removed, not tracking one review's content changing over time. Confirmed with the user
+during brainstorming.
+
+New `get_review_texts` tool (`supabase/functions/ai-assistant/tools.ts`) returns real review text
+filtered by platform (required, single — not combinable across platforms like the KPI tools,
+since each platform's reviews have a different format/audience) and status (required, one value
+per call — the model compares by calling twice, same as it already does for other tools). A
+finding shaped the design: the review text field was already technically reachable via the
+existing `query_entries` tool (nothing in `SENSITIVE_KEYS` redacts it), but returns 15+ irrelevant
+fields per row and caps at 50 rows — a dedicated tool returning only `{brand, text}` is far more
+token-efficient and gives one place to document known per-platform scraper text-quality caveats
+(TrustPilot title-vs-body, AskGamblers vote-count lines, CasinoGuru owner-reply bleed) so the model
+doesn't mistake noise for a real content signal. Excludes brands flagged removed on the queried
+platform, matching `get_score_summary`/`get_success_rate_by_field`'s existing exclusion pattern.
+
+A final whole-branch review caught 2 more Important gaps before merge: the underlying query had no
+explicit ordering/cap, so on a tab with over 1000 matching rows (Supabase/PostgREST's real
+per-query cap, confirmed via this repo's own `fetchAllEntries` pagination helper) the sampled
+reviews would come from an arbitrary, unstable window rather than a deterministic one, undermining
+the tool's own comparison purpose — fixed with an explicit `.order('id').limit(1000)` and reworded
+`total` description language that no longer overclaims exhaustiveness; and nothing steered the
+model to prefer this tool over `query_entries` for exactly the question it was built to answer —
+fixed with one clause in the tool's own description (the plan's constraint against touching the
+system prompt was respected). Also added: an aggregate ~30,000-character budget across a single
+call's returned reviews (worst case was 50 reviews × 2000 chars ≈ 100KB re-sent on every one of up
+to 5 tool-loop iterations), and rejection of a whitespace-only `status` value, which previously
+passed the required-arg check but then silently matched every row with a genuinely blank/unset
+status. The budget is accounted on each review's pre-truncation length (not its post-cap length) —
+a review capped at 2000 characters can only ever cost up to ~2013 chars against the budget, which
+would let the 30,000 cap almost never actually bind in practice; charging the raw length instead
+keeps the budget meaningful for a tab with many long reviews while still bounding the final payload
+size, since truncated length is always ≤ raw length.
+
+Full Deno suite passes (91 pre-existing + 2 new fix-wave tests = 93 total), `deno check` clean.
+**Not yet deployed** — `supabase functions deploy ai-assistant` remains a pending manual step;
+`ai-assistant` was deployed earlier the same day (Task 222) without this tool, so it doesn't exist
+for real users yet. One residual, deliberately-deferred item the review flagged: `platform: 'wo'`
+depends on `PLATFORM_STATUS_KEYS.wo = ['WoO Review Status']`, whose live header name CLAUDE.md's
+Known Issues already flags as never verified against real data — this tool is now a third
+dependent on that unverified key, alongside WO pause detection and the removed-post indicator
+(noted in the existing Known Issues bullet, not a new one). Spec:
+`docs/superpowers/specs/2026-08-14-ask-ai-review-text-comparison-design.md`. Plan:
+`docs/superpowers/plans/2026-08-14-ask-ai-review-text-comparison.md`.

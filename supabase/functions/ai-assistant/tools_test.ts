@@ -127,6 +127,9 @@ function mockSupabase(rows: EntryRow[]) {
           );
           return builder;
         },
+        order(_col: string) {
+          return builder;
+        },
         limit(n: number) {
           filtered = filtered.slice(0, n);
           return builder;
@@ -155,6 +158,9 @@ function mockSupabaseTables(tables: Record<string, any[]>) {
         },
         eq(key: string, value: string) {
           filtered = filtered.filter((r: any) => r[key] === value);
+          return builder;
+        },
+        order(_col: string) {
           return builder;
         },
         limit(n: number) {
@@ -1110,4 +1116,24 @@ Deno.test('get_review_texts returns an empty array, not an error, when nothing m
   const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'tp', status: 'Removed' });
   assertEquals(result.reviews, []);
   assertEquals(result.total, 0);
+});
+
+// --- Final whole-branch review fixes (2026-08-14) ---
+
+Deno.test('reviewTextsByStatus stops adding reviews once the character budget is used up, but total keeps counting every match', () => {
+  const bigText = 'x'.repeat(20000);
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'A', 'TP Review Status': 'Published', 'TP Review Text': bigText } },
+    { id: '2', tab: 't', data: { Brand: 'B', 'TP Review Status': 'Published', 'TP Review Text': bigText } },
+    { id: '3', tab: 't', data: { Brand: 'C', 'TP Review Status': 'Published', 'TP Review Text': 'short one' } },
+  ];
+  const out = reviewTextsByStatus(entries, 'tp', 'Published');
+  assertEquals(out.total, 3);
+  assertEquals(out.reviews.length, 2);
+});
+
+Deno.test('get_review_texts rejects a whitespace-only status', async () => {
+  const tables = { entries: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'tp', status: '   ' });
+  assertEquals(typeof result.error, 'string');
 });
