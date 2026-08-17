@@ -1,6 +1,15 @@
 import { supabase, SUPABASE_ANON_KEY, SYNC_SCHEDULE_PMS_URL } from './supabase';
 import type { Platform } from './removedPlatformBrands';
 
+// PmsSyncItem/PmsDriftedItem/PmsDeletedItem below are deliberately redeclared
+// here rather than imported from src/lib/scheduler/pmsSync.ts -- that module
+// is a server-side Deno file (imports @supabase/supabase-js server-side APIs
+// and holds the PMS API token flow) never bundled for the browser. This file
+// is the thin browser-side proxy that only calls the sync-schedule-pms Edge
+// Function over HTTP and needs matching shapes for its own request/response
+// typing, same "duplicate payload interface, kept in sync by hand" pattern
+// notify-brand-removed's NotifyBrandRemovedPayload already uses for the same
+// reason.
 export interface PmsSyncItem {
   tab: string;
   tabLabel: string;

@@ -142,6 +142,14 @@ export async function pushScheduleToPms(
       const task = await createPmsTask(`${item.tabLabel} | ${item.brand}`, item.date, credentials, fetchFn);
       await setPmsTaskLabels(task.id, [platformLabelId, clientLabelId], credentials, fetchFn);
       await insertSchedulePmsLink(item.tab, item.brand, item.platform, item.date, task.id, client);
+      // Reflect the just-created link back into this tab's in-memory `links`
+      // array so a later item in the SAME batch that repeats this exact combo
+      // (e.g. rapid re-cycling of one cell while a prior push is in flight)
+      // sees it as already-linked via `alreadyLinked` above, instead of
+      // attempting a second PMS task create that would then fail
+      // insertSchedulePmsLink on the table's (tab, brand_key, platform, date)
+      // unique constraint and leave an orphaned PMS task with no link at all.
+      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id });
       created.push(item);
     } catch (err) {
       failed.push({ item, error: err instanceof Error ? err.message : String(err) });
@@ -172,7 +180,11 @@ export interface PmsPullResult {
 
 interface PmsTaskListed {
   id: string;
-  dueDate: string;
+  // Typed nullable even though the PMS API's normal shape always includes a
+  // due date -- a task whose due date was cleared via a one-click PMS UI
+  // action comes back with dueDate null/undefined at runtime. See the
+  // liveDate guard below.
+  dueDate: string | null | undefined;
 }
 
 async function fetchPmsProjectTasks(credentials: PmsCredentials, fetchFn: typeof fetch): Promise<PmsTaskListed[]> {
@@ -208,7 +220,14 @@ export async function pullScheduleFromPms(
       deleted.push({ tab: link.tab, brand: link.brand, platform: link.platform, date: link.date });
       continue;
     }
-    const liveDate = task.dueDate.slice(0, 10);
+    // A cleared due date (a one-click action in the PMS UI) makes task.dueDate
+    // null/undefined at runtime despite the interface typing it as string --
+    // treat that as "nothing to reconcile for this link right now", not as
+    // deleted, since a cleared date is a genuinely different, ambiguous state
+    // from a task that no longer exists and shouldn't silently un-schedule a
+    // real brand_schedule day.
+    const liveDate = task.dueDate?.slice(0, 10);
+    if (!liveDate) continue;
     if (liveDate !== link.date) {
       await updateSchedulePmsLinkDate(link.id, liveDate, client);
       drifted.push({ tab: link.tab, brand: link.brand, platform: link.platform, oldDate: link.date, newDate: liveDate });

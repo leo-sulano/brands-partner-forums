@@ -796,7 +796,41 @@ Brands Partner Forum/
   time. Live-verify once deployed: open Schedule Planner, click a blank cell active on a real tab,
   confirm a real task appears in the "Forum Team" PMS project's To Do column with the right
   title/label/due date; then edit that task's due date directly in PMS, reload the tab, and confirm
-  the calendar cell moves to match. Task 228.
+  the calendar cell moves to match. Task 228. Two more verification sub-steps a final review flagged
+  as gaps in that same walkthrough, not yet covered by the spot-check above:
+  4. **Date round-trip via the PMS's own UI, not just its API.** The create/patch API path's date
+     handling was spot-verified once during planning (see the spec doc's live-verification note),
+     but that only proves the API side. Pull reconciliation depends on a different path: a human
+     manually editing a task's due date through the PMS's own UI. Create one real task via the
+     deployed function, edit its due date by hand in the PMS UI (not via `curl`/the API), then
+     independently confirm via `GET /api/projects/{projectId}/tasks` that the returned `dueDate`
+     slices back to the exact `YYYY-MM-DD` shown in the UI. If the PMS UI stores or displays dates
+     in local time while the API returns UTC, a human-edited date could silently shift by a day when
+     pulled back — misfiring drift-detection on every linked task, not just occasionally.
+  5. **List-endpoint completeness.** `pullScheduleFromPms` treats any linked `pms_task_id` NOT
+     present in `GET /api/projects/{projectId}/tasks`'s response as "deleted in PMS" and un-schedules
+     the corresponding calendar day. Before trusting this in production, confirm that endpoint
+     returns every task in the project unpaginated and regardless of column, including Done/archived
+     — by creating a linked task, moving it to Done in the PMS UI (a normal workflow action, not a
+     delete), and confirming it still appears in the list response. If the endpoint is paginated or
+     excludes Done/archived tasks, a normal "mark as done" action would incorrectly read as
+     "deleted" and silently clear a real, still-valid schedule day.
+- **Schedule Planner ↔ PMS pull reconciliation doesn't check hidden/restricted/removed-brand
+  exclusion sets before applying drift (Task 228 final review, not yet fixed).**
+  `pullScheduleFromPms` (`src/lib/scheduler/pmsSync.ts`) reconciles every `schedule_pms_links` row
+  for a tab against live PMS state without checking `schedule_hidden_brands`,
+  `schedule_platform_restrictions`, or `removed_platform_brands`. If a brand+platform combo becomes
+  hidden, restricted, or flagged-removed *after* its PMS task was linked, and someone later edits
+  that task's due date in PMS, the pull effect will still write an 'active' day into
+  `brand_schedule` for that now-excluded combo. Practical impact is narrower than it sounds:
+  `TabScheduleSection.tsx`'s `brandPlatforms()`/`resolveBrandPlatforms()` already filter excluded
+  combos out of what actually renders regardless of what's sitting in `brand_schedule` (the same
+  exclusion-filtering logic used everywhere else on this page), so the real effect is an orphaned,
+  invisible `brand_schedule` row — not an incorrect number or chip shown anywhere. Still worth
+  fixing properly per this project's standing cross-dashboard-consistency rule, by threading the
+  same hidden/restricted/removed sets `TabScheduleSection.tsx` already computes into the pull call
+  (or having `pullScheduleFromPms` resolve them itself, the way `generateForTab`'s `buildTabContext`
+  already does) and skipping any drift/deletion whose combo is currently excluded.
 - **Schedule Planner ↔ PMS pull-reconciliation can silently desync on a partial write failure
   (accepted v1 limitation, Task 228).** `TabScheduleSection.tsx`'s pull effect applies its
   `schedule_pms_links` correction via the Edge Function (server-side, unconditional) *before* the

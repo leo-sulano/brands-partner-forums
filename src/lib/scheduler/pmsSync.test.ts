@@ -103,6 +103,24 @@ describe('pushScheduleToPms', () => {
     expect(result).toEqual({ created: [], skipped: [], failed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
+
+  it('creates only one task when the same (tab, brand, platform, date) combo appears twice in one batch', async () => {
+    const { client, insertedRows } = fakeSupabase([]);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      // No second /tasks POST or /tasks/:id PATCH expected -- fakeFetchSequence
+      // throws on any unexpected extra call, so a second create attempt for
+      // the duplicate item would fail this test.
+    ]);
+    const result = await pushScheduleToPms([ITEM, { ...ITEM }], client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([ITEM]);
+    expect(result.skipped).toEqual([{ ...ITEM }]);
+    expect(result.failed).toEqual([]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' }]);
+    expect(fetchFn).toHaveBeenCalledTimes(3);
+  });
 });
 
 function fakeSupabaseWithLinks(links: any[]) {
@@ -177,5 +195,24 @@ describe('pullScheduleFromPms', () => {
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ drifted: [], deleted: [] });
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('skips a link whose live task has a cleared (null) due date without throwing, while still processing other links', async () => {
+    const LINK_2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-2' };
+    const { client, updated, deletedIds } = fakeSupabaseWithLinks([LINK, LINK_2]);
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: 'task-1', dueDate: null }, // due date cleared in PMS
+        { id: 'task-2', dueDate: '2026-08-22T00:00:00.000Z' }, // still processed normally
+      ],
+    });
+    const outcome = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(outcome).toEqual({
+      drifted: [{ tab: 'BITP', brand: 'OtherBrand', platform: 'tp', oldDate: '2026-08-20', newDate: '2026-08-22' }],
+      deleted: [],
+    });
+    expect(updated).toEqual([{ id: 'link-2', date: '2026-08-22' }]);
+    expect(deletedIds).toEqual([]);
   });
 });
