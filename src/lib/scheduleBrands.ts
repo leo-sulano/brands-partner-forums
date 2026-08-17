@@ -26,6 +26,16 @@ export function mondayOf(date: Date): Date {
   return d;
 }
 
+export function addDays(date: Date, days: number): Date {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+export function formatWeekdayDate(monday: Date, index: number): string {
+  return addDays(monday, index).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // Always computed fresh against the real current date — never memoized —
 // so two callers can never independently drift on what "the current week"
 // means. A memoized snapshot taken once on mount would keep naming the old
