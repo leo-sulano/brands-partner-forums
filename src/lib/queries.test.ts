@@ -26,6 +26,7 @@ import {
   fetchScheduleRestrictedBrands,
   bulkUpsertBrandSchedule,
   computeTabKpisFromEntries,
+  computeBrandKpisFromEntries,
   fetchBrandPlatformOverrides,
   setBrandPlatformOverride,
   clearBrandPlatformOverride,
@@ -541,6 +542,91 @@ describe('computeTabKpisFromEntries', () => {
     const omitted = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
     const empty = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, []);
     expect(empty).toEqual(omitted);
+  });
+});
+
+describe('computeBrandKpisFromEntries', () => {
+  const rawHeaders = ['URL PAGE', 'Trust Pilot', 'TP Review Status'];
+
+  it('buckets entries by brand and sums per-brand totals back to the same numbers computeTabKpisFromEntries reports for the whole tab', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('2', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+      entry('3', { 'URL PAGE': 'Brand B', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+    ];
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    const tabTotal = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+
+    expect(perBrand).toHaveLength(2);
+    const brandA = perBrand.find((b) => b.brand === 'Brand A')!;
+    const brandB = perBrand.find((b) => b.brand === 'Brand B')!;
+    expect(brandA.kpis.tp).toEqual({ live: 1, removed: 1 });
+    expect(brandB.kpis.tp).toEqual({ live: 1, removed: 0 });
+
+    const summedLive = perBrand.reduce((s, b) => s + b.kpis.live, 0);
+    const summedRemoved = perBrand.reduce((s, b) => s + b.kpis.removed, 0);
+    expect(summedLive).toBe(tabTotal.live);
+    expect(summedRemoved).toBe(tabTotal.removed);
+  });
+
+  it('groups brand names case/whitespace-insensitively, keeping the first-seen casing as the label', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('2', { 'URL PAGE': ' aussie online pokies ', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+    ];
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(perBrand).toHaveLength(1);
+    expect(perBrand[0].brand).toBe('Aussie Online Pokies');
+    expect(perBrand[0].kpis.tp).toEqual({ live: 1, removed: 1 });
+  });
+
+  it('drops a brand entirely from the Brands view when every platform it tracks is page-flagged removed (nothing left to show)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+      entry('2', { 'URL PAGE': 'Other Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+    ];
+    const flagged = new Set([platformRemovedKey('TP Affiliate', 'Flagged Brand', 'tp')]);
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged);
+    expect(perBrand.find((b) => b.brand === 'Flagged Brand')).toBeUndefined();
+    expect(perBrand.find((b) => b.brand === 'Other Brand')).toBeDefined();
+  });
+
+  it('keeps a brand visible with only its flagged platform\'s row hidden when it tracks other, unflagged platforms', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const entries = [
+      { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+        Brands: 'Multi Brand',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+    ];
+    const flagged = new Set([platformRemovedKey('Rooster Partners', 'Multi Brand', 'tp')]);
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', flagged);
+    const brand = perBrand.find((b) => b.brand === 'Multi Brand')!;
+    expect(brand).toBeDefined();
+    expect(brand.kpis.activePlatforms).toEqual(['cg']);
+    expect(brand.kpis.cg).toEqual({ live: 1, removed: 0 });
+  });
+
+  it('skips rows with a blank brand name', () => {
+    const entries = [entry('1', { 'URL PAGE': '', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' })];
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(perBrand).toHaveLength(0);
+  });
+
+  it('returns an empty array when the tab tracks none of the selected platforms (mirrors computeTabKpisFromEntries returning null)', () => {
+    const entries = [entry('1', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' })];
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['ag']);
+    expect(perBrand).toEqual([]);
+  });
+
+  it('sorts brands alphabetically', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Zebra Casino', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('2', { 'URL PAGE': 'Alpha Casino', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+    ];
+    const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
+    expect(perBrand.map((b) => b.brand)).toEqual(['Alpha Casino', 'Zebra Casino']);
   });
 });
 

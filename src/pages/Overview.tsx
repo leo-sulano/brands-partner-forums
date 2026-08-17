@@ -5,7 +5,8 @@ import {
   Globe, Shield,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
-import { fetchTabKpis, fetchRemovedPlatformBrands } from '../lib/queries';
+import SuccessRateBadge from '../components/SuccessRateBadge';
+import { fetchTabKpis, fetchBrandKpis, fetchRemovedPlatformBrands } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
@@ -21,7 +22,7 @@ import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
-import type { TabKpis } from '../types/brand-entry';
+import type { TabKpis, BrandKpis } from '../types/brand-entry';
 
 
 interface TabSummary {
@@ -34,6 +35,17 @@ interface State {
   error: string | null;
   tabs: TabSummary[];
 
+}
+
+interface BrandGroup {
+  tab: string;
+  brands: { brand: string; kpis: BrandKpis }[];
+}
+
+interface BrandState {
+  loading: boolean;
+  error: string | null;
+  groups: BrandGroup[];
 }
 
 const PLATFORM_COLORS = {
@@ -73,11 +85,32 @@ const EMPTY_KPIS: TabKpis = {
 
 const PLATFORM_VALUES = new Set<string>(['tp', 'ag', 'cg', 'wo']);
 
+// Hue per platform matches each platform's actual favicon color (not an
+// arbitrary palette assignment) — AskGamblers' icon is red/orange, Casino
+// Guru's is green. Wizard of Odds is left as-is (indigo) pending confirmation
+// of its real icon color.
 const PLATFORM_BADGE: Record<'tp' | 'ag' | 'cg' | 'wo', { label: string; cls: string; icon: string }> = {
-  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200',     icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16' },
-  ag: { label: 'AG', cls: 'bg-amber-50 text-amber-600 border border-amber-200',  icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
-  cg: { label: 'CG', cls: 'bg-violet-50 text-violet-600 border border-violet-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
+  tp: { label: 'TP', cls: 'bg-blue-50 text-blue-600 border border-blue-200',    icon: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16' },
+  ag: { label: 'AG', cls: 'bg-red-50 text-red-600 border border-red-200',      icon: 'https://www.google.com/s2/favicons?domain=askgamblers.com&sz=16' },
+  cg: { label: 'CG', cls: 'bg-green-50 text-green-600 border border-green-200', icon: 'https://www.google.com/s2/favicons?domain=casino.guru&sz=16' },
   wo: { label: 'WO', cls: 'bg-indigo-50 text-indigo-600 border border-indigo-200', icon: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=16' },
+};
+
+// Left-border row accent per platform, matching each PLATFORM_BADGE hue.
+const PLATFORM_ROW_ACCENT: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
+  tp: 'border-blue-300',
+  ag: 'border-red-300',
+  cg: 'border-green-300',
+  wo: 'border-indigo-300',
+};
+
+// Hover fill per platform row — one shade darker than the badge's own
+// background so the highlight reads as that platform's color, not generic gray.
+const PLATFORM_ROW_HOVER: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
+  tp: 'hover:bg-blue-100',
+  ag: 'hover:bg-red-100',
+  cg: 'hover:bg-green-100',
+  wo: 'hover:bg-indigo-100',
 };
 
 type KpiModalKind = 'total' | 'live' | 'removed';
@@ -90,6 +123,34 @@ interface KpiModalState {
 }
 
 type PlatformKey = 'tp' | 'ag' | 'cg' | 'wo';
+
+// One platform row — colored accent, live/removed counts, success rate —
+// shared by the tab-card grid and the per-brand "Brands" view so the two
+// can never render a platform's numbers differently.
+function PlatformRow({ href, platform, live, removed }: { href: string; platform: PlatformKey; live: number; removed: number }) {
+  return (
+    <Link
+      to={href}
+      className={`col-span-5 grid grid-cols-subgrid items-center gap-x-2 border-l-2 py-0.5 pl-2 transition-colors ${PLATFORM_ROW_ACCENT[platform]} ${PLATFORM_ROW_HOVER[platform]}`}
+    >
+      <span className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[platform].cls}`}>
+        <img src={PLATFORM_BADGE[platform].icon} alt={PLATFORM_BADGE[platform].label} className="size-2.5 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        {PLATFORM_BADGE[platform].label}
+      </span>
+      <span className="whitespace-nowrap"><span className="font-medium text-emerald-600">{live}</span> live</span>
+      <span className="whitespace-nowrap"><span className="font-medium text-rose-500">{removed}</span> removed</span>
+      <span />
+      <SuccessRateBadge live={live} removed={removed} size="sm" />
+    </Link>
+  );
+}
+
+function brandRowHref(tab: string, brand: string, platform?: PlatformKey): string {
+  const params = new URLSearchParams();
+  params.set('brand', brand);
+  if (platform) params.set('platform', platform);
+  return `/brands/${tabToSlug(tab)}?${params.toString()}`;
+}
 
 const PLATFORM_KEY: Record<string, PlatformKey> = {
   Trustpilot:   'tp',
@@ -462,6 +523,44 @@ export default function Overview() {
 
   useEffect(() => { loadData(); }, [loadData]);
 
+  const [view, setView] = useState<'tabs' | 'brands'>('tabs');
+  const [brandState, setBrandState] = useState<BrandState>({ loading: false, error: null, groups: [] });
+
+  const loadBrandData = useCallback(async () => {
+    setBrandState((s) => ({ ...s, loading: true, error: null }));
+    try {
+      const removedPlatformBrands = await fetchRemovedPlatformBrands()
+        .then(buildRemovedPlatformBrandSet)
+        .catch(() => new Set<string>());
+      const groups = (await Promise.all(
+        OPERATIONAL_TABS.map((tab) =>
+          fetchBrandKpis(
+            tab,
+            dateFrom || undefined,
+            dateTo || undefined,
+            removedPlatformBrands,
+            countryFilter,
+            proxyFilter,
+            platformFilter,
+          )
+            .then((brands): BrandGroup => ({ tab, brands }))
+            .catch((): BrandGroup => ({ tab, brands: [] }))
+        )
+      )).filter((g) => g.brands.length > 0);
+      setBrandState({ loading: false, error: null, groups });
+    } catch (err) {
+      setBrandState((s) => ({ ...s, loading: false, error: (err as Error).message }));
+    }
+  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter]);
+
+  // Lazy: only fetches once the user actually opens the Brands view (per-brand
+  // aggregation reads every raw entry across all 11 tabs, unlike the Brand
+  // Tabs view's cheaper pre-aggregated call) — refetches if filters change
+  // while already on that view.
+  useEffect(() => {
+    if (view === 'brands') loadBrandData();
+  }, [view, loadBrandData]);
+
   if (state.error) {
     return (
       <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
@@ -699,8 +798,27 @@ export default function Overview() {
 
       {/* Tab summary grid */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Brands Performance</h2>
-        {!state.loading && state.tabs.length === 0 && platformFilter.length > 0 ? (
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold text-slate-700">Brands Performance</h2>
+          <div className="inline-flex shrink-0 rounded-md border border-slate-200 bg-white p-0.5 text-xs">
+            <button
+              type="button"
+              onClick={() => setView('tabs')}
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${view === 'tabs' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Brand Tabs
+            </button>
+            <button
+              type="button"
+              onClick={() => setView('brands')}
+              className={`rounded px-2.5 py-1 font-medium transition-colors ${view === 'brands' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Brands
+            </button>
+          </div>
+        </div>
+        {view === 'tabs' ? (
+        !state.loading && state.tabs.length === 0 && platformFilter.length > 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
             No brand tabs track {platformFilter.map((p) => PLATFORM_BADGE[p].label).join(' or ')}
           </p>
@@ -708,60 +826,102 @@ export default function Overview() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {state.loading
             ? Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 80 }} />
+                <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
               ))
             : state.tabs.map(({ tab, kpis }) => {
-                const displayLive    = kpis.live;
-                const displayRemoved = kpis.removed;
-                const statusItems = [
-                  { count: displayLive,    label: 'live',    bar: 'bg-emerald-500', text: 'text-emerald-600' },
-                  { count: displayRemoved, label: 'removed', bar: 'bg-rose-400',    text: 'text-rose-500'    },
-                ].filter((s) => s.count >= 1);
-                const barTotal = statusItems.reduce((s, i) => s + i.count, 0);
-                const pct = (n: number) => barTotal > 0 ? (n / barTotal) * 100 : 0;
                 const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+                const tabHref = `/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`;
+
                 return (
-                  <Link
+                  <div
                     key={tab}
-                    to={`/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`}
-                    style={{ height: 80 }}
-                    className="flex flex-col justify-between rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md"
+                    style={{ minHeight: 132 }}
+                    className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-shadow hover:shadow-md"
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <Link to={tabHref} className="group flex items-center justify-between gap-2 rounded">
                       <div className="flex min-w-0 items-center gap-2">
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100">
                           <TabIcon className="size-3.5 text-blue-500" />
                         </div>
-                        <p className="truncate text-sm font-semibold text-slate-800">{tabDisplayName(tab)}</p>
+                        <p className="truncate text-sm font-semibold text-slate-800 group-hover:text-blue-600">{tabDisplayName(tab)}</p>
                       </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {kpis.activePlatforms.map((p) => (
-                          <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[p].cls}`}>
-                            <img src={PLATFORM_BADGE[p].icon} alt={PLATFORM_BADGE[p].label} className="size-2.5 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-                            {PLATFORM_BADGE[p].label}
-                          </span>
-                        ))}
-                        <span className="text-xs text-slate-500">
-                          <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-slate-600">
-                      {statusItems.map((s) => (
-                        <span key={s.label}>
-                          <span className={`font-medium ${s.text}`}>{s.count}</span> {s.label}
-                        </span>
+                      <span className="shrink-0 text-xs text-slate-500">
+                        <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
+                      </span>
+                    </Link>
+                    <div className="grid grid-cols-[auto_auto_auto_1fr_auto] gap-y-0.5 text-xs text-slate-600">
+                      {kpis.activePlatforms.map((p) => (
+                        <PlatformRow
+                          key={p}
+                          href={`/brands/${tabToSlug(tab)}?platform=${p}`}
+                          platform={p}
+                          live={kpis[p].live}
+                          removed={kpis[p].removed}
+                        />
                       ))}
                     </div>
-                    <div className="flex h-1 w-full overflow-hidden rounded-full bg-slate-100">
-                      {statusItems.map((s) => (
-                        <div key={s.label} className={`${s.bar} transition-all`} style={{ width: `${pct(s.count)}%` }} />
-                      ))}
-                    </div>
-                  </Link>
+                  </div>
                 );
               })}
         </div>
+        )
+        ) : (
+          brandState.loading ? (
+            <div className="space-y-4">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 96 }} />
+              ))}
+            </div>
+          ) : brandState.error ? (
+            <p className="rounded-xl border border-dashed border-rose-200 bg-rose-50 px-5 py-8 text-center text-sm text-rose-600">
+              Failed to load: {brandState.error}
+            </p>
+          ) : brandState.groups.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
+              No brands match the current filters
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {brandState.groups.map(({ tab, brands }) => {
+                const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+                return (
+                  <div key={tab}>
+                    <div className="mb-1.5 flex items-center gap-2">
+                      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-100">
+                        <TabIcon className="size-3 text-blue-500" />
+                      </div>
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tabDisplayName(tab)}</h3>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {brands.map(({ brand, kpis }) => (
+                        <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
+                              {brand}
+                            </Link>
+                            <span className="shrink-0 text-xs text-slate-500">
+                              <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-[auto_auto_auto_1fr_auto] gap-y-0.5 text-xs text-slate-600">
+                            {kpis.activePlatforms.map((p) => (
+                              <PlatformRow
+                                key={p}
+                                href={brandRowHref(tab, brand, p)}
+                                platform={p}
+                                live={kpis[p].live}
+                                removed={kpis[p].removed}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )
         )}
       </section>
 

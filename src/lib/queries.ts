@@ -10,7 +10,7 @@ import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } fro
 import type { Mention, MentionStatus } from '../types/mention.ts';
 import type { Entry } from '../types/entry.ts';
 import type { Profile } from '../types/profile.ts';
-import type { BrandEntry, TabKpis, CountBreakdown } from '../types/brand-entry.ts';
+import type { BrandEntry, TabKpis, BrandKpis, CountBreakdown } from '../types/brand-entry.ts';
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 
@@ -392,18 +392,10 @@ function addToBreakdown(
   map[key][kind]++;
 }
 
-export function computeTabKpisFromEntries(
-  entries: Entry[],
-  rawHeaders: string[],
-  tab: string,
-  brandCol: string,
-  dateFrom: string | undefined,
-  dateTo: string | undefined,
-  removedPlatformBrands: Set<string>,
-  countryFilter?: string[],
-  proxyFilter?: string[],
-  platformFilter?: Platform[],
-): TabKpis | null {
+function resolveReviewColumns(rawHeaders: string[]): {
+  tpCol: string | null; agCol: string | null; cgCol: string | null; woCol: string | null; genericCol: string | null;
+  activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[];
+} {
   function resolveHeader(...variants: string[]): string | null {
     for (const v of variants) {
       const found = rawHeaders.find((h) => h.toLowerCase() === v.toLowerCase());
@@ -424,6 +416,124 @@ export function computeTabKpisFromEntries(
   if (cgCol) activePlatforms.push('cg');
   if (woCol) activePlatforms.push('wo');
 
+  return { tpCol, agCol, cgCol, woCol, genericCol, activePlatforms };
+}
+
+type ReviewColumns = ReturnType<typeof resolveReviewColumns>;
+
+interface EntryClassification {
+  tp: 'live' | 'removed' | null;
+  ag: 'live' | 'removed' | null;
+  cg: 'live' | 'removed' | null;
+  wo: 'live' | 'removed' | null;
+  overall: 'live' | 'removed' | 'done' | 'pending' | 'onPause' | 'notDone' | null;
+}
+
+// Single source of truth for "what is this one entry, per-platform and
+// overall" — computeTabKpisFromEntries (whole-tab total) and
+// computeBrandKpisFromEntries (per-brand breakdown) both call this so the
+// two views can never disagree about what counts as live/removed/etc.
+function classifyEntry(
+  d: Record<string, string | null>,
+  tab: string,
+  brandCol: string,
+  cols: ReviewColumns,
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+  removedPlatformBrands: Set<string>,
+  platformFilter: Platform[] | undefined,
+): EntryClassification {
+  const { tpCol, agCol, cgCol, woCol, genericCol } = cols;
+  const tp = tpCol ? (d[tpCol] ?? '').toLowerCase() : '';
+  const ag = agCol ? (d[agCol] ?? '').toLowerCase() : '';
+  const cg = cgCol ? (d[cgCol] ?? '').toLowerCase() : '';
+  const wo = woCol ? (d[woCol] ?? '').toLowerCase() : '';
+  const generic = (!tp && !ag && !cg && !wo && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
+
+  const brand = (d[brandCol] ?? '').trim();
+  const isPlatformFlagged = (platform: Platform) =>
+    brand !== '' && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform));
+
+  const tpDateOk = !!tp && passesPlatformDateFilter(d, 'tp', dateFrom, dateTo);
+  const agDateOk = !!ag && passesPlatformDateFilter(d, 'ag', dateFrom, dateTo);
+  const cgDateOk = !!cg && passesPlatformDateFilter(d, 'cg', dateFrom, dateTo);
+  const woDateOk = !!wo && passesPlatformDateFilter(d, 'wo', dateFrom, dateTo);
+  const genericInRange = !!generic && ((!dateFrom && !dateTo) || inDateRange(d, dateFrom ?? '', dateTo ?? ''));
+
+  const tpOk = tpDateOk && !isPlatformFlagged('tp');
+  const agOk = agDateOk && !isPlatformFlagged('ag');
+  const cgOk = cgDateOk && !isPlatformFlagged('cg');
+  const woOk = woDateOk && !isPlatformFlagged('wo');
+
+  const platformOutcome = (ok: boolean, value: string): 'live' | 'removed' | null => {
+    if (!ok) return null;
+    if (isLiveStatus(value)) return 'live';
+    if (isRemovedStatus(value)) return 'removed';
+    return null;
+  };
+
+  const platformValue: Record<'tp' | 'ag' | 'cg' | 'wo', string> = { tp, ag, cg, wo };
+  const platformOk: Record<'tp' | 'ag' | 'cg' | 'wo', boolean> = { tp: tpOk, ag: agOk, cg: cgOk, wo: woOk };
+
+  // Union the selected platforms' own date/flag-gated status values into the
+  // same statuses array the omitted-filter (all-platform) branch already
+  // used — this is the combined-total rule: a row counts as live if ANY
+  // selected platform's status says so.
+  const statuses: string[] = platformFilter?.length
+    ? platformFilter
+        .map((p) => (platformOk[p] ? platformValue[p] : ''))
+        .filter(Boolean)
+    : [
+        tpOk ? tp : '',
+        agOk ? ag : '',
+        cgOk ? cg : '',
+        woOk ? wo : '',
+        genericInRange ? generic : '',
+      ].filter(Boolean);
+
+  let overall: EntryClassification['overall'] = null;
+  if (statuses.length > 0) {
+    if (statuses.some(isLiveStatus)) overall = 'live';
+    else if (statuses.some(isRemovedStatus)) overall = 'removed';
+    else if (statuses.some(isDoneStatus)) overall = 'done';
+    else if (statuses.some(isPendingStatus)) overall = 'pending';
+    else if (statuses.some(isOnPauseStatus)) overall = 'onPause';
+    else if (statuses.some(isNotDoneStatus)) overall = 'notDone';
+  }
+
+  return {
+    tp: platformOutcome(tpOk, tp),
+    ag: platformOutcome(agOk, ag),
+    cg: platformOutcome(cgOk, cg),
+    wo: platformOutcome(woOk, wo),
+    overall,
+  };
+}
+
+function filterByCountryAndProxy(entries: Entry[], tab: string, countryFilter?: string[], proxyFilter?: string[]): Entry[] {
+  if (!countryFilter?.length && !proxyFilter?.length) return entries;
+  return entries.filter((e) => {
+    if (countryFilter?.length && !countryFilter.some((cf) => canonicalCountryKey(resolveCountryLabel(e.data, tab)) === canonicalCountryKey(cf))) return false;
+    if (proxyFilter?.length && !proxyFilter.some((pf) => canonicalProxyKey(resolveProxyLabel(e.data['Proxy Used'])) === canonicalProxyKey(pf))) return false;
+    return true;
+  });
+}
+
+export function computeTabKpisFromEntries(
+  entries: Entry[],
+  rawHeaders: string[],
+  tab: string,
+  brandCol: string,
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+  removedPlatformBrands: Set<string>,
+  countryFilter?: string[],
+  proxyFilter?: string[],
+  platformFilter?: Platform[],
+): TabKpis | null {
+  const cols = resolveReviewColumns(rawHeaders);
+  const { activePlatforms } = cols;
+
   // A tab is excluded only if it tracks NONE of the selected platforms — it's
   // included (and scoped to just the tracked subset below) if it tracks at
   // least one, which is what makes "TP + AG selected" a combined total
@@ -438,13 +548,7 @@ export function computeTabKpisFromEntries(
   let cgLive = 0, cgRemoved = 0;
   let woLive = 0, woRemoved = 0;
 
-  const filteredEntries = (countryFilter?.length || proxyFilter?.length)
-    ? entries.filter((e) => {
-        if (countryFilter?.length && !countryFilter.some((cf) => canonicalCountryKey(resolveCountryLabel(e.data, tab)) === canonicalCountryKey(cf))) return false;
-        if (proxyFilter?.length && !proxyFilter.some((pf) => canonicalProxyKey(resolveProxyLabel(e.data['Proxy Used'])) === canonicalProxyKey(pf))) return false;
-        return true;
-      })
-    : entries;
+  const filteredEntries = filterByCountryAndProxy(entries, tab, countryFilter, proxyFilter);
 
   const countries = uniqueDisplayValues(entries.map((e) => resolveCountryLabel(e.data, tab)), canonicalCountryKey, canonicalCountryName);
   const proxies = uniqueDisplayValues(entries.map((e) => resolveProxyLabel(e.data['Proxy Used'])), canonicalProxyKey, canonicalProxyName);
@@ -453,61 +557,26 @@ export function computeTabKpisFromEntries(
 
   for (const entry of filteredEntries) {
     const d = entry.data;
-    const tp = tpCol ? (d[tpCol] ?? '').toLowerCase() : '';
-    const ag = agCol ? (d[agCol] ?? '').toLowerCase() : '';
-    const cg = cgCol ? (d[cgCol] ?? '').toLowerCase() : '';
-    const wo = woCol ? (d[woCol] ?? '').toLowerCase() : '';
-    const generic = (!tp && !ag && !cg && !wo && genericCol) ? (d[genericCol] ?? '').toLowerCase() : '';
+    const c = classifyEntry(d, tab, brandCol, cols, dateFrom, dateTo, removedPlatformBrands, platformFilter);
 
-    const brand = (d[brandCol] ?? '').trim();
-    const isPlatformFlagged = (platform: Platform) =>
-      brand !== '' && removedPlatformBrands.has(platformRemovedKey(tab, brand, platform));
+    if (c.tp === 'live') tpLive++; else if (c.tp === 'removed') tpRemoved++;
+    if (c.ag === 'live') agLive++; else if (c.ag === 'removed') agRemoved++;
+    if (c.cg === 'live') cgLive++; else if (c.cg === 'removed') cgRemoved++;
+    if (c.wo === 'live') woLive++; else if (c.wo === 'removed') woRemoved++;
 
-    const tpDateOk = !!tp && passesPlatformDateFilter(d, 'tp', dateFrom, dateTo);
-    const agDateOk = !!ag && passesPlatformDateFilter(d, 'ag', dateFrom, dateTo);
-    const cgDateOk = !!cg && passesPlatformDateFilter(d, 'cg', dateFrom, dateTo);
-    const woDateOk = !!wo && passesPlatformDateFilter(d, 'wo', dateFrom, dateTo);
-    const genericInRange = !!generic && ((!dateFrom && !dateTo) || inDateRange(d, dateFrom ?? '', dateTo ?? ''));
-
-    if (tpDateOk && !isPlatformFlagged('tp')) { if (isLiveStatus(tp)) tpLive++; else if (isRemovedStatus(tp)) tpRemoved++; }
-    if (agDateOk && !isPlatformFlagged('ag')) { if (isLiveStatus(ag)) agLive++; else if (isRemovedStatus(ag)) agRemoved++; }
-    if (cgDateOk && !isPlatformFlagged('cg')) { if (isLiveStatus(cg)) cgLive++; else if (isRemovedStatus(cg)) cgRemoved++; }
-    if (woDateOk && !isPlatformFlagged('wo')) { if (isLiveStatus(wo)) woLive++; else if (isRemovedStatus(wo)) woRemoved++; }
-
-    const platformValue: Record<'tp' | 'ag' | 'cg' | 'wo', string> = { tp, ag, cg, wo };
-    const platformDateOk: Record<'tp' | 'ag' | 'cg' | 'wo', boolean> = { tp: tpDateOk, ag: agDateOk, cg: cgDateOk, wo: woDateOk };
-
-    // Union the selected platforms' own date/flag-gated status values into
-    // the same statuses array the omitted-filter (all-platform) branch
-    // already used — this is the combined-total rule: a row counts as live
-    // if ANY selected platform's status says so.
-    const statuses: string[] = platformFilter?.length
-      ? platformFilter
-          .map((p) => (platformDateOk[p] && !isPlatformFlagged(p) ? platformValue[p] : ''))
-          .filter(Boolean)
-      : [
-          tpDateOk && !isPlatformFlagged('tp') ? tp : '',
-          agDateOk && !isPlatformFlagged('ag') ? ag : '',
-          cgDateOk && !isPlatformFlagged('cg') ? cg : '',
-          woDateOk && !isPlatformFlagged('wo') ? wo : '',
-          genericInRange ? generic : '',
-        ].filter(Boolean);
-
-    if (statuses.length > 0) {
-      if (statuses.some(isLiveStatus)) {
-        live++;
-        addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
-        addToBreakdown(byProxy, resolveProxyLabel(d['Proxy Used']), 'live', canonicalProxyKey, canonicalProxyName);
-      } else if (statuses.some(isRemovedStatus)) {
-        removed++;
-        addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
-        addToBreakdown(byProxy, resolveProxyLabel(d['Proxy Used']), 'removed', canonicalProxyKey, canonicalProxyName);
-      }
-      else if (statuses.some(isDoneStatus)) done++;
-      else if (statuses.some(isPendingStatus)) pending++;
-      else if (statuses.some(isOnPauseStatus)) onPause++;
-      else if (statuses.some(isNotDoneStatus)) notDone++;
+    if (c.overall === 'live') {
+      live++;
+      addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
+      addToBreakdown(byProxy, resolveProxyLabel(d['Proxy Used']), 'live', canonicalProxyKey, canonicalProxyName);
+    } else if (c.overall === 'removed') {
+      removed++;
+      addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
+      addToBreakdown(byProxy, resolveProxyLabel(d['Proxy Used']), 'removed', canonicalProxyKey, canonicalProxyName);
     }
+    else if (c.overall === 'done') done++;
+    else if (c.overall === 'pending') pending++;
+    else if (c.overall === 'onPause') onPause++;
+    else if (c.overall === 'notDone') notDone++;
   }
 
   return {
@@ -536,6 +605,107 @@ export async function fetchTabKpis(
   ]);
   const brandCol = getBrandNameCol(tab);
   return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter);
+}
+
+// Same per-entry classification as computeTabKpisFromEntries, bucketed by
+// brand name instead of collapsed into one tab-wide total — powers
+// Overview's "Brands" view. Brand names are grouped case/whitespace-
+// insensitively via normalizeBrandKey (the same key removed-platform-brand
+// flags already match on), and the first-seen casing is kept as the display
+// label. Sorted alphabetically for a stable, scannable list.
+export function computeBrandKpisFromEntries(
+  entries: Entry[],
+  rawHeaders: string[],
+  tab: string,
+  brandCol: string,
+  dateFrom: string | undefined,
+  dateTo: string | undefined,
+  removedPlatformBrands: Set<string>,
+  countryFilter?: string[],
+  proxyFilter?: string[],
+  platformFilter?: Platform[],
+): { brand: string; kpis: BrandKpis }[] {
+  const cols = resolveReviewColumns(rawHeaders);
+  const { activePlatforms } = cols;
+
+  if (platformFilter?.length && !platformFilter.some((p) => activePlatforms.includes(p))) {
+    return [];
+  }
+
+  const filteredEntries = filterByCountryAndProxy(entries, tab, countryFilter, proxyFilter);
+
+  interface Bucket {
+    label: string;
+    live: number; removed: number;
+    tpLive: number; tpRemoved: number;
+    agLive: number; agRemoved: number;
+    cgLive: number; cgRemoved: number;
+    woLive: number; woRemoved: number;
+    flaggedPlatforms: Set<Platform>;
+  }
+  const buckets = new Map<string, Bucket>();
+
+  for (const entry of filteredEntries) {
+    const d = entry.data;
+    const brandRaw = (d[brandCol] ?? '').trim();
+    if (!brandRaw) continue;
+
+    const key = normalizeBrandKey(brandRaw);
+    let bucket = buckets.get(key);
+    if (!bucket) {
+      // A brand's flagged platforms don't depend on any one row, so this is
+      // computed once per brand rather than per entry.
+      const flaggedPlatforms = new Set(
+        activePlatforms.filter((p) => removedPlatformBrands.has(platformRemovedKey(tab, brandRaw, p))),
+      );
+      bucket = { label: brandRaw, live: 0, removed: 0, tpLive: 0, tpRemoved: 0, agLive: 0, agRemoved: 0, cgLive: 0, cgRemoved: 0, woLive: 0, woRemoved: 0, flaggedPlatforms };
+      buckets.set(key, bucket);
+    }
+
+    const c = classifyEntry(d, tab, brandCol, cols, dateFrom, dateTo, removedPlatformBrands, platformFilter);
+    if (c.tp === 'live') bucket.tpLive++; else if (c.tp === 'removed') bucket.tpRemoved++;
+    if (c.ag === 'live') bucket.agLive++; else if (c.ag === 'removed') bucket.agRemoved++;
+    if (c.cg === 'live') bucket.cgLive++; else if (c.cg === 'removed') bucket.cgRemoved++;
+    if (c.wo === 'live') bucket.woLive++; else if (c.wo === 'removed') bucket.woRemoved++;
+    if (c.overall === 'live') bucket.live++;
+    else if (c.overall === 'removed') bucket.removed++;
+  }
+
+  return Array.from(buckets.values())
+    // A brand whose every tracked platform is flagged page-removed has
+    // nothing left to show — drop it from the "Brands" view entirely rather
+    // than rendering an empty card. A brand with only SOME platforms flagged
+    // still shows, just without those specific platform rows (below).
+    .filter((b) => b.flaggedPlatforms.size < activePlatforms.length)
+    .map((b) => ({
+      brand: b.label,
+      kpis: {
+        live: b.live, removed: b.removed,
+        tp: { live: b.tpLive, removed: b.tpRemoved },
+        ag: { live: b.agLive, removed: b.agRemoved },
+        cg: { live: b.cgLive, removed: b.cgRemoved },
+        wo: { live: b.woLive, removed: b.woRemoved },
+        activePlatforms: activePlatforms.filter((p) => !b.flaggedPlatforms.has(p)),
+      },
+    }))
+    .sort((a, b) => a.brand.localeCompare(b.brand));
+}
+
+export async function fetchBrandKpis(
+  tab: string,
+  dateFrom?: string,
+  dateTo?: string,
+  removedPlatformBrands: Set<string> = new Set(),
+  countryFilter?: string[],
+  proxyFilter?: string[],
+  platformFilter?: Platform[],
+): Promise<{ brand: string; kpis: BrandKpis }[]> {
+  const [allEntries, rawHeaders] = await Promise.all([
+    fetchAllTabEntries(tab),
+    fetchTabHeaders(tab),
+  ]);
+  const brandCol = getBrandNameCol(tab);
+  return computeBrandKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter);
 }
 
 // ---------------------------------------------------------------------------

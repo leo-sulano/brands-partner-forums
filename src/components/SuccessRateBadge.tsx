@@ -1,9 +1,11 @@
 import { rateFromCounts, successRatePct } from '../lib/scoreSummary';
+import Tooltip from './Tooltip';
 
 interface Props {
   live: number;
   removed: number;
   className?: string;
+  size?: 'md' | 'sm';
 }
 
 // Fixed 5-tier scale (highest threshold first) — background/text/border per
@@ -21,29 +23,38 @@ function tierFor(pct: number) {
   return TIERS.find((t) => pct >= t.min) ?? TIERS[TIERS.length - 1];
 }
 
-const BADGE_CLASSES =
-  'inline-flex min-w-[3.5rem] items-center justify-center rounded-full border px-3 py-1 text-sm font-bold tabular-nums';
+const BADGE_BASE = 'inline-flex items-center justify-center rounded-full border font-bold tabular-nums';
+const SIZE_CLASSES = {
+  md: 'min-w-[3.5rem] px-3 py-1 text-sm',
+  sm: 'min-w-[2.25rem] px-1.5 py-0.5 text-[10px]',
+};
 
-export default function SuccessRateBadge({ live, removed, className = '' }: Props) {
+export default function SuccessRateBadge({ live, removed, className = '', size = 'md' }: Props) {
   const pct = successRatePct(rateFromCounts(live, removed));
+  const sizeClasses = SIZE_CLASSES[size];
 
   if (pct == null) {
     return (
-      <span
-        className={`${BADGE_CLASSES} border-slate-200 bg-slate-100 text-slate-400 ${className}`}
-      >
-        —
-      </span>
+      <Tooltip className={className} content="Success Rate — no live or removed data yet">
+        <span className={`${BADGE_BASE} ${sizeClasses} border-slate-200 bg-slate-100 text-slate-400`}>
+          —
+        </span>
+      </Tooltip>
     );
   }
 
   const tier = tierFor(pct);
   return (
-    <span
-      className={`${BADGE_CLASSES} ${className}`}
-      style={{ backgroundColor: tier.bg, color: tier.text, borderColor: tier.border }}
+    <Tooltip
+      className={className}
+      content={`Success Rate — ${live.toLocaleString()} live ÷ (${live.toLocaleString()} live + ${removed.toLocaleString()} removed)`}
     >
-      {pct}%
-    </span>
+      <span
+        className={`${BADGE_BASE} ${sizeClasses}`}
+        style={{ backgroundColor: tier.bg, color: tier.text, borderColor: tier.border }}
+      >
+        {pct}%
+      </span>
+    </Tooltip>
   );
 }

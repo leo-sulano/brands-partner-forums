@@ -3746,3 +3746,66 @@ guards against two *dashboard-triggered* checks overlapping each other — it ha
 CLI-invoked scrapers at all. This is now moot for the removed weekly job, but would resurface if any
 future cron-invoked scraper is reintroduced without also giving `status_server.py` itself a
 `wait_for_other_scrapers()`-style guard.
+
+---
+
+## Task 227: Overview "Brands Performance" Redesign — Per-Platform Success Rate, Row-Based Cards, Brand Tabs / Brands View Toggle
+**Date:** August 17, 2026
+
+Iteratively redesigned Overview's "Brands Performance" section (the per-tab card grid at the top of
+the dashboard) across a single session of live-screenshot-driven feedback, ending with a new
+"Brands" view alongside the existing tab view.
+
+**Success rate + tooltip.** Every card now shows a per-platform Success Rate badge (reusing the
+existing `SuccessRateBadge` component, given a new `size="sm"` variant) next to each platform's
+live/removed counts. The badge's hover tooltip was rebuilt as a new shared `Tooltip` component
+(`src/components/Tooltip.tsx`) — portal-rendered to `document.body` (so it can't be clipped by an
+ancestor's `overflow-hidden`, e.g. `KpiCard`'s rounded corners) and re-measured/clamped to the
+viewport after mount so it can't render half off-screen near an edge, styled in the dashboard's own
+navy/blue palette instead of the browser's native tooltip. `SuccessRateBadge` now owns its own
+tooltip internally, so every consumer (Overview and `BrandGroup.tsx`'s existing per-platform cards)
+picked it up for free with no per-call-site wiring.
+
+**Row-based card redesign.** Every Brand Tabs card (both single- and multi-platform tabs, unified
+into one design) now shows one row per tracked platform — colored left-border accent + hover fill
+matched to that platform's actual favicon color (not an arbitrary palette; corrected twice during
+the session after live screenshots showed AskGamblers' icon is red/orange and Casino Guru's is
+green, not the initial guesses), live/removed counts column-aligned via CSS `subgrid` across all of
+a tab's platform rows, and a per-row Success Rate badge. Each row is individually clickable (links
+to that tab filtered to that one platform) and hoverable; the card header is a separate full-width
+link to the tab's own page. Cards were given a uniform fixed `minHeight` so a 1-platform tab and a
+3-platform tab render the same card height across the grid.
+
+**New "Brands" view.** A "Brand Tabs / Brands" toggle now sits above the grid. "Brand Tabs" is the
+unchanged default (one card per tab, aggregated). "Brands" is new: a flat, per-brand breakdown
+across all 11 tabs, grouped under each tab's header, rendered as a responsive multi-column grid of
+individual brand cards (not a single scrolling list) so many brands are visible without deep
+scrolling. Each brand card reuses the exact same platform-row component as the tab view, and its
+platform rows/header link to that specific brand's own row (`/brands/<tab>?brand=<name>`), reusing
+the `?brand=` deep-link pattern `BrandGroup.tsx` already supports.
+
+Fetching this view is deliberately lazy (only runs once the user switches to "Brands", since a
+per-brand breakdown reads every raw entry across all 11 tabs rather than one pre-aggregated call per
+tab) and re-fetches if the page's date/country/proxy/platform filters change while already on that
+view.
+
+**New shared aggregation logic (`src/lib/queries.ts`).** Rather than hand-porting a second copy of
+the existing per-entry live/removed/date/platform-flag classification logic for the new per-brand
+grouping, the inline logic inside `computeTabKpisFromEntries` was extracted into one shared
+`classifyEntry` helper (plus a `resolveReviewColumns` helper for the tp/ag/cg/wo/generic column
+resolution both functions need) that a new `computeBrandKpisFromEntries` also calls — the two views
+can now never disagree about what counts as live/removed for the same entry. A brand whose page is
+flagged page-removed (`removed_platform_brands`, the existing per-tab "TP/AG/CG/WO page removed"
+flag) has that specific platform's row hidden from its Brands-view card rather than shown with a
+misleading 0/0 count; a brand with *every* tracked platform flagged is dropped from the view
+entirely, since there is nothing left to show. New `BrandKpis` type (`src/types/brand-entry.ts`) —
+the same per-platform live/removed shape as the existing `TabKpis`, minus the country/proxy
+breakdown fields the per-brand view has no use for.
+
+`computeTabKpisFromEntries`'s own behavior is unchanged by the refactor (all 91 pre-existing tests
+for it still pass unmodified); 7 new tests cover `computeBrandKpisFromEntries` directly, including a
+regression lock asserting its per-brand totals always sum back to `computeTabKpisFromEntries`'s
+whole-tab total. Full suite (1118 tests) and build both pass. No live browser verification was
+possible this session (no browser-automation tooling available) — screenshots the user shared
+during the session were the only verification signal; worth a real click-through of the Brands view
+and a hover check on a handful of tooltips before considering this fully verified.

@@ -1854,10 +1854,7 @@ export default function BrandGroup() {
                   />
                   <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{label}</span>
                   {!loading && (
-                    <span
-                      title={`Success rate — ${displayKpis[key].live} live ÷ (${displayKpis[key].live} live + ${displayKpis[key].removed} removed)`}
-                      className="ml-auto flex items-center gap-2"
-                    >
+                    <span className="ml-auto flex items-center gap-2">
                       <span className="text-xs font-medium text-slate-500">Success Rate</span>
                       <SuccessRateBadge live={displayKpis[key].live} removed={displayKpis[key].removed} />
                     </span>

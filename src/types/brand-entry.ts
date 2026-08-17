@@ -38,3 +38,16 @@ export interface TabKpis {
   countries: string[];
   proxies: string[];
 }
+
+// Same per-platform live/removed shape as TabKpis, scoped to one brand
+// instead of a whole tab — deliberately omits byCountry/byProxy/countries/
+// proxies since the per-brand "Brands" view has no use for them.
+export interface BrandKpis {
+  live: number;
+  removed: number;
+  tp: PlatformKpis;
+  ag: PlatformKpis;
+  cg: PlatformKpis;
+  wo: PlatformKpis;
+  activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[];
+}
