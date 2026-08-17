@@ -15,11 +15,12 @@ import {
   fetchScheduleRestrictedBrands,
   type BrandPlatformPause,
 } from '../lib/queries';
-import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, addDays, formatWeekdayDate, isCurrentWeekStart, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, addDays, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
+import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
@@ -226,8 +227,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             platformRestrictionMap: tabCtx!.platformRestrictionMap,
           };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
-          await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
+          const activated = await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
           if (canceled) return;
+          if (activated.length > 0) {
+            pushScheduleActivations(
+              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date })),
+            ).catch((err) => {
+              setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
+            });
+          }
         }
         const [rows, activePauses] = await Promise.all([
           fetchBrandSchedule(tab, weekStartISO),
@@ -246,6 +254,40 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       canceled = true;
     };
   }, [tab, weekStartISO, tabCtx, isApproved]);
+
+  // Reconciles any due-date edit made directly in PMS back onto the calendar.
+  // Runs once per tab visit, independent of which week is currently displayed
+  // -- a linked task's due date can drift into a different week entirely.
+  useEffect(() => {
+    if (!isApproved) return;
+    let canceled = false;
+    (async () => {
+      try {
+        const { drifted, deleted } = await pullScheduleDrift(tab);
+        if (canceled) return;
+        for (const d of deleted) {
+          const loc = weekdayAndWeekStartFor(d.date);
+          if (loc) await setBrandScheduleDay(d.tab, d.brand, loc.weekStart, d.platform, loc.day, null);
+        }
+        for (const d of drifted) {
+          const oldLoc = weekdayAndWeekStartFor(d.oldDate);
+          const newLoc = weekdayAndWeekStartFor(d.newDate);
+          if (oldLoc) await setBrandScheduleDay(d.tab, d.brand, oldLoc.weekStart, d.platform, oldLoc.day, null);
+          if (newLoc) await setBrandScheduleDay(d.tab, d.brand, newLoc.weekStart, d.platform, newLoc.day, 'active');
+        }
+        if (!canceled && (drifted.length > 0 || deleted.length > 0)) {
+          const rows = await fetchBrandSchedule(tab, weekStartISO);
+          if (!canceled) setScheduleRows(rows);
+        }
+      } catch (err) {
+        if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to check PMS schedule updates', kind: 'error' });
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
 
   // Built once per tab load (off tabCtx.entries), not per render — see
   // buildDateStatusIndex's own doc comment for why brand-key resolution here
@@ -345,6 +387,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, next));
     try {
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, next);
+      if (next === 'active') {
+        const dayIndex = WEEKDAYS.indexOf(day);
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)) }]).catch((err) => {
+          setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
+        });
+      }
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
@@ -358,6 +406,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, status));
     try {
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, status);
+      if (status === 'active') {
+        const dayIndex = WEEKDAYS.indexOf(day);
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)) }]).catch((err) => {
+          setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
+        });
+      }
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
