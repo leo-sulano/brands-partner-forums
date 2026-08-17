@@ -3809,3 +3809,80 @@ whole-tab total. Full suite (1118 tests) and build both pass. No live browser ve
 possible this session (no browser-automation tooling available) — screenshots the user shared
 during the session were the only verification signal; worth a real click-through of the Brands view
 and a hover check on a handful of tooltips before considering this fully verified.
+
+---
+
+## Task 228: Schedule Planner → PMS Task Sync
+**Date:** August 18, 2026
+
+Added Schedule Planner → PMS task sync: activating a platform chip on the Schedule Planner grid —
+whether via a manual click, or the lazy per-tab auto-generation `TabScheduleSection.tsx` and the
+(still undeployed) `generate-weekly-schedule` cron already trigger — now also creates a matching
+task in the external PMS tool's "Forum Team" project To Do column, and a due-date edit made
+directly in PMS is pulled back onto the calendar the next time that tab is opened.
+
+**New `schedule_pms_links` table** (migration `20260817120000_add_schedule_pms_links.sql`) is the
+single source of truth for both directions: idempotency on push (a `(tab, brand_key, platform,
+date)` unique constraint stops a re-run of `ensureWeekGenerated` or a repeated manual click from
+creating a duplicate PMS task) and ownership on pull (which linked task a given scheduled day
+belongs to, so a due-date move or task deletion in PMS can be detected and reflected back onto the
+calendar). `brand_key` follows this project's standing case/whitespace-insensitive brand-matching
+convention (same pattern as `brand_schedule`, `schedule_hidden_brands`). All four RLS policies
+defined explicitly, matching every other flag table in this project.
+
+**Shared push/pull logic, one real implementation.** `src/lib/scheduler/pmsSync.ts`
+(`pushScheduleToPms`/`pullScheduleFromPms`) is imported unmodified by both the new
+`sync-schedule-pms` Edge Function (a thin HTTP wrapper holding `PMS_API_TOKEN`, routes `action:
+"push"|"pull"` requests to the shared functions) and `generate-weekly-schedule`'s own
+`generateForTab` — the same "real shared logic, not a hand-ported copy" pattern this project
+already used for Ask AI's schedule tools and the original `generate-weekly-schedule` cron. A new
+`pushScheduleActivations`/`pullScheduleDrift` frontend wrapper (`src/lib/schedulePmsSync.ts`) calls
+the Edge Function from the browser. Push calls are deliberately best-effort/fire-and-forget from
+the caller's perspective: a real `brand_schedule` write always happens first, and a PMS sync
+failure surfaces as its own toast rather than rolling back or being mistaken for the schedule write
+itself failing.
+
+**Pull reconciliation** (`TabScheduleSection.tsx`) runs once per tab visit, independent of which
+week is currently displayed, since a drifted due date can land in a different week entirely — it
+reconciles by calling the existing `setBrandScheduleDay` path per drifted/deleted item, so no new
+`brand_schedule` write path was introduced and RLS/audit-log behavior there is unchanged.
+
+**Fix caught in a same-day follow-up review:** `generate-weekly-schedule`'s push call originally
+read `PMS_API_TOKEN` as a module-level `Deno.env.get(...)` const, which is captured once at import
+time before any `Deno.test()` body runs — making the token gate untestable from a test that sets
+the env var itself. Fixed to read it live inside `generateForTab` on every invocation instead
+(negligible perf cost, since the function runs once per HTTP call).
+
+Built via 10 subagent-driven-development tasks (Tasks 1-10 of this plan) with per-task review; this
+entry (Task 11 of the plan, Task 228 in this history) is the plan's final documentation-only task.
+Full suite (458 tests) and build both pass. **Not yet deployed** — `supabase db push`,
+`supabase secrets set PMS_API_TOKEN=...`, `supabase functions deploy sync-schedule-pms`, and
+setting `VITE_SYNC_SCHEDULE_PMS_URL` in Vercel are all still pending (see CLAUDE.md's Known Issues
+for the full checklist). Until then, `pushScheduleActivations`/`pullScheduleDrift` both silently
+no-op — activating a chip today behaves exactly as it did before this feature shipped, no broken UI
+in the interim.
+
+Two things worth flagging beyond the plan's own scope:
+
+1. **Accepted v1 design limitation (found during Task 9's review):** the pull effect applies its
+   `schedule_pms_links` correction server-side, unconditionally, *before* the frontend's own
+   `setBrandScheduleDay` call applies the matching `brand_schedule` change for that same item. If
+   that call fails partway through a multi-item batch (e.g. a transient network blip), the calendar
+   can be left silently out of sync with PMS, and won't self-heal on a later revisit — the next
+   pull sees the link already matches live PMS state and reports no further drift. Inherited from
+   the plan's own design, not an implementer bug; ruled acceptable for v1 given how rare the
+   triggering conditions are (a human editing a PMS due date AND a concurrent client-side write
+   failure). Any affected cell self-corrects via a normal manual click.
+2. **Pre-existing, unrelated repo-wide gap (found during Tasks 7/10's `deno check`/`deno test`
+   runs):** `src/lib/countryFlags.ts` and `src/lib/reviewRemovalAssessment.ts` both use relative
+   imports missing the `.ts` extension Deno's strict resolution requires, breaking `deno
+   check`/`deno test` for any Edge Function that transitively imports either file — confirmed
+   identically broken for both the new `sync-schedule-pms` function and the pre-existing,
+   already-undeployed `generate-weekly-schedule` function. Does **not** affect real Supabase
+   deploys, which already resolve extensionless imports fine (proven by `ai-assistant`'s successful
+   2026-08-14 deploy using the same cross-import pattern) — narrow, real scope is local Deno
+   test-running only, but it currently makes that impossible for 2+ functions. Worth a follow-up
+   fix (add `.ts` to the 4 imports across those 2 files).
+
+Spec: `docs/superpowers/specs/2026-08-17-schedule-planner-pms-sync-design.md`. Plan:
+`docs/superpowers/plans/2026-08-17-schedule-planner-pms-sync.md`.
