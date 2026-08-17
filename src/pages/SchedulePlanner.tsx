@@ -354,7 +354,7 @@ export default function SchedulePlanner() {
                             );
                             return (
                               <tr key={brand} className="border-t border-slate-100">
-                                <td className="max-w-[72px] truncate px-1.5 py-1 text-slate-600" title={brand}>
+                                <td className="max-w-[90px] truncate px-1.5 py-1 text-[12px] text-slate-600" title={brand}>
                                   {brand}
                                 </td>
                                 {previewDays.map((day) => {
