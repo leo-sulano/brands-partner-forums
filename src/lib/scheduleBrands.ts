@@ -133,3 +133,17 @@ export function withDayStatus(
   updated[idx] = { ...updated[idx], [day]: status };
   return updated;
 }
+
+// Inverse of the weekday-column model: given a real calendar date (e.g. a
+// PMS task's due date, which a human can set to anything), returns which
+// Schedule Planner week+weekday it belongs to, or null if it falls on a
+// Saturday/Sunday -- Schedule Planner has no weekend columns, so a due date
+// moved onto a weekend has nowhere to render as "active" until it's moved
+// back onto a weekday.
+export function weekdayAndWeekStartFor(dateISO: string): { weekStart: string; day: Weekday } | null {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  const index = date.getDay() - 1; // Mon=0 .. Fri=4; Sun=-1, Sat=5
+  if (index < 0 || index > 4) return null;
+  return { weekStart: toISODate(mondayOf(date)), day: WEEKDAYS[index] };
+}

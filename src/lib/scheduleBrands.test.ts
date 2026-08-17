@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, isCurrentWeekStart, type BrandScheduleRow } from './scheduleBrands';
+import { scheduleFor, nextStatus, withDayStatus, toISODate, mondayOf, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow } from './scheduleBrands';
 
 // No @types/node in this project (browser-only lib set in tsconfig.app.json)
 // — declare just enough of the real Node `process` global, which vitest runs
@@ -133,5 +133,23 @@ describe('withDayStatus', () => {
     expect(result).toHaveLength(2);
     expect(result.find((r) => r.week_start === '2026-07-27')).toEqual(row);
     expect(result.find((r) => r.week_start === '2026-08-03')).toMatchObject({ monday: 'active' });
+  });
+});
+
+describe('weekdayAndWeekStartFor', () => {
+  it('resolves a Wednesday to its week start and weekday name', () => {
+    expect(weekdayAndWeekStartFor('2026-08-19')).toEqual({ weekStart: '2026-08-17', day: 'wednesday' });
+  });
+
+  it('resolves a Monday to itself as the week start', () => {
+    expect(weekdayAndWeekStartFor('2026-08-17')).toEqual({ weekStart: '2026-08-17', day: 'monday' });
+  });
+
+  it('returns null for a Saturday (no weekday column exists for it)', () => {
+    expect(weekdayAndWeekStartFor('2026-08-22')).toBeNull();
+  });
+
+  it('returns null for a Sunday', () => {
+    expect(weekdayAndWeekStartFor('2026-08-23')).toBeNull();
   });
 });
