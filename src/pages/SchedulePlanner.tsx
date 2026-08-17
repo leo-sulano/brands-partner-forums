@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
-import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
+import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow, type Weekday } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { PLATFORM_BADGE } from '../lib/scheduler/scheduleUtils';
@@ -16,6 +16,7 @@ import {
   fetchRemovedPlatformBrands,
 } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
+import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
 
 const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
@@ -23,6 +24,16 @@ const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
 const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
+const PREVIEW_DATE_STORAGE_KEY = 'schedulePlanner.previewDate';
+
+// Maps an ISO date to the matching brand_schedule weekday column — null for
+// Saturday/Sunday, since the schedule model (here and everywhere else in the
+// app) has no weekend columns at all.
+function isoDateToWeekday(iso: string): Weekday | null {
+  const day = new Date(`${iso}T00:00:00`).getDay();
+  const map: Partial<Record<number, Weekday>> = { 1: 'monday', 2: 'tuesday', 3: 'wednesday', 4: 'thursday', 5: 'friday' };
+  return map[day] ?? null;
+}
 
 // How many real brand rows the landing-grid mini calendar shows before
 // collapsing the rest into a "+N more" line — tabs range from 1 brand to 50+,
@@ -84,9 +95,32 @@ export default function SchedulePlanner() {
   // plan-chip ghosting each section's ScheduleCell does, so it doesn't need
   // to track the actual clock across a long-lived tab.
   const todayISO = useMemo(() => toISODate(new Date()), []);
-  // Shared by the landing-grid preview fetch (which week to read) and its
-  // render (which week's rows to look up) — computed once, same as todayISO.
-  const currentWeekISO = useMemo(() => toISODate(mondayOf(new Date())), []);
+  // Landing-grid-only date filter — narrows every card's mini calendar down
+  // to one day instead of the whole Mon–Fri week. Empty means "show the
+  // whole current week", the original behavior. Only ever read while
+  // showGrid is true (see the toolbar below), but kept as page-level state
+  // (not local to the grid block) so it persists across a tab click and
+  // back via sessionStorage, same as the other filters here.
+  const [previewDate, setPreviewDate] = useState<string>(() => {
+    try {
+      return sessionStorage.getItem(PREVIEW_DATE_STORAGE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+  // The week the landing-grid preview actually fetches/reads — the picked
+  // date's own week when a date filter is set, otherwise the real current
+  // week. Distinct from `weekStart` above, which belongs to the per-tab
+  // calendars and has its own Prev/Next/Today navigation.
+  const previewWeekStart = useMemo(
+    () => mondayOf(previewDate ? new Date(`${previewDate}T00:00:00`) : new Date()),
+    [previewDate],
+  );
+  const previewWeekISO = useMemo(() => toISODate(previewWeekStart), [previewWeekStart]);
+  // null when no date filter is set (show the full Mon–Fri week) or when the
+  // picked date is a Saturday/Sunday (nothing to show — see isoDateToWeekday).
+  const previewWeekday = useMemo(() => (previewDate ? isoDateToWeekday(previewDate) : null), [previewDate]);
+  const previewDays: Weekday[] = previewDate ? (previewWeekday ? [previewWeekday] : []) : WEEKDAYS;
 
   useEffect(() => {
     try {
@@ -111,6 +145,14 @@ export default function SchedulePlanner() {
       // same as above
     }
   }, [weekStartISO]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(PREVIEW_DATE_STORAGE_KEY, previewDate);
+    } catch {
+      // same as above
+    }
+  }, [previewDate]);
 
   function removeTab(tab: string) {
     setSelectedTabs((prev) => prev.filter((t) => t !== tab));
@@ -148,7 +190,7 @@ export default function SchedulePlanner() {
               fetchTabHeaders(t),
               fetchScheduleHiddenBrands(t),
               fetchScheduleRestrictedBrands(t),
-              fetchBrandSchedule(t, currentWeekISO),
+              fetchBrandSchedule(t, previewWeekISO),
             ]);
             const activePlatforms = getTabPlatforms(t);
             const hiddenSet = buildHiddenBrandSet(hiddenRows);
@@ -170,7 +212,7 @@ export default function SchedulePlanner() {
     return () => {
       canceled = true;
     };
-  }, [showGrid, currentWeekISO]);
+  }, [showGrid, previewWeekISO]);
 
   return (
     <div className="space-y-4">
@@ -188,6 +230,19 @@ export default function SchedulePlanner() {
             placeholder="— select tabs —"
           />
         </div>
+
+        {showGrid && (
+          <div>
+            <label className="mb-1.5 block text-xs font-medium text-slate-500">Date</label>
+            <DatePicker
+              value={previewDate}
+              onChange={setPreviewDate}
+              placeholder="Filter by date"
+              align="left"
+              triggerTextClassName="text-sm"
+            />
+          </div>
+        )}
 
         {selectedTabs.length > 0 && (
           <>
@@ -267,65 +322,73 @@ export default function SchedulePlanner() {
                 </span>
 
                 <div className={`overflow-hidden rounded border border-slate-100 transition-opacity ${previewLoading ? 'opacity-40' : ''}`}>
-                  <table className="w-full border-collapse text-[10px]">
-                    <thead>
-                      <tr className="bg-slate-50 text-slate-400">
-                        <th className="px-1.5 py-1 text-left font-medium">Brand</th>
-                        {WEEKDAYS.map((day) => (
-                          <th key={day} className="px-0.5 py-1 text-center font-medium">
-                            {WEEKDAY_LABELS[day][0]}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewBrands.length === 0 ? (
-                        <tr>
-                          <td colSpan={WEEKDAYS.length + 1} className="px-1.5 py-2 text-center text-slate-400">
-                            No schedule yet
-                          </td>
+                  {previewDate && previewDays.length === 0 ? (
+                    <div className="px-1.5 py-3 text-center text-[10px] text-slate-400">
+                      No schedule tracked on weekends
+                    </div>
+                  ) : (
+                    <table className="w-full border-collapse text-[10px]">
+                      <thead>
+                        <tr className="bg-slate-50 text-slate-400">
+                          <th className="px-1.5 py-1 text-left font-medium">Brand</th>
+                          {previewDays.map((day) => (
+                            <th key={day} className="px-0.5 py-1 text-center font-medium">
+                              {previewDate
+                                ? `${WEEKDAY_LABELS[day]} ${formatWeekdayDate(previewWeekStart, WEEKDAYS.indexOf(day))}`
+                                : WEEKDAY_LABELS[day][0]}
+                            </th>
+                          ))}
                         </tr>
-                      ) : (
-                        previewBrands.map((brand) => {
-                          const brandPlatforms = resolveBrandPlatforms(
-                            t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
-                          );
-                          return (
-                            <tr key={brand} className="border-t border-slate-100">
-                              <td className="max-w-[72px] truncate px-1.5 py-1 text-slate-600" title={brand}>
-                                {brand}
-                              </td>
-                              {WEEKDAYS.map((day) => {
-                                const activeToday = brandPlatforms.filter(
-                                  (p) => scheduleFor(preview.scheduleRows, t, brand, currentWeekISO, p)?.[day] === 'active',
-                                );
-                                return (
-                                  <td key={day} className="px-0.5 py-1 text-center">
-                                    <span className="flex flex-wrap items-center justify-center gap-0.5">
-                                      {activeToday.map((p) => (
-                                        <span
-                                          key={p}
-                                          className={`inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
-                                        >
-                                          <img
-                                            src={PLATFORM_FAVICON[p]}
-                                            alt={PLATFORM_BADGE[p].label}
-                                            className="size-2 rounded-[1px]"
-                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                          />
-                                          {PLATFORM_BADGE[p].label}
-                                        </span>
-                                      ))}
-                                    </span>
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {previewBrands.length === 0 ? (
+                          <tr>
+                            <td colSpan={previewDays.length + 1} className="px-1.5 py-2 text-center text-slate-400">
+                              No schedule yet
+                            </td>
+                          </tr>
+                        ) : (
+                          previewBrands.map((brand) => {
+                            const brandPlatforms = resolveBrandPlatforms(
+                              t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+                            );
+                            return (
+                              <tr key={brand} className="border-t border-slate-100">
+                                <td className="max-w-[72px] truncate px-1.5 py-1 text-slate-600" title={brand}>
+                                  {brand}
+                                </td>
+                                {previewDays.map((day) => {
+                                  const activeToday = brandPlatforms.filter(
+                                    (p) => scheduleFor(preview.scheduleRows, t, brand, previewWeekISO, p)?.[day] === 'active',
+                                  );
+                                  return (
+                                    <td key={day} className="px-0.5 py-1 text-center">
+                                      <span className="flex flex-wrap items-center justify-center gap-0.5">
+                                        {activeToday.map((p) => (
+                                          <span
+                                            key={p}
+                                            className={`inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
+                                          >
+                                            <img
+                                              src={PLATFORM_FAVICON[p]}
+                                              alt={PLATFORM_BADGE[p].label}
+                                              className="size-2 rounded-[1px]"
+                                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                            />
+                                            {PLATFORM_BADGE[p].label}
+                                          </span>
+                                        ))}
+                                      </span>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  )}
                   {moreCount > 0 && (
                     <div className="border-t border-slate-100 px-1.5 py-1 text-center text-[10px] text-slate-400">
                       +{moreCount} more brand{moreCount === 1 ? '' : 's'}
