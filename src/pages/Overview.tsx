@@ -844,7 +844,6 @@ export default function Overview() {
                           <TabIcon className="size-3.5 text-blue-500" />
                         </div>
                         <p className="truncate text-sm font-semibold text-slate-800 group-hover:text-blue-600">{tabDisplayName(tab)}</p>
-                        <SuccessRateBadge live={kpis.live} removed={kpis.removed} size="sm" />
                       </div>
                       <span className="shrink-0 text-xs text-slate-500">
                         <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
@@ -885,24 +884,50 @@ export default function Overview() {
             <div className="space-y-4">
               {brandState.groups.map(({ tab, brands }) => {
                 const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+                // Reuses the tab-level kpis the "Brand Tabs" view already fetched
+                // (same fetchTabKpis/classifyEntry pipeline as fetchBrandKpis) rather
+                // than re-summing this tab's brand cards, so the two views can't drift.
+                const tabKpis = state.tabs.find((t) => t.tab === tab)?.kpis;
                 return (
                   <div key={tab}>
-                    <div className="mb-1.5 flex items-center gap-2">
-                      <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-100">
-                        <TabIcon className="size-3 text-blue-500" />
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                        <div className="flex items-center gap-2">
+                          <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-100">
+                            <TabIcon className="size-3 text-blue-500" />
+                          </div>
+                          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tabDisplayName(tab)}</h3>
+                        </div>
+                        {tabKpis?.activePlatforms.map((p) => (
+                          <Link
+                            key={p}
+                            to={`/brands/${tabToSlug(tab)}?platform=${p}`}
+                            className="flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-slate-600 transition-colors hover:bg-slate-100"
+                          >
+                            <span className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE[p].cls}`}>
+                              <img src={PLATFORM_BADGE[p].icon} alt={PLATFORM_BADGE[p].label} className="size-2.5 rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                              {PLATFORM_BADGE[p].label}
+                            </span>
+                            <span className="whitespace-nowrap"><span className="font-medium text-emerald-600">{tabKpis[p].live}</span> live</span>
+                            <span className="whitespace-nowrap"><span className="font-medium text-rose-500">{tabKpis[p].removed}</span> removed</span>
+                            <SuccessRateBadge live={tabKpis[p].live} removed={tabKpis[p].removed} size="sm" />
+                          </Link>
+                        ))}
                       </div>
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tabDisplayName(tab)}</h3>
+                      {tabKpis && (
+                        <div className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
+                          <span><span className="font-medium text-slate-900">{tabKpis.live + tabKpis.removed}</span> total</span>
+                          <SuccessRateBadge live={tabKpis.live} removed={tabKpis.removed} size="sm" />
+                        </div>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                       {brands.map(({ brand, kpis }) => (
                         <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
-                                {brand}
-                              </Link>
-                              <SuccessRateBadge live={kpis.live} removed={kpis.removed} size="sm" />
-                            </div>
+                            <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
+                              {brand}
+                            </Link>
                             <span className="shrink-0 text-xs text-slate-500">
                               <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
                             </span>
