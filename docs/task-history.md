@@ -3862,3 +3862,30 @@ restore normal rotation for subsequent runs. 3 new tests in `test_schedule_group
 for a brand outside today's group, case-insensitive, and confirms normal behavior returns once
 unset); full local suite (11 tests) passes. Not yet deployed to EC2 — same pending-deploy status as
 the parent rotation feature this extends.
+
+---
+
+## Task 230: Fixed Schedule Planner Date-Range Calendar Getting Clipped
+**Date:** August 18, 2026
+
+Fixed a bug reported via a live screenshot: clicking "From date"/"To date" in Schedule Planner's
+toolbar opened the trigger button (highlighted) but no calendar panel ever appeared. Root cause: the
+shared `DatePicker` component (`src/components/DatePicker.tsx`, used by Schedule Planner, Overview,
+and Score Summary) positioned its popup calendar with plain `absolute`/`top-full` inside the toolbar
+row, which has `overflow-x-auto` for horizontal-scroll fallback — CSS implicitly clips the vertical
+axis too whenever only `overflow-x` is set to a non-`visible` value, so the popup was rendering
+completely outside the visible/clipped area. This repo already solved the identical class of bug for
+the adjacent "Brand Tabs" `MultiSelectDropdown` by portaling its menu to `document.body`; applied the
+same pattern to `DatePicker` — computes its position via `getBoundingClientRect` on open/scroll/resize
+and renders the calendar through `createPortal(..., document.body)` as a `fixed`-positioned panel,
+respecting the existing `align="left"|"right"` prop. Purely a rendering/positioning fix — no change to
+date-selection logic, props, or callers. Tier 2 (light path): confined to one shared component with a
+single clear root cause, implemented directly with one self-review pass rather than the full pipeline.
+Live-verified via Playwright against the real running app (logged in as
+leo@optinetsolutions.com): both "From date" (`align="left"`) and "To date" (`align="right"`) now open
+a fully visible calendar floating above the landing-grid cards below the toolbar instead of being
+clipped, and selecting a day still updates every card's mini calendar as expected. Full test suite
+(1571 tests) and build both pass. Not yet checked: `BrandGroup.tsx` has its own separately
+hand-duplicated `DatePicker` (not importing the shared component) still on the old non-portaled
+positioning — same latent clipping risk, left untouched since it wasn't the reported bug and is a
+separate pre-existing duplication.

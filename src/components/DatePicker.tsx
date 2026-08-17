@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarDays, X, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { isoToDisplay } from '../lib/dateUtils';
 
@@ -21,11 +22,15 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
   const [viewYear, setViewYear] = useState(() => value ? +value.slice(0, 4) : today.getFullYear());
   const [viewMonth, setViewMonth] = useState(() => value ? +value.slice(5, 7) - 1 : today.getMonth());
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left?: number; right?: number } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     }
     document.addEventListener('mousedown', onDown);
     return () => document.removeEventListener('mousedown', onDown);
@@ -34,6 +39,30 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
   useEffect(() => {
     if (value) { setViewYear(+value.slice(0, 4)); setViewMonth(+value.slice(5, 7) - 1); }
   }, [value]);
+
+  // Portaled to document.body (matching MultiSelectDropdown.tsx's already-solved approach)
+  // so the calendar floats above any scroll container instead of being clipped by one —
+  // Schedule Planner's toolbar uses overflow-x-auto, which implicitly clips the vertical
+  // axis too and hid this panel entirely.
+  useEffect(() => {
+    if (!open) return;
+    function updatePosition() {
+      const rect = ref.current?.getBoundingClientRect();
+      if (!rect) return;
+      setMenuPos(
+        align === 'left'
+          ? { top: rect.bottom + 6, left: rect.left }
+          : { top: rect.bottom + 6, right: window.innerWidth - rect.right },
+      );
+    }
+    updatePosition();
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [open, align]);
 
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const firstDayMon = (new Date(viewYear, viewMonth, 1).getDay() + 6) % 7;
@@ -80,8 +109,12 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
         )}
       </button>
 
-      {open && (
-        <div className={`absolute ${align === 'left' ? 'left-0' : 'right-0'} top-full z-[200] mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl`}>
+      {open && menuPos && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[200] w-64 rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+          style={{ top: menuPos.top, left: menuPos.left, right: menuPos.right }}
+        >
           <div className="mb-3 flex items-center justify-between">
             <button type="button" onClick={prevMonth} className="rounded-md p-1 text-slate-500 hover:bg-blue-50 transition-colors">
               <ChevronLeft className="size-4" />
@@ -121,7 +154,8 @@ export default function DatePicker({ value, onChange, placeholder, min, max, ali
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
