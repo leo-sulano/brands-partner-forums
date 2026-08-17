@@ -10,8 +10,16 @@ to clean up, and a brand added tomorrow is assigned a group automatically
 the first time it's ever queried -- no manual registration step, ever.
 """
 import hashlib
+import os
 from datetime import date
 from typing import Optional
+
+# One-time escape hatch for a full backfill run (e.g. fetching TP review text
+# for every brand regardless of this week's rotation group), set as an env
+# var on whichever host is running the check (EC2 ~/.env for the cron/status
+# server path, or locally). Must be explicitly unset afterward -- there is no
+# auto-expiry -- to restore the normal 3-week rotation for subsequent runs.
+_BYPASS_ENV_VAR = "SCHEDULE_GROUP_BYPASS"
 
 NUM_GROUPS = 3
 
@@ -44,5 +52,11 @@ def active_group_index(today: Optional[date] = None) -> int:
 
 def in_active_group(tab: str, brand: str, today: Optional[date] = None) -> bool:
     """True if this (tab, brand) pair's assigned group is the one active
-    for `today` (defaults to the real current date)."""
+    for `today` (defaults to the real current date).
+
+    Always True while SCHEDULE_GROUP_BYPASS is set (any of '1'/'true'/'yes',
+    case-insensitive) -- see _BYPASS_ENV_VAR above.
+    """
+    if os.environ.get(_BYPASS_ENV_VAR, "").strip().lower() in {"1", "true", "yes"}:
+        return True
     return brand_group_index(tab, brand) == active_group_index(today)

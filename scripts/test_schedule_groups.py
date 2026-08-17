@@ -1,3 +1,4 @@
+import os
 from datetime import date, timedelta
 
 import schedule_groups as sg
@@ -87,4 +88,33 @@ def test_in_active_group_matches_brand_and_active_group():
     assert matching is not None
     assert non_matching is not None
     assert sg.in_active_group('Tab', matching, today=day0) is True
+    assert sg.in_active_group('Tab', non_matching, today=day0) is False
+
+
+def test_in_active_group_bypass_env_var_forces_true(monkeypatch):
+    day0 = sg._EPOCH
+    assert sg.active_group_index(day0) == 0
+    # Find a brand that would normally be OUT of today's active group.
+    non_matching = next(
+        name for name in ['brand-a', 'brand-b', 'brand-c', 'brand-d', 'brand-e', 'brand-f']
+        if sg.brand_group_index('Tab', name) != 0
+    )
+    assert sg.in_active_group('Tab', non_matching, today=day0) is False
+
+    monkeypatch.setenv('SCHEDULE_GROUP_BYPASS', '1')
+    assert sg.in_active_group('Tab', non_matching, today=day0) is True
+
+
+def test_in_active_group_bypass_env_var_case_insensitive(monkeypatch):
+    monkeypatch.setenv('SCHEDULE_GROUP_BYPASS', 'True')
+    assert sg.in_active_group('Tab', 'any-brand') is True
+
+
+def test_in_active_group_bypass_env_var_unset_restores_normal_behavior(monkeypatch):
+    monkeypatch.delenv('SCHEDULE_GROUP_BYPASS', raising=False)
+    day0 = sg._EPOCH
+    non_matching = next(
+        name for name in ['brand-a', 'brand-b', 'brand-c', 'brand-d', 'brand-e', 'brand-f']
+        if sg.brand_group_index('Tab', name) != 0
+    )
     assert sg.in_active_group('Tab', non_matching, today=day0) is False
