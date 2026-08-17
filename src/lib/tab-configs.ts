@@ -237,6 +237,23 @@ export function getBrandNameCol(tab: string): string {
   return (cols && BRAND_COLS.find((c) => cols.includes(c))) || 'Brand Name';
 }
 
+// The unique, sorted brand list for a tab given its already-fetched raw
+// entries and live headers — the exact derivation Schedule Planner needs
+// wherever it lists a tab's brands, factored out so its per-tab calendar
+// (TabScheduleSection) and its landing-grid mini-preview can't independently
+// drift on which column holds brand identity or how the DEFAULT_BRAND
+// single-brand-tab fallback applies.
+export function deriveTabBrands(tab: string, entries: { data: Record<string, string | null> }[], headers: string[]): string[] {
+  const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
+  const uniqueBrands = [...new Set(
+    entries
+      .map((e) => e.data[brandCol])
+      .filter((v): v is string => !!v && v.trim() !== ''),
+  )].sort();
+  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
+  return uniqueBrands;
+}
+
 // Score-value column candidates per platform, in priority order. TP has
 // historically inconsistent naming across tabs (hence the fallback list);
 // AG/CG/WO each have exactly one known raw column name.

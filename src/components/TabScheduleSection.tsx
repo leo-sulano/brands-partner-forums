@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { tabDisplayName, tabToSlug } from '../lib/tabs';
-import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../lib/tab-configs';
+import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import {
   fetchRawEntriesByTab,
   fetchTabHeaders,
@@ -18,7 +18,7 @@ import {
 import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, addDays, formatWeekdayDate, isCurrentWeekStart, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
-import { buildHiddenBrandSet, buildPlatformRestrictionMap, getSchedulableBrandPlatforms } from '../lib/scheduleBrandConfig';
+import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
@@ -155,13 +155,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           withFlagFallback(fetchScheduleRestrictedBrands(tab)),
         ]);
         if (canceled) return;
-        const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
-        const uniqueBrands = [...new Set(
-          rawEntries
-            .map((e) => e.data[brandCol])
-            .filter((v): v is string => !!v && v.trim() !== ''),
-        )].sort();
-        if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
+        const uniqueBrands = deriveTabBrands(tab, rawEntries, headers);
         const platforms = getTabPlatforms(tab);
         if (canceled) return;
         // Set all three together, tagged with the tab they were loaded for —
@@ -279,8 +273,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     const removedSet = tabCtx?.removedPlatformBrandSet ?? new Set<string>();
     const hiddenSet = tabCtx?.hiddenBrandSet ?? new Set<string>();
     const restrictionMap = tabCtx?.platformRestrictionMap ?? new Map<string, Platform>();
-    const schedulable = getSchedulableBrandPlatforms(tab, brand, activePlatforms, hiddenSet, restrictionMap);
-    return schedulable.filter((p) => !removedSet.has(platformRemovedKey(tab, brand, p)));
+    return resolveBrandPlatforms(tab, brand, activePlatforms, hiddenSet, restrictionMap, removedSet);
   }
 
   // The inverse of brandPlatforms — every active platform actually flagged

@@ -1,7 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { toISODate, mondayOf, addDays, formatWeekdayDate } from '../lib/scheduleBrands';
+import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
+import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
+import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
+import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
+import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
+import { PLATFORM_BADGE } from '../lib/scheduler/scheduleUtils';
+import {
+  fetchBrandSchedule,
+  fetchRawEntriesByTab,
+  fetchTabHeaders,
+  fetchScheduleHiddenBrands,
+  fetchScheduleRestrictedBrands,
+  fetchRemovedPlatformBrands,
+} from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import TabScheduleSection from '../components/TabScheduleSection';
 
@@ -10,6 +23,33 @@ const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
 const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
+
+// How many real brand rows the landing-grid mini calendar shows before
+// collapsing the rest into a "+N more" line — tabs range from 1 brand to 50+,
+// so an uncapped preview would make cards wildly different heights.
+const PREVIEW_BRAND_LIMIT = 4;
+
+interface TabPreview {
+  // Already filtered to brands with at least one schedulable, non-removed
+  // platform (same rule TabScheduleSection's own filteredBrands applies) —
+  // so the "+N more" count matches what actually has rows in the real
+  // calendar, not a raw unique-brand count.
+  brands: string[];
+  activePlatforms: Platform[];
+  hiddenSet: Set<string>;
+  restrictionMap: Map<string, Platform>;
+  removedSet: Set<string>;
+  scheduleRows: BrandScheduleRow[];
+}
+
+const EMPTY_PREVIEW: TabPreview = {
+  brands: [],
+  activePlatforms: [],
+  hiddenSet: new Set(),
+  restrictionMap: new Map(),
+  removedSet: new Set(),
+  scheduleRows: [],
+};
 
 export default function SchedulePlanner() {
   const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
@@ -44,6 +84,9 @@ export default function SchedulePlanner() {
   // plan-chip ghosting each section's ScheduleCell does, so it doesn't need
   // to track the actual clock across a long-lived tab.
   const todayISO = useMemo(() => toISODate(new Date()), []);
+  // Shared by the landing-grid preview fetch (which week to read) and its
+  // render (which week's rows to look up) — computed once, same as todayISO.
+  const currentWeekISO = useMemo(() => toISODate(mondayOf(new Date())), []);
 
   useEffect(() => {
     try {
@@ -72,6 +115,62 @@ export default function SchedulePlanner() {
   function removeTab(tab: string) {
     setSelectedTabs((prev) => prev.filter((t) => t !== tab));
   }
+
+  const showGrid = selectedTabs.length === 0;
+  // Real per-brand, per-platform current-week schedule for every tab, shown
+  // as a miniature copy of the full calendar (brand rows × weekday columns)
+  // on each landing-grid card. Fetched only while the grid is actually
+  // visible (never while a tab is selected) and re-fetched every time it
+  // becomes visible again — e.g. after removing the last selected tab — so a
+  // card reflects any edit just made in a section above it.
+  //
+  // This does re-fetch each tab's full raw entries (the same heavy call
+  // TabScheduleSection makes to derive its own brand list) for all 11 tabs at
+  // once, which is real cost the plain dot-strip version this replaced
+  // didn't have — but fetchRawEntriesByTab already caches per tab for 60s
+  // (queries.ts), so opening a tab right after browsing the grid reuses this
+  // fetch instead of repeating it.
+  const [previewByTab, setPreviewByTab] = useState<Record<string, TabPreview>>({});
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showGrid) return;
+    let canceled = false;
+    setPreviewLoading(true);
+    (async () => {
+      const removedRows = await fetchRemovedPlatformBrands().catch(() => []);
+      const removedSet = buildRemovedPlatformBrandSet(removedRows);
+      const entries = await Promise.all(
+        OPERATIONAL_TABS.map(async (t) => {
+          try {
+            const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRows] = await Promise.all([
+              fetchRawEntriesByTab(t),
+              fetchTabHeaders(t),
+              fetchScheduleHiddenBrands(t),
+              fetchScheduleRestrictedBrands(t),
+              fetchBrandSchedule(t, currentWeekISO),
+            ]);
+            const activePlatforms = getTabPlatforms(t);
+            const hiddenSet = buildHiddenBrandSet(hiddenRows);
+            const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
+            const brands = deriveTabBrands(t, rawEntries, headers).filter(
+              (b) => resolveBrandPlatforms(t, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
+            );
+            const preview: TabPreview = { brands, activePlatforms, hiddenSet, restrictionMap, removedSet, scheduleRows };
+            return [t, preview] as const;
+          } catch {
+            return [t, EMPTY_PREVIEW] as const;
+          }
+        }),
+      );
+      if (canceled) return;
+      setPreviewByTab(Object.fromEntries(entries));
+      setPreviewLoading(false);
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [showGrid, currentWeekISO]);
 
   return (
     <div className="space-y-4">
@@ -138,22 +237,98 @@ export default function SchedulePlanner() {
         )}
       </div>
 
-      {selectedTabs.length === 0 ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {OPERATIONAL_TABS.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setSelectedTabs([t])}
-              className="flex items-center justify-between gap-2 rounded-lg border border-solid border-slate-200 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
-            >
-              <span className="flex items-center gap-2">
-                <CalendarDays className="size-4 shrink-0 text-blue-500" />
-                <span className="text-sm font-medium text-slate-800">{tabDisplayName(t)}</span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-slate-400" />
-            </button>
-          ))}
+      {showGrid ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {OPERATIONAL_TABS.map((t) => {
+            const Icon = TAB_ICONS[t] ?? DEFAULT_TAB_ICON;
+            const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+            const previewBrands = preview.brands.slice(0, PREVIEW_BRAND_LIMIT);
+            const moreCount = preview.brands.length - previewBrands.length;
+            return (
+              <div
+                key={t}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedTabs([t])}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedTabs([t]);
+                  }
+                }}
+                className="flex cursor-pointer flex-col gap-2 rounded-lg border border-solid border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <Icon className="size-4 shrink-0 text-blue-500" />
+                    <span className="text-sm font-medium text-slate-800">{tabDisplayName(t)}</span>
+                  </span>
+                  <ChevronRight className="size-4 shrink-0 text-slate-400" />
+                </span>
+
+                <div className={`overflow-hidden rounded border border-slate-100 transition-opacity ${previewLoading ? 'opacity-40' : ''}`}>
+                  <table className="w-full border-collapse text-[10px]">
+                    <thead>
+                      <tr className="bg-slate-50 text-slate-400">
+                        <th className="px-1.5 py-1 text-left font-medium">Brand</th>
+                        {WEEKDAYS.map((day) => (
+                          <th key={day} className="px-0.5 py-1 text-center font-medium">
+                            {WEEKDAY_LABELS[day][0]}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {previewBrands.length === 0 ? (
+                        <tr>
+                          <td colSpan={WEEKDAYS.length + 1} className="px-1.5 py-2 text-center text-slate-400">
+                            No schedule yet
+                          </td>
+                        </tr>
+                      ) : (
+                        previewBrands.map((brand) => {
+                          const brandPlatforms = resolveBrandPlatforms(
+                            t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+                          );
+                          return (
+                            <tr key={brand} className="border-t border-slate-100">
+                              <td className="max-w-[72px] truncate px-1.5 py-1 text-slate-600" title={brand}>
+                                {brand}
+                              </td>
+                              {WEEKDAYS.map((day) => {
+                                const activeToday = brandPlatforms.filter(
+                                  (p) => scheduleFor(preview.scheduleRows, t, brand, currentWeekISO, p)?.[day] === 'active',
+                                );
+                                return (
+                                  <td key={day} className="px-0.5 py-1 text-center">
+                                    <span className="flex flex-wrap items-center justify-center gap-0.5">
+                                      {activeToday.map((p) => (
+                                        <span
+                                          key={p}
+                                          className={`rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
+                                        >
+                                          {PLATFORM_BADGE[p].label}
+                                        </span>
+                                      ))}
+                                    </span>
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                  {moreCount > 0 && (
+                    <div className="border-t border-slate-100 px-1.5 py-1 text-center text-[10px] text-slate-400">
+                      +{moreCount} more brand{moreCount === 1 ? '' : 's'}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       ) : (
         <div className="space-y-4">
