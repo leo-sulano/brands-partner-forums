@@ -31,6 +31,10 @@ import {
   setBrandPlatformOverride,
   clearBrandPlatformOverride,
   saveReviewAnalysis,
+  fetchSchedulePmsLinks,
+  insertSchedulePmsLink,
+  updateSchedulePmsLinkDate,
+  deleteSchedulePmsLink,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -150,6 +154,47 @@ describe('queries.ts injectable Supabase client', () => {
     singletonFrom.mockReturnValue(chainObj);
     await clearBrandPlatformOverride('X', 'winmega', 'tp');
     expect(singletonFrom).toHaveBeenCalledWith('brand_platform_override');
+  });
+
+  it('fetchSchedulePmsLinks uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
+    await fetchSchedulePmsLinks('X', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_pms_links');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchSchedulePmsLinks falls back to the singleton when no client is passed', async () => {
+    singletonFrom.mockReturnValue(chain({ data: [], error: null }));
+    await fetchSchedulePmsLinks('X');
+    expect(singletonFrom).toHaveBeenCalledWith('schedule_pms_links');
+  });
+
+  it('insertSchedulePmsLink uses the passed-in client for the insert', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const fakeFrom = vi.fn().mockReturnValue({ insert });
+    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_pms_links');
+    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' });
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('updateSchedulePmsLinkDate uses the passed-in client and filters by id', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const fakeFrom = vi.fn().mockReturnValue({ update });
+    await updateSchedulePmsLinkDate('link-1', '2026-08-21', { from: fakeFrom } as any);
+    expect(update).toHaveBeenCalledWith({ date: '2026-08-21' });
+    expect(eq).toHaveBeenCalledWith('id', 'link-1');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('deleteSchedulePmsLink uses the passed-in client and filters by id', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const del = vi.fn().mockReturnValue({ eq });
+    const fakeFrom = vi.fn().mockReturnValue({ delete: del });
+    await deleteSchedulePmsLink('link-1', { from: fakeFrom } as any);
+    expect(eq).toHaveBeenCalledWith('id', 'link-1');
+    expect(singletonFrom).not.toHaveBeenCalled();
   });
 });
 

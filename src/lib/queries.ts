@@ -1050,6 +1050,49 @@ export async function deleteBrandPlatformPause(tab: string, brandKey: string, pl
   if (error) throw error;
 }
 
+export interface SchedulePmsLink {
+  id: string;
+  tab: string;
+  brand: string;
+  brand_key: string;
+  platform: Platform;
+  date: string;
+  pms_task_id: string;
+}
+
+export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
+  const { data, error } = await client
+    .from('schedule_pms_links')
+    .select('id, tab, brand, brand_key, platform, date, pms_task_id')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as SchedulePmsLink[];
+}
+
+export async function insertSchedulePmsLink(
+  tab: string,
+  brand: string,
+  platform: Platform,
+  date: string,
+  pmsTaskId: string,
+  client: SupabaseClient = supabase,
+): Promise<void> {
+  const { error } = await client
+    .from('schedule_pms_links')
+    .insert({ tab, brand, platform, date, pms_task_id: pmsTaskId });
+  if (error) throw error;
+}
+
+export async function updateSchedulePmsLinkDate(id: string, date: string, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client.from('schedule_pms_links').update({ date }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function deleteSchedulePmsLink(id: string, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client.from('schedule_pms_links').delete().eq('id', id);
+  if (error) throw error;
+}
+
 // ---------------------------------------------------------------------------
 // TP/AG/CG/WO review status check triggers
 // ---------------------------------------------------------------------------
