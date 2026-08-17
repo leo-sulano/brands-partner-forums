@@ -4,7 +4,7 @@ import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
-import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
+import { buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { PLATFORM_BADGE } from '../lib/scheduler/scheduleUtils';
 import {
@@ -305,8 +305,14 @@ export default function SchedulePlanner() {
                                       {activeToday.map((p) => (
                                         <span
                                           key={p}
-                                          className={`rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
+                                          className={`inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
                                         >
+                                          <img
+                                            src={PLATFORM_FAVICON[p]}
+                                            alt={PLATFORM_BADGE[p].label}
+                                            className="size-2 rounded-[1px]"
+                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                          />
                                           {PLATFORM_BADGE[p].label}
                                         </span>
                                       ))}
