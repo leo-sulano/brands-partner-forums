@@ -3809,3 +3809,56 @@ whole-tab total. Full suite (1118 tests) and build both pass. No live browser ve
 possible this session (no browser-automation tooling available) — screenshots the user shared
 during the session were the only verification signal; worth a real click-through of the Brands view
 and a hover check on a handful of tooltips before considering this fully verified.
+
+---
+
+## Task 228: Schedule Planner Landing Grid — Default Tab Overview, Live Mini Calendars, Date-Range Filter
+**Date:** August 17, 2026
+
+Iteratively rebuilt Schedule Planner's landing view (before a Brand Tabs selection previously showed
+an empty table) into a real at-a-glance overview across a same-day series of commits.
+
+Selecting no tab now shows a clickable grid of every brand tab's own card instead of an empty state,
+and the Brand Tabs filter became a multi-select — each selected tab renders as its own stacked
+calendar section (independent load, search, export), extracted into a new `TabScheduleSection`
+component from the page's former single-tab body.
+
+Each landing card was then upgraded from a plain name/dot-strip into a live miniature copy of that
+tab's real weekly calendar: real sidebar icon, brand rows × weekday columns, real color-coded
+TP/AG/CG/WO badges (later given real platform favicons — e.g. TrustPilot's star — instead of
+text-only pills, matching the full calendar's `ScheduleCell` chip style), capped to a few brands with
+a "+N more" footer. `deriveTabBrands` (`tab-configs.ts`) and `resolveBrandPlatforms`
+(`scheduleBrandConfig.ts`) were extracted as shared helpers so the landing preview and
+`TabScheduleSection`'s own calendar can't independently drift on brand derivation or
+platform-exclusion logic.
+
+A date filter was added (first single-day, then widened to a From/To range): picking a range narrows
+every card's mini calendar to just those weekdays, merging schedule data across the weeks the range
+spans, capped to 10 weekdays with a shared "showing first N of M" note; a weekend-only pick shows "No
+schedule tracked on weekends" per card, since the schedule model has no Saturday/Sunday columns.
+"+N more brands" now expands each card in place (scrollable, with "Show less" to collapse) instead of
+only being reachable via the full calendar, and no longer also triggers the card's open-calendar
+handler. The toolbar (Brand Tabs + Date range) is constrained to one row with horizontal-scroll
+fallback instead of wrapping, and its two labels were moved inline beside their controls instead of
+stacked above them.
+
+All iteration was driven by live-screenshot feedback in a single session; no dedicated spec/plan
+doc, per this project's Tier 1/2 fast-path guidance for UI-confined landing-page work. No live
+Supabase-backed browser verification was performed this session (no browser-automation tooling
+available) — screenshots shared during the session were the only verification signal.
+
+---
+
+## Task 229: SCHEDULE_GROUP_BYPASS Escape Hatch for Full-Backfill Status Checks
+**Date:** August 17, 2026
+
+Added a one-off escape hatch to the alternating 3-week brand-check rotation (`scripts/
+schedule_groups.py`, shipped 2026-08-11, not yet deployed to EC2/live-verified — see Known Issues):
+setting a `SCHEDULE_GROUP_BYPASS` env var (`'1'`/`'true'`/`'yes'`, case-insensitive) makes
+`in_active_group()` always return `True`, letting an operator run a full sweep across every brand
+regardless of this week's active rotation group — e.g. to backfill TP review text for every brand in
+one pass instead of waiting out the rotation. No auto-expiry; must be unset manually afterward to
+restore normal rotation for subsequent runs. 3 new tests in `test_schedule_groups.py` (forces true
+for a brand outside today's group, case-insensitive, and confirms normal behavior returns once
+unset); full local suite (11 tests) passes. Not yet deployed to EC2 — same pending-deploy status as
+the parent rotation feature this extends.
