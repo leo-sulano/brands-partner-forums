@@ -823,7 +823,7 @@ export default function Overview() {
             No brand tabs track {platformFilter.map((p) => PLATFORM_BADGE[p].label).join(' or ')}
           </p>
         ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {state.loading
             ? Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
@@ -892,7 +892,7 @@ export default function Overview() {
                       </div>
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tabDisplayName(tab)}</h3>
                     </div>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                       {brands.map(({ brand, kpis }) => (
                         <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
                           <div className="flex items-center justify-between gap-2">
