@@ -844,6 +844,7 @@ export default function Overview() {
                           <TabIcon className="size-3.5 text-blue-500" />
                         </div>
                         <p className="truncate text-sm font-semibold text-slate-800 group-hover:text-blue-600">{tabDisplayName(tab)}</p>
+                        <SuccessRateBadge live={kpis.live} removed={kpis.removed} size="sm" />
                       </div>
                       <span className="shrink-0 text-xs text-slate-500">
                         <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
@@ -896,9 +897,12 @@ export default function Overview() {
                       {brands.map(({ brand, kpis }) => (
                         <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
                           <div className="flex items-center justify-between gap-2">
-                            <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
-                              {brand}
-                            </Link>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
+                                {brand}
+                              </Link>
+                              <SuccessRateBadge live={kpis.live} removed={kpis.removed} size="sm" />
+                            </div>
                             <span className="shrink-0 text-xs text-slate-500">
                               <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
                             </span>
