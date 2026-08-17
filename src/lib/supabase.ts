@@ -54,6 +54,12 @@ export const REVIEW_REMOVAL_ASSESSMENT_URL = import.meta.env?.VITE_REVIEW_REMOVA
 // "page removed" checkbox saves fine but the notification silently no-ops.
 export const NOTIFY_BRAND_REMOVED_URL = import.meta.env?.VITE_NOTIFY_BRAND_REMOVED_URL ?? '';
 
+// sync-schedule-pms Edge Function URL. Set in Vercel env once the
+// sync-schedule-pms function is deployed (also needs PMS_API_TOKEN set via
+// `supabase secrets set PMS_API_TOKEN=...`). Empty string means a newly-
+// scheduled cell saves fine but never creates/reconciles a PMS task.
+export const SYNC_SCHEDULE_PMS_URL = import.meta.env?.VITE_SYNC_SCHEDULE_PMS_URL ?? '';
+
 // Base URL of this dashboard's own deployment, for building links back into
 // the app (e.g. the notify-brand-removed email's link to the flagged brand's
 // own tab). Same VITE_SITE_URL Login.tsx/Signup.tsx already use for OAuth
