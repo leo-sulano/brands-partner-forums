@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ChevronDown, Star } from 'lucide-react';
 import DatePicker from './DatePicker';
+import { successRateTier } from './SuccessRateBadge';
 import {
   computeScoreSummary,
   computeSuccessRates,
@@ -61,14 +62,15 @@ function successRatePct(rate: number | null): number | null {
 
 // Color tier is based on the same displayed/rounded percentage as the text
 // (via successRatePct), not the raw unrounded rate — otherwise a rate like
-// 79.6% could display as "80%" while tinted amber (since 79.6 < 80), a
-// visible mismatch between the number shown and its color.
+// 79.6% could display as "80%" while tinted a neighboring tier's color, a
+// visible mismatch between the number shown and its color. Uses the same
+// shared successRateTier scale as SuccessRateBadge (Brand Tabs cards) and
+// BreakdownStatGrid (Overview) so the same rate reads as the same color on
+// every page.
 function successRateColor(rate: number | null): string {
   const pct = successRatePct(rate);
-  if (pct == null) return 'text-slate-300';
-  if (pct >= 80) return 'text-emerald-600';
-  if (pct >= 50) return 'text-amber-600';
-  return 'text-rose-600';
+  if (pct == null) return '#cbd5e1';
+  return successRateTier(pct).text;
 }
 
 // Cell shows only the percentage; the live/removed breakdown behind it is
@@ -652,7 +654,8 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
                 )}
               </td>
               <td
-                className={`px-2 py-1.5 text-left font-mono tabular-nums ${successRateColor(sr?.rate ?? null)}`}
+                className="px-2 py-1.5 text-left font-mono tabular-nums"
+                style={{ color: successRateColor(sr?.rate ?? null) }}
                 title={successRateTitle(sr)}
               >
                 {formatSuccessRate(sr)}
@@ -762,7 +765,8 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
               )}
             </td>
             <td
-              className={`px-2 py-2 text-left font-mono tabular-nums ${successRateColor(groupSuccess.rate)}`}
+              className="px-2 py-2 text-left font-mono tabular-nums"
+              style={{ color: successRateColor(groupSuccess.rate) }}
               title={successRateTitle(groupSuccess)}
             >
               {formatSuccessRate(groupSuccess)}

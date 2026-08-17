@@ -1,4 +1,5 @@
 import type { ReactNode, KeyboardEvent, MouseEvent } from 'react';
+import { successRateTier } from './SuccessRateBadge';
 
 export interface StatTile {
   key: string;
@@ -31,6 +32,11 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
         const removedPct = total > 0 ? (tile.removed / total) * 100 : 0;
         const livePctLabel = total > 0 ? livePct.toFixed(1) : '0.0';
         const removedPctLabel = total > 0 ? removedPct.toFixed(1) : '0.0';
+        // Color the hero percentage by performance tier (same scale as
+        // SuccessRateBadge across BrandGroup/Score Summary), not by the
+        // tile's category identity color — a 66% published rate should read
+        // the same regardless of which proxy it belongs to.
+        const heroColor = total > 0 ? successRateTier(livePct).text : '#94a3b8';
         // The whole tile is a click target (defaulting to "live") on top of
         // the bar/legend's own explicit live-vs-removed choice — inner
         // interactive elements stop propagation so a legend/bar click
@@ -60,7 +66,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
             </span>
             <span
               className="text-xl font-bold font-mono tabular-nums leading-tight"
-              style={{ color: tile.accentColor }}
+              style={{ color: heroColor }}
             >
               {livePctLabel}%
             </span>
