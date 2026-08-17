@@ -10,7 +10,7 @@
 //     --config supabase/functions/generate-weekly-schedule/deno.json \
 //     supabase/functions/generate-weekly-schedule/index.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { OPERATIONAL_TABS } from '../../../src/lib/tabs.ts';
+import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
@@ -18,9 +18,11 @@ import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
+import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const PMS_API_TOKEN = Deno.env.get('PMS_API_TOKEN') || '';
 
 // Assembles the same TabContext SchedulePlanner.tsx's brand-loading effect
 // builds client-side (fetchRawEntriesByTab + fetchTabHeaders +
@@ -58,11 +60,20 @@ export async function buildTabContext(tab: string, client: SupabaseClient): Prom
   };
 }
 
-export async function generateForTab(tab: string, weekStart: string, client: SupabaseClient): Promise<void> {
+export async function generateForTab(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient,
+  pushFn: (items: PmsSyncItem[], client: SupabaseClient, credentials: { apiToken: string }) => Promise<unknown> = pushScheduleToPms,
+): Promise<void> {
   const ctx = await buildTabContext(tab, client);
   if (ctx.brands.length === 0 || ctx.activePlatforms.length === 0) return;
   const resumed = await recalculatePauses(tab, weekStart, ctx, client);
-  await ensureWeekGenerated(tab, weekStart, ctx, resumed, client);
+  const activated = await ensureWeekGenerated(tab, weekStart, ctx, resumed, client);
+  if (activated.length > 0 && PMS_API_TOKEN) {
+    const items: PmsSyncItem[] = activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date }));
+    await pushFn(items, client, { apiToken: PMS_API_TOKEN });
+  }
 }
 
 // Runs generateForTab for every tab independently — one tab's failure (a
