@@ -22,7 +22,6 @@ import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-const PMS_API_TOKEN = Deno.env.get('PMS_API_TOKEN') || '';
 
 // Assembles the same TabContext SchedulePlanner.tsx's brand-loading effect
 // builds client-side (fetchRawEntriesByTab + fetchTabHeaders +
@@ -70,9 +69,15 @@ export async function generateForTab(
   if (ctx.brands.length === 0 || ctx.activePlatforms.length === 0) return;
   const resumed = await recalculatePauses(tab, weekStart, ctx, client);
   const activated = await ensureWeekGenerated(tab, weekStart, ctx, resumed, client);
-  if (activated.length > 0 && PMS_API_TOKEN) {
+  // Read live (not a module-level const) so this stays testable: a
+  // module-level `Deno.env.get(...)` is captured once at import time, before
+  // any Deno.test() body runs, so a test could never make this gate see a
+  // token it sets itself. This function runs once per HTTP invocation, so
+  // there's no meaningful perf cost to reading it live each time.
+  const pmsApiToken = Deno.env.get('PMS_API_TOKEN') || '';
+  if (activated.length > 0 && pmsApiToken) {
     const items: PmsSyncItem[] = activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date }));
-    await pushFn(items, client, { apiToken: PMS_API_TOKEN });
+    await pushFn(items, client, { apiToken: pmsApiToken });
   }
 }
 

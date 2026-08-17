@@ -118,10 +118,25 @@ Deno.test('generateForTab pushes every combo ensureWeekGenerated just activated 
     pushedBatches.push(items);
     return { created: [], skipped: [], failed: [] };
   };
-  await generateForTab('BITP', '2026-08-17', client, fakePush);
+  // generateForTab reads PMS_API_TOKEN live via Deno.env.get() at call time
+  // (not a module-level const captured at import), so this test can set it
+  // itself instead of depending on whatever the ambient shell happened to
+  // have exported before Deno started. Restore whatever was there before
+  // (or delete it) afterward so this doesn't leak into any test that runs
+  // later in the same process.
+  const priorToken = Deno.env.get('PMS_API_TOKEN');
+  Deno.env.set('PMS_API_TOKEN', 'test-token');
+  try {
+    await generateForTab('BITP', '2026-08-17', client, fakePush);
+  } finally {
+    if (priorToken === undefined) Deno.env.delete('PMS_API_TOKEN');
+    else Deno.env.set('PMS_API_TOKEN', priorToken);
+  }
   assertEquals(pushedBatches.length, 1);
-  assertEquals((pushedBatches[0] as { brand: string }[]).length > 0, true);
-  assertEquals((pushedBatches[0] as { brand: string }[])[0].brand, 'WinMega');
+  const batch = pushedBatches[0] as { brand: string; platform: string }[];
+  assertEquals(batch.length > 0, true);
+  assertEquals(batch[0].brand, 'WinMega');
+  assertEquals(batch[0].platform, 'tp');
 });
 
 Deno.test('generateAllTabs continues past a single tab failure', async () => {
