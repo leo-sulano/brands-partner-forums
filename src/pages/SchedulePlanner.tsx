@@ -295,46 +295,46 @@ export default function SchedulePlanner() {
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Schedule Planner</h1>
 
-      <div className="flex flex-nowrap items-end gap-3 overflow-x-auto rounded-lg border border-solid border-slate-200 bg-white px-3 py-2 shadow-sm">
-        <div className="w-56 shrink-0">
-          <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Tabs</label>
-          <MultiSelectDropdown
-            values={selectedTabs}
-            onChange={setSelectedTabs}
-            options={TAB_OPTS}
-            noun="tab"
-            searchable
-            placeholder="— select tabs —"
-          />
+      <div className="flex flex-nowrap items-center gap-4 overflow-x-auto rounded-lg border border-solid border-slate-200 bg-white px-3 py-2 shadow-sm">
+        <div className="flex shrink-0 items-center gap-2">
+          <label className="text-xs font-medium text-slate-500 whitespace-nowrap">Brand Tabs</label>
+          <div className="w-48">
+            <MultiSelectDropdown
+              values={selectedTabs}
+              onChange={setSelectedTabs}
+              options={TAB_OPTS}
+              noun="tab"
+              searchable
+              placeholder="— select tabs —"
+            />
+          </div>
         </div>
 
         {showGrid && (
-          <div className="shrink-0">
-            <label className="mb-1.5 block text-xs font-medium text-slate-500">Date range</label>
-            <div className="flex items-center gap-2">
-              <DatePicker
-                value={previewFrom}
-                onChange={setPreviewFrom}
-                placeholder="From date"
-                align="left"
-                max={previewTo || undefined}
-                triggerTextClassName="text-sm"
-              />
-              <span className="text-xs text-slate-400">→</span>
-              <DatePicker
-                value={previewTo}
-                onChange={setPreviewTo}
-                placeholder="To date"
-                align="left"
-                min={previewFrom || undefined}
-                triggerTextClassName="text-sm"
-              />
-              {hiddenDayCount > 0 && (
-                <span className="text-xs text-slate-400 whitespace-nowrap">
-                  showing first {previewColumns.length} of {allRangeColumns.length} weekdays
-                </span>
-              )}
-            </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <label className="text-xs font-medium text-slate-500 whitespace-nowrap">Date range</label>
+            <DatePicker
+              value={previewFrom}
+              onChange={setPreviewFrom}
+              placeholder="From date"
+              align="left"
+              max={previewTo || undefined}
+              triggerTextClassName="text-sm"
+            />
+            <span className="text-xs text-slate-400">→</span>
+            <DatePicker
+              value={previewTo}
+              onChange={setPreviewTo}
+              placeholder="To date"
+              align="left"
+              min={previewFrom || undefined}
+              triggerTextClassName="text-sm"
+            />
+            {hiddenDayCount > 0 && (
+              <span className="text-xs text-slate-400 whitespace-nowrap">
+                showing first {previewColumns.length} of {allRangeColumns.length} weekdays
+              </span>
+            )}
           </div>
         )}
 
