@@ -149,3 +149,70 @@ export async function pushScheduleToPms(
   }
   return { created, skipped, failed };
 }
+
+export interface PmsDriftedItem {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  oldDate: string;
+  newDate: string;
+}
+
+export interface PmsDeletedItem {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  date: string;
+}
+
+export interface PmsPullResult {
+  drifted: PmsDriftedItem[];
+  deleted: PmsDeletedItem[];
+}
+
+interface PmsTaskListed {
+  id: string;
+  dueDate: string;
+}
+
+async function fetchPmsProjectTasks(credentials: PmsCredentials, fetchFn: typeof fetch): Promise<PmsTaskListed[]> {
+  const res = await fetchFn(`${PMS_BASE_URL}/projects/${PMS_PROJECT_ID}/tasks`, { headers: pmsHeaders(credentials) });
+  if (!res.ok) throw new Error(`PMS tasks fetch failed: ${res.status}`);
+  return (await res.json()) as PmsTaskListed[];
+}
+
+// schedule_pms_links writes here (not brand_schedule) -- this table is the
+// only thing the service-role Edge Function is allowed to touch under RLS.
+// The caller (TabScheduleSection.tsx) is responsible for applying the
+// resulting drift/deletion to brand_schedule itself, since that write goes
+// through the normal approved-user RLS path, not the service role.
+export async function pullScheduleFromPms(
+  tab: string,
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsPullResult> {
+  const drifted: PmsDriftedItem[] = [];
+  const deleted: PmsDeletedItem[] = [];
+
+  const links = await fetchSchedulePmsLinks(tab, client);
+  if (links.length === 0) return { drifted, deleted };
+
+  const tasks = await fetchPmsProjectTasks(credentials, fetchFn);
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+
+  for (const link of links) {
+    const task = taskById.get(link.pms_task_id);
+    if (!task) {
+      await deleteSchedulePmsLink(link.id, client);
+      deleted.push({ tab: link.tab, brand: link.brand, platform: link.platform, date: link.date });
+      continue;
+    }
+    const liveDate = task.dueDate.slice(0, 10);
+    if (liveDate !== link.date) {
+      await updateSchedulePmsLinkDate(link.id, liveDate, client);
+      drifted.push({ tab: link.tab, brand: link.brand, platform: link.platform, oldDate: link.date, newDate: liveDate });
+    }
+  }
+  return { drifted, deleted };
+}

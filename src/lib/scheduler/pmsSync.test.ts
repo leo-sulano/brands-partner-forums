@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { pushScheduleToPms, type PmsSyncItem } from './pmsSync';
+import { pullScheduleFromPms } from './pmsSync';
 
 const CREDENTIALS = { apiToken: 'test-token' };
 
@@ -32,7 +33,7 @@ function fakeFetchSequence(responses: { url: RegExp; method: string; body: unkno
       throw new Error(`unexpected fetch call: ${init.method ?? 'GET'} ${url}, expected ${step.method} matching ${step.url}`);
     }
     return { ok: (step.status ?? 200) < 400, status: step.status ?? 200, json: async () => step.body };
-  });
+  }) as unknown as typeof fetch;
 }
 
 const ITEM: PmsSyncItem = { tab: 'BITP', tabLabel: 'TP Brand Injection', brand: 'WinMega', platform: 'tp', date: '2026-08-20' };
@@ -100,6 +101,81 @@ describe('pushScheduleToPms', () => {
     const fetchFn = vi.fn();
     const result = await pushScheduleToPms([], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [], skipped: [], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+});
+
+function fakeSupabaseWithLinks(links: any[]) {
+  const updated: unknown[] = [];
+  const deletedIds: string[] = [];
+  return {
+    client: {
+      from: (table: string) => {
+        if (table !== 'schedule_pms_links') throw new Error(`unexpected table ${table}`);
+        return {
+          select: () => ({ eq: () => Promise.resolve({ data: links, error: null }) }),
+          update: (row: unknown) => ({
+            eq: (_col: string, id: string) => {
+              updated.push({ id, ...row as object });
+              return Promise.resolve({ error: null });
+            },
+          }),
+          delete: () => ({
+            eq: (_col: string, id: string) => {
+              deletedIds.push(id);
+              return Promise.resolve({ error: null });
+            },
+          }),
+        };
+      },
+    } as any,
+    updated,
+    deletedIds,
+  };
+}
+
+const LINK = { id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-1' };
+
+describe('pullScheduleFromPms', () => {
+  it('reports a drifted item and updates the link when the live due date differs', async () => {
+    const { client, updated } = fakeSupabaseWithLinks([LINK]);
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 'task-1', dueDate: '2026-08-22T00:00:00.000Z' }],
+    });
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({
+      drifted: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', oldDate: '2026-08-20', newDate: '2026-08-22' }],
+      deleted: [],
+    });
+    expect(updated).toEqual([{ id: 'link-1', date: '2026-08-22' }]);
+  });
+
+  it('reports a deleted item and deletes the link when the task no longer exists', async () => {
+    const { client, deletedIds } = fakeSupabaseWithLinks([LINK]);
+    const fetchFn = vi.fn().mockResolvedValue({ ok: true, json: async () => [] }); // task-1 is gone
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ drifted: [], deleted: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20' }] });
+    expect(deletedIds).toEqual(['link-1']);
+  });
+
+  it('does nothing when the live due date still matches the stored date', async () => {
+    const { client, updated, deletedIds } = fakeSupabaseWithLinks([LINK]);
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' }],
+    });
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ drifted: [], deleted: [] });
+    expect(updated).toEqual([]);
+    expect(deletedIds).toEqual([]);
+  });
+
+  it('returns immediately with no PMS API call when there are no links for the tab', async () => {
+    const { client } = fakeSupabaseWithLinks([]);
+    const fetchFn = vi.fn();
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ drifted: [], deleted: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 });
