@@ -21,6 +21,13 @@ import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils.ts'
 import { CARRYOVER_RULES, PAUSE_RULES, PERSISTENT_PAUSE_REASONS } from './schedulerRules.ts';
 import type { Entry } from '../../types/entry.ts';
 
+export interface ActivatedSlot {
+  brand: string;
+  brandKey: string;
+  platform: Platform;
+  date: string;
+}
+
 export interface TabContext {
   brands: string[];
   activePlatforms: Platform[];
@@ -321,7 +328,7 @@ export async function ensureWeekGenerated(
   ctx: TabContext,
   resumedThisWeek: PinnedCombo[],
   client?: SupabaseClient,
-): Promise<void> {
+): Promise<ActivatedSlot[]> {
   const existingRows = await fetchBrandSchedule(tab, weekStart, client);
   const alreadyHasRowCombos: PinnedCombo[] = existingRows
     .filter((r) => r.platform != null)
@@ -365,6 +372,12 @@ export async function ensureWeekGenerated(
     carryover,
   });
 
-  if (slots.length === 0) return;
+  if (slots.length === 0) return [];
   await bulkUpsertBrandSchedule(groupSlotsIntoRows(tab, weekStart, slots), client);
+  return slots.map((slot) => ({
+    brand: slot.brand,
+    brandKey: slot.brandKey,
+    platform: slot.platform,
+    date: shiftWeek(weekStart, WEEKDAYS.indexOf(slot.day)),
+  }));
 }
