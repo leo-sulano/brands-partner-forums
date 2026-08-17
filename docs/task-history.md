@@ -3686,3 +3686,63 @@ URL>` to Vercel env (redeploy after). Until all 3 are done, "Analyze Review" alw
 standard "Unable to generate an AI assessment right now" error message. Spec:
 `docs/superpowers/specs/2026-08-14-ai-review-removal-assessment-design.md`. Plan:
 `docs/superpowers/plans/2026-08-14-ai-review-removal-assessment.md`.
+
+---
+
+## Task 226: EC2 Box Hang Incident — Diagnosis, Concurrency Guard, Memory Mitigations, Weekly Cron Removed
+**Date:** August 17, 2026
+
+The dashboard's Check Status button returned `HTTP 504` on the BITP tab. Root-cause investigation
+(remote — no AWS console access this session) found the EC2 box (`scraper-leo`) itself fully
+unresponsive: TCP connected instantly on both port 22 (SSH) and port 5001 (`status_server.py`), but
+neither ever completed its handshake even after 55-60s of holding the connection open, including on
+`/health`, a trivial always-threaded endpoint that should answer instantly regardless of what any
+other request thread is doing — ruling out "a scrape is just running long" and pointing at the box
+itself being wedged. A user-performed hard reboot (AWS console) restored SSH access, and
+`journalctl`/log evidence then showed the real mechanism: the Monday `run_weekly_all_platforms.sh`
+cron job's CG phase logged 32/65 Chrome renderer timeouts, then WO started at 06:29:24 UTC into an
+already memory-starved box and never logged anything again — `journalctl -k` across the prior 4 days
+(Aug 14-17) showed the kernel OOM-killer repeatedly killing Chrome (and once, on the day of the
+incident, the co-tenant LinkOps Node worker) on this 2GB-RAM t2.small, which had **zero swap
+configured**, so the OOM-killer's hard kill was the only relief valve available.
+
+A separate, real (but not proximate-cause) gap was found and fixed along the way:
+`check_brand_page_removed.py` (the daily TP brand-page-removal check, also cron'd for 01:00 UTC)
+launches its own headless Chrome via `build_driver()` with zero coordination against
+`run_weekly_all_platforms.sh`'s own `check_review_status.py`/`check_ag_status.py`/
+`check_cg_status.py`/`check_wo_status.py` wait-guard — on a day it doesn't fail early (it happened
+to crash on an unrelated Supabase SSL error, `[SYS] unknown error (_ssl.c:2509)`, before reaching
+Selenium on the day of the incident, so it wasn't actually a contributor that day), it could stack a
+third concurrent Chrome session on the same box. Fixed with new `other_scraper_running()`/
+`wait_for_other_scrapers()` in `scripts/check_brand_page_removed.py`, polling the same
+`LOCK_PATTERN` string the shell script already waits on, called in `run()` right after the existing
+fail-fast `NOTIFY_BRAND_REMOVED_URL` check. 6 new tests in `test_check_brand_page_removed.py`
+(other-scraper-running true/false, wait-loop polling, wait-returns-immediately-when-clear,
+run-waits-before-any-other-work); full local suite (122 tests) passes. Deployed live via `scp` +
+syntax-checked (`py_compile`) + live-verified with a real `--dry-run` against TP Brand Injection
+(checked 14, 0 errors). `run_weekly_all_platforms.sh`'s own `LOCK_PATTERN` (EC2-only, not
+version-controlled) was also updated to add `check_brand_page_removed.py`, for symmetric
+protection — backed up as `~/run_weekly_all_platforms.sh.bak.20260817` on the box.
+
+Two memory mitigations applied directly on the box (config/runtime-only, no downtime): the LinkOps
+worker's `LINKOPS_AVOID_CRON_WINDOW` widened `00:55-01:35` → `00:55-10:00` (its original 40-minute
+window only covered the weekly job's *start*, not its multi-hour real duration — confirmed via the
+LinkOps OOM-kill at 02:03:38 UTC on the day of the incident, well inside its "resumed" period) and a
+1GB persistent swapfile (`/swapfile`, `/etc/fstab`) added, since the box previously ran with none at
+all. Disk usage moved 57% → 70% of the already-tight 8GB root volume as a result — worth watching.
+
+Finally, by explicit user decision (confirmed before touching production cron, given it reverses
+Task 201's daily→weekly TP merge and removes the only automated refresh for AG/CG/WO entirely): the
+`0 1 * * 1 run_weekly_all_platforms.sh` crontab line was deleted outright. TP/AG/CG/WO status now
+refreshes **only** via the dashboard's manual Check Status button — there is no automated schedule
+for any of the 4 platforms anymore, only the daily `check_brand_page_removed.py` brand-removal check
+remains scheduled. Old crontab backed up as `~/crontab.bak.20260817` on the box. `docs/
+ec2-scraper-runbook.md` updated throughout to reflect all of the above (job-removed notice, job
+count in the maintenance checklist, LinkOps window rationale, new swap subsection) rather than
+silently going stale.
+
+**Known gap, explicitly flagged, not yet fixed:** `status_server.py`'s own concurrency lock only
+guards against two *dashboard-triggered* checks overlapping each other — it has no awareness of
+CLI-invoked scrapers at all. This is now moot for the removed weekly job, but would resurface if any
+future cron-invoked scraper is reintroduced without also giving `status_server.py` itself a
+`wait_for_other_scrapers()`-style guard.

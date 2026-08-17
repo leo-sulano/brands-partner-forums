@@ -14,6 +14,76 @@ def _notify_brand_removed_url_env(monkeypatch):
     monkeypatch.setenv("NOTIFY_BRAND_REMOVED_URL", "https://example.com/notify-brand-removed")
 
 
+@pytest.fixture(autouse=True)
+def _skip_scraper_wait(monkeypatch):
+    """other_scraper_running() shells out to `pgrep`, which doesn't exist on
+    a Windows dev machine and would fail every test that reaches run().
+    Default subprocess.run to report "nothing running" for every test except
+    the ones dedicated to this logic, which override it back locally."""
+    class _NoMatch:
+        returncode = 1
+
+    monkeypatch.setattr(cbpr.subprocess, "run", lambda *args, **kwargs: _NoMatch())
+
+
+def test_other_scraper_running_true_when_pgrep_finds_a_match(monkeypatch):
+    calls = []
+
+    class _FakeCompleted:
+        returncode = 0
+
+    def fake_run(cmd, stdout, stderr):
+        calls.append(cmd)
+        return _FakeCompleted()
+
+    monkeypatch.setattr(cbpr.subprocess, "run", fake_run)
+
+    assert cbpr.other_scraper_running() is True
+    assert calls == [["pgrep", "-f", "--", cbpr.OTHER_SCRAPER_LOCK_PATTERN]]
+
+
+def test_other_scraper_running_false_when_pgrep_finds_nothing(monkeypatch):
+    class _FakeCompleted:
+        returncode = 1
+
+    monkeypatch.setattr(cbpr.subprocess, "run", lambda cmd, stdout, stderr: _FakeCompleted())
+
+    assert cbpr.other_scraper_running() is False
+
+
+def test_wait_for_other_scrapers_polls_until_clear(monkeypatch):
+    statuses = iter([True, True, False])
+    monkeypatch.setattr(cbpr, "other_scraper_running", lambda: next(statuses))
+
+    slept = []
+    monkeypatch.setattr(cbpr.time, "sleep", lambda seconds: slept.append(seconds))
+
+    cbpr.wait_for_other_scrapers()
+
+    assert slept == [cbpr.SCRAPER_WAIT_POLL_SECONDS, cbpr.SCRAPER_WAIT_POLL_SECONDS]
+
+
+def test_wait_for_other_scrapers_returns_immediately_when_already_clear(monkeypatch):
+    monkeypatch.setattr(cbpr, "other_scraper_running", lambda: False)
+    monkeypatch.setattr(cbpr.time, "sleep", lambda seconds: (_ for _ in ()).throw(AssertionError("must not sleep")))
+
+    cbpr.wait_for_other_scrapers()  # no exception = never slept
+
+
+def test_run_waits_for_other_scrapers_before_any_other_work(monkeypatch):
+    order = []
+    monkeypatch.setattr(cbpr, "wait_for_other_scrapers", lambda: order.append("wait"))
+    monkeypatch.setattr(cbpr, "load_brand_urls", lambda: order.append("load_brand_urls") or {
+        "brand_tp_urls": {}, "tab_brand_urls": {}, "tab_display_names": {},
+    })
+    monkeypatch.setattr(cbpr, "fetch_removed_keys", lambda platform: order.append("fetch_removed_keys") or set())
+    monkeypatch.setattr(cbpr, "fetch_all_entries", lambda: order.append("fetch_all_entries") or [])
+
+    cbpr.run(dry_run=False)
+
+    assert order[0] == "wait"
+
+
 def test_is_brand_page_removed_true_for_the_real_removed_heading():
     # Exact rendered <h1> text confirmed live against a known-removed
     # TrustPilot brand page (Prive Casino) during this feature's research.

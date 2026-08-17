@@ -15,6 +15,7 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -25,6 +26,30 @@ from selenium.webdriver.common.by import By
 from check_review_status import build_driver  # reuse, don't duplicate proxy rotation
 
 REMOVED_HEADING_TEXT = "This profile has been removed"
+
+# Same four scripts run_weekly_all_platforms.sh's own LOCK_PATTERN waits on
+# before it starts -- kept as an identical string so both paths agree on
+# what counts as "another scraper process." This script launches its own
+# headless Chrome via build_driver() but previously had zero coordination
+# with that job, even though both are cron'd for 01:00 UTC and this box has
+# a documented history (Task 128) of Chrome sessions crashing/thrashing
+# under concurrent load.
+OTHER_SCRAPER_LOCK_PATTERN = "check_review_status.py|check_ag_status.py|check_cg_status.py|check_wo_status.py"
+SCRAPER_WAIT_POLL_SECONDS = 60
+
+
+def other_scraper_running() -> bool:
+    result = subprocess.run(
+        ["pgrep", "-f", "--", OTHER_SCRAPER_LOCK_PATTERN],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
+
+
+def wait_for_other_scrapers() -> None:
+    while other_scraper_running():
+        print(f"Another scraper process is active - waiting {SCRAPER_WAIT_POLL_SECONDS}s...")
+        time.sleep(SCRAPER_WAIT_POLL_SECONDS)
 
 
 def is_brand_page_removed(driver) -> bool:
@@ -189,6 +214,7 @@ def run(dry_run: bool = False, tab_filter: Optional[str] = None) -> dict:
             "NOTIFY_BRAND_REMOVED_URL env var is required but not set. "
             "Set it before running -- see scripts/.env.example."
         )
+    wait_for_other_scrapers()
     brand_urls = load_brand_urls()
     already_flagged = fetch_removed_keys("tp")
     entries = fetch_all_entries()

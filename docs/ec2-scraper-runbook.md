@@ -33,12 +33,19 @@ PM2 as a separate process — entirely isolated from everything else in this run
 | Source | `worker/` + `lib/leads/{sheets-service,enrichment}.ts` from the Link-Ops-Outreach repo |
 
 **Co-tenancy guard:** this box has a documented history of Chrome crashing under concurrent
-load (see [Weekly All-Platform Cron Job](#weekly-all-platform-cron-job), Task 128). To avoid
-colliding with this project's Chrome-heavy cron jobs (weekly all-platform + daily brand-removal
-check, both `0 1 * * *`/`0 1 * * 1` UTC), the LinkOps worker's `.env.local` sets
-`LINKOPS_AVOID_CRON_WINDOW=00:55-01:35` — it pauses claiming new jobs during that window and
-resumes automatically after. This is a no-op everywhere else (unset by default), so it's safe
-in the worker's own repo history.
+load (see [Weekly All-Platform Cron Job](#weekly-all-platform-cron-job-removed-2026-08-17), Task 128).
+To avoid colliding with this project's Chrome-heavy cron jobs, the LinkOps worker's `.env.local`
+sets `LINKOPS_AVOID_CRON_WINDOW` — it pauses claiming new jobs during that window and resumes
+automatically after. This is a no-op everywhere else (unset by default), so it's safe in the
+worker's own repo history.
+
+**Widened 2026-08-17** from `00:55-01:35` to **`00:55-10:00`**: the original 40-minute window only
+covered the weekly job's *start*, but that job (now removed, see above) had already been observed
+running past 06:29 UTC on a single Monday — the LinkOps worker resumed claiming jobs at 01:35 while
+the scraper was still deep into AG/CG, and got OOM-killed itself the same day (2026-08-17 02:03:38
+UTC, confirmed via `journalctl -k`). Now that the weekly job is removed entirely, this window is
+mostly a leftover safety margin against the daily `check_brand_page_removed.py` run (which is much
+shorter) — narrow it back down if that's ever confirmed unnecessary.
 
 **Full detail** (update workflow, housekeeping, PM2 log rotation, when to reconsider a dedicated
 box) lives in the Link-Ops-Outreach repo's own `docs/ec2-worker-runbook.md`, not duplicated here.
@@ -71,7 +78,7 @@ ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.1
 ```bash
 df -h /                                                # disk usage — investigate if over ~80%
 ps aux | grep -E 'status_server|check_review_status'   # is the API server up? anything stuck running?
-crontab -l                                             # should show 4 jobs: weekly all-platform scraper, daily brand-removal check, tmp sweep, weekly dnf clean
+crontab -l                                             # should show 3 jobs: daily brand-removal check, tmp sweep, weekly dnf clean (weekly all-platform scraper removed 2026-08-17)
 tail -30 ~/scraper.log                                 # last scraper run — any errors?
 tail -30 ~/server.log                                  # status server — any errors?
 ```
@@ -137,7 +144,20 @@ pkill -f check_review_status
 
 ---
 
-## Weekly All-Platform Cron Job
+## Weekly All-Platform Cron Job (removed 2026-08-17)
+
+**Status: removed from crontab.** After this job triggered a box-wide hang on 2026-08-17 (CG ran
+2+ hours degraded with repeated Chrome renderer timeouts, WO then started into an already
+memory-starved box and the whole instance stopped responding — SSH included — until a hard
+reboot), the `0 1 * * 1 run_weekly_all_platforms.sh` crontab line was deleted by deliberate
+decision, not as a side effect of the OOM/swap fixes below. TP/AG/CG/WO status now **only**
+refreshes when someone clicks "Check Status" in the dashboard — there is no automated schedule
+for any of the 4 platforms anymore. Only the daily TP brand-page-removal check
+(`check_brand_page_removed.py`, see below) remains scheduled. The script (`~/run_weekly_all_platforms.sh`)
+and its `.bak` crontab (`~/crontab.bak.20260817`) are still on the box if this ever needs
+reinstating — see [Brand Schedule Groups](#brand-schedule-groups) for the group-rotation logic it
+relied on, still intact and still usable by a manually-run `run_weekly_all_platforms.sh` or a future
+replacement schedule.
 
 Added 2026-08-10/11 alongside the review-text fetch/store feature. AG/CG/WO previously had no
 schedule at all — they only ran when someone clicked "Check Status" in the dashboard. TP's original
@@ -649,6 +669,17 @@ sudo logrotate -d /etc/logrotate.d/scraper   # dry run to verify the config
 **Stale Chrome profile sweep** — `undetected-chromedriver` creates a temp profile dir under `/tmp` per run (`tempfile.mkdtemp()`) and only cleans it up on a graceful exit; crashes, timeouts, or `pkill -f chrome` leave it behind. `~/cleanup_tmp.sh` deletes `/tmp/tmp*` dirs and Chrome unpacker artifacts older than 24h. Cron: daily at 15:30 UTC (after the 14:00 scraper run).
 
 **dnf cache** — `/var/cache/dnf` is almost entirely repo metadata (solv indexes), not cached packages, so `dnf clean packages` is a no-op here — use `dnf clean all`. Cron: weekly, Sunday 03:00 UTC.
+
+**Swap** — added 2026-08-17 (`/swapfile`, 1GB, persistent via `/etc/fstab`) after this box's chronic
+Chrome OOM-kills (`journalctl -k`, recurring Aug 14-17) culminated in a full box hang requiring a
+hard reboot. This box previously ran with **zero swap**, so the kernel's only relief valve under
+memory pressure was hard-killing a process outright (usually Chrome, sometimes the LinkOps worker)
+— swap lets it page out and degrade instead. Costs ~1GB of the already-tight 8GB root volume
+(57% -> 70% used at the time); keep an eye on `df -h /` if that climbs further.
+```bash
+swapon --show   # confirm it's active
+free -h         # Swap: line should show 1.0Gi total
+```
 
 Current crontab:
 ```
