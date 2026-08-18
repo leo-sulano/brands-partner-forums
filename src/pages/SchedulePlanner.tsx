@@ -64,11 +64,6 @@ function currentWeekColumns(): PreviewColumn[] {
   return WEEKDAYS.map((weekday, i) => ({ iso: toISODate(addDays(monday, i)), weekday, weekStartISO }));
 }
 
-// How many real brand rows the landing-grid mini calendar shows before
-// collapsing the rest into a "+N more" line — tabs range from 1 brand to 50+,
-// so an uncapped preview would make cards wildly different heights.
-const PREVIEW_BRAND_LIMIT = 4;
-
 // Same idea for days: a wide From/To range (e.g. a full month) would make
 // every card's mini-table 20+ columns wide. Capped uniformly across all 11
 // cards (they all show the same date range), with one shared note in the
@@ -225,18 +220,6 @@ export default function SchedulePlanner() {
 
   function removeTab(tab: string) {
     setSelectedTabs((prev) => prev.filter((t) => t !== tab));
-  }
-
-  // Which landing-grid cards currently show every eligible brand instead of
-  // just the first PREVIEW_BRAND_LIMIT — toggled by the "+N more brands"
-  // footer, independent of the card's own open-the-full-calendar click.
-  const [expandedTabs, setExpandedTabs] = useState<Set<string>>(new Set());
-  function toggleExpanded(tab: string) {
-    setExpandedTabs((prev) => {
-      const next = new Set(prev);
-      if (next.has(tab)) next.delete(tab); else next.add(tab);
-      return next;
-    });
   }
 
   const showGrid = selectedTabs.length === 0;
@@ -396,9 +379,7 @@ export default function SchedulePlanner() {
           {OPERATIONAL_TABS.map((t) => {
             const Icon = TAB_ICONS[t] ?? DEFAULT_TAB_ICON;
             const preview = previewByTab[t] ?? EMPTY_PREVIEW;
-            const expanded = expandedTabs.has(t);
-            const previewBrands = expanded ? preview.brands : preview.brands.slice(0, PREVIEW_BRAND_LIMIT);
-            const hiddenBrandCount = preview.brands.length - PREVIEW_BRAND_LIMIT;
+            const previewBrands = preview.brands;
             return (
               <div
                 key={t}
@@ -427,7 +408,6 @@ export default function SchedulePlanner() {
                       No schedule tracked on weekends
                     </div>
                   ) : (
-                    <div className={expanded ? 'max-h-56 overflow-y-auto' : ''}>
                     <table className="w-full min-w-max border-collapse text-[10px]">
                       <thead>
                         <tr className="bg-slate-50 text-slate-400">
@@ -491,19 +471,6 @@ export default function SchedulePlanner() {
                         )}
                       </tbody>
                     </table>
-                    </div>
-                  )}
-                  {hiddenBrandCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleExpanded(t);
-                      }}
-                      className="w-full border-t border-slate-100 px-1.5 py-1 text-center text-[10px] text-blue-500 hover:bg-blue-50 hover:text-blue-600"
-                    >
-                      {expanded ? 'Show less' : `+${hiddenBrandCount} more brand${hiddenBrandCount === 1 ? '' : 's'}`}
-                    </button>
                   )}
                 </div>
               </div>
