@@ -104,7 +104,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
   const navContent = (isCollapsed: boolean) => (
     <>
-      <nav className={`flex-1 py-3 space-y-1 overflow-y-auto ${isCollapsed ? '' : 'pl-3'}`}>
+      <nav className={`flex-1 py-3 space-y-1 overflow-y-auto no-scrollbar ${isCollapsed ? '' : 'pl-3'}`}>
         {topLinks.map(({ to, label, icon: Icon, end }) => (
           <Tooltip key={to} content={isCollapsed ? label : undefined} block>
             <NavLink
