@@ -61,7 +61,16 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* One-time live backfill of PMS task assignees for every already-linked
+- *2026-08-18 (newest):* Add Brand Tab modal (self-service Brand Tab creation, Task 232) no
+  longer forces Trust Pilot on as a disabled "always tracked" checkbox — every platform, including
+  TP, is now an ordinary unchecked-by-default checkbox, and Wizard of Odds is a new fourth option
+  alongside TP/AG/CG. `buildDynamicTabColumns` (`src/lib/dynamicTabRegistry.ts`) now appends TP's
+  columns conditionally like every other platform (new `TP_COLUMNS`/`WO_COLUMNS` blocks), and
+  `getTabPlatforms` (`src/lib/tab-configs.ts`) derives a dynamic tab's platform list purely from
+  its actual columns instead of hardcoding TP — the 11 hardcoded tabs' legacy behavior is
+  untouched. Live-verified end to end (create → correct AG/WO-only columns, no TP → delete).
+  Task 235.
+- *2026-08-18 (prior):* One-time live backfill of PMS task assignees for every already-linked
   Schedule Planner → PMS task (`schedule_pms_links`, 104 rows across 9 tabs as of this run) — the
   push-on-activate Agent→Assignee sync (Task 231) only sets assignee at task-creation time, so every
   task created before that logic went live (or before a brand's Agent value existed yet) sat

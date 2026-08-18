@@ -11,9 +11,11 @@ interface Props {
   onClose: () => void;
 }
 
-const OPTIONAL_PLATFORMS: { key: DynamicTabPlatform; label: string }[] = [
+const PLATFORM_OPTIONS: { key: DynamicTabPlatform; label: string }[] = [
+  { key: 'tp', label: 'Trust Pilot' },
   { key: 'ag', label: 'AskGamblers' },
   { key: 'cg', label: 'Casino Guru' },
+  { key: 'wo', label: 'Wizard of Odds' },
 ];
 
 export default function AddBrandTabModal({ onCreated, onClose }: Props) {
@@ -69,12 +71,15 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
       setError('A tab name cannot contain /, ? or #.');
       return;
     }
+    if (platforms.length === 0) {
+      setError('Select at least one platform to track.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
-      const fullPlatforms: DynamicTabPlatform[] = ['tp', ...platforms];
-      await createCustomTab(trimmed, fullPlatforms);
-      onCreated(trimmed, fullPlatforms);
+      await createCustomTab(trimmed, platforms);
+      onCreated(trimmed, platforms);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create tab');
       setSubmitting(false);
@@ -114,11 +119,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Platforms</label>
-            <div className="flex items-center gap-2 mb-1.5">
-              <input type="checkbox" checked disabled className="size-4" />
-              <span className="text-sm text-slate-500">Trust Pilot (always tracked)</span>
-            </div>
-            {OPTIONAL_PLATFORMS.map(({ key, label }) => (
+            {PLATFORM_OPTIONS.map(({ key, label }) => (
               <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
                 <input
                   type="checkbox"

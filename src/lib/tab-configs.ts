@@ -196,6 +196,10 @@ export const COLUMN_LABELS: Record<string, string> = {
   'Casino Guru review added':                         'CG Added',
   'CG Review Status':                                 'CG Status',
   'CG Review Link':                                   'CG Page',
+  'Wizard of Odds':                                   'WO Added',
+  'WoO Review Status':                                'WO Status',
+  'Wizard of OddsScore added':                        'WO Score',
+  'WO Review Link':                                   'WO Page',
   'AG Score added':                                   'AG Score',
   'CG Score added':                                   'CG Score',
   'Score added':                                       'TP Score (legacy)',
@@ -662,16 +666,33 @@ export function hasMultiPlatform(tab: string): boolean {
   return set.has('AG Review Status') && set.has('CG Review Status');
 }
 
-// Returns the platforms active for a given tab. All tabs default to TP; WO/AG/CG are opt-in via column presence.
+// Returns the platforms active for a given tab. The 11 hardcoded tabs default
+// to TP with WO/AG/CG opt-in via column presence (unchanged legacy rule —
+// several hardcoded tabs use TP status column name variants, e.g. plain
+// 'Review Status', that don't literally match 'TP Review Status', so TP can't
+// safely be column-detected there). Dynamic tabs (self-service Brand Tab
+// creation, src/lib/dynamicTabRegistry.ts) have no default platform at all —
+// every platform, including TP, is derived purely from which columns
+// buildDynamicTabColumns actually generated for it.
 export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   const cols = getTabColumns(tab);
   if (tab === 'Wizard of Odds') return ['wo'];
-  const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = ['tp'];
-  if (cols) {
-    const set = new Set(cols);
-    if (set.has('AG Review Status')) platforms.push('ag');
-    if (set.has('CG Review Status')) platforms.push('cg');
+  if (tab in TAB_COLUMN_CONFIGS) {
+    const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = ['tp'];
+    if (cols) {
+      const set = new Set(cols);
+      if (set.has('AG Review Status')) platforms.push('ag');
+      if (set.has('CG Review Status')) platforms.push('cg');
+    }
+    return platforms;
   }
+  if (!cols) return [];
+  const set = new Set(cols);
+  const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = [];
+  if (set.has('TP Review Status')) platforms.push('tp');
+  if (set.has('AG Review Status')) platforms.push('ag');
+  if (set.has('CG Review Status')) platforms.push('cg');
+  if (set.has('WoO Review Status')) platforms.push('wo');
   return platforms;
 }
 

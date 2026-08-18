@@ -4220,3 +4220,60 @@ systemic problem with that account.
 via `systemctl` to pick it up (confirmed via `/health`). The 3-week brand-group rotation
 (`schedule_groups.py`) is back in effect for both the daily/weekly cron paths and manual
 dashboard "Check Status" clicks -- nothing left bypassing it.
+
+---
+
+## Task 235: Add Brand Tab — No Default Platform, Trust Pilot Optional, Wizard of Odds Added
+
+**Date:** August 18, 2026
+
+Per a live screenshot report: the "+ Add Brand Tab" modal (self-service Brand Tab creation,
+Task 232) forced Trust Pilot on as a disabled, always-checked "always tracked" checkbox and had
+no Wizard of Odds option at all. Changed at the user's explicit request to a genuine full fix, not
+just a cosmetic unchecked-by-default tweak: every platform, including TP, is now an ordinary,
+independently-selectable checkbox with nothing pre-checked, and Wizard of Odds is a fourth
+option alongside TP/AG/CG. Submitting with zero platforms selected is blocked client-side
+("Select at least one platform to track.") since a tab with no platform columns at all would be
+degenerate.
+
+This reached past the modal into the two files that actually define what a dynamic tab's platform
+set means: `buildDynamicTabColumns` (`src/lib/dynamicTabRegistry.ts`) previously hardcoded TP's
+three columns (`Trust Pilot`, `Link to the profile`, `TP Review Status`) into every dynamic tab's
+`BASE_COLUMNS` unconditionally — split into an independent `TP_COLUMNS` block appended only when
+`'tp'` is actually selected, alongside a new `WO_COLUMNS` block (`Wizard of Odds`,
+`WoO Review Status`, `Wizard of OddsScore added`, `WO Review Link` — a new, dynamic-tab-only link
+column, deliberately not reusing the real "Wizard of Odds" hardcoded tab's `Link to the profile`
+reuse-hack, since that only works because that one tab is WO-only; a dynamic tab combining WO with
+TP or another platform needs its own unambiguous link field). `getTabPlatforms`
+(`src/lib/tab-configs.ts`) previously hardcoded `['tp', ...]` as the base return for any tab that
+isn't literally the hardcoded `'Wizard of Odds'` tab — split into two branches: the 11 hardcoded
+tabs keep that exact legacy behavior untouched (several of them use TP status-column name variants,
+e.g. plain `'Review Status'`, that don't literally match `'TP Review Status'`, so TP can't safely be
+column-detected there), while a dynamic tab's platform list is now derived purely from which
+columns `buildDynamicTabColumns` actually generated for it — checking for `'TP Review Status'`,
+`'AG Review Status'`, `'CG Review Status'`, `'WoO Review Status'` presence, with no default.
+Also added global `COLUMN_LABELS` entries for the 4 new WO columns (`WO Added`/`WO Status`/
+`WO Score`/`WO Page`, matching the existing `AG Added`/`CG Added` naming convention) so a dynamic
+tab with WO selected gets the same polished header labels TP/AG/CG already have, instead of raw
+sheet-style header text — additive only, the real hardcoded `'Wizard of Odds'` tab's own
+`TAB_COLUMN_LABELS` override still takes precedence for that one tab.
+
+No other consumer needed changes: `EditEntryModal.tsx`'s `PLATFORM_ADDED_HEADER` already keyed WO
+generically off the `'Wizard of Odds'` header (its comment already noted WO has no dedicated
+`entryFieldSections.ts` section and falls into the generic Account Details bucket — true for the
+real WO tab today too, so this isn't a new gap), and Ask AI's `tools.ts` doesn't duplicate any of
+this dynamic-tab logic. No DB migration needed — `custom_tabs.platforms` was already an
+unconstrained `text[]` (see that migration's own comment, which flagged 'ag'/'cg'-only detection
+as the thing to revisit if support widened — now updated in practice).
+
+Full suite (1,189 tests, adding coverage for TP omitted, WO included, and zero-platform in
+`buildDynamicTabColumns`, plus a TP-omitted case in `getTabPlatforms`) and build both pass.
+Live-verified end to end against real Supabase data: created a real disposable tab ("ZZ Test
+Dynamic Tab") with only AskGamblers + Wizard of Odds selected (TP deliberately left unchecked) —
+confirmed the sidebar and page header show only AG/WO badges (no TP icon at all), the table
+renders exactly `AG Added / AG Status / AG Page / AG User / WO Added / WO Status / WO Score /
+WO Page` with no TP column present, then deleted the tab via the existing delete-confirmation flow
+and confirmed it's gone from the sidebar. Tier 2 (light path) per this project's own tiering rule —
+scoped to the self-service dynamic-tab creation path only, the 11 hardcoded tabs' `getTabPlatforms`
+branch is byte-for-byte unchanged — implemented directly with one self-review pass plus the live
+verification above.

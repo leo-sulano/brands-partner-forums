@@ -11,11 +11,25 @@ import { OPERATIONAL_TABS } from './tabs';
 import { TAB_COLUMN_CONFIGS, getTabColumns } from './tab-configs';
 
 describe('buildDynamicTabColumns', () => {
-  it('always includes the TP-only base column set', () => {
+  it('always includes the TP-only base column set when tp is selected', () => {
     expect(buildDynamicTabColumns(['tp'])).toEqual([
       'Account', 'Country', 'Proxy Used', 'Account Name', 'Agent',
       'Brand Name', 'Brand Link', 'Trust Pilot', 'Link to the profile',
       'TP Review Status',
+    ]);
+  });
+
+  it('omits TP columns entirely when tp is not selected', () => {
+    const cols = buildDynamicTabColumns(['ag']);
+    expect(cols).not.toContain('Trust Pilot');
+    expect(cols).not.toContain('Link to the profile');
+    expect(cols).not.toContain('TP Review Status');
+  });
+
+  it('returns only the generic base columns when no platform is selected', () => {
+    expect(buildDynamicTabColumns([])).toEqual([
+      'Account', 'Country', 'Proxy Used', 'Account Name', 'Agent',
+      'Brand Name', 'Brand Link',
     ]);
   });
 
@@ -37,10 +51,20 @@ describe('buildDynamicTabColumns', () => {
     expect(cols).not.toContain('Ask Gambler review added');
   });
 
-  it('appends AG before CG when both are selected, base columns first', () => {
-    const cols = buildDynamicTabColumns(['tp', 'ag', 'cg']);
+  it('appends the WO block when wo is selected', () => {
+    const cols = buildDynamicTabColumns(['wo']);
+    expect(cols).toContain('Wizard of Odds');
+    expect(cols).toContain('WoO Review Status');
+    expect(cols).toContain('Wizard of OddsScore added');
+    expect(cols).toContain('WO Review Link');
+    expect(cols).not.toContain('Trust Pilot');
+  });
+
+  it('appends AG before CG before WO when all are selected, base columns first', () => {
+    const cols = buildDynamicTabColumns(['tp', 'ag', 'cg', 'wo']);
     expect(cols.indexOf('TP Review Status')).toBeLessThan(cols.indexOf('Ask Gambler review added'));
     expect(cols.indexOf('AG User')).toBeLessThan(cols.indexOf('Casino Guru review added'));
+    expect(cols.indexOf('CG User')).toBeLessThan(cols.indexOf('Wizard of Odds'));
   });
 });
 

@@ -192,6 +192,11 @@ describe('tab-configs.ts dynamic tab fallback', () => {
     expect(getTabPlatforms('Test Dynamic Tab')).toEqual(['tp', 'cg']);
   });
 
+  it('getTabPlatforms omits tp for a dynamic tab created without it', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['ag', 'wo'] }]);
+    expect(getTabPlatforms('Test Dynamic Tab')).toEqual(['ag', 'wo']);
+  });
+
   it('a hardcoded tab is unaffected by the dynamic fallback', () => {
     expect(getTabColumns('Hanan')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
   });

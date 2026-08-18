@@ -11,16 +11,21 @@
 import { OPERATIONAL_TABS } from './tabs.ts';
 import { setDynamicColumnsResolver, TAB_COLUMN_CONFIGS } from './tab-configs.ts';
 
-export type DynamicTabPlatform = 'tp' | 'ag' | 'cg';
+export type DynamicTabPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 
+// Generic fields every dynamic tab gets regardless of which platforms are
+// selected. Platform-specific fields (including TP's) live in their own
+// blocks below and are appended only when that platform is actually chosen
+// — unlike the 11 legacy tabs, no platform is on by default here.
 const BASE_COLUMNS = [
   'Account', 'Country', 'Proxy Used', 'Account Name', 'Agent',
-  'Brand Name', 'Brand Link', 'Trust Pilot', 'Link to the profile',
-  'TP Review Status',
+  'Brand Name', 'Brand Link',
 ];
 
+const TP_COLUMNS = ['Trust Pilot', 'Link to the profile', 'TP Review Status'];
 const AG_COLUMNS = ['Ask Gambler review added', 'AG Review Status', 'AG Review Link', 'AG User'];
 const CG_COLUMNS = ['Casino Guru review added', 'CG Review Status', 'CG Review Link', 'CG User'];
+const WO_COLUMNS = ['Wizard of Odds', 'WoO Review Status', 'Wizard of OddsScore added', 'WO Review Link'];
 
 // Deterministic: same platform set always produces the same column list, in
 // the same order, so a dynamic tab's schema can never drift between the
@@ -28,8 +33,10 @@ const CG_COLUMNS = ['Casino Guru review added', 'CG Review Status', 'CG Review L
 // shape for multi-platform tabs and GRG's shape for TP-only.
 export function buildDynamicTabColumns(platforms: DynamicTabPlatform[]): string[] {
   const cols = [...BASE_COLUMNS];
+  if (platforms.includes('tp')) cols.push(...TP_COLUMNS);
   if (platforms.includes('ag')) cols.push(...AG_COLUMNS);
   if (platforms.includes('cg')) cols.push(...CG_COLUMNS);
+  if (platforms.includes('wo')) cols.push(...WO_COLUMNS);
   return cols;
 }
 
