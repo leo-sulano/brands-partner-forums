@@ -188,7 +188,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const clickable = isApproved && !isPaused;
         const planUnverified = isPastDay && !isPaused && !hasEvidence && status != null;
         const label = hasEvidence
-          ? (isRemoved ? 'Removed' : 'Confirmed')
+          ? (isRemoved ? 'Removed' : 'Published')
           : isPaused
             ? 'Paused (scheduler)'
             : statusLabel(status);
