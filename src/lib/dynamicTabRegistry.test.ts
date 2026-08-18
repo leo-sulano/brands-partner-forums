@@ -1,0 +1,99 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  buildDynamicTabColumns,
+  registerDynamicTabs,
+  unregisterDynamicTab,
+  getDynamicTabColumns,
+  isDynamicTab,
+} from './dynamicTabRegistry';
+import { OPERATIONAL_TABS } from './tabs';
+
+describe('buildDynamicTabColumns', () => {
+  it('always includes the TP-only base column set', () => {
+    expect(buildDynamicTabColumns(['tp'])).toEqual([
+      'Account', 'Country', 'Proxy Used', 'Account Name', 'Agent',
+      'Brand Name', 'Brand Link', 'Trust Pilot', 'Link to the profile',
+      'TP Review Status',
+    ]);
+  });
+
+  it('appends the AG block when ag is selected', () => {
+    const cols = buildDynamicTabColumns(['tp', 'ag']);
+    expect(cols).toContain('Ask Gambler review added');
+    expect(cols).toContain('AG Review Status');
+    expect(cols).toContain('AG Review Link');
+    expect(cols).toContain('AG User');
+    expect(cols).not.toContain('Casino Guru review added');
+  });
+
+  it('appends the CG block when cg is selected', () => {
+    const cols = buildDynamicTabColumns(['tp', 'cg']);
+    expect(cols).toContain('Casino Guru review added');
+    expect(cols).toContain('CG Review Status');
+    expect(cols).toContain('CG Review Link');
+    expect(cols).toContain('CG User');
+  });
+
+  it('appends AG before CG when both are selected, base columns first', () => {
+    const cols = buildDynamicTabColumns(['tp', 'ag', 'cg']);
+    expect(cols.indexOf('TP Review Status')).toBeLessThan(cols.indexOf('Ask Gambler review added'));
+    expect(cols.indexOf('AG User')).toBeLessThan(cols.indexOf('Casino Guru review added'));
+  });
+});
+
+describe('registerDynamicTabs / unregisterDynamicTab / getDynamicTabColumns / isDynamicTab', () => {
+  beforeEach(() => {
+    // Registry is module-level state — explicitly clear anything a prior
+    // test registered so tests don't leak into each other.
+    unregisterDynamicTab('Test Dynamic Tab');
+    unregisterDynamicTab('Second Dynamic Tab');
+  });
+
+  it('is not a dynamic tab before registration', () => {
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(false);
+    expect(getDynamicTabColumns('Test Dynamic Tab')).toBeNull();
+  });
+
+  it('registers a tab and makes its columns available', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'] }]);
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(true);
+    expect(getDynamicTabColumns('Test Dynamic Tab')).toEqual(buildDynamicTabColumns(['tp']));
+  });
+
+  it('pushes a newly registered tab into OPERATIONAL_TABS exactly once', () => {
+    const before = OPERATIONAL_TABS.length;
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'] }]);
+    expect(OPERATIONAL_TABS).toContain('Test Dynamic Tab');
+    expect(OPERATIONAL_TABS.length).toBe(before + 1);
+    // Re-registering the same name must not duplicate the entry.
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] }]);
+    expect(OPERATIONAL_TABS.filter((t) => t === 'Test Dynamic Tab').length).toBe(1);
+    expect(getDynamicTabColumns('Test Dynamic Tab')).toEqual(buildDynamicTabColumns(['tp', 'ag']));
+  });
+
+  it('registers multiple tabs in one call', () => {
+    registerDynamicTabs([
+      { name: 'Test Dynamic Tab', platforms: ['tp'] },
+      { name: 'Second Dynamic Tab', platforms: ['tp', 'cg'] },
+    ]);
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(true);
+    expect(isDynamicTab('Second Dynamic Tab')).toBe(true);
+  });
+
+  it('unregisterDynamicTab removes the tab from OPERATIONAL_TABS and the registry', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'] }]);
+    unregisterDynamicTab('Test Dynamic Tab');
+    expect(OPERATIONAL_TABS).not.toContain('Test Dynamic Tab');
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(false);
+    expect(getDynamicTabColumns('Test Dynamic Tab')).toBeNull();
+  });
+
+  it('unregistering a tab that was never registered is a no-op', () => {
+    expect(() => unregisterDynamicTab('Never Registered Tab')).not.toThrow();
+  });
+
+  it('never treats a hardcoded tab as dynamic', () => {
+    expect(isDynamicTab('Hanan')).toBe(false);
+    expect(getDynamicTabColumns('Hanan')).toBeNull();
+  });
+});
