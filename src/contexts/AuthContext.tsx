@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { fetchCustomTabs } from '../lib/queries';
+import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import type { Profile } from '../types/profile';
 
 interface AuthContextValue {
@@ -74,8 +76,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // renders isApproved=false against the stale profile for the duration
         // of this fetch, flashing "Pending Approval" even for approved users.
         setLoading(true);
-        fetchProfile(s.user.id).then((p) => {
+        Promise.all([fetchProfile(s.user.id), fetchCustomTabs()]).then(([p, customTabs]) => {
           if (!mounted) return;
+          registerDynamicTabs(customTabs);
           setProfile(p);
           setLoading(false);
         });
