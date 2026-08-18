@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
@@ -71,6 +71,18 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
+
+  // Escape-to-close for the delete-confirmation dialog, matching
+  // AddBrandTabModal's own pattern (a document-level listener rather than
+  // relying on focus already being inside the dialog).
+  useEffect(() => {
+    if (!deletingTab) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setDeletingTab(null);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [deletingTab]);
 
   function handleTabCreated(name: string, platforms: DynamicTabPlatform[]) {
     registerDynamicTabs([{ name, platforms }]);
@@ -182,7 +194,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </div>
         )}
 
-        {!isCollapsed && isApproved && (
+        {brandsOpen && !isCollapsed && isApproved && (
           <button
             type="button"
             onClick={() => setShowAddTab(true)}
@@ -333,8 +345,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
         <AddBrandTabModal onCreated={handleTabCreated} onClose={() => setShowAddTab(false)} />
       )}
 
+      {/* z-50, not z-40: this dialog is reachable from inside the mobile drawer
+          (z-[45] backdrop / z-50 panel), so anything lower renders behind it. */}
       {deletingTab && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setDeletingTab(null)} />
           <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-3">
             <h2 className="text-sm font-semibold text-slate-800">Delete "{tabDisplayName(deletingTab)}"?</h2>

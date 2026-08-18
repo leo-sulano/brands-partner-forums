@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { createCustomTab } from '../lib/queries';
 import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
-import { OPERATIONAL_TABS } from '../lib/tabs';
+import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
 import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 
 interface Props {
@@ -22,13 +22,22 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Every close affordance (Escape, the X button, the backdrop) is inert while
+  // a create is in flight — closing mid-submit would let createCustomTab's
+  // insert land server-side with no local registerDynamicTabs call and no
+  // navigation, leaving the tab in the DB but invisible until a page reload.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && !submitting) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+  }, [onClose, submitting]);
+
+  function handleRequestClose() {
+    if (submitting) return;
+    onClose();
+  }
 
   function togglePlatform(p: DynamicTabPlatform) {
     setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
@@ -45,6 +54,21 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
       setError(`A tab named "${trimmed}" already exists.`);
       return;
     }
+    // A tab's URL is /brands/<tabToSlug(name)>, and slugToTab resolves a slug
+    // back to the *first* matching tab — so a name that only collides by slug
+    // (e.g. "Gulf Recovery Group" → gulf-recovery-group, already claimed by
+    // 'GRG - Gulf Recovery Group' via SLUG_OVERRIDES) would create a tab that
+    // is permanently unreachable, silently landing on the other tab instead.
+    if (OPERATIONAL_TABS.some((t) => tabToSlug(t) === tabToSlug(trimmed))) {
+      setError(`"${trimmed}" produces the same URL as an existing tab. Pick a more distinct name.`);
+      return;
+    }
+    // '/' would split the route, '?' and '#' would terminate the path — any of
+    // them breaks /brands/:tab for the new tab.
+    if (/[/?#]/.test(trimmed)) {
+      setError('A tab name cannot contain /, ? or #.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -57,14 +81,18 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
     }
   }
 
+  // z-50, not z-40: this modal is opened from inside the mobile drawer
+  // (z-[45] backdrop / z-50 panel), so anything lower renders behind it and
+  // makes the whole feature unreachable on a phone.
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={handleRequestClose} />
       <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
           <h2 className="text-sm font-semibold text-slate-800">Add Brand Tab</h2>
           <button
-            onClick={onClose}
+            onClick={handleRequestClose}
+            disabled={submitting}
             className="rounded-lg p-1.5 text-slate-400 hover:bg-blue-50 hover:text-slate-600 transition-colors"
           >
             <X className="size-4" />
@@ -78,7 +106,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !submitting) handleSubmit(); }}
               placeholder="e.g. Sunset Partners"
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
