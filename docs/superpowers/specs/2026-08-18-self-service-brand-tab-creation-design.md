@@ -138,11 +138,18 @@ no React/npm, Deno-compatible), holds:
   calls `registerDynamicTabs`/`unregisterDynamicTab` directly after a
   successful write, so the *acting* session sees the change immediately
   without a reload (decision 7).
-- **Edge Functions:** `generate-weekly-schedule`, `ai-assistant`, and
-  `sync-schedule-pms` each fetch `custom_tabs` and call
-  `registerDynamicTabs` once near the start of their handler, before any
-  `tab-configs.ts` helper is used — same dependency-injection-at-invocation
-  pattern already established for the injected Supabase client (Task 178).
+- **Edge Functions:** of the three Edge Functions in this repo,
+  `generate-weekly-schedule` is the only one that actually imports
+  `tab-configs.ts`/`tabs.ts` (`OPERATIONAL_TABS`, `getTabPlatforms`,
+  `getBrandNameCol`, `TAB_DEFAULT_BRAND`, `BRAND_COLS`) — confirmed by
+  grepping `supabase/functions` for both import paths. `ai-assistant` and
+  `sync-schedule-pms` neither import nor need either module (`ai-assistant`'s
+  own hardcoded tab vocabulary in its system prompt is a separate, unrelated
+  list, out of scope here). So only `generate-weekly-schedule` fetches
+  `custom_tabs` and calls `registerDynamicTabs`, once near the start of its
+  handler before `generateAllTabs`/`OPERATIONAL_TABS` is used — same
+  dependency-injection-at-invocation pattern already established for the
+  injected Supabase client (Task 178).
 
 ## UI
 
