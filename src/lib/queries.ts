@@ -1545,3 +1545,33 @@ export async function deleteCustomTab(name: string): Promise<void> {
     throw new Error(`Delete had no effect — "${name}" may already be gone, or the "approved users can delete custom_tabs" RLS policy may not be applied in your Supabase project.`);
   }
 }
+
+export async function fetchHiddenTabPlatforms(client: SupabaseClient = supabase): Promise<{ tab: string; platform: Platform }[]> {
+  const { data, error } = await client
+    .from('tab_hidden_platforms')
+    .select('tab, platform');
+  if (error) throw error;
+  return (data ?? []) as { tab: string; platform: Platform }[];
+}
+
+// Hides or un-hides one platform on one tab (any tab, though in practice
+// only ever called for a hardcoded tab — a dynamic tab keeps using
+// updateCustomTabPlatforms/registerDynamicTabs instead, see Task 236).
+// Never touches entries.data: a hidden platform's columns still exist and
+// still hold real data, they simply stop being reported by
+// getTabPlatforms() (src/lib/tab-configs.ts) until un-hidden again.
+export async function setTabPlatformHidden(tab: string, platform: Platform, hidden: boolean): Promise<void> {
+  if (hidden) {
+    const { error } = await supabase
+      .from('tab_hidden_platforms')
+      .upsert({ tab, platform, hidden_by: await currentUserEmail() }, { onConflict: 'tab,platform' });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('tab_hidden_platforms')
+      .delete()
+      .eq('tab', tab)
+      .eq('platform', platform);
+    if (error) throw error;
+  }
+}

@@ -39,6 +39,8 @@ import {
   createCustomTab,
   updateCustomTabPlatforms,
   deleteCustomTab,
+  fetchHiddenTabPlatforms,
+  setTabPlatformHidden,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -782,5 +784,42 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
       return { delete: del, ...chain({ data: null, error: null }) };
     });
     await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Delete had no effect');
+  });
+});
+
+describe('fetchHiddenTabPlatforms / setTabPlatformHidden', () => {
+  it('fetchHiddenTabPlatforms maps rows to tab/platform', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ tab: 'Rooster Partners', platform: 'ag' }], error: null }),
+    );
+    const rows = await fetchHiddenTabPlatforms();
+    expect(rows).toEqual([{ tab: 'Rooster Partners', platform: 'ag' }]);
+  });
+
+  it('setTabPlatformHidden upserts a row when hiding', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await setTabPlatformHidden('Rooster Partners', 'ag', true);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'Rooster Partners', platform: 'ag' }),
+      { onConflict: 'tab,platform' },
+    );
+  });
+
+  it('setTabPlatformHidden deletes the row when un-hiding', async () => {
+    const eq2 = vi.fn().mockResolvedValue({ error: null });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const del = vi.fn().mockReturnValue({ eq: eq1 });
+    singletonFrom.mockReturnValue({ delete: del });
+    await setTabPlatformHidden('Rooster Partners', 'ag', false);
+    expect(del).toHaveBeenCalled();
+    expect(eq1).toHaveBeenCalledWith('tab', 'Rooster Partners');
+    expect(eq2).toHaveBeenCalledWith('platform', 'ag');
+  });
+
+  it('setTabPlatformHidden throws on a hide error', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    singletonFrom.mockReturnValue({ upsert });
+    await expect(setTabPlatformHidden('Rooster Partners', 'ag', true)).rejects.toThrow('db down');
   });
 });
