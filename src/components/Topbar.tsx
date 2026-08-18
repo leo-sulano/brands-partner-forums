@@ -45,6 +45,21 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
     profile?.avatar_url ?? null,
   );
 
+  // Bumped to force a re-render when a tab's platforms change (a platform
+  // hidden/un-hidden via BrandGroup.tsx's Edit Platforms modal, or a
+  // dynamic tab created/edited/deleted) while staying on the same route —
+  // this component's `platforms` value below is otherwise never
+  // recomputed, since mutating the underlying registry doesn't itself
+  // trigger React to re-render anything. Same pattern as Sidebar.tsx.
+  const [_tabsVersion, setTabsVersion] = useState(0);
+  useEffect(() => {
+    function handleChange() {
+      setTabsVersion((v) => v + 1);
+    }
+    window.addEventListener('tab-platforms-changed', handleChange);
+    return () => window.removeEventListener('tab-platforms-changed', handleChange);
+  }, []);
+
   const [avatarPopupOpen, setAvatarPopupOpen] = useState(false);
   const avatarRef = useRef<HTMLDivElement>(null);
   const [authPopupOpen, setAuthPopupOpen] = useState(false);
