@@ -4344,3 +4344,104 @@ covering: editing a dynamic tab down to fewer platforms and confirming its colum
 update without a reload, re-adding a platform and confirming previously-saved data for it
 reappears, and a WO+another-platform dynamic tab's KPI row rendering all 4 cards correctly at
 narrow viewport widths.
+
+---
+
+## Task 237: Platform Visibility on the 11 Hardcoded Brand Tabs
+
+**Date:** August 19, 2026
+
+Task 236 (directly above) let an approved user hide/show platforms on a self-service (dynamic)
+Brand Tab, but explicitly left the 11 hardcoded tabs (Rooster Partners, Hanan, TP Brand Injection,
+Wizard of Odds, etc.) untouched — their column list is a static `TAB_COLUMN_CONFIGS` entry in code,
+not a `custom_tabs` row, so there was no equivalent toggle. Requested immediately after Task 236
+shipped ("apply this to the existing brand tab also"). Scope, confirmed interactively: all 11
+hardcoded tabs, hide/show a platform the tab already tracks only — a hardcoded tab can never gain a
+platform it never had real columns for, unlike a dynamic tab.
+
+New `tab_hidden_platforms` table (migration `20260818140000_add_tab_hidden_platforms.sql`, applied
+live via `supabase db push` this session) — a row's existence means that platform is hidden for
+that tab, same shape as `removed_platform_brands`/`schedule_hidden_brands`, full 4-policy RLS.
+`getTabPlatforms(tab)` (`src/lib/tab-configs.ts`) — already the single function every real consumer
+calls to learn a tab's platforms (Sidebar, BrandGroup, Schedule Planner ×2, Overview, Topbar,
+EditEntryModal, and the `generate-weekly-schedule` Edge Function) — now filters its existing result
+through a new in-memory `hiddenTabPlatforms` registry before returning; a new
+`getTabPlatformsUnfiltered` exposes the tab's real, un-filtered set for the Edit Platforms modal's
+checkbox universe. A tab with nothing hidden is a byte-for-byte no-op, proven by a new regression
+test asserting all 11 hardcoded tabs' existing expected platform lists are unchanged — this is what
+made it safe to ship against 11 tabs' worth of live production data. `AuthContext.tsx`'s existing
+bootstrap `Promise.all` (which already fetches `custom_tabs`) gained a third parallel,
+fail-open-`.catch`-guarded fetch of `tab_hidden_platforms`; `generate-weekly-schedule` gained the
+mirrored per-invocation reset-then-register pair (that function remains undeployed — a pre-existing,
+already-documented pending-deploy item, unaffected by this task). Task 236's own
+`notifyDynamicTabsChanged`/`'dynamic-tabs-changed'` event (`dynamicTabRegistry.ts`) was renamed to
+`notifyTabPlatformsChanged`/`'tab-platforms-changed'` to match a same-named twin added inside
+`tab-configs.ts` (duplicated deliberately, not imported across, specifically to avoid a real
+circular import — `dynamicTabRegistry.ts` already imports FROM `tab-configs.ts`) — `Sidebar.tsx`'s
+one listener now covers both a dynamic tab's platform edits and a hardcoded tab's hide/unhide with
+no further Sidebar changes. The existing "Edit Platforms" pencil button (`BrandGroup.tsx`) dropped
+its `isDynamicTab`-only gate (now `isApproved` for any tab); `EditBrandTabPlatformsModal` branches
+internally on `isDynamicTab(tabName)` — a dynamic tab keeps Task 236's exact `custom_tabs.platforms`
+flow, a hardcoded tab diffs its checked state against `getTabPlatformsUnfiltered`'s real set and
+calls a new `setTabPlatformHidden(tab, platform, hidden)` per changed box. The Delete-tab button's
+own `isDynamicTab`-only gate is untouched — hardcoded tabs remain permanently non-deletable.
+
+Built via Subagent-Driven Development (6 planned tasks, each reviewed) — then live browser
+verification against the real production dashboard (after applying the migration, which had never
+been pushed) surfaced a chain of four load-bearing gaps a per-task review of the diffs alone could
+not have caught, each fixed and re-reviewed before moving to the next:
+
+1. **`BrandGroup.tsx`'s own `activePlatforms` never consulted the new hidden-platform registry at
+   all.** It's a separate, local re-derivation of a hardcoded tab's platforms via raw column
+   presence (pre-dating this task — from the same-day KPI-card WO-visibility fix earlier this
+   session), so hiding AskGamblers on SilverPlay correctly updated the Sidebar's icon list
+   (`getTabPlatforms`-driven) but left the tab's own KPI cards, Platform-filter dropdown, and table
+   columns completely unaffected — the entire feature was silently inert for hardcoded tabs on the
+   one page it exists for. Fixed by intersecting `activePlatforms`'s existing column-presence
+   result with `getTabPlatforms(decodedTab)`, preserving its exact detection algorithm.
+2. That fix alone wasn't enough: `visibleHeaders`/`exportHeaders`'s column-narrowing only applied
+   when the user had manually selected specific platforms in the Platform filter — in the default,
+   unfiltered view, a hidden platform's raw columns still rendered in the table and every export.
+   Fixed by making both unconditionally exclude a platform's columns whenever it's absent from the
+   now-correct `activePlatforms`, while still narrowing further when the filter is active.
+3. That fix itself introduced a new regression: the header string `"Link to the profile"` is TP's
+   own column everywhere except the Wizard of Odds tab, which reuses the exact same header for its
+   own brand link — an ambiguity the codebase already resolves via an existing `linkColPlatform`
+   helper, which the new gating logic didn't call. Since WO's `activePlatforms` is always `['wo']`
+   (never `'tp'`), the column vanished unconditionally from the WO tab's table and every export,
+   100% reproducibly, with the old pre-Task-237 gate (`activePlatforms.length > 1`) having
+   coincidentally kept it harmless before. Fixed by resolving the header via `linkColPlatform`
+   before falling back to the raw platform-column lookup, in both `visibleHeaders` and
+   `exportHeaders`.
+4. Separately, `Topbar.tsx`'s own platform-badge row (rendered next to the page title, a different
+   mounted component from `BrandGroup.tsx`) also calls `getTabPlatforms` directly but had no
+   listener for the `tab-platforms-changed` event `Sidebar.tsx` already had — so it stayed stale
+   after a hide/unhide while staying on the same tab, the same class of bug the Sidebar fix already
+   solved for itself once. Fixed by adding the identical `tabsVersion`-bump-on-event pattern to
+   `Topbar.tsx`.
+
+Each of the four was found via a real, deliberate live walkthrough (SilverPlay hiding/restoring
+AskGamblers; the Wizard of Odds tab specifically for the third regression), not just code reading,
+and each fix was independently re-reviewed clean before moving to the next. Two known, deliberately
+deferred gaps from that same trail, both pre-existing and narrower than they sound: `sectionOf`
+(`entryFieldSections.ts`) has no dedicated Wizard-of-Odds bucket at all, so a genuinely WO-only
+export column is never excluded from export even when `wo` is hidden (the fix above only stops the
+*regression* — a real column disappearing — it doesn't newly make WO-hiding work in exports, which
+never worked before this task either); and on the WO tab specifically, `"Link to the profile"`'s
+export-column *ordering* still groups it under the TP bucket rather than its own section, cosmetic
+only. Out of scope, explicitly: Ask AI's `tools.ts` doesn't consult `getTabPlatforms` at all
+(confirmed by grep), so a hidden platform won't affect its answers; `hasMultiPlatform`/the
+Duplicate-row modal's field selection is a separate, columns-existence-based check, untouched.
+
+Migration applied live this session (`supabase db push`, confirmed via `supabase migration list`
+that every other migration was already remote before this one). Full suite (516 tests in the
+implementation worktree; the same count as the parent branch, since this plan added no test files
+beyond `queries.test.ts`/`tab-configs.test.ts` additions) and build both pass throughout every fix
+round. Live-verified end to end on SilverPlay (hide AskGamblers → Sidebar icon, header badges, KPI
+cards, and table columns all update immediately with no reload; re-check → full restoration,
+confirmed via a direct REST read that `tab_hidden_platforms` ends empty) and on the Wizard of Odds
+tab (confirmed `"Link to the profile"`/`Brand Link` still renders as a real column after the
+regression fix). Production was left in its original state (no platform hidden on any tab) at the
+end of the session. Spec:
+`docs/superpowers/specs/2026-08-18-hardcoded-tab-platform-visibility-design.md`. Plan:
+`docs/superpowers/plans/2026-08-18-hardcoded-tab-platform-visibility.md`.
