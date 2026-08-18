@@ -35,6 +35,9 @@ import {
   insertSchedulePmsLink,
   updateSchedulePmsLinkDate,
   deleteSchedulePmsLink,
+  fetchCustomTabs,
+  createCustomTab,
+  deleteCustomTab,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -44,11 +47,11 @@ import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
 // method returns the same builder, and awaiting it anywhere in the chain
 // resolves via .then() to the fixed result.
-function chain(result: { data: unknown; error: null }) {
+function chain(result: { data: unknown; error: null; count?: number }) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
-    then: (resolve: (v: { data: unknown; error: null }) => unknown) => resolve(result),
+    then: (resolve: (v: { data: unknown; error: null; count?: number }) => unknown) => resolve(result),
   };
   return builder;
 }
@@ -701,5 +704,50 @@ describe('saveReviewAnalysis', () => {
 
     await expect(saveReviewAnalysis('entry-1', 'Rooster Partners', SAMPLE_ANALYSIS, 'hash-abc', 'gpt-4o'))
       .rejects.toThrow('db down');
+  });
+});
+
+describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
+  it('fetchCustomTabs maps rows to name/platforms', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'] }], error: null }),
+    );
+    const rows = await fetchCustomTabs();
+    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'] }]);
+  });
+
+  it('createCustomTab inserts with the current actor email', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    singletonFrom.mockReturnValue({ insert });
+    await createCustomTab('Acme Tab', ['tp']);
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'] }),
+    );
+  });
+
+  it('createCustomTab throws a friendly error on a duplicate name', async () => {
+    const insert = vi.fn().mockReturnValue({
+      then: (resolve: (v: { error: { code: string; message: string } }) => unknown) =>
+        resolve({ error: { code: '23505', message: 'duplicate key value violates unique constraint' } }),
+    });
+    singletonFrom.mockReturnValue({ insert });
+    await expect(createCustomTab('Acme Tab', ['tp'])).rejects.toThrow('A tab named "Acme Tab" already exists.');
+  });
+
+  it('deleteCustomTab blocks deletion when entries exist for the tab', async () => {
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'entries') return chain({ data: null, error: null, count: 3 } as never);
+      return chain({ data: null, error: null });
+    });
+    await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Cannot delete "Acme Tab": it still has 3 entries.');
+  });
+
+  it('deleteCustomTab deletes when the tab has zero entries', async () => {
+    const del = vi.fn().mockReturnValue(chain({ data: null, error: null }));
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
+      return { delete: del, ...chain({ data: null, error: null }) };
+    });
+    await expect(deleteCustomTab('Acme Tab')).resolves.toBeUndefined();
   });
 });

@@ -7,6 +7,7 @@ import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from '
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
+import type { DynamicTabPlatform } from './dynamicTabRegistry.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
 import type { Entry } from '../types/entry.ts';
 import type { Profile } from '../types/profile.ts';
@@ -1482,4 +1483,39 @@ export async function restoreEditedEntity(logId: string): Promise<void> {
     invalidateTabCache(current.tab as string);
     invalidateTabCache(beforeData.tab as string);
   }
+}
+
+export interface CustomTabRow {
+  name: string;
+  platforms: DynamicTabPlatform[];
+}
+
+export async function fetchCustomTabs(client: SupabaseClient = supabase): Promise<CustomTabRow[]> {
+  const { data, error } = await client.from('custom_tabs').select('name, platforms');
+  if (error) throw error;
+  return (data ?? []) as CustomTabRow[];
+}
+
+export async function createCustomTab(name: string, platforms: DynamicTabPlatform[]): Promise<void> {
+  const actor = await currentActor();
+  const { error } = await supabase
+    .from('custom_tabs')
+    .insert({ name, platforms, created_by: actor.email });
+  if (error) {
+    if (error.code === '23505') throw new Error(`A tab named "${name}" already exists.`);
+    throw error;
+  }
+}
+
+export async function deleteCustomTab(name: string): Promise<void> {
+  const { count, error: countError } = await supabase
+    .from('entries')
+    .select('id', { count: 'exact', head: true })
+    .eq('tab', name);
+  if (countError) throw countError;
+  if (count && count > 0) {
+    throw new Error(`Cannot delete "${name}": it still has ${count} ${count === 1 ? 'entry' : 'entries'}.`);
+  }
+  const { error } = await supabase.from('custom_tabs').delete().eq('name', name);
+  if (error) throw error;
 }
