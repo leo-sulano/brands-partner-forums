@@ -61,7 +61,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* Schedule Planner's day-cell tooltip now shows the brand's Agent and
+- *2026-08-18 (newest):* One-time live backfill of PMS task assignees for every already-linked
+  Schedule Planner → PMS task (`schedule_pms_links`, 104 rows across 9 tabs as of this run) — the
+  push-on-activate Agent→Assignee sync (Task 231) only sets assignee at task-creation time, so every
+  task created before that logic went live (or before a brand's Agent value existed yet) sat
+  unassigned in PMS despite a real Agent now being on file. Ran as a plain Node script against the
+  live Supabase REST API (read-only, anon key) and the live PMS API (`PMS_API_TOKEN`, same as
+  `pmsSync.ts`'s server-side flow) — no code changed, no deploy involved. Resolution logic
+  hand-mirrors `buildAgentIndex` exactly (most-recently-updated entry's Agent per brand) and
+  `resolveAssigneeId`'s case-insensitive PMS-team match, so this can't disagree with what the live
+  sync itself would compute. Dry-run first (zero writes) reported 70 tasks would move from
+  unassigned to a real assignee and 0 would have an *existing* assignee overwritten — every write
+  was purely additive, never a reassignment away from a human's own PMS action — before applying.
+  Verified the exact PATCH shape (`{assigneeIds: [id]}`, no `labelIds` key) is a true partial update
+  first, against one real task, confirming its existing `AG`/`Client` labels survived untouched.
+  Applied: 69 further PATCH calls (the 70th was the verification task itself), 69/69 succeeded, a
+  second dry-run pass afterward confirmed all 70 read back correctly assigned and the remaining 34
+  (brands with no Agent on file) were correctly left alone. No schema change, no new code — purely a
+  one-time live data-sync action requested directly, not part of any file-based feature.
+- *2026-08-18 (prior):* Schedule Planner's day-cell tooltip now shows the brand's Agent and
   Country below its existing status/assignee text, and every native browser `title=` tooltip
   across the dashboard (34 sites in 14 files — Sidebar, Overview's Brands Performance badges,
   Score Summary, the 3 Breakdown components, Brand Tabs, Topbar, Review Removal Assessment,
