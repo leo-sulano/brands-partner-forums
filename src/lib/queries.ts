@@ -1516,6 +1516,17 @@ export async function deleteCustomTab(name: string): Promise<void> {
   if (count && count > 0) {
     throw new Error(`Cannot delete "${name}": it still has ${count} ${count === 1 ? 'entry' : 'entries'}.`);
   }
-  const { error } = await supabase.from('custom_tabs').delete().eq('name', name);
+  // count: 'exact' so a blocked delete can't be mistaken for a successful one
+  // — Supabase returns error:null and zero affected rows when an RLS DELETE
+  // policy denies the write (the same trap restoreEditedEntity guards against
+  // above). Without this the caller would unregister a tab whose row survived,
+  // making it vanish from the sidebar until the next reload brought it back.
+  const { error, count: deleted } = await supabase
+    .from('custom_tabs')
+    .delete({ count: 'exact' })
+    .eq('name', name);
   if (error) throw error;
+  if (!deleted) {
+    throw new Error(`Delete had no effect — "${name}" may already be gone, or the "approved users can delete custom_tabs" RLS policy may not be applied in your Supabase project.`);
+  }
 }

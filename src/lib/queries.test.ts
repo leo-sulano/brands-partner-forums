@@ -735,19 +735,35 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
   });
 
   it('deleteCustomTab blocks deletion when entries exist for the tab', async () => {
+    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
     singletonFrom.mockImplementation((table: string) => {
       if (table === 'entries') return chain({ data: null, error: null, count: 3 } as never);
-      return chain({ data: null, error: null });
+      return { delete: del, ...chain({ data: null, error: null }) };
     });
     await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Cannot delete "Acme Tab": it still has 3 entries.');
+    // The guard must actually stop the write, not just report it.
+    expect(del).not.toHaveBeenCalled();
   });
 
   it('deleteCustomTab deletes when the tab has zero entries', async () => {
-    const del = vi.fn().mockReturnValue(chain({ data: null, error: null }));
+    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
     singletonFrom.mockImplementation((table: string) => {
       if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
       return { delete: del, ...chain({ data: null, error: null }) };
     });
     await expect(deleteCustomTab('Acme Tab')).resolves.toBeUndefined();
+    expect(del).toHaveBeenCalledWith({ count: 'exact' });
+  });
+
+  it('deleteCustomTab throws when the delete affected zero rows (blocked by RLS)', async () => {
+    // Supabase returns error:null with zero affected rows when an RLS DELETE
+    // policy denies the write — without the count check the caller would
+    // unregister a tab whose row actually survived.
+    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 0 } as never));
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
+      return { delete: del, ...chain({ data: null, error: null }) };
+    });
+    await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Delete had no effect');
   });
 });
