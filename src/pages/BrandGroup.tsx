@@ -19,7 +19,7 @@ import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, deleteCustomTab, type StatusCheckScope } from '../lib/queries';
-import { isDynamicTab, unregisterDynamicTab, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { isDynamicTab, unregisterDynamicTab } from '../lib/dynamicTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
@@ -1828,7 +1828,7 @@ export default function BrandGroup() {
               Add Review Account
             </button>
           )}
-          {isApproved && isDynamicTab(decodedTab) && (
+          {isApproved && (
             <Tooltip content={`Edit ${tabDisplayName(decodedTab)}'s platforms`}>
               <button
                 type="button"
@@ -1856,7 +1856,6 @@ export default function BrandGroup() {
       {showEditPlatformsModal && (
         <EditBrandTabPlatformsModal
           tabName={decodedTab}
-          initialPlatforms={getTabPlatforms(decodedTab) as DynamicTabPlatform[]}
           onClose={() => setShowEditPlatformsModal(false)}
           onUpdated={() => {
             setShowEditPlatformsModal(false);
