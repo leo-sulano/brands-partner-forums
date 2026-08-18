@@ -4277,3 +4277,70 @@ and confirmed it's gone from the sidebar. Tier 2 (light path) per this project's
 scoped to the self-service dynamic-tab creation path only, the 11 hardcoded tabs' `getTabPlatforms`
 branch is byte-for-byte unchanged — implemented directly with one self-review pass plus the live
 verification above.
+
+---
+
+## Task 236: Edit Platforms on an Existing Dynamic Brand Tab + Wizard of Odds Support in Brand Tabs' Multi-Platform View
+
+**Date:** August 18, 2026
+
+Task 232 (self-service Brand Tab creation) and Task 235 (TP-optional/WO-added) only ever let a
+dynamic Brand Tab's platform set be chosen at creation time — there was no way to add or remove a
+platform afterward without deleting and recreating the whole tab (losing its data). Added a new
+pencil "Edit Platforms" button next to the existing Delete button on any dynamic tab's header
+(`BrandGroup.tsx`, gated the same way — `isApproved && isDynamicTab(decodedTab)`), opening a new
+`EditBrandTabPlatformsModal` with the same TP/AG/CG/WO checkbox list the create modal already
+uses. Saving calls a new `updateCustomTabPlatforms(name, platforms)` (`src/lib/queries.ts`), a
+plain `custom_tabs.platforms` update, then `registerDynamicTabs([{ name, platforms }])`
+(`dynamicTabRegistry.ts`) to refresh the in-memory column registry for the current session so the
+page reflects the new column set immediately without a reload. Matches Task 232's original design
+note that unchecking a platform only stops `buildDynamicTabColumns` from generating its columns —
+it never touches `entries.data`, so a previously-tracked platform's saved values reappear
+untouched the moment it's re-checked, which the modal's own copy now states explicitly ("nothing
+is deleted").
+
+Editing happens on `BrandGroup.tsx`, a different mounted component from `Sidebar.tsx` — the only
+place that previously bumped Sidebar's own `tabsVersion` re-render counter was
+`handleTabCreated`'s local call, right after `registerDynamicTabs`, both living in Sidebar itself.
+`BrandGroup.tsx` has no reference to Sidebar's state to bump the same way, so without a further
+change Sidebar's tab list/icons would have gone stale after an edit until a full page reload.
+Fixed with a small event bus rather than threading a callback prop through: `registerDynamicTabs`/
+`unregisterDynamicTab` (`dynamicTabRegistry.ts`) now call a shared `notifyDynamicTabsChanged()`
+that dispatches a plain `window` `'dynamic-tabs-changed'` event (guarded the same way
+`supabase.ts`'s `SITE_URL` learned to guard `window` — Supabase's real Edge Runtime defines a bare
+`window` global, so `typeof window !== 'undefined'` alone isn't proof `dispatchEvent` exists) —
+`Sidebar.tsx` subscribes once and bumps `tabsVersion` on it, so it also picks up the Edit
+Platforms flow (and unregister/delete) with no reload, not just the create flow its own local
+call already covered.
+
+Pulled the TP/AG/CG/WO checkbox list — previously a `PLATFORM_OPTIONS` array defined inline inside
+`AddBrandTabModal.tsx` only — out into one shared `PLATFORM_LIST` export in
+`dynamicTabRegistry.ts`, so the new edit modal can't independently drift from the create modal's
+option set/labels/order the way several other per-tab lists already have in this project's history
+(`TAB_ICONS`, `OPERATIONAL_TABS`, etc. — see the Task 219/232 entries above).
+
+Separately, closed a gap Task 235 left open: that task taught `dynamicTabRegistry.ts` and
+`tab-configs.ts` about a dynamic tab combining Wizard of Odds with TP/AG/CG, but `BrandGroup.tsx`'s
+own multi-platform display logic — the code path used whenever a tab tracks more than one
+platform — still only knew about `'tp' | 'ag' | 'cg'`. A dynamic tab with WO selected alongside
+another platform had its WO columns fall through `colGroup()` as generic `'identity'` columns
+(no group spacing), no WO card in the KPI row, no WO option in the platform filter, and no WO
+count in the multi-platform total. `PLATFORM_OWN_COLS`/`colGroup`/`PLATFORM_CARDS`/the
+`platformFilter` type/`countPlatform` all now include `'wo'` as a fourth peer alongside tp/ag/cg
+(WO's own column set mirrors `WO_COLUMNS` in `dynamicTabRegistry.ts` exactly), and the KPI card
+grid's column-count logic (`visibleCards.length`) now handles a 4-card row, not just 1-3. The 4
+existing hardcoded multi-platform tabs (Rooster Partners, Revolution Casino, SilverPlay, Hanan)
+are all TP/AG/CG-only and unaffected — this only changes behavior for a dynamic tab that actually
+selects WO alongside another platform, which wasn't reachable in the UI at all until this fix.
+
+`updateCustomTabPlatforms` has direct unit test coverage (`queries.test.ts`, success + error-throw
+cases). No test file was added for `EditBrandTabPlatformsModal.tsx` itself, matching this project's
+existing pattern of not unit-testing modal components (`AddBrandTabModal.tsx` has none either).
+Full suite (1,191 tests) and build both pass. Tier 2 (light path) — touches shared `BrandGroup.tsx`
+multi-platform logic but not `queries.ts`'s KPI/date/status filtering, `scoreSummary.ts`, or any
+cross-dashboard-shared computation — implemented directly with one self-review pass. Not
+live-browser-verified this session (no browser-automation tool available); worth a follow-up check
+covering: editing a dynamic tab down to fewer platforms and confirming its columns/cards/filter
+update without a reload, re-adding a platform and confirming previously-saved data for it
+reappears, and a WO+another-platform dynamic tab's KPI row rendering all 4 cards correctly at
+narrow viewport widths.

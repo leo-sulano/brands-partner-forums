@@ -37,6 +37,7 @@ import {
   deleteSchedulePmsLink,
   fetchCustomTabs,
   createCustomTab,
+  updateCustomTabPlatforms,
   deleteCustomTab,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
@@ -732,6 +733,22 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
     });
     singletonFrom.mockReturnValue({ insert });
     await expect(createCustomTab('Acme Tab', ['tp'])).rejects.toThrow('A tab named "Acme Tab" already exists.');
+  });
+
+  it('updateCustomTabPlatforms updates the row by name', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await updateCustomTabPlatforms('Acme Tab', ['tp', 'wo']);
+    expect(update).toHaveBeenCalledWith({ platforms: ['tp', 'wo'] });
+    expect(eq).toHaveBeenCalledWith('name', 'Acme Tab');
+  });
+
+  it('updateCustomTabPlatforms throws on error', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await expect(updateCustomTabPlatforms('Acme Tab', ['tp'])).rejects.toThrow('db down');
   });
 
   it('deleteCustomTab blocks deletion when entries exist for the tab', async () => {

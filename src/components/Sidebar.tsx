@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
@@ -64,14 +64,26 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const { isAdmin, session, isApproved } = useAuth();
   const navigate = useNavigate();
   const [showAddTab, setShowAddTab] = useState(false);
-  const [tabsVersion, setTabsVersion] = useState(0); // bumped to force a re-render after registerDynamicTabs mutates OPERATIONAL_TABS in place
+  const [tabsVersion, setTabsVersion] = useState(0); // bumped to force a re-render after registerDynamicTabs/unregisterDynamicTab mutate OPERATIONAL_TABS in place
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
 
+  // Any dynamic-tab registry change — created here, created/edited/deleted
+  // from a Brand Tab's own page (BrandGroup.tsx) — fires this event
+  // (dynamicTabRegistry.ts's notifyDynamicTabsChanged), so this is the one
+  // place Sidebar needs to listen rather than each call site re-plumbing its
+  // own bump back up to this component.
+  useEffect(() => {
+    function handleChange() {
+      setTabsVersion((v) => v + 1);
+    }
+    window.addEventListener('dynamic-tabs-changed', handleChange);
+    return () => window.removeEventListener('dynamic-tabs-changed', handleChange);
+  }, []);
+
   function handleTabCreated(name: string, platforms: DynamicTabPlatform[]) {
     registerDynamicTabs([{ name, platforms }]);
-    setTabsVersion((v) => v + 1);
     setShowAddTab(false);
     navigate(`/brands/${tabToSlug(name)}`);
     onClose?.();

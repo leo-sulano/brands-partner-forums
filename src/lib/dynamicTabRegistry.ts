@@ -13,6 +13,17 @@ import { setDynamicColumnsResolver, TAB_COLUMN_CONFIGS } from './tab-configs.ts'
 
 export type DynamicTabPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 
+// Single source of truth for the platform checkbox list shown by both
+// AddBrandTabModal (create) and EditBrandTabPlatformsModal (edit) — kept here
+// rather than duplicated per-component so the two can't drift the way
+// BrandGroup.tsx's own separate tp/ag/cg-only card list did.
+export const PLATFORM_LIST: { key: DynamicTabPlatform; label: string }[] = [
+  { key: 'tp', label: 'Trust Pilot' },
+  { key: 'ag', label: 'AskGamblers' },
+  { key: 'cg', label: 'Casino Guru' },
+  { key: 'wo', label: 'Wizard of Odds' },
+];
+
 // Generic fields every dynamic tab gets regardless of which platforms are
 // selected. Platform-specific fields (including TP's) live in their own
 // blocks below and are appended only when that platform is actually chosen
@@ -42,6 +53,20 @@ export function buildDynamicTabColumns(platforms: DynamicTabPlatform[]): string[
 
 const dynamicTabColumns: Record<string, string[]> = {};
 
+// Notifies any mounted component that reads OPERATIONAL_TABS/dynamicTabColumns
+// inline (e.g. Sidebar's platform-icon list) that the registry changed, since
+// mutating these module-level structures in place — by design, so every
+// existing importer picks up a new/changed/removed tab with zero call-site
+// changes — does NOT itself trigger a React re-render. Guarded the same way
+// supabase.ts's SITE_URL learned to guard `window`: Supabase's real Edge
+// Runtime defines a bare `window` global (so `typeof window !== 'undefined'`
+// alone is not proof it's safe), but never a real `dispatchEvent`.
+function notifyDynamicTabsChanged(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new Event('dynamic-tabs-changed'));
+  }
+}
+
 // Registers (or re-registers) one or more dynamic tabs — computes each
 // one's column list via buildDynamicTabColumns and pushes any genuinely new
 // name into OPERATIONAL_TABS *in place* (mutating the existing exported
@@ -60,6 +85,7 @@ export function registerDynamicTabs(rows: { name: string; platforms: DynamicTabP
     dynamicTabColumns[row.name] = buildDynamicTabColumns(row.platforms);
     if (!OPERATIONAL_TABS.includes(row.name)) OPERATIONAL_TABS.push(row.name);
   }
+  notifyDynamicTabsChanged();
 }
 
 // Inverse of registerDynamicTabs, for the delete flow — removes the tab
@@ -71,6 +97,7 @@ export function unregisterDynamicTab(name: string): void {
   delete dynamicTabColumns[name];
   const idx = OPERATIONAL_TABS.indexOf(name);
   if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1);
+  notifyDynamicTabsChanged();
 }
 
 // Clears every registered dynamic tab, from both the column registry and

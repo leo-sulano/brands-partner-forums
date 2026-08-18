@@ -4,19 +4,12 @@ import { X, Loader2 } from 'lucide-react';
 import { createCustomTab } from '../lib/queries';
 import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
 import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
-import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 
 interface Props {
   onCreated: (name: string, platforms: DynamicTabPlatform[]) => void;
   onClose: () => void;
 }
-
-const PLATFORM_OPTIONS: { key: DynamicTabPlatform; label: string }[] = [
-  { key: 'tp', label: 'Trust Pilot' },
-  { key: 'ag', label: 'AskGamblers' },
-  { key: 'cg', label: 'Casino Guru' },
-  { key: 'wo', label: 'Wizard of Odds' },
-];
 
 export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   const [name, setName] = useState('');
@@ -119,7 +112,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Platforms</label>
-            {PLATFORM_OPTIONS.map(({ key, label }) => (
+            {PLATFORM_LIST.map(({ key, label }) => (
               <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
                 <input
                   type="checkbox"

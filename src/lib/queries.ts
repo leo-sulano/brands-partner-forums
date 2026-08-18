@@ -1507,6 +1507,21 @@ export async function createCustomTab(name: string, platforms: DynamicTabPlatfor
   }
 }
 
+// Updates which platforms a dynamic Brand Tab tracks. Never touches
+// `entries.data` — a removed platform's columns simply stop being generated
+// by buildDynamicTabColumns (dynamicTabRegistry.ts), so any values already
+// saved under them are preserved but hidden, and reappear if the platform is
+// re-added later. Callers must also call registerDynamicTabs([{ name,
+// platforms }]) afterward to refresh the in-memory column registry for the
+// current session — this function only writes the DB row.
+export async function updateCustomTabPlatforms(name: string, platforms: DynamicTabPlatform[]): Promise<void> {
+  const { error } = await supabase
+    .from('custom_tabs')
+    .update({ platforms })
+    .eq('name', name);
+  if (error) throw error;
+}
+
 export async function deleteCustomTab(name: string): Promise<void> {
   const { count, error: countError } = await supabase
     .from('entries')
