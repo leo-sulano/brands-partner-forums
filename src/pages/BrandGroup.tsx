@@ -1038,8 +1038,14 @@ export default function BrandGroup() {
   const visibleHeaders = headers.filter((h) => {
     for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as [Platform, Set<string>][]) {
       if (!cols.has(h)) continue;
-      if (!activePlatforms.includes(key)) return false;
-      if (platformFilter.length > 0 && !platformFilter.includes(key)) return false;
+      // 'Link to the profile' is TP's own column everywhere except Wizard
+      // of Odds, which reuses the same header for its own brand link
+      // (linkColPlatform, defined above) — PLATFORM_OWN_COLS.tp doesn't
+      // know about this tab-specific override, so resolve the header's
+      // real owner here before gating on it.
+      const owner = linkColPlatform(h, decodedTab) ?? key;
+      if (!activePlatforms.includes(owner)) return false;
+      if (platformFilter.length > 0 && !platformFilter.includes(owner)) return false;
     }
     return true;
   }).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
@@ -1062,7 +1068,10 @@ export default function BrandGroup() {
     const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders]))
       .filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
     const scoped = allFields.filter((h) => {
-      const sec = sectionOf(h);
+      // Resolve the TP/Wizard-of-Odds "Link to the profile" ambiguity the
+      // same way visibleHeaders does, before falling back to sectionOf's
+      // generic (tab-unaware) classification.
+      const sec = linkColPlatform(h, decodedTab) ?? sectionOf(h);
       if (sec !== 'tp' && sec !== 'ag' && sec !== 'cg') return true;
       if (!activePlatforms.includes(sec)) return false;
       if (platformFilter.length > 0 && !platformFilter.includes(sec)) return false;
