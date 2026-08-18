@@ -61,7 +61,28 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* Deployed `sync-schedule-pms` (`supabase db push` +
+- *2026-08-18 (newest):* Schedule Planner → PMS sync now also carries Agent ↔
+  Assignee. Push direction: when a cell activates, the brand's Agent (from
+  its most-recently-updated entry — a brand's entries don't always agree on
+  one Agent, e.g. Rooster Partners' Spinjo/Spinsup each have 3 — via new
+  `buildAgentIndex` in `src/lib/scheduler/scheduleUtils.ts`) is matched
+  case/whitespace-insensitively against the real "Forum Team" PMS roster
+  (Ivan Pamonag, Operations Team, Leo Sulano, Ann, Jen, Lai — fetched live
+  via `GET /api/teams/{id}`, not hardcoded) and set as the created task's
+  assignee in the same PATCH call that already sets labels. No match (an
+  agent not on the PMS team, e.g. a real "Venus" value in production data, or
+  placeholder junk) leaves the task unassigned — never blocks creation. Pull
+  direction, read-only: `pullScheduleFromPms` now also reports each linked
+  task's current PMS assignee on every tab visit, shown as a tooltip addition
+  on `ScheduleCell`'s existing chip (`Assigned to <name>`) — never written
+  back to `brand_schedule` or `entries`, purely informational. Both live
+  end-to-end round-tripped against the deployed function before shipping
+  (push with a lowercase "jen" correctly resolved and assigned to the real
+  PMS user "Jen"; a follow-up pull correctly reported it back), same
+  create-then-delete verification discipline as every other live PMS check
+  in this feature's history. Deployed the same session — see
+  `supabase functions list` for current version.
+- *2026-08-18 (prior):* Deployed `sync-schedule-pms` (`supabase db push` +
   `supabase secrets set PMS_API_TOKEN=...` + `supabase functions deploy sync-schedule-pms`,
   confirmed `ACTIVE` via `supabase functions list`) — the Schedule Planner → PMS task sync entry
   directly below is now live server-side. The first real deploy attempt failed outright
