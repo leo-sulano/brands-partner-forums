@@ -1,4 +1,4 @@
-import { TAB_COLUMN_CONFIGS } from './tab-configs';
+import { TAB_COLUMN_CONFIGS } from './tab-configs.ts';
 
 // The canonical list of registered Brand Tabs — derived from TAB_COLUMN_CONFIGS
 // (src/lib/tab-configs.ts) so a tab only has to be added in one place to be

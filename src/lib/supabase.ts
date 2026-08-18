@@ -65,6 +65,14 @@ export const SYNC_SCHEDULE_PMS_URL = import.meta.env?.VITE_SYNC_SCHEDULE_PMS_URL
 // own tab). Same VITE_SITE_URL Login.tsx/Signup.tsx already use for OAuth
 // redirects; falls back to window.location.origin so it still resolves
 // correctly without the env var set in a given environment.
+//
+// Deno's Edge Runtime defines a `window` global (unlike a plain `deno run`
+// process) but gives it no `.location` -- `typeof window !== 'undefined'`
+// alone is true there, and `window.location.origin` throws at this file's
+// top level, crashing any Edge Function that imports it (found live: this
+// exact throw broke sync-schedule-pms's first deploy, since it's the first
+// function to ever import this file transitively via queries.ts). Guard on
+// `window.location` too, not just `window` itself.
 export const SITE_URL = (
-  import.meta.env?.VITE_SITE_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  import.meta.env?.VITE_SITE_URL || (typeof window !== 'undefined' && window.location ? window.location.origin : '')
 ).replace(/\/$/, '');

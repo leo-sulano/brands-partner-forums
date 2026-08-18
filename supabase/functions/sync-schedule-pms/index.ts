@@ -33,10 +33,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: 'Invalid request body' }, 400);
   }
 
-  const client = createClient(SUPABASE_URL, SERVICE_ROLE);
   const credentials = { apiToken: PMS_API_TOKEN };
 
   try {
+    const client = createClient(SUPABASE_URL, SERVICE_ROLE);
     if (body?.action === 'push') {
       if (!Array.isArray(body.items)) return jsonResponse({ error: 'items must be an array' }, 400);
       const result = await pushScheduleToPms(body.items as PmsSyncItem[], client, credentials);

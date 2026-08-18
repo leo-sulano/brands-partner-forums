@@ -1,6 +1,6 @@
-import { supabase, SUPABASE_ANON_KEY, REVIEW_REMOVAL_ASSESSMENT_URL } from './supabase';
-import { isYesNoCol, isBehaviorExtraCol } from './entryFieldSections';
-import type { Platform } from './scoreSummary';
+import { supabase, SUPABASE_ANON_KEY, REVIEW_REMOVAL_ASSESSMENT_URL } from './supabase.ts';
+import { isYesNoCol, isBehaviorExtraCol } from './entryFieldSections.ts';
+import type { Platform } from './scoreSummary.ts';
 
 export type OverallResult = 'likely_publishable' | 'uncertain' | 'likely_removal_risk' | 'no_clear_removal_reason';
 export type Confidence = 'low' | 'medium' | 'high';

@@ -1,4 +1,4 @@
-import { getEntryCountry } from './tab-configs';
+import { getEntryCountry } from './tab-configs.ts';
 
 // Country is free text sourced from Account labels or manual entry (see
 // getEntryCountry in tab-configs.ts), so the same real country can appear
