@@ -3,10 +3,12 @@ import {
   buildDynamicTabColumns,
   registerDynamicTabs,
   unregisterDynamicTab,
+  resetDynamicTabs,
   getDynamicTabColumns,
   isDynamicTab,
 } from './dynamicTabRegistry';
 import { OPERATIONAL_TABS } from './tabs';
+import { TAB_COLUMN_CONFIGS, getTabColumns } from './tab-configs';
 
 describe('buildDynamicTabColumns', () => {
   it('always includes the TP-only base column set', () => {
@@ -32,6 +34,7 @@ describe('buildDynamicTabColumns', () => {
     expect(cols).toContain('CG Review Status');
     expect(cols).toContain('CG Review Link');
     expect(cols).toContain('CG User');
+    expect(cols).not.toContain('Ask Gambler review added');
   });
 
   it('appends AG before CG when both are selected, base columns first', () => {
@@ -95,5 +98,39 @@ describe('registerDynamicTabs / unregisterDynamicTab / getDynamicTabColumns / is
   it('never treats a hardcoded tab as dynamic', () => {
     expect(isDynamicTab('Hanan')).toBe(false);
     expect(getDynamicTabColumns('Hanan')).toBeNull();
+  });
+
+  it('registerDynamicTabs refuses to register a hardcoded tab name', () => {
+    const before = [...OPERATIONAL_TABS];
+    registerDynamicTabs([{ name: 'Hanan', platforms: ['tp'] }]);
+    expect(isDynamicTab('Hanan')).toBe(false);
+    expect(getDynamicTabColumns('Hanan')).toBeNull();
+    // No duplicate entry pushed, and the hardcoded tab's own config untouched.
+    expect(OPERATIONAL_TABS).toEqual(before);
+    expect(getTabColumns('Hanan')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
+  });
+
+  it('unregisterDynamicTab never removes a hardcoded tab from OPERATIONAL_TABS', () => {
+    unregisterDynamicTab('Hanan');
+    expect(OPERATIONAL_TABS).toContain('Hanan');
+    expect(getTabColumns('Hanan')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
+  });
+
+  it('resetDynamicTabs clears every registered dynamic tab', () => {
+    registerDynamicTabs([
+      { name: 'Test Dynamic Tab', platforms: ['tp'] },
+      { name: 'Second Dynamic Tab', platforms: ['tp', 'ag'] },
+    ]);
+    expect(OPERATIONAL_TABS).toContain('Test Dynamic Tab');
+    expect(OPERATIONAL_TABS).toContain('Second Dynamic Tab');
+
+    resetDynamicTabs();
+
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(false);
+    expect(isDynamicTab('Second Dynamic Tab')).toBe(false);
+    expect(OPERATIONAL_TABS).not.toContain('Test Dynamic Tab');
+    expect(OPERATIONAL_TABS).not.toContain('Second Dynamic Tab');
+    // Hardcoded tabs are untouched.
+    expect(OPERATIONAL_TABS).toContain('Hanan');
   });
 });

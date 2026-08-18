@@ -9,7 +9,7 @@
 // no React/npm-package imports, no I/O — because it's imported by the
 // generate-weekly-schedule Deno Edge Function alongside tab-configs.ts.
 import { OPERATIONAL_TABS } from './tabs.ts';
-import { setDynamicColumnsResolver } from './tab-configs.ts';
+import { setDynamicColumnsResolver, TAB_COLUMN_CONFIGS } from './tab-configs.ts';
 
 export type DynamicTabPlatform = 'tp' | 'ag' | 'cg';
 
@@ -43,6 +43,13 @@ const dynamicTabColumns: Record<string, string[]> = {};
 // modals, BrandGroup) picks up the new tab with zero call-site changes.
 export function registerDynamicTabs(rows: { name: string; platforms: DynamicTabPlatform[] }[]): void {
   for (const row of rows) {
+    // Never shadow one of the hardcoded tabs. AddBrandTabModal's collision
+    // check is only a client-side guard — RLS still lets an approved user
+    // insert a custom_tabs row named e.g. 'Hanan' straight through the API,
+    // and registering that would make isDynamicTab('Hanan') true (showing a
+    // delete affordance on a real tab) and let unregisterDynamicTab splice a
+    // hardcoded tab out of OPERATIONAL_TABS.
+    if (row.name in TAB_COLUMN_CONFIGS) continue;
     dynamicTabColumns[row.name] = buildDynamicTabColumns(row.platforms);
     if (!OPERATIONAL_TABS.includes(row.name)) OPERATIONAL_TABS.push(row.name);
   }
@@ -50,11 +57,26 @@ export function registerDynamicTabs(rows: { name: string; platforms: DynamicTabP
 
 // Inverse of registerDynamicTabs, for the delete flow — removes the tab
 // from both the column registry and OPERATIONAL_TABS. A no-op if the name
-// was never registered.
+// was never registered, or if it names a hardcoded tab (see the guard in
+// registerDynamicTabs above).
 export function unregisterDynamicTab(name: string): void {
+  if (name in TAB_COLUMN_CONFIGS) return;
   delete dynamicTabColumns[name];
   const idx = OPERATIONAL_TABS.indexOf(name);
   if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1);
+}
+
+// Clears every registered dynamic tab, from both the column registry and
+// OPERATIONAL_TABS. Needed by the generate-weekly-schedule Edge Function,
+// which re-registers custom_tabs on every invocation: Deno isolates are
+// reused across invocations, so without this a warm isolate would accumulate
+// tabs forever and keep generating schedules for tabs that have since been
+// deleted (the same isolate-state bug class as the per-invocation entry-cache
+// growth fixed in Task 178).
+export function resetDynamicTabs(): void {
+  for (const name of Object.keys(dynamicTabColumns)) {
+    unregisterDynamicTab(name);
+  }
 }
 
 export function getDynamicTabColumns(tab: string): string[] | null {

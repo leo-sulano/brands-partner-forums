@@ -17,7 +17,7 @@ import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/re
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
-import { registerDynamicTabs } from '../../../src/lib/dynamicTabRegistry.ts';
+import { registerDynamicTabs, resetDynamicTabs } from '../../../src/lib/dynamicTabRegistry.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
 import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 
@@ -118,7 +118,19 @@ export async function generateAllTabs(
 
 Deno.serve(async (_req: Request): Promise<Response> => {
   const client = createClient(SUPABASE_URL, SERVICE_ROLE);
-  const customTabs = await fetchCustomTabs(client);
+  // Edge isolates are reused across invocations, and registerDynamicTabs
+  // mutates the module-level registry + OPERATIONAL_TABS in place — so clear
+  // first, otherwise a warm isolate accumulates every tab it has ever seen
+  // and keeps generating schedules for tabs that were since deleted.
+  // Fail open on the fetch (same shape as AuthContext.tsx's own
+  // fetchCustomTabs call): a transient custom_tabs failure must not abort the
+  // weekly cron run for all 11 hardcoded tabs — it just means dynamic tabs
+  // are skipped this run.
+  const customTabs = await fetchCustomTabs(client).catch((err) => {
+    console.error('[generate-weekly-schedule] failed to fetch custom tabs:', err);
+    return [];
+  });
+  resetDynamicTabs();
   registerDynamicTabs(customTabs);
   // Computed in the runtime's local zone (UTC on Supabase Edge). This is
   // only correct because the migration's cron
