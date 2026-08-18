@@ -32,19 +32,51 @@ describe('topNWithOther', () => {
       france: { label: 'France', live: 2, removed: 0 },
     };
     const cards = topNWithOther(merged, 8);
+    // France (100% published) outranks Germany (83.3%) despite lower volume — order is by rate.
     expect(cards).toEqual([
-      { key: 'germany', label: 'Germany', live: 5, removed: 1, isOther: false },
       { key: 'france', label: 'France', live: 2, removed: 0, isOther: false },
+      { key: 'germany', label: 'Germany', live: 5, removed: 1, isOther: false },
     ]);
   });
 
-  it('sorts by total volume descending', () => {
+  it('sorts final cards by published rate descending, independent of volume', () => {
     const merged: Record<string, CountBreakdown> = {
-      small: { label: 'Small', live: 1, removed: 0 },
-      big: { label: 'Big', live: 10, removed: 5 },
+      lowRateHighVolume: { label: 'Low Rate High Volume', live: 10, removed: 20 }, // 33.3%
+      highRateLowVolume: { label: 'High Rate Low Volume', live: 3, removed: 0 }, // 100%
     };
     const cards = topNWithOther(merged, 8);
-    expect(cards.map((c) => c.key)).toEqual(['big', 'small']);
+    expect(cards.map((c) => c.key)).toEqual(['highRateLowVolume', 'lowRateHighVolume']);
+  });
+
+  it('still uses volume (not rate) to decide top-N membership vs. folding into "Other", even though the resulting cards are then rate-sorted', () => {
+    const merged: Record<string, CountBreakdown> = {
+      bigButAverage: { label: 'Big', live: 5, removed: 5 }, // 50%, volume 10 — makes top-1 on volume
+      smallButPerfect: { label: 'Small', live: 1, removed: 0 }, // 100%, volume 1 — folded to Other on volume
+    };
+    const cards = topNWithOther(merged, 1);
+    const other = cards.find((c) => c.isOther);
+    // Small (the only lower-volume value) is the one folded into Other, proving membership was
+    // decided by volume — Other's own 100% aggregate rate then outranks Big's 50%, so it leads.
+    expect(other?.members?.map((m) => m.key)).toEqual(['smallButPerfect']);
+    expect(cards.map((c) => c.key)).toEqual(['__other__', 'bigButAverage']);
+  });
+
+  it('ties on rate fall back to volume descending', () => {
+    const merged: Record<string, CountBreakdown> = {
+      a: { label: 'A', live: 1, removed: 0 }, // 100%, volume 1
+      b: { label: 'B', live: 10, removed: 0 }, // 100%, volume 10
+    };
+    const cards = topNWithOther(merged, 8);
+    expect(cards.map((c) => c.key)).toEqual(['b', 'a']);
+  });
+
+  it('a card with zero accounts sorts last, below a real 0% (all-removed) rate', () => {
+    const merged: Record<string, CountBreakdown> = {
+      noData: { label: 'No Data', live: 0, removed: 0 },
+      allRemoved: { label: 'All Removed', live: 0, removed: 5 },
+    };
+    const cards = topNWithOther(merged, 8);
+    expect(cards.map((c) => c.key)).toEqual(['allRemoved', 'noData']);
   });
 
   it('collapses the remainder past topN into a single non-"Other"-flagged-false-elsewhere "Other" card, summed correctly, and attaches the folded-in members', () => {
@@ -78,7 +110,7 @@ describe('topNWithOther', () => {
     expect(topNWithOther({}, 8)).toEqual([]);
   });
 
-  it('pins pinnedLastKey as the trailing card regardless of its volume, excluding it from topN ranking so a real value fills its slot', () => {
+  it('pins pinnedLastKey as the trailing card regardless of its volume or rate, excluding it from topN ranking so a real value fills its slot', () => {
     const merged: Record<string, CountBreakdown> = {
       noproxy: { label: 'No Proxy', live: 5, removed: 20 },
       a: { label: 'A', live: 3, removed: 0 },

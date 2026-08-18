@@ -24,15 +24,31 @@ export interface BreakdownCard {
   members?: BreakdownCard[];
 }
 
+// Published rate for sort purposes only — a card with no accounts at all sorts last (-1),
+// distinct from a real 0% rate (all-removed, still ranks above no-data).
+function rateForSort(card: { live: number; removed: number }): number {
+  const total = card.live + card.removed;
+  return total > 0 ? card.live / total : -1;
+}
+
+// Highest published rate first; ties fall back to total volume descending for stability.
+function byRateThenVolume(a: BreakdownCard, b: BreakdownCard): number {
+  const rateDiff = rateForSort(b) - rateForSort(a);
+  if (rateDiff !== 0) return rateDiff;
+  return (b.live + b.removed) - (a.live + a.removed);
+}
+
 // pinnedLastKey (e.g. Proxy Breakdown's "no proxy" key) is excluded from ranking/topN/"Other"
-// entirely and appended as its own trailing card, so it always renders last regardless of volume
-// instead of competing for a top-N slot like a real value. Omit it (Country Breakdown does) to
-// keep the plain rank-by-volume behavior.
+// entirely and appended as its own trailing card, so it always renders last regardless of rate
+// instead of competing for a top-N slot or a sorted position like a real value. Omit it (Country
+// Breakdown does) to let it take part in the rate sort like everything else.
 export function topNWithOther(merged: Record<string, CountBreakdown>, topN: number, pinnedLastKey?: string): BreakdownCard[] {
   const entries = Object.entries(merged);
   const pinnedEntry = pinnedLastKey ? entries.find(([key]) => key === pinnedLastKey) : undefined;
   const rankable = pinnedEntry ? entries.filter(([key]) => key !== pinnedLastKey) : entries;
 
+  // Which values get their own card vs. fold into "Other" is still decided by volume — rate only
+  // determines the final left-to-right position, not which cards are significant enough to show.
   const all: BreakdownCard[] = rankable
     .map(([key, v]) => ({ key, label: v.label, live: v.live, removed: v.removed, isOther: false }))
     .sort((a, b) => (b.live + b.removed) - (a.live + a.removed));
@@ -50,6 +66,7 @@ export function topNWithOther(merged: Record<string, CountBreakdown>, topN: numb
       members: rest,
     });
   }
+  cards.sort(byRateThenVolume);
   if (pinnedEntry) {
     const [key, v] = pinnedEntry;
     cards.push({ key, label: v.label, live: v.live, removed: v.removed, isOther: false });
