@@ -61,7 +61,40 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* Added Schedule Planner → PMS task sync — activating a platform chip on
+- *2026-08-18 (newest):* Deployed `sync-schedule-pms` (`supabase db push` +
+  `supabase secrets set PMS_API_TOKEN=...` + `supabase functions deploy sync-schedule-pms`,
+  confirmed `ACTIVE` via `supabase functions list`) — the Schedule Planner → PMS task sync entry
+  directly below is now live server-side. The first real deploy attempt failed outright
+  (`WORKER_ERROR` on every invocation, no usable logs surfaced by the CLI) and needed two rounds of
+  live debugging via a series of minimal diagnostic redeploys against the real function slug, since
+  local `deno check`/`deno run` didn't reproduce either failure:
+  1. **`src/lib/supabase.ts`'s `SITE_URL` export threw at module load, crashing the function before
+     any request handling ran.** It guarded a `window.location.origin` read with only `typeof
+     window !== 'undefined'` — true in Supabase's real Edge Runtime (which defines a `window`
+     global), but `window.location` itself is undefined there, so `.origin` threw. No previously
+     deployed function had ever imported this file (`notify-brand-removed` deliberately avoids all
+     `src/lib` imports; `ai-assistant`'s only cross-imports are 2 small, unrelated files), so this
+     was a real, latent bug that simply had nothing to trigger it before now. Fixed by also
+     requiring `window.location` truthy before reading `.origin`.
+  2. **Extensionless relative imports that `deno check` sometimes tolerated actually broke the real
+     deploy bundler outright** (`"Module not found ... Maybe add a '.ts' extension"`), contradicting
+     this file's own prior note (below) that `ai-assistant`'s successful deploy proved the bundler
+     resolves these fine — that was only proven for the 2 small files `ai-assistant` actually
+     imports, not this feature's much broader `queries.ts`-rooted chain. Fixed the 4 blocking
+     imports across `countryFlags.ts`, `reviewRemovalAssessment.ts` (×3), and `tabs.ts` (needed by
+     `generate-weekly-schedule` too, once *that* function is eventually deployed).
+  Both fixes verified against the live deployed function directly (`curl`), not just locally: a
+  `push` created a real task in the "Forum Team" PMS project and a real `schedule_pms_links` row, a
+  `pull` returned cleanly, and both test artifacts were deleted afterward. One unrelated mistake
+  made while debugging, worth recording: an early diagnostic request against the *already-deployed*
+  `notify-brand-removed` function (used to sanity-check that service-role auto-injection works at
+  all) was built with a syntactically-complete but semantically-fake payload — it passed that
+  function's field validation and triggered 11 real notification emails with placeholder ("x")
+  content to real approved users. No corrective action was possible after the fact (the function
+  only sends, doesn't retract); flagged to the user directly when found. Still pending: add
+  `VITE_SYNC_SCHEDULE_PMS_URL` to Vercel env and redeploy the frontend (see the Known Issues bullet
+  below for the exact URL and the 2 remaining live-verification steps a final review flagged).
+- *2026-08-18 (prior):* Added Schedule Planner → PMS task sync — activating a platform chip on
   the Schedule Planner grid (a manual click, or the lazy per-tab auto-generation both
   `TabScheduleSection.tsx` and `generate-weekly-schedule` already trigger) now also creates a
   matching task in the external PMS tool's "Forum Team" project To Do column, and a due-date edit
@@ -778,26 +811,27 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
-- **Pending manual deploy (2026-08-18):** the Schedule Planner → PMS task sync feature's migration
-  (`supabase/migrations/20260817120000_add_schedule_pms_links.sql`) has not been applied to the
-  live database, and the `sync-schedule-pms` Edge Function has not been deployed. The Vercel env
-  var it depends on (`VITE_SYNC_SCHEDULE_PMS_URL`) has also not been set (`.env`'s own copy is
-  left blank for the same reason). **Setup required before it works:**
-  1. `supabase db push` (applies the new `schedule_pms_links` table).
-  2. `supabase secrets set PMS_API_TOKEN=...` then `supabase functions deploy sync-schedule-pms`.
-  3. Add `VITE_SYNC_SCHEDULE_PMS_URL=<deployed function URL>` to Vercel env, then redeploy.
-  Until all 3 are done, `pushScheduleActivations`/`pullScheduleDrift` (`src/lib/schedulePmsSync.ts`)
+- **Pending manual deploy, final step only (2026-08-18):** steps 1-2 of the Schedule Planner → PMS
+  task sync feature's deploy checklist are done — the `schedule_pms_links` migration is applied
+  (`supabase db push`), `PMS_API_TOKEN` is set, and `sync-schedule-pms` is deployed and confirmed
+  `ACTIVE` (see the Recent Changes entry above, including two real bugs the deploy attempt itself
+  surfaced and fixed). Only step 3 remains:
+  3. Add `VITE_SYNC_SCHEDULE_PMS_URL=https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/sync-schedule-pms`
+     to Vercel env, then redeploy the frontend.
+  Until that's done, `pushScheduleActivations`/`pullScheduleDrift` (`src/lib/schedulePmsSync.ts`)
   both silently no-op — activating a Schedule Planner chip behaves exactly as it did before this
-  feature shipped, no broken UI in the interim. Separately, `generate-weekly-schedule`'s own
-  already-pending deploy (see the bullet below) now additionally needs `PMS_API_TOKEN` set before
-  its push-wiring (added the same day as this feature) does anything — it silently no-ops without
-  it per its own `if (activated.length > 0 && pmsApiToken)` guard, so this isn't a new blocker on
-  top of that function's existing pending-deploy status, just one more secret to set at the same
-  time. Live-verify once deployed: open Schedule Planner, click a blank cell active on a real tab,
-  confirm a real task appears in the "Forum Team" PMS project's To Do column with the right
-  title/label/due date; then edit that task's due date directly in PMS, reload the tab, and confirm
-  the calendar cell moves to match. Task 231. Two more verification sub-steps a final review flagged
-  as gaps in that same walkthrough, not yet covered by the spot-check above:
+  feature shipped, no broken UI in the interim, even though the backend is already live. Separately,
+  `generate-weekly-schedule`'s own already-pending deploy (see the bullet below) still additionally
+  needs `PMS_API_TOKEN` set before its push-wiring does anything — already set as a project secret
+  now (done above), so nothing further needed there once that function itself is eventually
+  deployed. Live-verify once the Vercel env var is set: open Schedule Planner, click a blank cell
+  active on a real tab, confirm a real task appears in the "Forum Team" PMS project's To Do column
+  with the right title/label/due date; then edit that task's due date directly in PMS, reload the
+  tab, and confirm the calendar cell moves to match. Task 231. The backend half of this exact
+  round-trip (API-driven push + pull, not a human editing via the PMS UI) was already live-verified
+  directly against the deployed function during the debugging above. Two more verification
+  sub-steps a final review flagged as gaps in that same walkthrough are still open, since they
+  specifically require a human editing via the PMS UI, not the API:
   4. **Date round-trip via the PMS's own UI, not just its API.** The create/patch API path's date
      handling was spot-verified once during planning (see the spec doc's live-verification note),
      but that only proves the API side. Pull reconciliation depends on a different path: a human
@@ -845,20 +879,35 @@ Brands Partner Forum/
   needed: apply the `brand_schedule` write(s) first and only advance/clear the `schedule_pms_links`
   row(s) after they succeed, so a partial failure leaves the link stale (re-detected as drift next
   pull) rather than silently consumed.
-- **`countryFlags.ts`/`reviewRemovalAssessment.ts` extensionless imports break local `deno
-  check`/`deno test` for any Edge Function that transitively imports either file (found during
-  Task 231, pre-existing, not introduced by that plan).** `src/lib/countryFlags.ts` (imports `from
-  './tab-configs'`) and `src/lib/reviewRemovalAssessment.ts` (imports `from './supabase'`, `from
-  './entryFieldSections'`, `from './scoreSummary'`) all use relative imports missing the `.ts`
-  extension Deno's strict module resolution requires. This breaks `deno check`/`deno test` for
-  both the new `sync-schedule-pms` function and the pre-existing, already-undeployed
-  `generate-weekly-schedule` function (confirmed identically broken for both — same 4 `TS2307`
-  errors either way) — but does **not** affect the real Supabase deploy bundler, which already
-  resolves extensionless imports fine, proven by `ai-assistant`'s successful 2026-08-14 deploy
-  using the same cross-import pattern (see that entry above). Narrow, real scope: local
-  `deno check`/`deno test` only, currently making it impossible to get a clean Deno test run for
-  either function. Not a deploy blocker for `sync-schedule-pms` or `generate-weekly-schedule`.
-  Fix direction: add explicit `.ts` extensions to the 4 imports across those 2 files.
+- **Correction to the bullet below and to the `ai-assistant` deploy note above: extensionless
+  relative imports DO break the real Supabase deploy bundler, not just local `deno
+  check`/`deno test` (found and fixed 2026-08-18, deploying `sync-schedule-pms` — see Recent
+  Changes above).** The 4 imports across `countryFlags.ts`, `reviewRemovalAssessment.ts` (×3), and
+  `tabs.ts` were fixed (all now have explicit `.ts` extensions) because the real deploy of
+  `sync-schedule-pms` failed outright on them (`"Module not found ... Maybe add a '.ts'
+  extension"`) — this repo had assumed, based on `ai-assistant`'s successful 2026-08-14 deploy,
+  that the real bundler tolerates extensionless imports in general; that was only ever proven for
+  the 2 small, self-contained files `ai-assistant` actually cross-imports
+  (`scheduleBrandConfig.ts`, `proxyAliases.ts`/`removedPlatformBrands.ts`), never for the much
+  larger `queries.ts`-rooted chain other functions need. Both `sync-schedule-pms` and
+  `generate-weekly-schedule` now deno-check clean and (for `sync-schedule-pms`) deploy clean. There
+  are more extensionless relative imports still elsewhere in `src/lib` not yet reachable by any
+  deployed or pending function's import graph (found via a repo-wide grep, 2026-08-18: `assistant.ts`,
+  `brandExport.ts`, `portalSso.ts`, `realtime.ts`, `reviewTranslation.ts`, `scoreSummaryExport.ts`
+  each have at least one) — each is a landmine for whichever future Edge Function first imports it
+  transitively, the same way `supabase.ts`'s `window.location.origin` bug (below) and this exact
+  import gap both sat undetected until `sync-schedule-pms` was the first to actually exercise them.
+  Fix direction: audit and add `.ts` extensions repo-wide in `src/lib`, rather than fixing them
+  reactively one deploy at a time.
+- **`src/lib/supabase.ts`'s `SITE_URL` export could throw at Edge Function module-load time —
+  fixed 2026-08-18, found deploying `sync-schedule-pms` (see Recent Changes above).** Guarded a
+  `window.location.origin` read with only `typeof window !== 'undefined'`, which is true in
+  Supabase's real Edge Runtime (it defines a bare `window` global) even though `window.location`
+  itself is undefined there — so `.origin` threw, uncaught, at the top of the module, crashing the
+  whole function on every cold start with an opaque `WORKER_ERROR` and no CLI-visible logs. Fixed
+  by also requiring `window.location` truthy. Worth remembering for any future frontend-shared
+  `src/lib` file that references `window`/`document`/other browser-only globals, even guarded: a
+  `typeof window !== 'undefined'` guard alone is not sufficient proof the code is Deno-Edge-Runtime-safe.
 - **AG/CG/WO automated brand-page-removal detection not built — spike research found no evidence to build on.**
   Following the TP automated-removal-detection feature (2026-08-13,
   `docs/superpowers/specs/2026-08-13-automated-brand-page-removal-detection-design.md`), a same-day
@@ -1065,7 +1114,13 @@ Brands Partner Forum/
   `deno check`) was unconfirmed; the deploy log shows `scheduleBrandConfig.ts`,
   `removedPlatformBrands.ts`, and `proxyAliases.ts` were all uploaded as bundled assets alongside
   `tools.ts`/`index.ts`, so the pattern is now proven safe at deploy time — worth noting when
-  `generate-weekly-schedule`'s own pending deploy (below) is finally run. Spec/plan for the
+  `generate-weekly-schedule`'s own pending deploy (below) is finally run.
+  **Correction (2026-08-18):** this only proved the pattern safe for these 3 specific small files —
+  deploying `sync-schedule-pms` (Task 231, see Recent Changes/Known Issues above) hit a real deploy
+  failure on a *different*, larger `queries.ts`-rooted import chain the bundler genuinely rejected
+  over missing `.ts` extensions. "The bundler resolves extensionless imports fine" was never a
+  general fact about the bundler — read it as "these exact 3 files are proven safe," not as
+  license to assume any `src/lib` cross-import will deploy cleanly. Spec/plan for the
   original Task 220 scope:
   `docs/superpowers/specs/2026-08-14-ask-ai-drift-prevention-design.md`,
   `docs/superpowers/plans/2026-08-14-ask-ai-drift-prevention.md` — the 3 same-day follow-up fixes
