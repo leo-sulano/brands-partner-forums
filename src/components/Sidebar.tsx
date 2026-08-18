@@ -157,8 +157,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               const Icon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
               const platforms = getTabPlatforms(tab);
               return (
-                <div key={tab} className="group relative">
-                  <Tooltip content={isCollapsed ? tabDisplayName(tab) : undefined} block>
+                <div key={tab} className="group relative flex items-center">
+                  <Tooltip content={isCollapsed ? tabDisplayName(tab) : undefined} block className="flex-1 min-w-0">
                     <NavLink
                       to={`/brands/${tabToSlug(tab)}`}
                       onClick={() => onClose?.()}
@@ -182,11 +182,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     </NavLink>
                   </Tooltip>
                   {!isCollapsed && isApproved && isDynamicTab(tab) && (
-                    <Tooltip content={`Delete ${tabDisplayName(tab)}`} className="absolute right-2 top-1/2 -translate-y-1/2">
+                    <Tooltip content={`Delete ${tabDisplayName(tab)}`}>
                       <button
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTabActionError(null); setDeletingTab(tab); }}
-                        className="hidden group-hover:flex p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                        className="hidden group-hover:flex shrink-0 p-1 mr-1.5 rounded text-slate-300 hover:text-rose-400 hover:bg-rose-500/10"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
