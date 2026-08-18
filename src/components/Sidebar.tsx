@@ -1,14 +1,19 @@
 import { useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X,
   CalendarDays,
 } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { useAuth } from '../contexts/AuthContext';
+import AddBrandTabModal from './AddBrandTabModal';
+import { registerDynamicTabs, unregisterDynamicTab, isDynamicTab } from '../lib/dynamicTabRegistry';
+import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { deleteCustomTab } from '../lib/queries';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
@@ -56,10 +61,37 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
-  const { isAdmin, session } = useAuth();
+  const { isAdmin, session, isApproved } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [showAddTab, setShowAddTab] = useState(false);
+  const [tabsVersion, setTabsVersion] = useState(0); // bumped to force a re-render after registerDynamicTabs/unregisterDynamicTab mutate OPERATIONAL_TABS in place
+  const [deletingTab, setDeletingTab] = useState<string | null>(null); // tab pending delete confirmation
+  const [tabActionError, setTabActionError] = useState<string | null>(null);
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
+
+  function handleTabCreated(name: string, platforms: DynamicTabPlatform[]) {
+    registerDynamicTabs([{ name, platforms }]);
+    setTabsVersion((v) => v + 1);
+    setShowAddTab(false);
+    navigate(`/brands/${tabToSlug(name)}`);
+    onClose?.();
+  }
+
+  async function handleConfirmDelete(name: string) {
+    setTabActionError(null);
+    try {
+      await deleteCustomTab(name);
+      unregisterDynamicTab(name);
+      setTabsVersion((v) => v + 1);
+      setDeletingTab(null);
+      if (location.pathname === `/brands/${tabToSlug(name)}`) navigate('/');
+    } catch (err) {
+      setTabActionError(err instanceof Error ? err.message : 'Failed to delete tab');
+    }
+  }
 
   const header = (isCollapsed: boolean) => (
     <div className={`py-5 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
@@ -105,35 +137,61 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           : <SectionHeader label="Brand Tabs" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
         }
 
-        {brandsOpen && OPERATIONAL_TABS.map((tab) => {
-          const Icon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
-          const platforms = getTabPlatforms(tab);
-          return (
-            <NavLink
-              key={tab}
-              to={`/brands/${tabToSlug(tab)}`}
-              onClick={() => onClose?.()}
-              title={isCollapsed ? tabDisplayName(tab) : undefined}
-              className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
-            >
-              <Icon className="size-4 shrink-0" />
-              {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
-              {!isCollapsed && (
-                <span className="flex items-center gap-0.5 shrink-0">
-                  {platforms.map((p) => (
-                    <img
-                      key={p}
-                      src={PLATFORM_FAVICON[p]}
-                      alt={p}
-                      className="size-3.5 rounded-sm"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ))}
-                </span>
-              )}
-            </NavLink>
-          );
-        })}
+        {brandsOpen && (
+          <div key={tabsVersion} className="contents">
+            {OPERATIONAL_TABS.map((tab) => {
+              const Icon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+              const platforms = getTabPlatforms(tab);
+              return (
+                <div key={tab} className="group relative">
+                  <NavLink
+                    to={`/brands/${tabToSlug(tab)}`}
+                    onClick={() => onClose?.()}
+                    title={isCollapsed ? tabDisplayName(tab) : undefined}
+                    className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
+                  >
+                    <Icon className="size-4 shrink-0" />
+                    {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
+                    {!isCollapsed && (
+                      <span className="flex items-center gap-0.5 shrink-0">
+                        {platforms.map((p) => (
+                          <img
+                            key={p}
+                            src={PLATFORM_FAVICON[p]}
+                            alt={p}
+                            className="size-3.5 rounded-sm"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        ))}
+                      </span>
+                    )}
+                  </NavLink>
+                  {!isCollapsed && isApproved && isDynamicTab(tab) && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTabActionError(null); setDeletingTab(tab); }}
+                      title={`Delete ${tabDisplayName(tab)}`}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                    >
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!isCollapsed && isApproved && (
+          <button
+            type="button"
+            onClick={() => setShowAddTab(true)}
+            className="w-full flex items-center gap-3 py-2 px-3 text-sm text-slate-400 hover:text-white hover:bg-blue-500/20 rounded-l-[10px] transition-colors"
+          >
+            <Plus className="size-4 shrink-0" />
+            Add Brand Tab
+          </button>
+        )}
 
         {!!session && (
           <>
@@ -268,6 +326,37 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             </div>
             {navContent(false)}
           </aside>
+        </div>
+      )}
+
+      {showAddTab && (
+        <AddBrandTabModal onCreated={handleTabCreated} onClose={() => setShowAddTab(false)} />
+      )}
+
+      {deletingTab && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setDeletingTab(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Delete "{tabDisplayName(deletingTab)}"?</h2>
+            <p className="text-xs text-slate-500">This cannot be undone. Deletion is blocked if the tab still has any entries.</p>
+            {tabActionError && <p className="text-xs text-rose-600">{tabActionError}</p>}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setDeletingTab(null)}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmDelete(deletingTab)}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>
