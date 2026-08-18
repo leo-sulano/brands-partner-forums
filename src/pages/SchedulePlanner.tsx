@@ -389,21 +389,18 @@ export default function SchedulePlanner() {
 
         {selectedTabs.length > 0 && (
           <>
-            <div className="flex-1 min-w-[160px] max-w-xs">
-              <label className="mb-1.5 block text-xs font-medium text-slate-500 invisible">Search</label>
-              <div className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2 py-1.5">
-                <Search className="size-4 text-slate-400 shrink-0" />
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search brands…"
-                  className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
-                />
-              </div>
+            <div className="flex flex-1 items-center gap-1.5 min-w-[160px] max-w-xs rounded-md border border-slate-200 px-2 py-1.5">
+              <Search className="size-4 text-slate-400 shrink-0" />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search brands…"
+                className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
+              />
             </div>
 
-            <div className="ml-auto flex items-center gap-2 pb-1.5">
+            <div className="ml-auto flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => setWeekStart((d) => addDays(d, -7))}
