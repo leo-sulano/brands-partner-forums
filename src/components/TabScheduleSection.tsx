@@ -492,7 +492,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     : null;
 
   return (
-    <div className="rounded-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col max-h-[480px]">
+    <div className="rounded-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col">
       {error && (
         <div className="rounded-t-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{error}</div>
       )}
