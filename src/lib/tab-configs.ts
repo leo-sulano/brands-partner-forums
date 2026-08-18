@@ -666,15 +666,16 @@ export function hasMultiPlatform(tab: string): boolean {
   return set.has('AG Review Status') && set.has('CG Review Status');
 }
 
-// Returns the platforms active for a given tab. The 11 hardcoded tabs default
-// to TP with WO/AG/CG opt-in via column presence (unchanged legacy rule —
-// several hardcoded tabs use TP status column name variants, e.g. plain
-// 'Review Status', that don't literally match 'TP Review Status', so TP can't
-// safely be column-detected there). Dynamic tabs (self-service Brand Tab
-// creation, src/lib/dynamicTabRegistry.ts) have no default platform at all —
-// every platform, including TP, is derived purely from which columns
-// buildDynamicTabColumns actually generated for it.
-export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
+// Computes a tab's real, unfiltered platform set — the logic
+// getTabPlatforms always used before hidden-platform overrides existed. The
+// 11 hardcoded tabs default to TP with WO/AG/CG opt-in via column presence
+// (unchanged legacy rule — several hardcoded tabs use TP status column name
+// variants, e.g. plain 'Review Status', that don't literally match 'TP
+// Review Status', so TP can't safely be column-detected there). Dynamic
+// tabs (self-service Brand Tab creation, src/lib/dynamicTabRegistry.ts)
+// have no default platform at all — every platform, including TP, is
+// derived purely from which columns buildDynamicTabColumns generated.
+function computeRawTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   const cols = getTabColumns(tab);
   if (tab === 'Wizard of Odds') return ['wo'];
   if (tab in TAB_COLUMN_CONFIGS) {
@@ -694,6 +695,61 @@ export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   if (set.has('CG Review Status')) platforms.push('cg');
   if (set.has('WoO Review Status')) platforms.push('wo');
   return platforms;
+}
+
+// Exposed for the Edit Platforms modal (BrandGroup.tsx /
+// EditBrandTabPlatformsModal.tsx), which must always offer every platform a
+// tab has ever tracked as a checkbox — including one currently hidden —
+// never just what's presently visible.
+export function getTabPlatformsUnfiltered(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
+  return computeRawTabPlatforms(tab);
+}
+
+// In-memory registry of platforms hidden per tab
+// (docs/superpowers/specs/2026-08-18-hardcoded-tab-platform-visibility-design.md).
+// Populated at session bootstrap (AuthContext.tsx) and, per-invocation, by
+// the generate-weekly-schedule Edge Function — mirrors dynamicTabColumns'
+// shape in dynamicTabRegistry.ts. A guarded window.dispatchEvent lives here
+// too, not imported from dynamicTabRegistry.ts's own notifyDynamicTabsChanged,
+// specifically to avoid a real circular import: dynamicTabRegistry.ts
+// already imports FROM this file (setDynamicColumnsResolver), and tabs.ts
+// (the only other candidate host) imports FROM this file too, so either
+// direction would close a cycle. Small, deliberate duplication — same event
+// name, same guard shape as the one in dynamicTabRegistry.ts.
+const hiddenTabPlatforms: Record<string, Set<'tp' | 'ag' | 'cg' | 'wo'>> = {};
+
+function notifyTabPlatformsChanged(): void {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new Event('tab-platforms-changed'));
+  }
+}
+
+export function registerHiddenTabPlatforms(rows: { tab: string; platform: 'tp' | 'ag' | 'cg' | 'wo' }[]): void {
+  for (const row of rows) {
+    if (!hiddenTabPlatforms[row.tab]) hiddenTabPlatforms[row.tab] = new Set();
+    hiddenTabPlatforms[row.tab].add(row.platform);
+  }
+  notifyTabPlatformsChanged();
+}
+
+export function unregisterHiddenTabPlatform(tab: string, platform: 'tp' | 'ag' | 'cg' | 'wo'): void {
+  hiddenTabPlatforms[tab]?.delete(platform);
+  notifyTabPlatformsChanged();
+}
+
+export function resetHiddenTabPlatforms(): void {
+  for (const key of Object.keys(hiddenTabPlatforms)) delete hiddenTabPlatforms[key];
+}
+
+// Returns the platforms currently visible for a given tab —
+// computeRawTabPlatforms's real set minus anything registered as hidden via
+// registerHiddenTabPlatforms. A tab with nothing hidden gets back exactly
+// computeRawTabPlatforms's result, unchanged from this function's behavior
+// before hidden-platform overrides existed.
+export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
+  const raw = computeRawTabPlatforms(tab);
+  const hidden = hiddenTabPlatforms[tab];
+  return hidden ? raw.filter((p) => !hidden.has(p)) : raw;
 }
 
 // Set once by dynamicTabRegistry.ts (a synchronous self-registration side
