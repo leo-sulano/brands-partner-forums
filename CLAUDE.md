@@ -61,7 +61,58 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* Schedule Planner → PMS sync now also carries Agent ↔
+- *2026-08-18 (newest):* Added self-service Brand Tab creation — any approved user can now create
+  (and delete) a Brand Tab from the sidebar's "+ Add Brand Tab" affordance, with no code change and
+  no deploy, finally reversing the decision Task 219 explicitly declined ("new tabs are rare
+  structural events") at the user's own request. New `custom_tabs` table (migration
+  `20260818130000_add_custom_tabs.sql`, applied live; `name` unique, `platforms text[]`,
+  `created_by` actor email, full 4-policy RLS) is the source of truth. The 11 hardcoded tabs in
+  `TAB_COLUMN_CONFIGS` are untouched and never mirrored into that table. A new pure, Deno-safe
+  `src/lib/dynamicTabRegistry.ts` generates each dynamic tab's column list from one canonical
+  template (the base TP set, plus an AG and/or CG block — deliberately not freely customizable, so
+  anything created going forward has one consistent naming scheme unlike the 11 legacy tabs) and
+  holds an in-memory registry that `tab-configs.ts`'s getters (`getTabColumns`, `getBrandNameCol`,
+  `hasMultiPlatform`, `getTabPlatforms`) fall back to, so no per-tab logic anywhere needs to know a
+  tab is "dynamic" vs. "hardcoded." `OPERATIONAL_TABS` (`src/lib/tabs.ts`) is mutated **in place**
+  on register/unregister rather than reassigned, which is what lets all ~12 of its existing
+  importers pick up a new tab with zero call-site changes. Frontend registration happens during
+  `AuthContext`'s session bootstrap (before `ProtectedRoute` stops showing its spinner);
+  `generate-weekly-schedule` registers once per invocation. Two rulings made mid-plan, both worth
+  remembering: (1) the obvious wiring (`tab-configs.ts` importing `dynamicTabRegistry.ts`) would
+  have closed a real circular import, since `tabs.ts` eagerly reads `TAB_COLUMN_CONFIGS` at its own
+  top level — resolved with a synchronous resolver-injection pattern instead
+  (`setDynamicColumnsResolver`, called as a side effect of `dynamicTabRegistry.ts`'s own module
+  load), which has no promise and therefore no race window, but does mean an Edge Function that
+  imports only `tab-configs.ts` is silently blind to dynamic tabs (now documented in a comment right
+  at the setter); (2) `fetchCustomTabs` in the auth bootstrap fails open (`.catch(() => [])`) rather
+  than rejecting the `Promise.all` and wedging `loading` at `true` forever — the same fail-open shape
+  was applied to `generate-weekly-schedule`'s own call in the final fix wave, so a transient
+  `custom_tabs` failure can't abort the weekly cron for all 11 real tabs.
+  Built via 8 subagent-driven-development tasks with per-task review, then one whole-branch review
+  whose 13 findings were all fixed in a single follow-up fix wave. The 4 that a per-task review
+  could not have seen, and are the reason that review exists: three `OPERATIONAL_TABS` consumers
+  (`SchedulePlanner.tsx`, `AddReviewAccountModal.tsx`, `EditEntryModal.tsx`) computed their tab
+  dropdown options at **module scope**, snapshotting the array at import time and thereby falsifying
+  the plan's core "zero call-site changes" claim for exactly the mid-session case the feature
+  exists for; `AddBrandTabModal` and the delete-confirmation dialog were both `z-40` while the
+  mobile drawer that opens them is `z-[45]`/`z-50`, making the whole feature unreachable on a phone;
+  `generate-weekly-schedule` re-registered dynamic tabs every invocation without ever clearing
+  stale ones, so a warm Deno isolate accumulated deleted tabs across invocations (the same
+  isolate-state bug class as Task 178's entry-cache growth — fixed with a new `resetDynamicTabs()`);
+  and `registerDynamicTabs`/`unregisterDynamicTab` had no guard against a `custom_tabs` row named
+  after a hardcoded tab, which RLS alone permits, so a row named e.g. `'Hanan'` would have made
+  `isDynamicTab('Hanan')` true and let an unregister splice a real tab out of `OPERATIONAL_TABS`.
+  Also closed in that wave: slug-collision and slug-safety validation on the tab name (a name
+  slugifying onto an existing tab's URL creates a permanently unreachable tab), a submit/close race
+  in `AddBrandTabModal`, and a missing affected-row check on `deleteCustomTab`'s delete. Full suite
+  (1185 tests) and build both pass. **Pending manual deploy:** `supabase functions deploy
+  ai-assistant` (its system prompt's hardcoded tab list now discloses that dynamic tabs may exist —
+  text-only change, nothing else in that function touched) and `generate-weekly-schedule`, which
+  was already undeployed before this feature and now additionally carries the per-invocation
+  registration. Spec:
+  `docs/superpowers/specs/2026-08-18-self-service-brand-tab-creation-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-18-self-service-brand-tab-creation.md`. Task 232.
+- *2026-08-18 (prior):* Schedule Planner → PMS sync now also carries Agent ↔
   Assignee. Push direction: when a cell activates, the brand's Agent (from
   its most-recently-updated entry — a brand's entries don't always agree on
   one Agent, e.g. Rooster Partners' Spinjo/Spinsup each have 3 — via new
@@ -832,6 +883,42 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **Self-service Brand Tab creation was never live-browser-verified end to end (Task 232).** No
+  browser-automation tool was available in any implementer's or reviewer's environment for the whole
+  duration of that plan, so the full create → sidebar-appears → reload-persists → delete-blocked-
+  while-entries-exist → delete-succeeds flow has only been verified by reading code and by unit
+  tests. The `custom_tabs` migration is applied live, so this is verifiable at any time — worth doing
+  before treating the feature as proven. Specifically worth checking in a real browser: (a) a
+  newly-created tab appears immediately in the Sidebar **and** in Schedule Planner's / both entry
+  modals' tab dropdowns without a reload (that's the exact gap the fix wave's finding 1 closed, and
+  it's the one thing unit tests can't observe); (b) the "+ Add Brand Tab" flow works from the mobile
+  drawer on a narrow viewport (finding 2's `z-40` → `z-50` fix); (c) the delete-blocked path shows
+  the real "still has N entries" message rather than silently succeeding.
+- **`custom_tabs.created_by` (an actor email) is readable via the `anon` key (Task 232).** The
+  table's select policy is `using (true)`, matching every other flag/config table in this project.
+  This is consistent with the pre-existing, already-documented condition that `entries` is fully
+  public-readable via `anon` (see the `entries`/`bif_review_accounts` bullet further down) — it is
+  not a new class of exposure, just one more column of internal-user data on the same footing. Worth
+  folding into whatever deliberate decision is eventually made about tightening `anon` read access
+  project-wide, rather than fixing in isolation.
+- **`deleteCustomTab`'s entries-count guard is a TOCTOU race, accepted as-is (Task 232).**
+  `deleteCustomTab` (`src/lib/queries.ts`) counts `entries` rows for the tab and then deletes the
+  `custom_tabs` row in a separate round-trip, so an entry inserted for that tab in the window between
+  the two calls would be orphaned (its `tab` value would point at a tab that no longer has a
+  `custom_tabs` row). Deliberately not fixed: closing it properly needs a Postgres RPC/transaction,
+  and `entries.tab` is a free-text string with no FK to `custom_tabs` anyway (matching how tab
+  identity already works for the 11 hardcoded tabs), so an orphaned row is recoverable by
+  re-creating the tab with the same name. Fix direction if ever needed: move both steps into one
+  `security definer` RPC.
+- **Pending manual deploy (2026-08-18, Task 232):** `supabase functions deploy ai-assistant` — its
+  system prompt now discloses that Brand Tabs can be created in-app and that the hardcoded 11-name
+  list may be incomplete, so the model should confirm via `list_tabs` instead of claiming a tab
+  doesn't exist. Text-only change, no tool/schema code touched. Until deployed, the live assistant
+  can still wrongly tell a user a dynamically-created tab doesn't exist. Separately,
+  `generate-weekly-schedule` (already pending deploy before this feature, see its own bullet below)
+  now also carries the per-invocation `resetDynamicTabs()`/`registerDynamicTabs()` call — not a new
+  blocker, just one more reason that deploy matters: until it runs, a dynamic tab's weekly schedule
+  only ever generates from the page-visit trigger.
 - **Pending manual deploy, final step only (2026-08-18):** steps 1-2 of the Schedule Planner → PMS
   task sync feature's deploy checklist are done — the `schedule_pms_links` migration is applied
   (`supabase db push`), `PMS_API_TOKEN` is set, and `sync-schedule-pms` is deployed and confirmed

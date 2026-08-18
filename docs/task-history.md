@@ -3966,3 +3966,106 @@ Two things worth flagging beyond the plan's own scope:
 
 Spec: `docs/superpowers/specs/2026-08-17-schedule-planner-pms-sync-design.md`. Plan:
 `docs/superpowers/plans/2026-08-17-schedule-planner-pms-sync.md`.
+
+---
+
+## Task 232: Self-Service Brand Tab Creation
+**Date:** August 18, 2026
+
+Any approved user can now create (and delete) a Brand Tab from inside the dashboard — no code
+change, no deploy — reversing the decision Task 219 explicitly declined ("new tabs are rare
+structural events, not a frequent operational task") at the user's own request.
+
+**New `custom_tabs` table** (migration `20260818130000_add_custom_tabs.sql`, applied live): `name`
+unique, `platforms text[]`, `created_by` actor email, `created_at`, plus all four RLS policies
+defined explicitly per this project's standing convention. The 11 hardcoded tabs in
+`TAB_COLUMN_CONFIGS` (`src/lib/tab-configs.ts`) are left exactly as they are and are never mirrored
+into this table. No FK from `entries.tab` — tab identity stays a free-text string, same as it
+already is for the hardcoded tabs.
+
+**Canonical column template, not free-form.** A new pure, Deno-safe `src/lib/dynamicTabRegistry.ts`
+generates a dynamic tab's column list deterministically from its platform set (TP always on; AG
+and/or CG optional, WO never offered) — the base TP block plus an AG and/or CG block, matching the
+Hanan/Rooster Partners shape for multi-platform and GRG's for TP-only. That means every existing
+helper reading column presence (`getBrandNameCol` via `BRAND_COLS`, `hasMultiPlatform`,
+`getTabPlatforms`) works against a generated config with zero special-casing, and anything created
+going forward has one consistent naming scheme unlike the 11 inconsistent legacy tabs.
+
+**Propagation with zero call-site changes.** `OPERATIONAL_TABS` (`src/lib/tabs.ts`) is mutated **in
+place** on register/unregister rather than reassigned, so all ~12 of its existing importers hold a
+reference to the same array object and see a new tab without a single call-site edit.
+`tab-configs.ts`'s getters fall back to the registry, so nothing anywhere needs to know a tab is
+dynamic. Frontend registration happens during `AuthContext`'s session bootstrap (before
+`ProtectedRoute` stops showing its spinner, so no route can call a getter for an unregistered tab);
+`generate-weekly-schedule` registers once per invocation.
+
+Two design rulings made mid-plan, both worth remembering:
+
+1. **Circular import, fixed with a synchronous resolver instead of the obvious import.** Having
+   `tab-configs.ts` import `dynamicTabRegistry.ts` directly would have closed a real cycle
+   (`tab-configs.ts` → `dynamicTabRegistry.ts` → `tabs.ts` → `tab-configs.ts`), since `tabs.ts`
+   eagerly reads `TAB_COLUMN_CONFIGS` at its own top level. Resolved with resolver injection:
+   `tab-configs.ts` exposes `setDynamicColumnsResolver`, and `dynamicTabRegistry.ts` calls it as a
+   side effect of its own module load — fully synchronous, no promise, no race window. The cost is a
+   real gotcha, now documented in a comment right at the setter: an Edge Function that imports only
+   `tab-configs.ts`'s getters is silently blind to dynamic tabs unless it also imports
+   `dynamicTabRegistry.ts` for that side effect.
+2. **Fail-open auth bootstrap.** `fetchCustomTabs` in `AuthContext` catches and returns `[]` rather
+   than rejecting the `Promise.all` — a rejection there would leave `loading` stuck at `true` and
+   the whole app on a spinner because of a transient table read. The same shape was applied to
+   `generate-weekly-schedule`'s own call in the final fix wave, so the two surfaces now have
+   consistent failure semantics.
+
+Built via 8 subagent-driven-development tasks with per-task review, then one whole-branch review
+whose 13 findings were all fixed in a single follow-up fix wave. Four of those findings are the
+reason the whole-branch review exists — a per-task review could not have seen any of them:
+
+- Three `OPERATIONAL_TABS` consumers (`SchedulePlanner.tsx`, `AddReviewAccountModal.tsx`,
+  `EditEntryModal.tsx`) computed their tab dropdown options at **module scope**, snapshotting the
+  array at import time — falsifying the plan's core "every consumer sees a new tab with zero
+  call-site changes" claim for exactly the mid-session case the feature exists for. Each moved into
+  the component body, recomputed per render (deliberately not `useMemo([])`, which still snapshots
+  once per mount — not sufficient for `SchedulePlanner`, a long-lived page).
+- `AddBrandTabModal` and the Sidebar delete-confirmation dialog were both `z-40`, while the mobile
+  drawer that opens them is `z-[45]`/`z-50` — the feature was entirely unreachable on a phone. Both
+  now `z-50`, matching every other full-page modal here. (`AddPlatformModal`'s `z-40`, which this
+  code was modeled on, is not a valid precedent: it never opens from inside the drawer.)
+- `generate-weekly-schedule` re-registered `custom_tabs` every invocation but never cleared stale
+  ones, so a warm Deno isolate accumulated tabs across invocations and would keep generating
+  schedules for tabs that were since deleted — the same isolate-state bug class as Task 178's
+  entry-cache growth. Fixed with a new `resetDynamicTabs()` called immediately before registration.
+- `registerDynamicTabs`/`unregisterDynamicTab` had no guard against a `custom_tabs` row named after
+  a hardcoded tab. The modal's collision check is client-side only; RLS still lets an approved user
+  insert such a row via the API, which would have made `isDynamicTab('Hanan')` true (delete
+  affordance on a real tab) and let an unregister splice a real tab out of `OPERATIONAL_TABS`. Both
+  functions now skip any name already in `TAB_COLUMN_CONFIGS`.
+
+Also closed in the same wave: slug-uniqueness and slug-safety validation on the tab name (a name
+that collides only by slug — e.g. "Gulf Recovery Group" onto `'GRG - Gulf Recovery Group'` — created
+a permanently unreachable tab, and `/`/`?`/`#` broke the route); a submit/close race in
+`AddBrandTabModal` (Escape/X/backdrop mid-submit let the insert land server-side with no local
+registration and no navigation, leaving an invisible tab in the DB); a missing affected-row check on
+`deleteCustomTab`'s delete (Supabase returns `error: null` with zero rows when an RLS DELETE is
+denied — the caller would have unregistered a tab whose row survived); the "+ Add Brand Tab" button
+not being gated on `brandsOpen`; Escape-to-close on the delete dialog; three test-hygiene items; a
+now-wrong migration comment claiming `platforms` is validated at the application layer (it isn't —
+unknown values are silently ignored, not rejected); and the "one required step" comments in
+`tab-configs.ts`/`tabIcons.ts`, which stopped being true the moment this feature shipped.
+
+Full suite (1185 tests, 86 files) and `npm run build` both pass; `deno check` clean for
+`generate-weekly-schedule` with its new import.
+
+**Never live-verified in a browser** — no browser-automation tool was available in any implementer's
+or reviewer's environment for the whole duration of this plan. The migration is applied live, so the
+create → appears → persists → delete-blocked → delete-succeeds flow is verifiable at any time and
+should be, especially the mid-session dropdown propagation (the one thing unit tests can't observe)
+and the mobile-drawer path. **Pending manual deploy:** `supabase functions deploy ai-assistant` (its
+system prompt now discloses that dynamic tabs may exist and steers the model to `list_tabs` —
+text-only change) and `generate-weekly-schedule`, already undeployed before this feature. Two
+accepted limitations are recorded in CLAUDE.md's Known Issues: `deleteCustomTab`'s entries-count
+guard is a TOCTOU race (needs an RPC to close properly), and `custom_tabs.created_by` is
+`anon`-readable, consistent with the pre-existing public-readable `entries` condition rather than a
+new class of exposure.
+
+Spec: `docs/superpowers/specs/2026-08-18-self-service-brand-tab-creation-design.md`. Plan:
+`docs/superpowers/plans/2026-08-18-self-service-brand-tab-creation.md`.
