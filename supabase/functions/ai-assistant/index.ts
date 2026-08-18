@@ -181,6 +181,11 @@ Tab names (use exact spelling from list_tabs):
   Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan,
   Wizard of Odds, GRG - Gulf Recovery Group
 
+This list may be incomplete: Brand Tabs can now be created from inside the
+dashboard itself, so a real tab may exist that is not named above — always
+confirm with the list_tabs tool instead of telling the user a tab doesn't
+exist just because it's missing from this list.
+
 Always call list_tabs first if unsure of the exact tab name.
 `;
 

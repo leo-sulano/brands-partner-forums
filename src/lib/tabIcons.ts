@@ -8,7 +8,10 @@
 //
 // A tab not listed here falls back to a generic icon at each call site —
 // adding an icon for a new Brand Tab is optional, not required to register it
-// (see TAB_COLUMN_CONFIGS in tab-configs.ts for the one required step).
+// (see TAB_COLUMN_CONFIGS in tab-configs.ts for the one required step for a
+// hardcoded tab, or the `custom_tabs` table / src/lib/dynamicTabRegistry.ts
+// for a tab created in-app with no code change at all — a dynamic tab always
+// uses DEFAULT_TAB_ICON, since there is no icon picker in that flow).
 import {
   Syringe, Link2, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, Star, LifeBuoy,
   type LucideIcon,

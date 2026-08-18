@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll, beforeEach } from 'vitest';
 import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol } from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 
@@ -154,6 +154,13 @@ describe('getBrandGroup', () => {
 
 describe('tab-configs.ts dynamic tab fallback', () => {
   beforeEach(() => {
+    unregisterDynamicTab('Test Dynamic Tab');
+  });
+
+  // The registry is module-level state shared with OPERATIONAL_TABS — without
+  // this, the last test's registration leaks into any later describe block in
+  // this file (and into anything that reads OPERATIONAL_TABS after it).
+  afterAll(() => {
     unregisterDynamicTab('Test Dynamic Tab');
   });
 

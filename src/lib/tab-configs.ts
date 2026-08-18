@@ -5,11 +5,19 @@
 // This map's key order is also the canonical Brand Tabs registration order —
 // OPERATIONAL_TABS (src/lib/tabs.ts) is derived directly from Object.keys() of
 // this object, so adding a tab here (with its column list) is the one required
-// step that registers it everywhere: sidebar nav, routing, both entry modals,
-// Overview, Score Summary, Schedule Planner. A sidebar icon is optional and
-// lives separately in src/lib/tabIcons.ts (a frontend-only file — this file is
-// also imported by a Deno edge function, so it must stay free of any
-// React/npm-package imports).
+// step to register a *hardcoded* tab everywhere: sidebar nav, routing, both
+// entry modals, Overview, Score Summary, Schedule Planner. A sidebar icon is
+// optional and lives separately in src/lib/tabIcons.ts (a frontend-only file —
+// this file is also imported by a Deno edge function, so it must stay free of
+// any React/npm-package imports).
+//
+// Since 2026-08-18 there is a second, code-free registration path: a row in
+// the `custom_tabs` table, loaded at runtime and registered via
+// src/lib/dynamicTabRegistry.ts, which generates a standard column list from
+// the tab's platform set and pushes the name into OPERATIONAL_TABS in place.
+// The getters below (getTabColumns et al.) fall back to that registry, so a
+// dynamic tab resolves exactly like a hardcoded one. The 11 tabs in this map
+// are never mirrored into custom_tabs and are never modified by that path.
 export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
   'TP Brand Injection': [
     'Account',
@@ -675,6 +683,14 @@ export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
 // tab-configs.ts), since tabs.ts eagerly reads TAB_COLUMN_CONFIGS at its
 // own top level. This setter-based indirection makes dynamicTabRegistry.ts
 // depend on tab-configs.ts instead, which is acyclic.
+//
+// GOTCHA for Deno Edge Functions: because the wiring is a side effect of
+// importing dynamicTabRegistry.ts, any function that imports this module's
+// getters (getTabColumns, getBrandNameCol, hasMultiPlatform, getTabPlatforms)
+// and needs to see dynamically-created tabs MUST also import
+// src/lib/dynamicTabRegistry.ts — even if only for that self-registration side
+// effect. Skip it and this resolver silently stays null: no error, no warning,
+// dynamic tabs simply resolve as if they don't exist in that function.
 let dynamicColumnsResolver: ((tab: string) => string[] | null) | null = null;
 
 export function setDynamicColumnsResolver(fn: (tab: string) => string[] | null): void {

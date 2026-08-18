@@ -4,10 +4,17 @@
 --
 -- custom_tabs is the source of truth for dynamically-created Brand Tabs —
 -- the 11 legacy tabs stay hardcoded in src/lib/tab-configs.ts and never
--- appear here. `platforms` is validated at the application layer
--- (src/lib/dynamicTabRegistry.ts) rather than a check constraint, since the
--- allowed set only needs to stay in sync with one TypeScript module, not
--- with every possible future writer of this table.
+-- appear here.
+--
+-- `platforms` is deliberately unconstrained: there is no check constraint here,
+-- and nothing validates or rejects its contents at the application layer
+-- either. buildDynamicTabColumns (src/lib/dynamicTabRegistry.ts) only tests
+-- for the presence of 'ag' and 'cg' when appending column blocks, so any other
+-- value in this array — including a typo or an unsupported platform — is
+-- silently ignored rather than rejected. The create UI only ever writes
+-- 'tp'/'ag'/'cg', so in practice the set stays valid; a row written directly
+-- via the API with a bogus platform value produces a TP-only column list, not
+-- an error.
 --
 -- All four RLS policies are defined explicitly even though the v1 UI only
 -- exercises select/insert/delete, matching every other flag/config table in
