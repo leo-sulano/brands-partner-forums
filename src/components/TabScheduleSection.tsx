@@ -60,6 +60,7 @@ interface Props {
   weekStartISO: string;
   todayISO: string;
   search: string;
+  agentFilter: string[];
   onRemove: () => void;
 }
 
@@ -67,7 +68,7 @@ interface Props {
 // overlays, export. Instantiated once per tab the Schedule Planner shell has
 // selected, each running its own independent data load/scheduler-invocation
 // cycle keyed by its own `tab` prop; multiple instances never share state.
-export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, onRemove }: Props) {
+export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, onRemove }: Props) {
   // Bundles brands/activePlatforms/entries/removedPlatformBrandSet together,
   // tagged with the tab they were loaded for. This lets the schedule-loading
   // effect below confirm the data it's about to hand to the scheduler
@@ -396,11 +397,17 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Schedule Planner entirely (same rule would also drop a multi-platform
   // brand if every one of its platforms happened to be flagged).
   const filteredBrands = useMemo(() => {
-    const brands = (tabCtx?.brands ?? []).filter((b) => brandPlatforms(b).length > 0);
+    let brands = (tabCtx?.brands ?? []).filter((b) => brandPlatforms(b).length > 0);
+    if (agentFilter.length > 0) {
+      brands = brands.filter((b) => {
+        const agent = agentIndex.get(normalizeBrandKey(b));
+        return !!agent && agentFilter.includes(agent);
+      });
+    }
     const q = search.trim().toLowerCase();
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
-  }, [tabCtx, search]);
+  }, [tabCtx, search, agentFilter, agentIndex]);
 
   function computeCellData(brand: string): {
     rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;

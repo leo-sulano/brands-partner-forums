@@ -4,9 +4,9 @@ import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow, type Weekday } from '../lib/scheduleBrands';
-import { buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
+import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildAgentIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -25,6 +25,7 @@ const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
 const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
 const PREVIEW_FROM_STORAGE_KEY = 'schedulePlanner.previewFrom';
 const PREVIEW_TO_STORAGE_KEY = 'schedulePlanner.previewTo';
+const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
 
 // Maps an ISO date to the matching brand_schedule weekday column — null for
 // Saturday/Sunday, since the schedule model (here and everywhere else in the
@@ -81,6 +82,11 @@ interface TabPreview {
   restrictionMap: Map<string, Platform>;
   removedSet: Set<string>;
   scheduleRows: BrandScheduleRow[];
+  // Brand -> Agent, same most-recently-updated-entry resolution rule as
+  // TabScheduleSection's own agentIndex (buildAgentIndex's doc comment) —
+  // built here too so the landing-grid cards can filter by Agent without a
+  // second fetch of the same raw entries.
+  agentIndex: Map<string, string>;
 }
 
 const EMPTY_PREVIEW: TabPreview = {
@@ -90,6 +96,7 @@ const EMPTY_PREVIEW: TabPreview = {
   restrictionMap: new Map(),
   removedSet: new Set(),
   scheduleRows: [],
+  agentIndex: new Map(),
 };
 
 export default function SchedulePlanner() {
@@ -115,6 +122,47 @@ export default function SchedulePlanner() {
       return '';
     }
   });
+  // Filters both the landing-grid preview cards and, once a tab is open, the
+  // full calendar's brand list (TabScheduleSection) down to brands whose
+  // most-recently-updated entry's Agent matches — same resolution rule as
+  // buildAgentIndex everywhere else on this page, so a brand can't show up
+  // under one Agent here and a different one elsewhere.
+  const [agentFilter, setAgentFilter] = useState<string[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(AGENT_STORAGE_KEY);
+      return raw ? raw.split(',').filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  });
+  // The full set of Agent values across every tab, for the filter dropdown's
+  // option list — fetched once on mount, independent of showGrid/selectedTabs,
+  // so the dropdown isn't empty when the page restores directly into a
+  // tab-selected view (sessionStorage) and the landing-grid fetch below never
+  // runs. fetchRawEntriesByTab caches per tab for 60s, so this rarely causes
+  // a real duplicate network call when the grid effect below also fires.
+  const [agentOptions, setAgentOptions] = useState<string[]>([]);
+  useEffect(() => {
+    let canceled = false;
+    (async () => {
+      const agents = new Set<string>();
+      await Promise.all(
+        OPERATIONAL_TABS.map(async (t) => {
+          try {
+            const rawEntries = await fetchRawEntriesByTab(t);
+            for (const agent of buildAgentIndex(rawEntries).values()) agents.add(agent);
+          } catch {
+            // best-effort — a tab that fails to load just contributes no agents
+          }
+        }),
+      );
+      if (!canceled) setAgentOptions([...agents].sort());
+    })();
+    return () => {
+      canceled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [weekStart, setWeekStart] = useState<Date>(() => {
     try {
       const saved = sessionStorage.getItem(WEEK_STORAGE_KEY);
@@ -203,6 +251,14 @@ export default function SchedulePlanner() {
 
   useEffect(() => {
     try {
+      sessionStorage.setItem(AGENT_STORAGE_KEY, agentFilter.join(','));
+    } catch {
+      // same as above
+    }
+  }, [agentFilter]);
+
+  useEffect(() => {
+    try {
       sessionStorage.setItem(WEEK_STORAGE_KEY, weekStartISO);
     } catch {
       // same as above
@@ -260,10 +316,11 @@ export default function SchedulePlanner() {
             const activePlatforms = getTabPlatforms(t);
             const hiddenSet = buildHiddenBrandSet(hiddenRows);
             const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
+            const agentIndex = buildAgentIndex(rawEntries);
             const brands = deriveTabBrands(t, rawEntries, headers).filter(
               (b) => resolveBrandPlatforms(t, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
             );
-            const preview: TabPreview = { brands, activePlatforms, hiddenSet, restrictionMap, removedSet, scheduleRows: scheduleRowsPerWeek.flat() };
+            const preview: TabPreview = { brands, activePlatforms, hiddenSet, restrictionMap, removedSet, scheduleRows: scheduleRowsPerWeek.flat(), agentIndex };
             return [t, preview] as const;
           } catch {
             return [t, EMPTY_PREVIEW] as const;
@@ -285,7 +342,6 @@ export default function SchedulePlanner() {
 
       <div className="flex flex-nowrap items-center gap-4 overflow-x-auto rounded-lg border border-solid border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="flex shrink-0 items-center gap-2">
-          <label className="text-xs font-medium text-slate-500 whitespace-nowrap">Brand Tabs</label>
           <div className="w-48">
             <MultiSelectDropdown
               values={selectedTabs}
@@ -293,14 +349,21 @@ export default function SchedulePlanner() {
               options={TAB_OPTS}
               noun="tab"
               searchable
-              placeholder="— select tabs —"
+              placeholder="Brand Tabs"
             />
           </div>
+          <MultiSelectDropdown
+            values={agentFilter}
+            onChange={setAgentFilter}
+            options={agentOptions.map((a) => ({ value: a, label: a }))}
+            noun="agent"
+            searchable
+            placeholder="Agent"
+          />
         </div>
 
         {showGrid && (
           <div className="flex shrink-0 items-center gap-2">
-            <label className="text-xs font-medium text-slate-500 whitespace-nowrap">Date range</label>
             <DatePicker
               value={previewFrom}
               onChange={setPreviewFrom}
@@ -379,7 +442,12 @@ export default function SchedulePlanner() {
           {OPERATIONAL_TABS.map((t) => {
             const Icon = TAB_ICONS[t] ?? DEFAULT_TAB_ICON;
             const preview = previewByTab[t] ?? EMPTY_PREVIEW;
-            const previewBrands = preview.brands;
+            const previewBrands = agentFilter.length === 0
+              ? preview.brands
+              : preview.brands.filter((b) => {
+                  const agent = preview.agentIndex.get(normalizeBrandKey(b));
+                  return !!agent && agentFilter.includes(agent);
+                });
             return (
               <div
                 key={t}
@@ -487,6 +555,7 @@ export default function SchedulePlanner() {
               weekStartISO={weekStartISO}
               todayISO={todayISO}
               search={search}
+              agentFilter={agentFilter}
               onRemove={() => removeTab(t)}
             />
           ))}
