@@ -4164,3 +4164,59 @@ rather than fixed here, since it's unrelated to the tooltip work this task scope
 doc — Tier 2 (light path) per this project's own tiering rule: purely presentational, no
 `queries.ts`/`scoreSummary.ts`/filtering logic touched, implemented directly with one self-review
 pass plus the live-verification above.
+
+---
+
+## Task 234: One-Time Full Backfill Completed — Wedged AG Job Diagnosed, Rotation Bypass Cleared
+**Date:** August 18, 2026
+
+Live-ops follow-through on the "One-Time Full Backfill" procedure documented in
+`docs/ec2-scraper-runbook.md` (bypasses the 3-week brand-group rotation via
+`SCHEDULE_GROUP_BYPASS=1` to check every brand in one pass) — no code changed in this repo, all
+work was direct SSH diagnosis and remediation on the `scraper-leo` EC2 box.
+
+**Incident:** the backfill (29 sequential jobs: TP Published+Removed across every TP-covered tab,
+then AG/CG/WO Published-only across their tabs), started 2026-08-17 09:19 UTC via
+`~/backfill_review_text.py`, wedged on job 21/29 (AskGamblers, Rooster Partners, Live) for over
+14 hours with no completion. Diagnosed live rather than just killed blind: `ps`/CPU inspection
+showed one Chrome renderer pegged near 100% CPU for the entire wedge with 100+ zombie processes
+accumulating, and a direct Chrome DevTools Protocol probe (separate from the stuck Selenium
+session) confirmed the browser process itself was unresponsive — both the page-level WebSocket
+handshake and the normally-instant browser-level `/json/version` HTTP endpoint timed out
+completely. Root cause traced to `check_ag_status.py`'s `fetch_ag_review()` review-paging loop
+(`while True:` clicking "Load more"-style buttons) — a deliberate, uncapped design (a prior fixed
+page-10 cap was removed earlier because it caused false "not found -> Refused" results on long
+review lists), which trades that bug for the risk of a genuinely unbounded loop if a page's
+"Load more" button never actually resolves.
+
+**Resolution:** killed the wedged `chrome`/`chromedriver` processes and restarted
+`status_server.py`. This surfaced an undocumented piece of infrastructure: `status_server.py` is
+actually managed by a systemd unit (`status-server.service`, "Trustpilot Status Check Server")
+that auto-restarts it within seconds — not mentioned anywhere in `docs/ec2-scraper-runbook.md`,
+worth folding in as a follow-up documentation task. That fast auto-respawn meant the restart
+landed inside the same second `backfill_review_text.py` was retrying, so jobs 22-29 (8 more jobs)
+all failed instantly with `Connection refused` before the driver logged "BACKFILL COMPLETE" and
+exited -- only job 21 aborted the way intended (`RemoteDisconnected`), the other 8 never actually
+ran. Re-ran all 9 (21-29 equivalents) via a new one-off script pushed directly to the box
+(`~/backfill_remaining.py`, not added to this repo -- an ephemeral ops artifact), same job list,
+with one deliberate change from the original: a 3-hour per-job timeout instead of none, so a
+future wedge fails clearly instead of hanging silently for hours. All 9 completed cleanly
+(09:05-10:22 UTC, zero errors) -- including the exact same AG/Rooster Partners/Live check that
+had wedged, done in 26.7 minutes this time, confirming a one-off browser/page state rather than a
+systemic problem with that account.
+
+**Final coverage (all 29 jobs, combining the original run + the 9 re-run jobs):**
+- TrustPilot -- Published and Removed, across all 10 TP-covered tabs (TP Brand Injection, TP
+  Affiliate, Trybet, SuprPlay Limited, HazEmirates UAE, GRG - Gulf Recovery Group, Rooster
+  Partners, Revolution Casino, SilverPlay, Hanan): 4,310 entries checked, 2,536 updated with new
+  `TP Review Text`/status data.
+- AskGamblers -- Published/Live only, across Rooster Partners, Revolution Casino, SilverPlay,
+  Hanan: 305 checked, 251 updated.
+- CasinoGuru -- Published/Live only, same 4 tabs: 37 checked, 23 updated.
+- Wizard of Odds -- Published/Live only: 57 checked, 39 updated.
+- Combined: 4,709 entries checked, 2,849 updated across all four platforms.
+
+**Cleanup:** `SCHEDULE_GROUP_BYPASS` removed from `~/.env` and `status-server.service` restarted
+via `systemctl` to pick it up (confirmed via `/health`). The 3-week brand-group rotation
+(`schedule_groups.py`) is back in effect for both the daily/weekly cron paths and manual
+dashboard "Check Status" clicks -- nothing left bypassing it.
