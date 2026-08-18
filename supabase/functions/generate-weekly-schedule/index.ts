@@ -12,11 +12,12 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache, fetchCustomTabs } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
+import { registerDynamicTabs } from '../../../src/lib/dynamicTabRegistry.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
 import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 
@@ -117,6 +118,8 @@ export async function generateAllTabs(
 
 Deno.serve(async (_req: Request): Promise<Response> => {
   const client = createClient(SUPABASE_URL, SERVICE_ROLE);
+  const customTabs = await fetchCustomTabs(client);
+  registerDynamicTabs(customTabs);
   // Computed in the runtime's local zone (UTC on Supabase Edge). This is
   // only correct because the migration's cron
   // (supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql)
