@@ -84,7 +84,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
                 tile.onTileClick('live');
               }
             }}
-            className={`flex flex-col items-center rounded-xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm transition-colors ${tile.muted ? 'bg-slate-50/60' : ''} ${tile.onTileClick ? 'cursor-pointer hover:border-blue-300 hover:shadow-md' : ''}`}
+            className={`flex flex-col items-center rounded-xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm transition-all duration-200 ${tile.muted ? 'bg-slate-50/60' : ''} ${tile.onTileClick ? 'cursor-pointer hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:shadow-lg' : ''}`}
           >
             <div
               className="mb-2 flex size-8 shrink-0 items-center justify-center rounded-full"
