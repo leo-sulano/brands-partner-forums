@@ -1,19 +1,23 @@
 import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { buildTabContext, generateAllTabs } from './index.ts';
+import { buildTabContext, generateAllTabs, generateForTab } from './index.ts';
 
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
 // method returns the same builder, and awaiting it anywhere in the chain
 // resolves via .then() to the fixed row list. .maybeSingle() is a real
 // terminal async method (queries.ts always calls it last, never chains
 // after it), so it returns a resolved promise directly instead of the
-// builder.
+// builder. .upsert() (added for the generateForTab test below, the first
+// test in this file to exercise ensureWeekGenerated's real write path via
+// bulkUpsertBrandSchedule) is chainable the same way -- awaiting it resolves
+// via the same .then() to { data: rows, error: null }.
 function tableBuilder(rows: unknown[]) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
     order: () => builder,
     range: () => builder,
+    upsert: () => builder,
     maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
     then(onfulfilled: (v: { data: unknown[]; error: null }) => unknown) {
       return Promise.resolve({ data: rows, error: null }).then(onfulfilled);
@@ -98,6 +102,41 @@ Deno.test('buildTabContext populates platformRestrictionMap from schedule_platfo
   });
   const ctx = await buildTabContext('Revolution Casino', client);
   assertEquals(ctx.platformRestrictionMap?.get('Revolution Casino::god of casino'), 'ag');
+});
+
+Deno.test('generateForTab pushes every combo ensureWeekGenerated just activated to PMS', async () => {
+  const client = fakeClient({
+    entries: [entry('BITP', '1', { Brands: 'WinMega' })],
+    tab_schemas: [{ headers: ['Brands'] }],
+    removed_platform_brands: [],
+    brand_platform_override: [],
+    schedule_hidden_brands: [],
+    schedule_platform_restrictions: [],
+  });
+  const pushedBatches: unknown[][] = [];
+  const fakePush = async (items: unknown[]) => {
+    pushedBatches.push(items);
+    return { created: [], skipped: [], failed: [] };
+  };
+  // generateForTab reads PMS_API_TOKEN live via Deno.env.get() at call time
+  // (not a module-level const captured at import), so this test can set it
+  // itself instead of depending on whatever the ambient shell happened to
+  // have exported before Deno started. Restore whatever was there before
+  // (or delete it) afterward so this doesn't leak into any test that runs
+  // later in the same process.
+  const priorToken = Deno.env.get('PMS_API_TOKEN');
+  Deno.env.set('PMS_API_TOKEN', 'test-token');
+  try {
+    await generateForTab('BITP', '2026-08-17', client, fakePush);
+  } finally {
+    if (priorToken === undefined) Deno.env.delete('PMS_API_TOKEN');
+    else Deno.env.set('PMS_API_TOKEN', priorToken);
+  }
+  assertEquals(pushedBatches.length, 1);
+  const batch = pushedBatches[0] as { brand: string; platform: string }[];
+  assertEquals(batch.length > 0, true);
+  assertEquals(batch[0].brand, 'WinMega');
+  assertEquals(batch[0].platform, 'tp');
 });
 
 Deno.test('generateAllTabs continues past a single tab failure', async () => {

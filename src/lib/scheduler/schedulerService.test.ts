@@ -4,6 +4,7 @@ import type { PinnedCombo } from './schedulerEngine';
 import { platformRemovedKey } from '../removedPlatformBrands';
 import { overrideKey } from '../scheduleOverrides';
 import { scheduleBrandKey } from '../scheduleBrandConfig';
+import { WEEKDAYS, toISODate, type Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -20,6 +21,12 @@ vi.mock('../queries', async (importOriginal) => {
 
 function entry(data: Record<string, string | null>): Entry {
   return { id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null };
+}
+
+function dateForWeekday(weekStart: string, day: Weekday): string {
+  const index = WEEKDAYS.indexOf(day);
+  const [y, m, d] = weekStart.split('-').map(Number);
+  return toISODate(new Date(y, m - 1, d + index));
 }
 
 beforeEach(() => {
@@ -643,5 +650,24 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'ag' });
+  });
+
+  it('reports the brand/platform/date it just activated', async () => {
+    const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['cg'], entries: [] };
+    const activated = await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    const activeDay = WEEKDAYS.find((d) => rows[0][d] === 'active')!;
+    expect(activated).toEqual([
+      { brand: 'WinMega', brandKey: 'winmega', platform: 'cg', date: dateForWeekday('2026-08-03', activeDay) },
+    ]);
+  });
+
+  it('returns an empty array when the week already has platform-tagged rows (no-op case)', async () => {
+    queries.fetchBrandSchedule.mockResolvedValue([
+      { tab: 'BITP', brand_key: 'winmega', week_start: '2026-08-03', platform: 'tp', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ]);
+    const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['tp'], entries: [] };
+    const activated = await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+    expect(activated).toEqual([]);
   });
 });

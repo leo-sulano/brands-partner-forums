@@ -61,7 +61,55 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-14 (newest):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,
+- *2026-08-18 (newest):* Added Schedule Planner → PMS task sync — activating a platform chip on
+  the Schedule Planner grid (a manual click, or the lazy per-tab auto-generation both
+  `TabScheduleSection.tsx` and `generate-weekly-schedule` already trigger) now also creates a
+  matching task in the external PMS tool's "Forum Team" project To Do column, and a due-date edit
+  made directly in PMS is pulled back onto the calendar the next time that tab is opened. New
+  `schedule_pms_links` table (migration `20260817120000_add_schedule_pms_links.sql`) is the single
+  source of truth for both directions: idempotency on push (a `(tab, brand_key, platform, date)`
+  unique constraint stops a re-run of `ensureWeekGenerated` or a repeated manual click from
+  creating a duplicate PMS task) and ownership on pull (which linked task a given scheduled day
+  belongs to, so a due-date move or task deletion in PMS can be detected and reflected back).
+  Real push/pull logic lives in one shared `src/lib/scheduler/pmsSync.ts`
+  (`pushScheduleToPms`/`pullScheduleFromPms`), imported unmodified by both the new
+  `sync-schedule-pms` Edge Function (thin HTTP wrapper, holds `PMS_API_TOKEN`) and
+  `generate-weekly-schedule`'s own `generateForTab` — the same "real shared logic, not a ported
+  copy" pattern this project already used for `ai-assistant`'s schedule tools and the original
+  `generate-weekly-schedule` cron. A new `pushScheduleActivations`/`pullScheduleDrift` frontend
+  wrapper (`src/lib/schedulePmsSync.ts`) calls the Edge Function from the browser; `pullScheduleDrift`
+  runs once per tab visit (independent of which week is displayed, since a drifted due date can
+  land in a different week entirely) and reconciles by calling the existing `setBrandScheduleDay`
+  path per drifted/deleted item — no new write path, so RLS/audit-log behavior on `brand_schedule`
+  itself is unchanged. Push calls are deliberately best-effort/fire-and-forget from the caller's
+  perspective (a real `brand_schedule` write always happens first; a PMS sync failure surfaces as
+  its own toast and never rolls back or is mistaken for the schedule write itself failing).
+  `generate-weekly-schedule`'s push call reads `PMS_API_TOKEN` live via `Deno.env.get(...)` inside
+  `generateForTab` rather than as a module-level const — caught in a same-day follow-up fix, since
+  a module-level read is captured once at import time, before any `Deno.test()` body runs, making
+  the token gate untestable from within a test that sets the env var itself. Built via
+  10 subagent-driven-development tasks with per-task review (Tasks 1-10 of this plan); this
+  entry (Task 11) is the plan's final documentation-only task. Full suite (458 tests) and build
+  both pass. **Not yet deployed** — see the "Pending manual deploy" bullet below; until
+  `sync-schedule-pms` is deployed and `VITE_SYNC_SCHEDULE_PMS_URL` is set, `pushScheduleActivations`/
+  `pullScheduleDrift` both silently no-op (the frontend wrapper returns early when the URL is
+  unset), so activating a chip today behaves exactly as it did before this feature shipped — no
+  broken/erroring UI in the interim. Spec:
+  `docs/superpowers/specs/2026-08-17-schedule-planner-pms-sync-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-17-schedule-planner-pms-sync.md`. Task 231.
+
+  One accepted v1 design limitation, found during Task 9's review: the pull-reconciliation effect
+  in `TabScheduleSection.tsx` applies its `schedule_pms_links` correction (via the Edge Function,
+  server-side, unconditionally) *before* the frontend's own `setBrandScheduleDay` call applies the
+  matching `brand_schedule` change for that same drifted/deleted item. If that `setBrandScheduleDay`
+  call fails partway through a multi-item batch (e.g. a transient network blip), the calendar can be
+  left silently out of sync with PMS — and it won't self-heal on a later tab revisit, because the
+  next pull will see the link already matches the live PMS state and report no further drift. This
+  is inherited from the plan's own design, not an implementer bug, and was ruled acceptable for v1
+  given how rare the triggering conditions are (requires a human editing a PMS due date AND a
+  concurrent client-side write failure); any affected cell is self-correctable by a normal manual
+  click, which re-links normally. See the corresponding Known Issues bullet below.
+- *2026-08-14 (prior):* Deployed `ai-assistant` (`supabase functions deploy ai-assistant`,
   version 34, confirmed `ACTIVE` via `supabase functions list`) — Task 223's `get_review_texts`
   tool is now live, closing the "not yet deployed" caveat the entry directly below carried. Same
   cross-directory `src/lib` import bundling confirmed again in the deploy log, consistent with the
@@ -730,6 +778,87 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **Pending manual deploy (2026-08-18):** the Schedule Planner → PMS task sync feature's migration
+  (`supabase/migrations/20260817120000_add_schedule_pms_links.sql`) has not been applied to the
+  live database, and the `sync-schedule-pms` Edge Function has not been deployed. The Vercel env
+  var it depends on (`VITE_SYNC_SCHEDULE_PMS_URL`) has also not been set (`.env`'s own copy is
+  left blank for the same reason). **Setup required before it works:**
+  1. `supabase db push` (applies the new `schedule_pms_links` table).
+  2. `supabase secrets set PMS_API_TOKEN=...` then `supabase functions deploy sync-schedule-pms`.
+  3. Add `VITE_SYNC_SCHEDULE_PMS_URL=<deployed function URL>` to Vercel env, then redeploy.
+  Until all 3 are done, `pushScheduleActivations`/`pullScheduleDrift` (`src/lib/schedulePmsSync.ts`)
+  both silently no-op — activating a Schedule Planner chip behaves exactly as it did before this
+  feature shipped, no broken UI in the interim. Separately, `generate-weekly-schedule`'s own
+  already-pending deploy (see the bullet below) now additionally needs `PMS_API_TOKEN` set before
+  its push-wiring (added the same day as this feature) does anything — it silently no-ops without
+  it per its own `if (activated.length > 0 && pmsApiToken)` guard, so this isn't a new blocker on
+  top of that function's existing pending-deploy status, just one more secret to set at the same
+  time. Live-verify once deployed: open Schedule Planner, click a blank cell active on a real tab,
+  confirm a real task appears in the "Forum Team" PMS project's To Do column with the right
+  title/label/due date; then edit that task's due date directly in PMS, reload the tab, and confirm
+  the calendar cell moves to match. Task 231. Two more verification sub-steps a final review flagged
+  as gaps in that same walkthrough, not yet covered by the spot-check above:
+  4. **Date round-trip via the PMS's own UI, not just its API.** The create/patch API path's date
+     handling was spot-verified once during planning (see the spec doc's live-verification note),
+     but that only proves the API side. Pull reconciliation depends on a different path: a human
+     manually editing a task's due date through the PMS's own UI. Create one real task via the
+     deployed function, edit its due date by hand in the PMS UI (not via `curl`/the API), then
+     independently confirm via `GET /api/projects/{projectId}/tasks` that the returned `dueDate`
+     slices back to the exact `YYYY-MM-DD` shown in the UI. If the PMS UI stores or displays dates
+     in local time while the API returns UTC, a human-edited date could silently shift by a day when
+     pulled back — misfiring drift-detection on every linked task, not just occasionally.
+  5. **List-endpoint completeness.** `pullScheduleFromPms` treats any linked `pms_task_id` NOT
+     present in `GET /api/projects/{projectId}/tasks`'s response as "deleted in PMS" and un-schedules
+     the corresponding calendar day. Before trusting this in production, confirm that endpoint
+     returns every task in the project unpaginated and regardless of column, including Done/archived
+     — by creating a linked task, moving it to Done in the PMS UI (a normal workflow action, not a
+     delete), and confirming it still appears in the list response. If the endpoint is paginated or
+     excludes Done/archived tasks, a normal "mark as done" action would incorrectly read as
+     "deleted" and silently clear a real, still-valid schedule day.
+- **Schedule Planner ↔ PMS pull reconciliation doesn't check hidden/restricted/removed-brand
+  exclusion sets before applying drift (Task 231 final review, not yet fixed).**
+  `pullScheduleFromPms` (`src/lib/scheduler/pmsSync.ts`) reconciles every `schedule_pms_links` row
+  for a tab against live PMS state without checking `schedule_hidden_brands`,
+  `schedule_platform_restrictions`, or `removed_platform_brands`. If a brand+platform combo becomes
+  hidden, restricted, or flagged-removed *after* its PMS task was linked, and someone later edits
+  that task's due date in PMS, the pull effect will still write an 'active' day into
+  `brand_schedule` for that now-excluded combo. Practical impact is narrower than it sounds:
+  `TabScheduleSection.tsx`'s `brandPlatforms()`/`resolveBrandPlatforms()` already filter excluded
+  combos out of what actually renders regardless of what's sitting in `brand_schedule` (the same
+  exclusion-filtering logic used everywhere else on this page), so the real effect is an orphaned,
+  invisible `brand_schedule` row — not an incorrect number or chip shown anywhere. Still worth
+  fixing properly per this project's standing cross-dashboard-consistency rule, by threading the
+  same hidden/restricted/removed sets `TabScheduleSection.tsx` already computes into the pull call
+  (or having `pullScheduleFromPms` resolve them itself, the way `generateForTab`'s `buildTabContext`
+  already does) and skipping any drift/deletion whose combo is currently excluded.
+- **Schedule Planner ↔ PMS pull-reconciliation can silently desync on a partial write failure
+  (accepted v1 limitation, Task 231).** `TabScheduleSection.tsx`'s pull effect applies its
+  `schedule_pms_links` correction via the Edge Function (server-side, unconditional) *before* the
+  frontend's own `setBrandScheduleDay` call applies the matching `brand_schedule` change for that
+  same drifted/deleted item. If `setBrandScheduleDay` fails partway through a multi-item batch
+  (e.g. a transient network blip), the calendar can be left silently out of sync with PMS, and it
+  won't self-heal on a later tab revisit — the next pull will see the link already matches the
+  live PMS state and report no further drift. Inherited from the plan's own design, not an
+  implementer bug; ruled acceptable for v1 given how rare the triggering conditions are (requires
+  a human editing a PMS due date AND a concurrent client-side write failure). Any affected cell is
+  self-correctable by a normal manual click, which re-links normally. Fix direction, if ever
+  needed: apply the `brand_schedule` write(s) first and only advance/clear the `schedule_pms_links`
+  row(s) after they succeed, so a partial failure leaves the link stale (re-detected as drift next
+  pull) rather than silently consumed.
+- **`countryFlags.ts`/`reviewRemovalAssessment.ts` extensionless imports break local `deno
+  check`/`deno test` for any Edge Function that transitively imports either file (found during
+  Task 231, pre-existing, not introduced by that plan).** `src/lib/countryFlags.ts` (imports `from
+  './tab-configs'`) and `src/lib/reviewRemovalAssessment.ts` (imports `from './supabase'`, `from
+  './entryFieldSections'`, `from './scoreSummary'`) all use relative imports missing the `.ts`
+  extension Deno's strict module resolution requires. This breaks `deno check`/`deno test` for
+  both the new `sync-schedule-pms` function and the pre-existing, already-undeployed
+  `generate-weekly-schedule` function (confirmed identically broken for both — same 4 `TS2307`
+  errors either way) — but does **not** affect the real Supabase deploy bundler, which already
+  resolves extensionless imports fine, proven by `ai-assistant`'s successful 2026-08-14 deploy
+  using the same cross-import pattern (see that entry above). Narrow, real scope: local
+  `deno check`/`deno test` only, currently making it impossible to get a clean Deno test run for
+  either function. Not a deploy blocker for `sync-schedule-pms` or `generate-weekly-schedule`.
+  Fix direction: add explicit `.ts` extensions to the 4 imports across those 2 files.
 - **AG/CG/WO automated brand-page-removal detection not built — spike research found no evidence to build on.**
   Following the TP automated-removal-detection feature (2026-08-13,
   `docs/superpowers/specs/2026-08-13-automated-brand-page-removal-detection-design.md`), a same-day
@@ -836,7 +965,11 @@ Brands Partner Forum/
   answered: whether a bundler can actually resolve this function's `../../../src/lib/*` imports at
   real deploy time was unconfirmed (this function itself has never been deployed) — `ai-assistant`
   deployed successfully with the same import pattern on 2026-08-14 (see the Ask AI item above), so
-  that specific worry no longer applies when this deploy is finally run.
+  that specific worry no longer applies when this deploy is finally run. As of 2026-08-18
+  (Task 231), this deploy also needs `PMS_API_TOKEN` set before `generateForTab`'s push-to-PMS
+  wiring does anything — it silently no-ops without it, so this isn't a new blocker on top of the
+  above, just one more secret to set at the same time; see the Schedule Planner → PMS task sync
+  pending-deploy bullet above for the rest of that feature's own checklist.
 - **Pending manual deploy (2026-08-14):** the AI Review Removal Assessment feature's migration
   (`supabase/migrations/20260814150000_add_ai_review_analysis.sql`) has not been applied to the live
   database, and the `review-removal-assessment` Edge Function has not been deployed. The Vercel env

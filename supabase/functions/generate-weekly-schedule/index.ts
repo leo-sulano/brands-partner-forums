@@ -10,7 +10,7 @@
 //     --config supabase/functions/generate-weekly-schedule/deno.json \
 //     supabase/functions/generate-weekly-schedule/index.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { OPERATIONAL_TABS } from '../../../src/lib/tabs.ts';
+import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
 import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
@@ -18,6 +18,7 @@ import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
+import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -58,11 +59,26 @@ export async function buildTabContext(tab: string, client: SupabaseClient): Prom
   };
 }
 
-export async function generateForTab(tab: string, weekStart: string, client: SupabaseClient): Promise<void> {
+export async function generateForTab(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient,
+  pushFn: (items: PmsSyncItem[], client: SupabaseClient, credentials: { apiToken: string }) => Promise<unknown> = pushScheduleToPms,
+): Promise<void> {
   const ctx = await buildTabContext(tab, client);
   if (ctx.brands.length === 0 || ctx.activePlatforms.length === 0) return;
   const resumed = await recalculatePauses(tab, weekStart, ctx, client);
-  await ensureWeekGenerated(tab, weekStart, ctx, resumed, client);
+  const activated = await ensureWeekGenerated(tab, weekStart, ctx, resumed, client);
+  // Read live (not a module-level const) so this stays testable: a
+  // module-level `Deno.env.get(...)` is captured once at import time, before
+  // any Deno.test() body runs, so a test could never make this gate see a
+  // token it sets itself. This function runs once per HTTP invocation, so
+  // there's no meaningful perf cost to reading it live each time.
+  const pmsApiToken = Deno.env.get('PMS_API_TOKEN') || '';
+  if (activated.length > 0 && pmsApiToken) {
+    const items: PmsSyncItem[] = activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date }));
+    await pushFn(items, client, { apiToken: pmsApiToken });
+  }
 }
 
 // Runs generateForTab for every tab independently — one tab's failure (a
