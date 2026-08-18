@@ -15,6 +15,7 @@ import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import AccountUsageBadges from '../components/AccountUsageBadges';
 import MultiSelectDropdown, { type MultiSelectOption } from '../components/MultiSelectDropdown';
 import ExportMenuButton from '../components/ExportMenuButton';
+import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
@@ -195,10 +196,10 @@ function CellValue({ header, value, rowData, tab }: { header: string; value: str
       >
         <ExternalLink className="size-3" /> View
         {score != null && platform && (
-          <span title={`Score: ${score}/${maxScore}`} className="relative inline-flex size-4 shrink-0 items-center justify-center">
+          <Tooltip content={`Score: ${score}/${maxScore}`} className="relative size-4 shrink-0 items-center justify-center">
             <Star className={`absolute inset-0 size-4 fill-current ${PLATFORM_STAR_COLOR[platform]}`} />
             <span className="relative text-[8px] font-bold leading-none text-white">{score}</span>
-          </span>
+          </Tooltip>
         )}
       </a>
     );
@@ -2433,17 +2434,18 @@ export default function BrandGroup() {
                                     className="w-full rounded border border-blue-400 px-2 py-1 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
                                   />
                                   {editingCell.value && (
-                                    <a
-                                      href={editingCell.value.startsWith('http') ? editingCell.value : `https://${editingCell.value}`}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="shrink-0 text-blue-500 hover:text-blue-700"
-                                      title="Open link"
-                                      onClick={(e) => e.stopPropagation()}
-                                      onMouseDown={(e) => e.preventDefault()}
-                                    >
-                                      <ExternalLink className="size-4" />
-                                    </a>
+                                    <Tooltip content="Open link">
+                                      <a
+                                        href={editingCell.value.startsWith('http') ? editingCell.value : `https://${editingCell.value}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="shrink-0 text-blue-500 hover:text-blue-700"
+                                        onClick={(e) => e.stopPropagation()}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                      >
+                                        <ExternalLink className="size-4" />
+                                      </a>
+                                    </Tooltip>
                                   )}
                                 </div>
                               ) : (

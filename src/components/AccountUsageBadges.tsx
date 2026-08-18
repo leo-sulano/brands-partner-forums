@@ -1,5 +1,6 @@
 import { PLATFORM_STATUS_KEYS, PLATFORM_LABEL, type Platform } from '../lib/scoreSummary';
 import { PLATFORM_FAVICON } from '../lib/removedPlatformBrands';
+import Tooltip from './Tooltip';
 
 const PLATFORM_ORDER = Object.keys(PLATFORM_STATUS_KEYS) as Platform[];
 
@@ -17,10 +18,10 @@ export default function AccountUsageBadges({ counts }: { counts: Record<Platform
   return (
     <span className="ml-1.5 inline-flex items-center gap-1 align-middle">
       {active.map((p) => (
-        <span
+        <Tooltip
           key={p}
-          title={`Used ${counts[p]} time${counts[p] === 1 ? '' : 's'} on ${PLATFORM_LABEL[p]} across the dashboard`}
-          className="relative inline-flex size-3 shrink-0 items-center justify-center"
+          content={`Used ${counts[p]} time${counts[p] === 1 ? '' : 's'} on ${PLATFORM_LABEL[p]} across the dashboard`}
+          className="relative size-3 shrink-0 items-center justify-center"
         >
           <img
             src={PLATFORM_FAVICON[p]}
@@ -31,7 +32,7 @@ export default function AccountUsageBadges({ counts }: { counts: Record<Platform
           <span className="absolute -right-1.5 -top-1.5 flex size-3 items-center justify-center rounded-full bg-slate-700 text-[8px] font-bold leading-none text-white ring-1 ring-white">
             {counts[p]}
           </span>
-        </span>
+        </Tooltip>
       ))}
     </span>
   );

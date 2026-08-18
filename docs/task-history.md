@@ -4069,3 +4069,98 @@ new class of exposure.
 
 Spec: `docs/superpowers/specs/2026-08-18-self-service-brand-tab-creation-design.md`. Plan:
 `docs/superpowers/plans/2026-08-18-self-service-brand-tab-creation.md`.
+
+---
+
+## Task 233: Schedule Planner Agent/Country Tooltip + Uniform Tooltip Design Dashboard-Wide
+**Date:** August 18, 2026
+
+Reported live via a Schedule Planner screenshot (BITP tab, Amonbet Casino's Monday TP chip
+showing a plain "Trustpilot: Removed" native browser tooltip): the user asked to add Agent and
+Account Country to that tooltip's detail, and to make tooltip design uniform across the whole
+dashboard, matching Overview's existing "Brands Performance" tooltip style (`SuccessRateBadge`'s
+dark navy, portal-rendered `Tooltip.tsx`).
+
+**New brand-level Country index.** `buildCountryIndex` (`src/lib/scheduler/scheduleUtils.ts`)
+mirrors `buildAgentIndex`'s exact most-recently-updated-entry resolution rule (a brand's entries
+don't always agree — same reasoning as Agent, see the 2026-08-18 Agent-sync entry above) but reads
+`Country` instead of `Agent`. Deliberately kept as its own function rather than folding into
+`buildAgentIndex`, so that function's existing PMS-push contract/callers stay untouched.
+`TabScheduleSection.tsx` builds `countryIndex` alongside the existing `agentIndex` (same `useMemo`,
+same already-loaded `tabCtx.entries`, no extra fetch) and passes both down to `ScheduleCell` per
+brand; the chip's tooltip content gained "Agent: X" / "Country: Y" lines below its existing
+status/assignee text (omitted when blank).
+
+**Tooltip design unification.** All 34 native `title=` attribute tooltips found across the
+dashboard (14 files: `Sidebar.tsx`, `Overview.tsx` — a false positive, its one `title=` match was
+`BreakdownDonutCard`'s unrelated heading-text prop, not a tooltip — `ScoreSummaryPanel.tsx`,
+`BreakdownStatGrid.tsx`, `BreakdownRankedList.tsx`, `BreakdownDonutCard.tsx`, `BrandGroup.tsx`,
+`SchedulePlanner.tsx`, `TabScheduleSection.tsx`, `calendarRenderer.tsx`, `Topbar.tsx`,
+`ReviewRemovalAssessment.tsx`, `PlatformRemovedBadge.tsx`, `AccountUsageBadges.tsx`) were converted
+to the one shared `Tooltip.tsx` component instead. Three additions to `Tooltip.tsx` made it a safe
+drop-in everywhere:
+1. A `block` prop — the trigger wrapper's default `inline-flex` (fine for small icon/badge
+   triggers) would shrink a full-width trigger (a table `<td>`/`<th>`, a whole card, a full nav row)
+   down to content width and break its layout; `block` renders `block w-full` instead.
+2. `content` may now be falsy (`undefined`/empty) with no crash — the wrapper simply doesn't render
+   a `tabIndex` or the portal. Needed for Sidebar's collapsed-only labels
+   (`title={isCollapsed ? label : undefined}` ported as `content={isCollapsed ? label : undefined}`).
+3. A new exported `useTooltip(content)` hook, built on the same internal `useTooltipEngine` the
+   default `Tooltip` component itself now uses, returning `{ triggerProps, portal }` a caller can
+   spread onto its *own* existing element instead of getting a fresh wrapping `<span>`. Two real
+   sites needed this rather than a simple wrap:
+   - `ScheduleCell`'s platform chip (`calendarRenderer.tsx`) has its own `onClick` and its own
+     `:focus-visible`-driven CSS (the past-day "ghosting" reveal from an earlier task) — wrapping it
+     in `Tooltip`'s own trigger span would move keyboard focus onto a *different* element than the
+     one the ghosting CSS targets, silently breaking that accessibility path. Extracted into its own
+     `PlatformChip` component (a hook can't be called a variable number of times inside
+     `ScheduleCell`'s `platforms.map()` callback — needs its own component so the hook call is fixed
+     per instance).
+   - The percentage-width bar segments in `BreakdownStatGrid`/`BreakdownRankedList` (`style={{width:
+     `${pct}%`}}`) resolve that percentage against their immediate parent's box. Inserting a wrapping
+     `<span>` between the bar and its flex-row parent would make the percentage resolve against the
+     wrapper's own (undefined, content-shrunk) width instead — a real, silent layout break, not just
+     a cosmetic one. Extracted into a `BarSegmentButton` component in each file (two near-identical
+     small components rather than a new shared abstraction, matching this codebase's existing
+     preference for a little duplication over a premature shared module for two call sites).
+
+   Every other site was a direct swap — same text/conditional logic, just `<Tooltip content={...}>`
+   instead of a `title` attribute. A handful of these direct swaps wrap an element that's *itself*
+   already interactive (a `<Link>`/`<a>`/`<button>` sitting inside a `.map()` — e.g. Score Summary's
+   brand-name link, TabScheduleSection's brand-name link, Brand Tabs' inline-edit "Open link" icon)
+   — using `useTooltip` there too would have meant extracting yet more one-off components for a
+   purely cosmetic task. Accepted as a deliberate, minor trade-off instead: these gain one extra,
+   visually-invisible focusable wrapper `<span>` in front of the real interactive element (an extra
+   tab stop for keyboard users), not a functional regression for anyone else.
+
+   `BreakdownDonutCard.tsx` separately imports Recharts' own `Tooltip` (for the pie chart's hover
+   card) — aliased to `RechartsTooltip` on import so it doesn't collide with the new shared
+   `AppTooltip` import.
+
+Full suite (1185 tests, 86 files) and `npm run build` (`tsc -b && vite build`) both pass.
+Live-verified via Playwright against the real running dev server (no mocked data): Schedule
+Planner's BITP tab, Amonbet Casino's Monday TP chip (the exact chip from the reporter's own
+screenshot) now shows "Trustpilot: Removed / Agent: ANN / Country: Germany" in the unified navy
+tooltip design; Overview's Brands Performance `SuccessRateBadge` tooltip ("Success Rate — 247 live
+÷ (247 live + 292 removed)") renders identically, confirming true design parity with the surface the
+request named; Score Summary's "SR (%)" header tooltip and a brand-name cell tooltip both render
+correctly with no table-layout shift; the collapsed Sidebar icon rail renders with no layout
+regression from the `Tooltip` wrapping (its hover-to-expand overlay behavior, pre-existing, is
+unrelated to this change and still works). The percentage-width bar-segment fix was additionally
+verified by measuring real `getBoundingClientRect()` widths post-render, not just visually: Proxy
+Breakdown's Catproxies tile measured 85.71%/14.29% (98.39px/16.39px of a 114.80px parent) and
+Country Breakdown's Norway row measured 71.87%/28.13% (237.17px/92.81px of a 330px parent) — both
+matching their displayed labels exactly, confirming `useTooltip`-on-the-same-element avoids the
+layout break a naive wrap would have caused.
+
+**Found, not fixed (out of scope for this task):** `Login.tsx` has a real, pre-existing
+Rules-of-Hooks violation — `if (session) return <Navigate to="/" replace />;` on line 12 runs before
+7 more `useState`/`useEffect` calls below it, so a session that resolves *after* mount (any
+previously-logged-in browser profile) makes the component take the early return on a re-render and
+skip those hooks, a genuine "Rendered fewer hooks than expected" React error. Reproduced live via
+Playwright by navigating to `/login` in an already-authenticated profile; harmless in practice (the
+page still redirects correctly a moment later) but a real bug. Recorded in CLAUDE.md's Known Issues
+rather than fixed here, since it's unrelated to the tooltip work this task scoped. No spec/plan
+doc — Tier 2 (light path) per this project's own tiering rule: purely presentational, no
+`queries.ts`/`scoreSummary.ts`/filtering logic touched, implemented directly with one self-review
+pass plus the live-verification above.

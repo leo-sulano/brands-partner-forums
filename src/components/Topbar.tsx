@@ -6,6 +6,7 @@ import { slugToTab, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { avatarColor, initials } from '../lib/avatar';
 import { useState, useRef, useEffect } from 'react';
+import Tooltip from './Tooltip';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
@@ -124,9 +125,9 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 aria-label="Online users"
               >
                 {onlineUsers.map((u) => (
-                  <div key={u.userId} title={u.email}>
+                  <Tooltip key={u.userId} content={u.email}>
                     <PresenceAvatar email={u.email} avatarUrl={u.avatarUrl} className="size-7 rounded-full ring-2 ring-white" />
-                  </div>
+                  </Tooltip>
                 ))}
               </button>
 

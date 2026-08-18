@@ -14,6 +14,7 @@ import AddBrandTabModal from './AddBrandTabModal';
 import { registerDynamicTabs, unregisterDynamicTab, isDynamicTab } from '../lib/dynamicTabRegistry';
 import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import { deleteCustomTab } from '../lib/queries';
+import Tooltip from './Tooltip';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
@@ -122,29 +123,30 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     <>
       <nav className={`flex-1 py-3 space-y-1 overflow-y-auto ${isCollapsed ? '' : 'pl-3'}`}>
         {topLinks.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            onClick={() => onClose?.()}
-            title={isCollapsed ? label : undefined}
-            className={({ isActive }) => linkClass(isActive, isCollapsed)}
-          >
-            <Icon className="size-4 shrink-0" />
-            {!isCollapsed && label}
-          </NavLink>
+          <Tooltip key={to} content={isCollapsed ? label : undefined} block>
+            <NavLink
+              to={to}
+              end={end}
+              onClick={() => onClose?.()}
+              className={({ isActive }) => linkClass(isActive, isCollapsed)}
+            >
+              <Icon className="size-4 shrink-0" />
+              {!isCollapsed && label}
+            </NavLink>
+          </Tooltip>
         ))}
 
         {isCollapsed
           ? (
-            <button
-              type="button"
-              onClick={() => setBrandsOpen((o) => !o)}
-              title={brandsOpen ? 'Collapse Brands' : 'Expand Brands'}
-              className="w-full flex items-center justify-center py-1 text-slate-600 hover:text-slate-400 transition-colors"
-            >
-              {brandsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-            </button>
+            <Tooltip content={brandsOpen ? 'Collapse Brands' : 'Expand Brands'} block>
+              <button
+                type="button"
+                onClick={() => setBrandsOpen((o) => !o)}
+                className="w-full flex items-center justify-center py-1 text-slate-600 hover:text-slate-400 transition-colors"
+              >
+                {brandsOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+              </button>
+            </Tooltip>
           )
           : <SectionHeader label="Brand Tabs" open={brandsOpen} onToggle={() => setBrandsOpen((o) => !o)} />
         }
@@ -156,37 +158,39 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               const platforms = getTabPlatforms(tab);
               return (
                 <div key={tab} className="group relative">
-                  <NavLink
-                    to={`/brands/${tabToSlug(tab)}`}
-                    onClick={() => onClose?.()}
-                    title={isCollapsed ? tabDisplayName(tab) : undefined}
-                    className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
-                  >
-                    <Icon className="size-4 shrink-0" />
-                    {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
-                    {!isCollapsed && (
-                      <span className="flex items-center gap-0.5 shrink-0">
-                        {platforms.map((p) => (
-                          <img
-                            key={p}
-                            src={PLATFORM_FAVICON[p]}
-                            alt={p}
-                            className="size-3.5 rounded-sm"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                        ))}
-                      </span>
-                    )}
-                  </NavLink>
-                  {!isCollapsed && isApproved && isDynamicTab(tab) && (
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTabActionError(null); setDeletingTab(tab); }}
-                      title={`Delete ${tabDisplayName(tab)}`}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                  <Tooltip content={isCollapsed ? tabDisplayName(tab) : undefined} block>
+                    <NavLink
+                      to={`/brands/${tabToSlug(tab)}`}
+                      onClick={() => onClose?.()}
+                      className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
                     >
-                      <Trash2 className="size-3.5" />
-                    </button>
+                      <Icon className="size-4 shrink-0" />
+                      {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
+                      {!isCollapsed && (
+                        <span className="flex items-center gap-0.5 shrink-0">
+                          {platforms.map((p) => (
+                            <img
+                              key={p}
+                              src={PLATFORM_FAVICON[p]}
+                              alt={p}
+                              className="size-3.5 rounded-sm"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          ))}
+                        </span>
+                      )}
+                    </NavLink>
+                  </Tooltip>
+                  {!isCollapsed && isApproved && isDynamicTab(tab) && (
+                    <Tooltip content={`Delete ${tabDisplayName(tab)}`} className="absolute right-2 top-1/2 -translate-y-1/2">
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTabActionError(null); setDeletingTab(tab); }}
+                        className="hidden group-hover:flex p-1 rounded text-slate-400 hover:text-rose-400 hover:bg-rose-500/10"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+                    </Tooltip>
                   )}
                 </div>
               );
@@ -209,57 +213,62 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           <>
             {isCollapsed
               ? (
-                <button
-                  type="button"
-                  onClick={() => setAdminOpen((o) => !o)}
-                  title={adminOpen ? 'Collapse Admin' : 'Expand Admin'}
-                  className="w-full flex items-center justify-center py-1 text-slate-600 hover:text-slate-400 transition-colors"
-                >
-                  {adminOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
-                </button>
+                <Tooltip content={adminOpen ? 'Collapse Admin' : 'Expand Admin'} block>
+                  <button
+                    type="button"
+                    onClick={() => setAdminOpen((o) => !o)}
+                    className="w-full flex items-center justify-center py-1 text-slate-600 hover:text-slate-400 transition-colors"
+                  >
+                    {adminOpen ? <ChevronUp className="size-3" /> : <ChevronDown className="size-3" />}
+                  </button>
+                </Tooltip>
               )
               : <SectionHeader label="Admin" open={adminOpen} onToggle={() => setAdminOpen((o) => !o)} />
             }
 
             {adminOpen && (
               <>
-                <NavLink
-                  to="/score-summary"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Score Summary' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <BarChart3 className="size-4" />
-                  {!isCollapsed && 'Score Summary'}
-                </NavLink>
-                <NavLink
-                  to="/schedule-planner"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Schedule Planner' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <CalendarDays className="size-4" />
-                  {!isCollapsed && 'Schedule Planner'}
-                </NavLink>
-                <NavLink
-                  to="/log"
-                  onClick={() => onClose?.()}
-                  title={isCollapsed ? 'Log' : undefined}
-                  className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                >
-                  <ScrollText className="size-4" />
-                  {!isCollapsed && 'Log'}
-                </NavLink>
-                {isAdmin && (
+                <Tooltip content={isCollapsed ? 'Score Summary' : undefined} block>
                   <NavLink
-                    to="/admin/users"
+                    to="/score-summary"
                     onClick={() => onClose?.()}
-                    title={isCollapsed ? 'Users' : undefined}
                     className={({ isActive }) => linkClass(isActive, isCollapsed)}
                   >
-                    <Users className="size-4" />
-                    {!isCollapsed && 'Users'}
+                    <BarChart3 className="size-4" />
+                    {!isCollapsed && 'Score Summary'}
                   </NavLink>
+                </Tooltip>
+                <Tooltip content={isCollapsed ? 'Schedule Planner' : undefined} block>
+                  <NavLink
+                    to="/schedule-planner"
+                    onClick={() => onClose?.()}
+                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                  >
+                    <CalendarDays className="size-4" />
+                    {!isCollapsed && 'Schedule Planner'}
+                  </NavLink>
+                </Tooltip>
+                <Tooltip content={isCollapsed ? 'Log' : undefined} block>
+                  <NavLink
+                    to="/log"
+                    onClick={() => onClose?.()}
+                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                  >
+                    <ScrollText className="size-4" />
+                    {!isCollapsed && 'Log'}
+                  </NavLink>
+                </Tooltip>
+                {isAdmin && (
+                  <Tooltip content={isCollapsed ? 'Users' : undefined} block>
+                    <NavLink
+                      to="/admin/users"
+                      onClick={() => onClose?.()}
+                      className={({ isActive }) => linkClass(isActive, isCollapsed)}
+                    >
+                      <Users className="size-4" />
+                      {!isCollapsed && 'Users'}
+                    </NavLink>
+                  </Tooltip>
                 )}
               </>
             )}

@@ -4,6 +4,21 @@ import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms } from './scheduleUtils';
 import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
+import Tooltip, { useTooltip } from '../../components/Tooltip';
+
+// Shared tooltip body for a brand's Agent/Country, appended below whatever
+// status/assignee lines a cell already shows — same brand-level values
+// (most-recently-updated entry) buildAgentIndex/buildCountryIndex resolve,
+// so this can't disagree with the Agent PMS task assignment already uses.
+function AgentCountryLines({ agent, country }: { agent?: string; country?: string }) {
+  if (!agent && !country) return null;
+  return (
+    <>
+      {agent && <div>Agent: {agent}</div>}
+      {country && <div>Country: {country}</div>}
+    </>
+  );
+}
 
 function statusLabel(status: DayStatus): string {
   if (status === 'active') return 'Scheduled';
@@ -26,6 +41,13 @@ interface ScheduleCellProps {
   // platform+day with no linked PMS task, or when the sync feature isn't
   // configured.
   assigneeByPlatform?: Partial<Record<Platform, string>>;
+  // Brand-level Agent/Country (most-recently-updated entry, same resolution
+  // rule buildAgentIndex/buildCountryIndex use for PMS assignment) shown as
+  // extra tooltip lines below the existing status/assignee text. Not
+  // per-platform or per-day — a brand has one Agent/Country regardless of
+  // which platform's chip is hovered.
+  agent?: string;
+  country?: string;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
   // day would otherwise look identical to a confirmed post even though the
@@ -35,6 +57,76 @@ interface ScheduleCellProps {
   isApproved: boolean;
   onToggle: (platform: Platform) => void;
   onAddPlatform: () => void;
+}
+
+interface PlatformChipProps {
+  platform: Platform;
+  stateClassName: string;
+  isRemoved: boolean;
+  isConfirmed: boolean;
+  clickable: boolean;
+  planUnverified: boolean;
+  label: string;
+  assignee?: string;
+  agent?: string;
+  country?: string;
+  onClick: () => void;
+}
+
+// Own component (not inlined in ScheduleCell's platforms.map) because it
+// calls useTooltip — a hook can't be called a variable number of times
+// inside a callback passed to .map(), but a fixed one-per-instance call
+// inside its own component is fine. Uses useTooltip rather than the default
+// Tooltip component because this <span> is already interactive (its own
+// onClick, and its own focus-visible-driven ghosting for planUnverified
+// chips) — wrapping it in Tooltip's own extra trigger <span> would add a
+// redundant tab stop and move keyboard focus off the element whose CSS
+// actually reacts to :focus-visible.
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clickable, planUnverified, label, assignee, agent, country, onClick }: PlatformChipProps) {
+  const badge = PLATFORM_BADGE[platform];
+  const content = (
+    <div>
+      <div>{PLATFORM_FULL_LABEL[platform]}: {label}</div>
+      {assignee && <div>Assigned to {assignee}</div>}
+      <AgentCountryLines agent={agent} country={country} />
+    </div>
+  );
+  const { triggerProps, portal } = useTooltip(content);
+  return (
+    <>
+      <span
+        {...triggerProps}
+        tabIndex={clickable && planUnverified ? 0 : undefined}
+        onClick={clickable ? onClick : undefined}
+        className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''} ${planUnverified ? 'opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
+      >
+        <img
+          src={PLATFORM_FAVICON[platform]}
+          alt={badge.label}
+          className="size-3 rounded-sm"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        {badge.label}
+        {isRemoved && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold leading-none text-white"
+          >
+            ✕
+          </span>
+        )}
+        {isConfirmed && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
+          >
+            ✓
+          </span>
+        )}
+      </span>
+      {portal}
+    </>
+  );
 }
 
 // Each day cell renders a chip for a platform actually scheduled that day
@@ -74,7 +166,7 @@ interface ScheduleCellProps {
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, assigneeByPlatform, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, assigneeByPlatform, agent, country, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -101,39 +193,21 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             ? 'Paused (scheduler)'
             : statusLabel(status);
         const assignee = assigneeByPlatform?.[platform];
-        const title = assignee ? `${PLATFORM_FULL_LABEL[platform]}: ${label} — Assigned to ${assignee}` : `${PLATFORM_FULL_LABEL[platform]}: ${label}`;
         return (
-          <span
+          <PlatformChip
             key={platform}
-            tabIndex={clickable && planUnverified ? 0 : undefined}
-            onClick={clickable ? () => onToggle(platform) : undefined}
-            title={title}
-            className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''} ${planUnverified ? 'opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
-          >
-            <img
-              src={PLATFORM_FAVICON[platform]}
-              alt={badge.label}
-              className="size-3 rounded-sm"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-            />
-            {badge.label}
-            {isRemoved && (
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold leading-none text-white"
-              >
-                ✕
-              </span>
-            )}
-            {isConfirmed && (
-              <span
-                aria-hidden="true"
-                className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
-              >
-                ✓
-              </span>
-            )}
-          </span>
+            platform={platform}
+            stateClassName={stateClassName}
+            isRemoved={isRemoved}
+            isConfirmed={isConfirmed}
+            clickable={clickable}
+            planUnverified={planUnverified}
+            label={label}
+            assignee={assignee}
+            agent={agent}
+            country={country}
+            onClick={() => onToggle(platform)}
+          />
         );
       })}
       {isApproved && addable.length > 0 && (
@@ -190,19 +264,26 @@ function titleFor(props: PausedPlatformIndicatorProps): string {
 
 export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
   const { platform } = props;
+  const [line1, line2] = titleFor(props).split('\n');
   return (
-    <span
-      className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500"
-      title={titleFor(props)}
+    <Tooltip
+      content={(
+        <div>
+          <div>{line1}</div>
+          {line2 && <div>{line2}</div>}
+        </div>
+      )}
     >
-      ⛔
-      <img
-        src={PLATFORM_FAVICON[platform]}
-        alt={PLATFORM_BADGE[platform].label}
-        className="size-3 rounded-sm"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-      />
-      Paused
-    </span>
+      <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
+        ⛔
+        <img
+          src={PLATFORM_FAVICON[platform]}
+          alt={PLATFORM_BADGE[platform].label}
+          className="size-3 rounded-sm"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+        Paused
+      </span>
+    </Tooltip>
   );
 }

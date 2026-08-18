@@ -22,11 +22,12 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
+import Tooltip from './Tooltip';
 import { buildScheduleExportRows, SCHEDULE_EXPORT_HEADERS } from '../lib/scheduler/scheduleExport';
 import type { Entry } from '../types/entry';
 
@@ -37,10 +38,7 @@ import type { Entry } from '../types/entry';
 // consistent with its own day cells.
 function RemovedPlatformIcon({ platform }: { platform: Platform }) {
   return (
-    <span
-      className="relative ml-1.5 inline-flex shrink-0 items-center"
-      title={`${PLATFORM_FULL_LABEL[platform]} page removed`}
-    >
+    <Tooltip content={`${PLATFORM_FULL_LABEL[platform]} page removed`} className="relative ml-1.5 shrink-0 items-center">
       <img
         src={PLATFORM_FAVICON[platform]}
         alt={PLATFORM_BADGE[platform].label}
@@ -52,7 +50,7 @@ function RemovedPlatformIcon({ platform }: { platform: Platform }) {
         className="absolute -right-1.5 -top-1.5 size-3 text-rose-600 drop-shadow-[0_0_1.5px_white]"
         strokeWidth={4}
       />
-    </span>
+    </Tooltip>
   );
 }
 
@@ -312,6 +310,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [tabCtx],
   );
 
+  // Brand -> Country, for the same tooltip that shows Agent below (see
+  // buildCountryIndex's own doc comment for the resolution rule — identical
+  // to agentIndex above, just a different column). Purely a display-only
+  // addition to ScheduleCell/PausedPlatformIndicator's tooltip.
+  const countryIndex = useMemo(
+    () => buildCountryIndex(tabCtx?.entries ?? []),
+    [tabCtx],
+  );
+
   // Read-only PMS assignee display, keyed by `brandKey::platform::date`.
   // Populated from the pull effect below and never written back to any
   // dashboard data — purely a tooltip overlay on top of ScheduleCell's
@@ -564,6 +571,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             ) : (
               filteredBrands.map((brand) => {
                 const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
+                const brandKey = normalizeBrandKey(brand);
+                const agent = agentIndex.get(brandKey);
+                const country = countryIndex.get(brandKey);
                 const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
                 const manualPausedPlatforms = brandPlatforms(brand)
                   .filter((p) => !pausesByPlatform[p])
@@ -578,13 +588,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 return (
                   <tr key={brand} className="border-t border-slate-100 group hover:bg-blue-50">
                     <td className="sticky left-0 z-10 bg-white group-hover:bg-blue-50 px-3 py-2 font-medium text-slate-800 whitespace-nowrap">
-                      <Link
-                        to={`/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`}
-                        className="hover:text-blue-600 hover:underline"
-                        title={`View ${brand} in Brand Tabs`}
-                      >
-                        {brand}
-                      </Link>
+                      <Tooltip content={`View ${brand} in Brand Tabs`}>
+                        <Link
+                          to={`/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`}
+                          className="hover:text-blue-600 hover:underline"
+                        >
+                          {brand}
+                        </Link>
+                      </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
                     </td>
                     {WEEKDAYS.map((day, dayIndex) => {
@@ -603,6 +614,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             removedByPlatform={removedByPlatform}
                             confirmedByPlatform={confirmedByPlatform}
                             assigneeByPlatform={assigneeByPlatform}
+                            agent={agent}
+                            country={country}
                             isPastDay={dayISO < todayISO}
                             // Legacy weeks (imported platform-null brand_schedule rows,
                             // pre-dating per-platform tracking) are read-only: forcing

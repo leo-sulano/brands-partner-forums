@@ -18,6 +18,7 @@ import {
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
+import Tooltip from '../components/Tooltip';
 
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
@@ -454,8 +455,10 @@ export default function SchedulePlanner() {
                             );
                             return (
                               <tr key={brand} className="border-t border-slate-100">
-                                <td className="max-w-[90px] truncate px-1.5 py-1 text-[12px] text-slate-600" title={brand}>
-                                  {brand}
+                                <td className="max-w-[90px] truncate px-1.5 py-1 text-[12px] text-slate-600">
+                                  <Tooltip content={brand} block className="truncate">
+                                    {brand}
+                                  </Tooltip>
                                 </td>
                                 {previewColumns.map((col) => {
                                   const activeToday = brandPlatforms.filter(

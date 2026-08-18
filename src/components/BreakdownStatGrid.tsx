@@ -1,5 +1,36 @@
 import type { ReactNode, KeyboardEvent, MouseEvent } from 'react';
 import { successRateTier } from './SuccessRateBadge';
+import Tooltip, { useTooltip } from './Tooltip';
+
+// A percentage-width bar segment <button> can't be wrapped in Tooltip's own
+// trigger <span> — inserting any element between it and its flex-row parent
+// would break the width:N% calculation (it resolves against the immediate
+// parent's box, and Tooltip's wrapper has no fixed size of its own). Uses
+// useTooltip directly on the button itself instead, so the DOM position and
+// CSS are unchanged. Its own component (not inlined in the tiles.map below)
+// because useTooltip is a hook, called once per rendered segment.
+function BarSegmentButton({ widthPct, colorClass, content, disabled, onClick }: {
+  widthPct: number;
+  colorClass: string;
+  content: string;
+  disabled: boolean;
+  onClick: (e: MouseEvent) => void;
+}) {
+  const { triggerProps, portal } = useTooltip(content);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        {...triggerProps}
+        className={`h-full ${colorClass} transition-[filter] hover:brightness-110 disabled:cursor-default`}
+        style={{ width: `${widthPct}%` }}
+      />
+      {portal}
+    </>
+  );
+}
 
 export interface StatTile {
   key: string;
@@ -61,9 +92,9 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
             >
               {tile.icon}
             </div>
-            <span className="mb-1 w-full truncate text-xs font-medium text-slate-600" title={tile.label}>
+            <Tooltip block content={tile.label} className="mb-1 truncate text-xs font-medium text-slate-600">
               {tile.label}
-            </span>
+            </Tooltip>
             <span
               className="text-xl font-bold font-mono tabular-nums leading-tight"
               style={{ color: heroColor }}
@@ -74,21 +105,19 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
             <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
               {total > 0 && (
                 <>
-                  <button
-                    type="button"
+                  <BarSegmentButton
+                    widthPct={livePct}
+                    colorClass="bg-emerald-500"
+                    content={`Published: ${tile.live.toLocaleString()}`}
                     disabled={!tile.onTileClick}
                     onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('live'); }}
-                    title={`Published: ${tile.live.toLocaleString()}`}
-                    className="h-full bg-emerald-500 transition-[filter] hover:brightness-110 disabled:cursor-default"
-                    style={{ width: `${livePct}%` }}
                   />
-                  <button
-                    type="button"
+                  <BarSegmentButton
+                    widthPct={removedPct}
+                    colorClass="bg-rose-400"
+                    content={`Removed: ${tile.removed.toLocaleString()}`}
                     disabled={!tile.onTileClick}
                     onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('removed'); }}
-                    title={`Removed: ${tile.removed.toLocaleString()}`}
-                    className="h-full bg-rose-400 transition-[filter] hover:brightness-110 disabled:cursor-default"
-                    style={{ width: `${removedPct}%` }}
                   />
                 </>
               )}

@@ -12,6 +12,7 @@ import {
 } from '../lib/reviewRemovalAssessment';
 import { saveReviewAnalysis } from '../lib/queries';
 import type { Platform } from '../lib/scoreSummary';
+import Tooltip from './Tooltip';
 
 interface Props {
   entry: Entry;
@@ -60,9 +61,9 @@ function SignalBadge({ signal }: { signal: AssessmentSignal }) {
       ? 'border-amber-200 bg-amber-50 text-amber-700'
       : 'border-slate-200 bg-slate-50 text-slate-600';
   return (
-    <span title={signal.evidence} className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${color}`}>
+    <Tooltip content={signal.evidence} className={`items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${color}`}>
       {icon} {signal.name}
-    </span>
+    </Tooltip>
   );
 }
 

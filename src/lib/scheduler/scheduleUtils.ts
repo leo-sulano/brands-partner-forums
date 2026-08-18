@@ -149,6 +149,28 @@ export function buildAgentIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+// Same "most-recently-updated entry" resolution rule as buildAgentIndex above
+// (kept as its own function, not folded in, so buildAgentIndex's existing
+// PMS-push contract/callers are untouched), reading Country instead of Agent.
+// Used for the Schedule Planner tooltip's read-only Country line.
+export function buildCountryIndex(entries: Entry[]): Map<string, string> {
+  const latestByBrand = new Map<string, { country: string; updatedAt: string }>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const country = (entry.data.Country ?? '').trim();
+    if (!country) continue;
+    const brandKey = normalizeBrandKey(brand);
+    const existing = latestByBrand.get(brandKey);
+    if (!existing || entry.updated_at > existing.updatedAt) {
+      latestByBrand.set(brandKey, { country, updatedAt: entry.updated_at });
+    }
+  }
+  const result = new Map<string, string>();
+  for (const [brandKey, { country }] of latestByBrand) result.set(brandKey, country);
+  return result;
+}
+
 // Brand Tab Completion Rule: scheduled = total non-null day-slots across this
 // week's platform-tagged rows (legacy platform:null rows are excluded —
 // they carry no meaningful per-platform scheduled/completed concept);

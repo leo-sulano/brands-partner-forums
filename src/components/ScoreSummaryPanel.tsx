@@ -21,6 +21,7 @@ import MultiSelectDropdown, { type MultiSelectOption } from './MultiSelectDropdo
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
 import ExportMenuButton from './ExportMenuButton';
 import { buildScoreSummaryExportHeaders, buildScoreSummaryExportRows } from '../lib/scoreSummaryExport';
+import Tooltip from './Tooltip';
 
 interface Props {
   entries: Entry[];
@@ -483,14 +484,15 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
               </th>
             )}
             <th />
-            <th
-              colSpan={4}
-              className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100"
-              title={dateRangeActive
-                ? 'Live ÷ (Live + Removed) within the selected date range — a row with no recorded date always counts, matching the brand tab’s own KPI cards'
-                : 'Live ÷ (Live + Removed) across all history on this platform — no date range selected'}
-            >
-              Success Rate <span className="font-normal text-slate-300">{dateRangeActive ? '(in range)' : '(all-time)'}</span>
+            <th colSpan={4} className="bg-[#17225a] px-2 py-1 text-center font-medium text-slate-100">
+              <Tooltip
+                block
+                content={dateRangeActive
+                  ? 'Live ÷ (Live + Removed) within the selected date range — a row with no recorded date always counts, matching the brand tab’s own KPI cards'
+                  : 'Live ÷ (Live + Removed) across all history on this platform — no date range selected'}
+              >
+                Success Rate <span className="font-normal text-slate-300">{dateRangeActive ? '(in range)' : '(all-time)'}</span>
+              </Tooltip>
             </th>
           </tr>
           <tr>
@@ -507,48 +509,38 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
                     </span>
                   </th>
                 ))}
-                <th
-                  scope="col"
-                  className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}
-                  title="Published reviews with no Score added value yet"
-                >
-                  Unrtd
+                <th scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>
+                  <Tooltip block content="Published reviews with no Score added value yet">Unrtd</Tooltip>
                 </th>
                 <th scope="col" className={`${STAR_RATING_BG} px-2 py-2 text-left font-medium`}>Total</th>
               </>
             )}
             <th />
-            <th
-              scope="col"
-              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
-              title="Reviews still live on the platform"
-            >
-              Published
+            <th scope="col" className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}>
+              <Tooltip block content="Reviews still live on the platform">Published</Tooltip>
             </th>
-            <th
-              scope="col"
-              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
-              title="Reviews removed from the platform"
-            >
-              Removed
+            <th scope="col" className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}>
+              <Tooltip block content="Reviews removed from the platform">Removed</Tooltip>
             </th>
-            <th
-              scope="col"
-              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
-              title={dateRangeActive
-                ? 'Published + Removed — reviews with a decided outcome, within the selected date range'
-                : 'Published + Removed — reviews with a decided outcome, across all history on this platform'}
-            >
-              Total
+            <th scope="col" className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}>
+              <Tooltip
+                block
+                content={dateRangeActive
+                  ? 'Published + Removed — reviews with a decided outcome, within the selected date range'
+                  : 'Published + Removed — reviews with a decided outcome, across all history on this platform'}
+              >
+                Total
+              </Tooltip>
             </th>
-            <th
-              scope="col"
-              className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}
-              title={dateRangeActive
-                ? 'Success Rate: Live ÷ (Live + Removed) within the selected date range'
-                : 'Success Rate: Live ÷ (Live + Removed) across all history on this platform'}
-            >
-              SR (%)
+            <th scope="col" className={`${SUCCESS_RATE_BG} px-2 py-2 text-left font-medium`}>
+              <Tooltip
+                block
+                content={dateRangeActive
+                  ? 'Success Rate: Live ÷ (Live + Removed) within the selected date range'
+                  : 'Success Rate: Live ÷ (Live + Removed) across all history on this platform'}
+              >
+                SR (%)
+              </Tooltip>
             </th>
           </tr>
         </thead>
@@ -558,15 +550,19 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
             return (
             <tr key={`${r.tab}|${r.brand}`} className="hover:bg-blue-50/60">
               {showGroup && (
-                <td className="px-3 py-1.5 text-xs text-slate-500 truncate" title={tabDisplayName(r.tab)}>{tabDisplayName(r.tab)}</td>
+                <td className="px-3 py-1.5 text-xs text-slate-500 truncate">
+                  <Tooltip block content={tabDisplayName(r.tab)} className="truncate">{tabDisplayName(r.tab)}</Tooltip>
+                </td>
               )}
-              <td className="px-3 py-1.5 truncate" title={r.brand}>
-                <Link
-                  to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}`}
-                  className="font-medium text-slate-800 hover:text-blue-600 hover:underline"
-                >
-                  {r.brand}
-                </Link>
+              <td className="px-3 py-1.5 truncate">
+                <Tooltip block content={r.brand} className="truncate">
+                  <Link
+                    to={`/brands/${tabToSlug(r.tab)}?platform=${platformParam}&brand=${encodeURIComponent(r.brand)}`}
+                    className="font-medium text-slate-800 hover:text-blue-600 hover:underline"
+                  >
+                    {r.brand}
+                  </Link>
+                </Tooltip>
               </td>
               <td />
               {showStars && (
@@ -653,12 +649,8 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
                   ((sr?.live ?? 0) + (sr?.removed ?? 0)).toLocaleString()
                 )}
               </td>
-              <td
-                className="px-2 py-1.5 text-left font-mono tabular-nums"
-                style={{ color: successRateColor(sr?.rate ?? null) }}
-                title={successRateTitle(sr)}
-              >
-                {formatSuccessRate(sr)}
+              <td className="px-2 py-1.5 text-left font-mono tabular-nums" style={{ color: successRateColor(sr?.rate ?? null) }}>
+                <Tooltip block content={successRateTitle(sr)}>{formatSuccessRate(sr)}</Tooltip>
               </td>
             </tr>
             );
@@ -764,12 +756,8 @@ function SummaryTable({ rows, maxScore, showStars, platform, successRates, tabSu
                 (groupSuccess.live + groupSuccess.removed).toLocaleString()
               )}
             </td>
-            <td
-              className="px-2 py-2 text-left font-mono tabular-nums"
-              style={{ color: successRateColor(groupSuccess.rate) }}
-              title={successRateTitle(groupSuccess)}
-            >
-              {formatSuccessRate(groupSuccess)}
+            <td className="px-2 py-2 text-left font-mono tabular-nums" style={{ color: successRateColor(groupSuccess.rate) }}>
+              <Tooltip block content={successRateTitle(groupSuccess)}>{formatSuccessRate(groupSuccess)}</Tooltip>
             </td>
           </tr>
         </tfoot>

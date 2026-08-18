@@ -61,7 +61,42 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* Added self-service Brand Tab creation — any approved user can now create
+- *2026-08-18 (newest):* Schedule Planner's day-cell tooltip now shows the brand's Agent and
+  Country below its existing status/assignee text, and every native browser `title=` tooltip
+  across the dashboard (34 sites in 14 files — Sidebar, Overview's Brands Performance badges,
+  Score Summary, the 3 Breakdown components, Brand Tabs, Topbar, Review Removal Assessment,
+  Platform Removed Badge, Account Usage Badges, Schedule Planner itself) was converted to the one
+  shared `Tooltip.tsx` component (dark navy box, portal-rendered), per an explicit request to make
+  tooltip design uniform dashboard-wide, matching Overview's existing Brands Performance style. New
+  `buildCountryIndex` (`src/lib/scheduler/scheduleUtils.ts`) mirrors `buildAgentIndex`'s exact
+  most-recently-updated-entry resolution rule, just reading `Country` instead of `Agent` — kept as
+  its own function so `buildAgentIndex`'s existing PMS-push contract is untouched. `Tooltip.tsx`
+  gained a `block` prop (fills a table cell/card/nav-row's full width instead of shrink-wrapping to
+  content — the default, still correct for small icon/badge triggers), content silently no-ops when
+  falsy (needed for Sidebar's collapsed-only labels), and a new `useTooltip` hook for the few
+  triggers that couldn't be wrapped in a second `<span>`: `ScheduleCell`'s platform chip (would have
+  moved keyboard focus off the element whose `:focus-visible` CSS drives its past-day ghosting) and
+  the percentage-width bar segments in `BreakdownStatGrid`/`BreakdownRankedList` (a wrapper span
+  would have broken `width:N%`, which resolves against the immediate parent). Both extracted into
+  their own small components (`PlatformChip`, `BarSegmentButton` ×2) since a hook can't be called a
+  variable number of times inside a `.map()` callback. Full suite (1185 tests) and build both pass;
+  live-verified via Playwright — Schedule Planner's Amonbet Casino TP-removed chip now reads
+  "Trustpilot: Removed / Agent: ANN / Country: Germany" in the unified navy design (matching the
+  reporter's own screenshot), Score Summary's header/brand-cell tooltips and Overview's
+  SuccessRateBadge tooltip render correctly, the collapsed Sidebar icon rail is unaffected, and the
+  Proxy/Country Breakdown bar segments' `width:%` was measured via `getBoundingClientRect()` post-fix
+  to confirm the layout-preservation approach actually works (85.7%/14.3% and 71.9%/28.1% both
+  matched their labels exactly). A handful of already-interactive triggers (a `<Link>`/`<a>`/`<button>`
+  inside a `.map()`, e.g. Score Summary's brand-name link, Brand Tabs' inline "Open link" icon,
+  TabScheduleSection's brand-name link) were wrapped in the plain (non-hook) `Tooltip` component
+  rather than refactored into their own components — a deliberate, accepted minor accessibility
+  trade-off (an extra, visually-invisible focusable wrapper before the real link, i.e. one extra tab
+  stop) rather than a broader per-site refactor for a purely cosmetic task. Found, but explicitly
+  out of scope and left unfixed: `Login.tsx` has a real, pre-existing Rules-of-Hooks violation (an
+  early `if (session) return <Navigate ... />` on line 12, before 7 more `useState`/`useEffect`
+  calls) — reproducible today (triggers "Rendered fewer hooks than expected" the moment a persisted
+  session resolves after mount) and unrelated to this task; see Known Issues.
+- *2026-08-18 (prior):* Added self-service Brand Tab creation — any approved user can now create
   (and delete) a Brand Tab from the sidebar's "+ Add Brand Tab" affordance, with no code change and
   no deploy, finally reversing the decision Task 219 explicitly declined ("new tabs are rare
   structural events") at the user's own request. New `custom_tabs` table (migration
@@ -883,6 +918,18 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **`Login.tsx` has a real Rules-of-Hooks violation (found 2026-08-18, Task 233's live-verification
+  pass, not fixed — unrelated to that task's actual scope).** Line 12,
+  `if (session) return <Navigate to="/" replace />;`, runs before 7 more `useState`/`useEffect`
+  calls below it. On first mount with no session this is harmless (the condition is false, every
+  hook still runs), but the moment `AuthContext` resolves an already-persisted session (any browser
+  profile that was previously logged in) and `Login` re-renders, it now takes the early return and
+  skips those hooks entirely — a genuine "Rendered fewer hooks than expected" React error,
+  reproduced live via Playwright by simply navigating to `/login` in a signed-in profile. Low
+  real-world impact (the page still redirects to `/` correctly a moment later, and a fresh/signed-out
+  visit never hits it), but it's a real bug, not a fluke of dev-mode Fast Refresh — worth a small
+  follow-up fix (move the `if (session)` check after all hook declarations, or into a `useEffect` +
+  `useNavigate`).
 - **Self-service Brand Tab creation was never live-browser-verified end to end (Task 232).** No
   browser-automation tool was available in any implementer's or reviewer's environment for the whole
   duration of that plan, so the full create → sidebar-appears → reload-persists → delete-blocked-

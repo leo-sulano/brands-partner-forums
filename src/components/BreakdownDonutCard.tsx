@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer } from 'recharts';
+import AppTooltip from './Tooltip';
 
 export interface BreakdownDonutCardProps {
   title: string;
@@ -31,9 +32,10 @@ export default function BreakdownDonutCard({
   const removedPct = total > 0 ? ((removed / total) * 100).toFixed(1) : '0.0';
 
   return (
-    <div
+    <AppTooltip
+      block
+      content={onSliceClick ? undefined : 'Aggregate of remaining values — not individually broken out'}
       className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
-      title={onSliceClick ? undefined : 'Aggregate of remaining values — not individually broken out'}
     >
       <div className="mb-4 flex items-center gap-2.5">
         <div
@@ -42,7 +44,7 @@ export default function BreakdownDonutCard({
         >
           {icon}
         </div>
-        <span className="truncate text-sm font-semibold text-slate-800" title={title}>{title}</span>
+        <AppTooltip content={title} className="truncate text-sm font-semibold text-slate-800">{title}</AppTooltip>
       </div>
 
       <div className="flex items-center gap-3">
@@ -71,7 +73,7 @@ export default function BreakdownDonutCard({
                   <Cell key={s.label} fill={s.fill} />
                 ))}
               </Pie>
-              <Tooltip
+              <RechartsTooltip
                 formatter={(value: number, name: string) => [value.toLocaleString(), name]}
                 contentStyle={{ borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}
               />
@@ -106,6 +108,6 @@ export default function BreakdownDonutCard({
           </button>
         </div>
       </div>
-    </div>
+    </AppTooltip>
   );
 }

@@ -1,4 +1,36 @@
 import type { ReactNode } from 'react';
+import Tooltip, { useTooltip } from './Tooltip';
+
+// Same reasoning as BreakdownStatGrid's BarSegmentButton: a percentage-width
+// bar segment can't be wrapped in Tooltip's own trigger <span> without
+// breaking the width:N% calculation, so useTooltip is applied directly to
+// the button. Its own component (not inlined in rows.map below) because
+// useTooltip is a hook, called once per rendered segment.
+function BarSegmentButton({ widthPct, colorClass, content, disabled, onClick, children }: {
+  widthPct: number;
+  colorClass: string;
+  content: string;
+  disabled: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { triggerProps, portal } = useTooltip(content);
+  return (
+    <>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClick}
+        {...triggerProps}
+        className={`flex h-full items-center justify-center overflow-hidden whitespace-nowrap ${colorClass} text-[11px] font-semibold text-white transition-[filter] hover:brightness-110 disabled:cursor-default`}
+        style={{ width: `${widthPct}%` }}
+      >
+        {children}
+      </button>
+      {portal}
+    </>
+  );
+}
 
 export interface BreakdownRow {
   key: string;
@@ -36,32 +68,30 @@ export default function BreakdownRankedList({ rows }: BreakdownRankedListProps) 
             <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
               {row.icon}
             </div>
-            <span className="w-28 shrink-0 truncate text-sm font-medium text-slate-700 sm:w-36 md:w-44" title={row.label}>
+            <Tooltip content={row.label} className="w-28 shrink-0 truncate text-sm font-medium text-slate-700 sm:w-36 md:w-44">
               {row.label}
-            </span>
+            </Tooltip>
             <div className="mr-6 hidden h-6 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100 sm:flex">
               {total > 0 && (
                 <>
-                  <button
-                    type="button"
+                  <BarSegmentButton
+                    widthPct={livePct}
+                    colorClass="bg-emerald-500"
+                    content={`Published: ${row.live.toLocaleString()}`}
                     disabled={!row.onRowClick}
                     onClick={() => row.onRowClick?.('live')}
-                    title={`Published: ${row.live.toLocaleString()}`}
-                    className="flex h-full items-center justify-center overflow-hidden whitespace-nowrap bg-emerald-500 text-[11px] font-semibold text-white transition-[filter] hover:brightness-110 disabled:cursor-default"
-                    style={{ width: `${livePct}%` }}
                   >
                     {row.live > 0 && livePct >= 12 ? row.live.toLocaleString() : ''}
-                  </button>
-                  <button
-                    type="button"
+                  </BarSegmentButton>
+                  <BarSegmentButton
+                    widthPct={removedPct}
+                    colorClass="bg-rose-400"
+                    content={`Removed: ${row.removed.toLocaleString()}`}
                     disabled={!row.onRowClick}
                     onClick={() => row.onRowClick?.('removed')}
-                    title={`Removed: ${row.removed.toLocaleString()}`}
-                    className="flex h-full items-center justify-center overflow-hidden whitespace-nowrap bg-rose-400 text-[11px] font-semibold text-white transition-[filter] hover:brightness-110 disabled:cursor-default"
-                    style={{ width: `${removedPct}%` }}
                   >
                     {row.removed > 0 && removedPct >= 12 ? row.removed.toLocaleString() : ''}
-                  </button>
+                  </BarSegmentButton>
                 </>
               )}
             </div>
