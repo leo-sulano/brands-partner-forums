@@ -717,8 +717,9 @@ git commit -m "feat: register dynamic tabs during auth session bootstrap"
 **Interfaces:**
 - Consumes: `createCustomTab` (Task 4), `TAB_COLUMN_CONFIGS` (existing,
   `src/lib/tab-configs.ts`), `OPERATIONAL_TABS` (existing, `src/lib/tabs.ts`).
-- Produces: `<AddBrandTabModal onCreated={(name: string) => void} onClose={() => void} />`
-  — on successful creation, calls `onCreated(name)` (the caller, Task 7's
+- Produces: `<AddBrandTabModal onCreated={(name: string, platforms: DynamicTabPlatform[]) => void} onClose={() => void} />`
+  — on successful creation, calls `onCreated(name, platforms)` with the full
+  platform list including the forced `'tp'` entry (the caller, Task 7's
   `Sidebar.tsx`, is responsible for calling `registerDynamicTabs` and
   navigating) and does not close itself; the caller closes it via `onClose`.
 
