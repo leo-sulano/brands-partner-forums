@@ -31,7 +31,7 @@ export default function KpiCard({ label, value, hint, icon, color = 'blue', brea
   return (
     <Tag
       {...(onClick ? { type: 'button' as const, onClick } : {})}
-      className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg w-full text-left ${c.hoverBorder} ${c.hoverGlow} ${onClick ? 'cursor-pointer' : ''} ${activeRing}`}
+      className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:bg-[#eef1fa] hover:shadow-lg w-full text-left ${c.hoverBorder} ${c.hoverGlow} ${onClick ? 'cursor-pointer' : ''} ${activeRing}`}
     >
       <div className={`absolute inset-x-0 top-0 h-1 transition-all duration-200 group-hover:h-1.5 group-hover:brightness-110 ${c.bar}`} />
       <div className="px-5 py-3" style={{ minHeight: '76px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>

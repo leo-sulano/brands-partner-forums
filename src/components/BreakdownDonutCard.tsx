@@ -35,7 +35,7 @@ export default function BreakdownDonutCard({
     <AppTooltip
       block
       content={onSliceClick ? undefined : 'Aggregate of remaining values — not individually broken out'}
-      className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:shadow-lg"
+      className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg"
     >
       <div className="mb-4 flex items-center gap-2.5">
         <div

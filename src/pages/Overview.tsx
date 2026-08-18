@@ -836,7 +836,7 @@ export default function Overview() {
                   <div
                     key={tab}
                     style={{ minHeight: 132 }}
-                    className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:shadow-lg"
+                    className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg"
                   >
                     <Link to={tabHref} className="group flex items-center justify-between gap-2 rounded">
                       <div className="flex min-w-0 items-center gap-2">
@@ -923,7 +923,7 @@ export default function Overview() {
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                       {brands.map(({ brand, kpis }) => (
-                        <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:shadow-lg">
+                        <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg">
                           <div className="flex items-center justify-between gap-2">
                             <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
                               {brand}
