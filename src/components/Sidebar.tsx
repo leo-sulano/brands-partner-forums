@@ -69,17 +69,18 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
 
-  // Any dynamic-tab registry change — created here, created/edited/deleted
-  // from a Brand Tab's own page (BrandGroup.tsx) — fires this event
-  // (dynamicTabRegistry.ts's notifyDynamicTabsChanged), so this is the one
-  // place Sidebar needs to listen rather than each call site re-plumbing its
-  // own bump back up to this component.
+  // Any tab/platform registry change — a dynamic tab created/edited/deleted
+  // here or from a Brand Tab's own page (BrandGroup.tsx), or a hardcoded
+  // tab's platform hidden/un-hidden — fires this event
+  // (dynamicTabRegistry.ts's / tab-configs.ts's notify* functions), so this
+  // is the one place Sidebar needs to listen rather than each call site
+  // re-plumbing its own bump back up to this component.
   useEffect(() => {
     function handleChange() {
       setTabsVersion((v) => v + 1);
     }
-    window.addEventListener('dynamic-tabs-changed', handleChange);
-    return () => window.removeEventListener('dynamic-tabs-changed', handleChange);
+    window.addEventListener('tab-platforms-changed', handleChange);
+    return () => window.removeEventListener('tab-platforms-changed', handleChange);
   }, []);
 
   function handleTabCreated(name: string, platforms: DynamicTabPlatform[]) {
