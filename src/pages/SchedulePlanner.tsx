@@ -342,16 +342,14 @@ export default function SchedulePlanner() {
 
       <div className="flex flex-nowrap items-center gap-4 overflow-x-auto rounded-lg border border-solid border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="flex shrink-0 items-center gap-2">
-          <div className="w-48">
-            <MultiSelectDropdown
-              values={selectedTabs}
-              onChange={setSelectedTabs}
-              options={TAB_OPTS}
-              noun="tab"
-              searchable
-              placeholder="Brand Tabs"
-            />
-          </div>
+          <MultiSelectDropdown
+            values={selectedTabs}
+            onChange={setSelectedTabs}
+            options={TAB_OPTS}
+            noun="tab"
+            searchable
+            placeholder="Brand Tabs"
+          />
           <MultiSelectDropdown
             values={agentFilter}
             onChange={setAgentFilter}
