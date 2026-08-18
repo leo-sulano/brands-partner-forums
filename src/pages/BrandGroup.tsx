@@ -1018,7 +1018,13 @@ export default function BrandGroup() {
     if (colSet.has('AG Review Status')) result.push('ag');
     if (colSet.has('CG Review Status')) result.push('cg');
     if (colSet.has('WoO Review Status')) result.push('wo');
-    return result;
+    // Intersect with getTabPlatforms so a platform hidden via the Edit
+    // Platforms modal (src/lib/tab-configs.ts's hidden-platform registry)
+    // actually disappears from this page's KPI cards, Platform filter, and
+    // column-hiding logic — activePlatforms' own column-presence detection
+    // above is otherwise unaware of hidden state.
+    const visible = new Set(getTabPlatforms(decodedTab));
+    return result.filter((p) => visible.has(p));
   })();
 
   const GUEST_HIDDEN_COLS = new Set(['User Name', 'AG User', 'CG User']);
