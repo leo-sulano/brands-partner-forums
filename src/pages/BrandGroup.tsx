@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2, Star,
+  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2, Star, Trash2,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import SuccessRateBadge from '../components/SuccessRateBadge';
@@ -17,7 +17,8 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, type StatusCheckScope } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, deleteCustomTab, type StatusCheckScope } from '../lib/queries';
+import { isDynamicTab, unregisterDynamicTab } from '../lib/dynamicTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
@@ -546,6 +547,7 @@ function writeFiltersToStorage(tab: string, filters: StoredBrandFilters) {
 
 export default function BrandGroup() {
   const { tab } = useParams<{ tab: string }>();
+  const navigate = useNavigate();
   // URL carries kebab-case slug (e.g. "tp-brand-injection"); resolve to the
   // canonical tab name ("TP Brand Injection") that the DB and queries expect.
   // Fall back to a decoded raw param so legacy %20-encoded links still work.
@@ -595,6 +597,10 @@ export default function BrandGroup() {
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showDeleteTabModal, setShowDeleteTabModal] = useState(false);
+  const [deleteTabConfirmText, setDeleteTabConfirmText] = useState('');
+  const [deletingTab, setDeletingTab] = useState(false);
+  const [deleteTabError, setDeleteTabError] = useState<string | null>(null);
 
   const [reloadSeq, setReloadSeq] = useState(0);
   const reloadRef = useRef(() => setReloadSeq((s) => s + 1));
@@ -608,6 +614,18 @@ export default function BrandGroup() {
   // tell a genuine tab change (already handled by the effect above) apart
   // from a same-tab query-string change it should still react to.
   const lastResyncedTabRef = useRef<string | null>(null);
+
+  // Escape-to-close for the delete-tab confirmation dialog — a document-level
+  // listener rather than relying on focus already being inside the dialog
+  // (matches the pattern this project's other modals use).
+  useEffect(() => {
+    if (!showDeleteTabModal) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setShowDeleteTabModal(false);
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [showDeleteTabModal]);
 
   // Sticky toolbar: the column-header row sticks just below this element,
   // offset by its live height. The toolbar's height isn't fixed — it wraps
@@ -1733,6 +1751,22 @@ export default function BrandGroup() {
   const initialOverridesForEditEntry: Partial<Record<Platform, OverrideState>> =
     editEntry && brandCol ? overridesFor(editEntry.data[brandCol]) : {};
 
+  async function handleConfirmDeleteTab() {
+    if (deleteTabConfirmText.trim().toLowerCase() !== 'yes') return;
+    setDeleteTabError(null);
+    setDeletingTab(true);
+    try {
+      await deleteCustomTab(decodedTab);
+      unregisterDynamicTab(decodedTab);
+      setShowDeleteTabModal(false);
+      navigate('/');
+    } catch (err) {
+      setDeleteTabError(err instanceof Error ? err.message : 'Failed to delete tab');
+    } finally {
+      setDeletingTab(false);
+    }
+  }
+
   if (error) {
     return (
       <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
@@ -1785,8 +1819,61 @@ export default function BrandGroup() {
               Add Review Account
             </button>
           )}
+          {isApproved && isDynamicTab(decodedTab) && (
+            <Tooltip content={`Delete ${tabDisplayName(decodedTab)}`}>
+              <button
+                type="button"
+                onClick={() => { setDeleteTabError(null); setDeleteTabConfirmText(''); setShowDeleteTabModal(true); }}
+                className="inline-flex items-center justify-center rounded-md border border-rose-200 p-2 text-rose-600 hover:bg-rose-50 transition-colors"
+              >
+                <Trash2 className="size-4" />
+              </button>
+            </Tooltip>
+          )}
         </div>
       </div>
+
+      {showDeleteTabModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => !deletingTab && setShowDeleteTabModal(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-slate-800">Delete "{tabDisplayName(decodedTab)}"?</h2>
+            <p className="text-xs text-slate-500">This cannot be undone. Deletion is blocked if the tab still has any entries.</p>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-600">
+                Type <span className="font-semibold text-slate-800">yes</span> to confirm
+              </label>
+              <input
+                type="text"
+                autoFocus
+                value={deleteTabConfirmText}
+                onChange={(e) => setDeleteTabConfirmText(e.target.value)}
+                placeholder="yes"
+                className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+              />
+            </div>
+            {deleteTabError && <p className="text-xs text-rose-600">{deleteTabError}</p>}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowDeleteTabModal(false)}
+                disabled={deletingTab}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteTab}
+                disabled={deleteTabConfirmText.trim().toLowerCase() !== 'yes' || deletingTab}
+                className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {deletingTab ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {activePlatforms.length <= 1 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-4 mt-[10px]">

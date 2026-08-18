@@ -1,19 +1,18 @@
-import { useEffect, useState } from 'react';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { useState } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X,
   CalendarDays,
 } from 'lucide-react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { useAuth } from '../contexts/AuthContext';
 import AddBrandTabModal from './AddBrandTabModal';
-import { registerDynamicTabs, unregisterDynamicTab, isDynamicTab } from '../lib/dynamicTabRegistry';
+import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
-import { deleteCustomTab } from '../lib/queries';
 import Tooltip from './Tooltip';
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
@@ -64,26 +63,11 @@ interface SidebarProps {
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { isAdmin, session, isApproved } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
   const [showAddTab, setShowAddTab] = useState(false);
-  const [tabsVersion, setTabsVersion] = useState(0); // bumped to force a re-render after registerDynamicTabs/unregisterDynamicTab mutate OPERATIONAL_TABS in place
-  const [deletingTab, setDeletingTab] = useState<string | null>(null); // tab pending delete confirmation
-  const [tabActionError, setTabActionError] = useState<string | null>(null);
+  const [tabsVersion, setTabsVersion] = useState(0); // bumped to force a re-render after registerDynamicTabs mutates OPERATIONAL_TABS in place
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
   const [hoverExpanded, setHoverExpanded] = useState(false);
-
-  // Escape-to-close for the delete-confirmation dialog, matching
-  // AddBrandTabModal's own pattern (a document-level listener rather than
-  // relying on focus already being inside the dialog).
-  useEffect(() => {
-    if (!deletingTab) return;
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setDeletingTab(null);
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [deletingTab]);
 
   function handleTabCreated(name: string, platforms: DynamicTabPlatform[]) {
     registerDynamicTabs([{ name, platforms }]);
@@ -91,19 +75,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     setShowAddTab(false);
     navigate(`/brands/${tabToSlug(name)}`);
     onClose?.();
-  }
-
-  async function handleConfirmDelete(name: string) {
-    setTabActionError(null);
-    try {
-      await deleteCustomTab(name);
-      unregisterDynamicTab(name);
-      setTabsVersion((v) => v + 1);
-      setDeletingTab(null);
-      if (location.pathname === `/brands/${tabToSlug(name)}`) navigate('/');
-    } catch (err) {
-      setTabActionError(err instanceof Error ? err.message : 'Failed to delete tab');
-    }
   }
 
   const header = (isCollapsed: boolean) => (
@@ -181,17 +152,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                       )}
                     </NavLink>
                   </Tooltip>
-                  {!isCollapsed && isApproved && isDynamicTab(tab) && (
-                    <Tooltip content={`Delete ${tabDisplayName(tab)}`}>
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setTabActionError(null); setDeletingTab(tab); }}
-                        className="hidden group-hover:flex shrink-0 p-1 mr-1.5 rounded text-slate-300 hover:text-rose-400 hover:bg-rose-500/10"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </button>
-                    </Tooltip>
-                  )}
                 </div>
               );
             })}
@@ -352,35 +312,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
       {showAddTab && (
         <AddBrandTabModal onCreated={handleTabCreated} onClose={() => setShowAddTab(false)} />
-      )}
-
-      {/* z-50, not z-40: this dialog is reachable from inside the mobile drawer
-          (z-[45] backdrop / z-50 panel), so anything lower renders behind it. */}
-      {deletingTab && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDeletingTab(null)} />
-          <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-800">Delete "{tabDisplayName(deletingTab)}"?</h2>
-            <p className="text-xs text-slate-500">This cannot be undone. Deletion is blocked if the tab still has any entries.</p>
-            {tabActionError && <p className="text-xs text-rose-600">{tabActionError}</p>}
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setDeletingTab(null)}
-                className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleConfirmDelete(deletingTab)}
-                className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
       )}
     </>
   );
