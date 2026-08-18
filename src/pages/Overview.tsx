@@ -573,6 +573,23 @@ export default function Overview() {
   const totalLive     = state.tabs.reduce((s, t) => s + t.kpis.live,    0);
   const totalRemoved  = state.tabs.reduce((s, t) => s + t.kpis.removed, 0);
 
+  // A tab card with 0 live + 0 removed under the current filters has nothing
+  // to show — render nothing rather than an empty "0 total" card, the same
+  // rule KpiBreakdownModal's own `.filter((r) => r.count > 0)` already
+  // applies to its drill-down rows. Totals above are summed from the
+  // unfiltered `state.tabs`, not this list, so hiding a 0-total card here
+  // never changes any KPI number.
+  const visibleTabs = state.tabs.filter((t) => t.kpis.live + t.kpis.removed > 0);
+
+  // Same reasoning applied per-brand for the "Brands" view: a brand can have
+  // rows under the current filters (so it isn't dropped by
+  // computeBrandKpisFromEntries) yet still classify to 0 live + 0 removed
+  // (e.g. every matching row is Pending) — hide that brand's card, and hide
+  // a tab group entirely once every brand in it is hidden this way.
+  const visibleBrandGroups = brandState.groups
+    .map((g) => ({ tab: g.tab, brands: g.brands.filter((b) => b.kpis.live + b.kpis.removed > 0) }))
+    .filter((g) => g.brands.length > 0);
+
   const allCountries = mergeDistinctValues(state.tabs.map((t) => t.kpis.countries));
   const allProxies   = mergeDistinctValues(state.tabs.map((t) => t.kpis.proxies));
 
@@ -684,6 +701,7 @@ export default function Overview() {
   ];
 
   const dateActive = !!(dateFrom || dateTo);
+  const anyFilterActive = dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0;
 
   return (
     <div className="space-y-8">
@@ -735,7 +753,7 @@ export default function Overview() {
           ]}
         />
 
-        {(dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0) && (
+        {anyFilterActive && (
           <button
             type="button"
             onClick={() => setSearchParams((prev) => {
@@ -822,13 +840,17 @@ export default function Overview() {
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
             No brand tabs track {platformFilter.map((p) => PLATFORM_BADGE[p].label).join(' or ')}
           </p>
+        ) : !state.loading && visibleTabs.length === 0 && anyFilterActive ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
+            No brand tabs have data matching the current filters
+          </p>
         ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {state.loading
             ? Array.from({ length: 9 }).map((_, i) => (
                 <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
               ))
-            : state.tabs.map(({ tab, kpis }) => {
+            : visibleTabs.map(({ tab, kpis }) => {
                 const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
                 const tabHref = `/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`;
 
@@ -876,13 +898,13 @@ export default function Overview() {
             <p className="rounded-xl border border-dashed border-rose-200 bg-rose-50 px-5 py-8 text-center text-sm text-rose-600">
               Failed to load: {brandState.error}
             </p>
-          ) : brandState.groups.length === 0 ? (
+          ) : visibleBrandGroups.length === 0 ? (
             <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
               No brands match the current filters
             </p>
           ) : (
             <div className="space-y-4">
-              {brandState.groups.map(({ tab, brands }) => {
+              {visibleBrandGroups.map(({ tab, brands }) => {
                 const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
                 // Reuses the tab-level kpis the "Brand Tabs" view already fetched
                 // (same fetchTabKpis/classifyEntry pipeline as fetchBrandKpis) rather
