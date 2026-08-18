@@ -19,8 +19,6 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
 
-const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
-
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
 const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
@@ -99,6 +97,12 @@ const EMPTY_PREVIEW: TabPreview = {
 };
 
 export default function SchedulePlanner() {
+  // Recomputed on every render (deliberately not memoized, and deliberately
+  // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
+  // dynamic tab is created/deleted mid-session (src/lib/dynamicTabRegistry.ts),
+  // and this is a long-lived page — a module-scope or useMemo([]) snapshot
+  // would leave a newly-created tab missing from this dropdown until reload.
+  const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
   const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
     try {
       const raw = sessionStorage.getItem(TABS_STORAGE_KEY);

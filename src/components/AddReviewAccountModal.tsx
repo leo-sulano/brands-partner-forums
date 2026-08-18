@@ -25,8 +25,6 @@ const YES_NO_OPTS = [
   { value: 'No',  label: 'No' },
 ];
 
-const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
-
 type FieldDef = {
   key: string;
   label: string;
@@ -142,6 +140,12 @@ interface Props {
 }
 
 export default function AddReviewAccountModal({ currentTab, onClose, onSaved, brandProfiles = {} }: Props) {
+  // Recomputed on every render (deliberately not memoized, and deliberately
+  // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
+  // dynamic tab is created/deleted mid-session
+  // (src/lib/dynamicTabRegistry.ts), so a snapshot taken once would leave a
+  // newly-created tab missing from this dropdown until a page reload.
+  const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
   const [selectedTab, setSelectedTab] = useState(currentTab);
   const [fields, setFields] = useState<Record<string, string>>(() => ({
     ...Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),

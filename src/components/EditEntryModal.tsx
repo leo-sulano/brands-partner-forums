@@ -32,8 +32,6 @@ const YES_NO_OPTS = [
   { value: 'No',  label: 'No' },
 ];
 
-const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
-
 const ACCOUNT_FIELD_PRIORITY = ['Account', 'Country', 'Proxy Used', 'Email', 'Password', 'Account Name', 'Account Surname', 'Agent'];
 
 const BRAND_NAME_COLS = new Set(['Brands', 'Brand Name', 'Brand']);
@@ -91,6 +89,12 @@ const PLATFORM_ADDED_HEADER: Record<Platform, string> = {
 };
 
 export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
+  // Recomputed on every render (deliberately not memoized, and deliberately
+  // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
+  // dynamic tab is created/deleted mid-session
+  // (src/lib/dynamicTabRegistry.ts), so a snapshot taken once would leave a
+  // newly-created tab missing from this dropdown until a page reload.
+  const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
   const [removedPlatforms, setRemovedPlatforms] = useState<Set<Platform>>(new Set(initialRemovedPlatforms ?? []));
   const [overrides, setOverrides] = useState<Partial<Record<Platform, 'pause' | 'active'>>>(initialOverrides ?? {});
   const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
