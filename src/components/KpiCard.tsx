@@ -17,10 +17,10 @@ interface Props {
 }
 
 const colorMap = {
-  blue:    { bar: 'bg-blue-500',    icon: 'bg-blue-50 text-blue-500',    value: 'text-blue-600'    },
-  emerald: { bar: 'bg-emerald-500', icon: 'bg-emerald-50 text-emerald-500', value: 'text-emerald-600' },
-  rose:    { bar: 'bg-rose-500',    icon: 'bg-rose-50 text-rose-500',    value: 'text-rose-600'    },
-  violet:  { bar: 'bg-violet-500',  icon: 'bg-violet-50 text-violet-500', value: 'text-violet-600'  },
+  blue:    { bar: 'bg-blue-500',    icon: 'bg-blue-50 text-blue-500',    value: 'text-blue-600',    hoverBorder: 'hover:border-blue-300',    hoverGlow: 'hover:shadow-blue-200/60'    },
+  emerald: { bar: 'bg-emerald-500', icon: 'bg-emerald-50 text-emerald-500', value: 'text-emerald-600', hoverBorder: 'hover:border-emerald-300', hoverGlow: 'hover:shadow-emerald-200/60' },
+  rose:    { bar: 'bg-rose-500',    icon: 'bg-rose-50 text-rose-500',    value: 'text-rose-600',    hoverBorder: 'hover:border-rose-300',    hoverGlow: 'hover:shadow-rose-200/60'    },
+  violet:  { bar: 'bg-violet-500',  icon: 'bg-violet-50 text-violet-500', value: 'text-violet-600',  hoverBorder: 'hover:border-violet-300',  hoverGlow: 'hover:shadow-violet-200/60'  },
 };
 
 export default function KpiCard({ label, value, hint, icon, color = 'blue', breakdown, onClick, active }: Props) {
@@ -31,9 +31,9 @@ export default function KpiCard({ label, value, hint, icon, color = 'blue', brea
   return (
     <Tag
       {...(onClick ? { type: 'button' as const, onClick } : {})}
-      className={`relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md w-full text-left ${onClick ? 'cursor-pointer' : ''} ${activeRing}`}
+      className={`group relative overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg w-full text-left ${c.hoverBorder} ${c.hoverGlow} ${onClick ? 'cursor-pointer' : ''} ${activeRing}`}
     >
-      <div className={`absolute inset-x-0 top-0 h-1 ${c.bar}`} />
+      <div className={`absolute inset-x-0 top-0 h-1 transition-all duration-200 group-hover:h-1.5 group-hover:brightness-110 ${c.bar}`} />
       <div className="px-5 py-3" style={{ minHeight: '76px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
