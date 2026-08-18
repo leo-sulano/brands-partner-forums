@@ -63,7 +63,7 @@ export default function BreakdownRankedList({ rows }: BreakdownRankedListProps) 
         return (
           <div
             key={row.key}
-            className={`flex items-center gap-3 border-t border-slate-100 px-4 py-2.5 first:border-t-0 ${row.muted ? 'bg-slate-50/60' : ''}`}
+            className={`flex items-center gap-3 border-t border-slate-100 px-4 py-2.5 first:border-t-0 transition-colors duration-200 hover:bg-[#eef1fa] ${row.muted ? 'bg-slate-50/60' : ''}`}
           >
             <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
               {row.icon}
