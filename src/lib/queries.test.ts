@@ -576,6 +576,27 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis!.live).toBe(1);
   });
 
+  it('activePlatforms is narrowed to the selected platformFilter, not every platform the tab tracks (Overview Brands Performance cards render one row per activePlatforms entry)', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'AskGamblers review added', 'AG Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const entries = [
+      entry('1', {
+        Brands: 'A',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published',
+        'AskGamblers review added': '10/06/2026', 'AG Review Status': 'Published',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      }),
+    ];
+
+    const unfiltered = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set());
+    expect(unfiltered!.activePlatforms).toEqual(['tp', 'ag', 'cg']);
+
+    const tpOnly = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp']);
+    expect(tpOnly!.activePlatforms).toEqual(['tp']);
+
+    const tpAndCg = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg']);
+    expect(tpAndCg!.activePlatforms).toEqual(['tp', 'cg']);
+  });
+
   it('countryFilter with 2 values matches either (OR)', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
@@ -655,6 +676,39 @@ describe('computeBrandKpisFromEntries', () => {
     expect(brand).toBeDefined();
     expect(brand.kpis.activePlatforms).toEqual(['cg']);
     expect(brand.kpis.cg).toEqual({ live: 1, removed: 0 });
+  });
+
+  it('activePlatforms is narrowed to the selected platformFilter, not every platform the brand tracks (Overview Brands view renders one row per activePlatforms entry)', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const entries = [
+      { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+        Brands: 'Multi Brand',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+    ];
+
+    const unfiltered = computeBrandKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set());
+    expect(unfiltered[0].kpis.activePlatforms).toEqual(['tp', 'cg']);
+
+    const tpOnly = computeBrandKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp']);
+    expect(tpOnly[0].kpis.activePlatforms).toEqual(['tp']);
+  });
+
+  it('drops a brand from the Brands view when its only platformFilter-selected platform is page-flagged removed, even though it tracks another unflagged platform outside the filter', () => {
+    const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+    const entries = [
+      { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+        Brands: 'Multi Brand',
+        'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+        'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+      }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+    ];
+    const flagged = new Set([platformRemovedKey('Rooster Partners', 'Multi Brand', 'tp')]);
+    // Scoped to TP only: TP is this brand's sole visible platform and it's flagged --
+    // nothing left to show, so the brand must be dropped, not rendered with 0 rows.
+    const tpOnly = computeBrandKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', flagged, undefined, undefined, ['tp']);
+    expect(tpOnly.find((b) => b.brand === 'Multi Brand')).toBeUndefined();
   });
 
   it('skips rows with a blank brand name', () => {

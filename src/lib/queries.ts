@@ -580,6 +580,13 @@ export function computeTabKpisFromEntries(
     else if (c.overall === 'notDone') notDone++;
   }
 
+  // activePlatforms drives which platform rows Overview renders per tab/brand
+  // card — when a platform filter is active, only the selected platform(s)
+  // should render, not every platform the tab structurally tracks.
+  const visiblePlatforms = platformFilter?.length
+    ? activePlatforms.filter((p) => platformFilter.includes(p))
+    : activePlatforms;
+
   return {
     total: live + removed,
     live, removed, done, pending, onPause, notDone,
@@ -587,7 +594,7 @@ export function computeTabKpisFromEntries(
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
     wo: { live: woLive, removed: woRemoved },
-    activePlatforms, byCountry, byProxy, countries, proxies,
+    activePlatforms: visiblePlatforms, byCountry, byProxy, countries, proxies,
   };
 }
 
@@ -672,12 +679,20 @@ export function computeBrandKpisFromEntries(
     else if (c.overall === 'removed') bucket.removed++;
   }
 
+  // Same reasoning as computeTabKpisFromEntries: a brand card's rows should
+  // only ever cover platforms actually selected by the filter, not every
+  // platform the tab structurally tracks.
+  const visiblePlatforms = platformFilter?.length
+    ? activePlatforms.filter((p) => platformFilter.includes(p))
+    : activePlatforms;
+
   return Array.from(buckets.values())
-    // A brand whose every tracked platform is flagged page-removed has
-    // nothing left to show — drop it from the "Brands" view entirely rather
-    // than rendering an empty card. A brand with only SOME platforms flagged
-    // still shows, just without those specific platform rows (below).
-    .filter((b) => b.flaggedPlatforms.size < activePlatforms.length)
+    // A brand whose every *visible* (filter-scoped) platform is flagged
+    // page-removed has nothing left to show — drop it from the "Brands" view
+    // entirely rather than rendering an empty card. A brand with only SOME
+    // visible platforms flagged still shows, just without those specific
+    // platform rows (below).
+    .filter((b) => visiblePlatforms.some((p) => !b.flaggedPlatforms.has(p)))
     .map((b) => ({
       brand: b.label,
       kpis: {
@@ -686,7 +701,7 @@ export function computeBrandKpisFromEntries(
         ag: { live: b.agLive, removed: b.agRemoved },
         cg: { live: b.cgLive, removed: b.cgRemoved },
         wo: { live: b.woLive, removed: b.woRemoved },
-        activePlatforms: activePlatforms.filter((p) => !b.flaggedPlatforms.has(p)),
+        activePlatforms: visiblePlatforms.filter((p) => !b.flaggedPlatforms.has(p)),
       },
     }))
     .sort((a, b) => a.brand.localeCompare(b.brand));
