@@ -9,6 +9,7 @@
 // no React/npm-package imports, no I/O — because it's imported by the
 // generate-weekly-schedule Deno Edge Function alongside tab-configs.ts.
 import { OPERATIONAL_TABS } from './tabs.ts';
+import { setDynamicColumnsResolver } from './tab-configs.ts';
 
 export type DynamicTabPlatform = 'tp' | 'ag' | 'cg';
 
@@ -63,3 +64,12 @@ export function getDynamicTabColumns(tab: string): string[] | null {
 export function isDynamicTab(tab: string): boolean {
   return tab in dynamicTabColumns;
 }
+
+// Self-registers this module's getDynamicTabColumns with tab-configs.ts as
+// soon as this module is first imported by anything (AuthContext.tsx,
+// Sidebar.tsx, or the generate-weekly-schedule Edge Function all do this in
+// later tasks) -- fully synchronous, no promises, no race window. If
+// nothing has imported this module yet, no dynamic tab could have been
+// registered yet either, so tab-configs.ts's resolver being unset in that
+// window is correct, not a bug.
+setDynamicColumnsResolver(getDynamicTabColumns);

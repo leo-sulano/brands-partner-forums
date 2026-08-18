@@ -214,7 +214,7 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
 
 // Returns the ordered column list for a tab, or null if no config exists.
 export function getTabColumns(tab: string): string[] | null {
-  return TAB_COLUMN_CONFIGS[tab] ?? getDynamicTabColumnsLocal(tab);
+  return TAB_COLUMN_CONFIGS[tab] ?? (dynamicColumnsResolver ? dynamicColumnsResolver(tab) : null);
 }
 
 // Columns that stay part of a tab's config (modal fields, brand-link
@@ -667,21 +667,16 @@ export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   return platforms;
 }
 
-// Dynamic registry — lazy-loaded to avoid circular dependency with tabs.ts.
-// tabs.ts imports TAB_COLUMN_CONFIGS, and dynamicTabRegistry imports tabs.ts (OPERATIONAL_TABS).
-// So we use dynamic import()'s promise-based loading to defer the import until after
-// the module is fully loaded.
-let getDynamicTabColumnsFunc: ((tab: string) => string[] | null) | null = null;
-const dynamicRegistryLoaded = import('./dynamicTabRegistry.ts').then((mod) => {
-  getDynamicTabColumnsFunc = mod.getDynamicTabColumns;
-  return mod;
-});
+// Set once by dynamicTabRegistry.ts (a synchronous self-registration side
+// effect at that module's own top level) to hand this module a reference
+// to getDynamicTabColumns, without tab-configs.ts itself ever statically
+// importing dynamicTabRegistry.ts -- doing so would close a real circular
+// import (tab-configs.ts -> dynamicTabRegistry.ts -> tabs.ts ->
+// tab-configs.ts), since tabs.ts eagerly reads TAB_COLUMN_CONFIGS at its
+// own top level. This setter-based indirection makes dynamicTabRegistry.ts
+// depend on tab-configs.ts instead, which is acyclic.
+let dynamicColumnsResolver: ((tab: string) => string[] | null) | null = null;
 
-function getDynamicTabColumnsLocal(tab: string): string[] | null {
-  // If the dynamic registry hasn't loaded yet (shouldn't happen in practice), return null.
-  // This is only called after the app has initialized, so the async import should complete.
-  if (!getDynamicTabColumnsFunc) {
-    return null;
-  }
-  return getDynamicTabColumnsFunc(tab);
+export function setDynamicColumnsResolver(fn: (tab: string) => string[] | null): void {
+  dynamicColumnsResolver = fn;
 }
