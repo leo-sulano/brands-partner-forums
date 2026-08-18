@@ -76,7 +76,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // renders isApproved=false against the stale profile for the duration
         // of this fetch, flashing "Pending Approval" even for approved users.
         setLoading(true);
-        Promise.all([fetchProfile(s.user.id), fetchCustomTabs()]).then(([p, customTabs]) => {
+        Promise.all([
+          fetchProfile(s.user.id),
+          fetchCustomTabs().catch((err) => {
+            console.error('Failed to fetch custom tabs:', err);
+            return [];
+          }),
+        ]).then(([p, customTabs]) => {
           if (!mounted) return;
           registerDynamicTabs(customTabs);
           setProfile(p);
