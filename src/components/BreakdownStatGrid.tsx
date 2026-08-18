@@ -128,7 +128,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
                 type="button"
                 disabled={!tile.onTileClick}
                 onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('live'); }}
-                className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
+                className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-emerald-50 disabled:cursor-default"
               >
                 <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
                 <span className="text-slate-500">Published</span>
@@ -138,7 +138,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
                 type="button"
                 disabled={!tile.onTileClick}
                 onClick={(e: MouseEvent) => { e.stopPropagation(); tile.onTileClick?.('removed'); }}
-                className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-blue-50 disabled:cursor-default"
+                className="flex items-center gap-1.5 rounded px-1 py-0.5 transition-colors hover:bg-rose-50 disabled:cursor-default"
               >
                 <span className="size-2 shrink-0 rounded-full bg-rose-400" />
                 <span className="text-slate-500">Removed</span>
