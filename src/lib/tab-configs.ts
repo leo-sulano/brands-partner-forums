@@ -214,7 +214,7 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
 
 // Returns the ordered column list for a tab, or null if no config exists.
 export function getTabColumns(tab: string): string[] | null {
-  return TAB_COLUMN_CONFIGS[tab] ?? null;
+  return TAB_COLUMN_CONFIGS[tab] ?? getDynamicTabColumnsLocal(tab);
 }
 
 // Columns that stay part of a tab's config (modal fields, brand-link
@@ -233,7 +233,7 @@ export const BRAND_COLS = ['Brands', 'Brand Name', 'Brand', 'Brand / TP URL PAGE
 // The column that holds this tab's brand identity, resolved from its column
 // whitelist. Falls back to 'Brand Name' only for tabs with no config entry.
 export function getBrandNameCol(tab: string): string {
-  const cols = TAB_COLUMN_CONFIGS[tab];
+  const cols = getTabColumns(tab);
   return (cols && BRAND_COLS.find((c) => cols.includes(c))) || 'Brand Name';
 }
 
@@ -648,7 +648,7 @@ export function resolveBrandLink(brand: string, tab: string, tabLocalValue?: str
 
 // Returns true if the tab has TP + AG + CG platform columns.
 export function hasMultiPlatform(tab: string): boolean {
-  const cols = TAB_COLUMN_CONFIGS[tab];
+  const cols = getTabColumns(tab);
   if (!cols) return false;
   const set = new Set(cols);
   return set.has('AG Review Status') && set.has('CG Review Status');
@@ -656,7 +656,7 @@ export function hasMultiPlatform(tab: string): boolean {
 
 // Returns the platforms active for a given tab. All tabs default to TP; WO/AG/CG are opt-in via column presence.
 export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
-  const cols = TAB_COLUMN_CONFIGS[tab];
+  const cols = getTabColumns(tab);
   if (tab === 'Wizard of Odds') return ['wo'];
   const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = ['tp'];
   if (cols) {
@@ -665,4 +665,23 @@ export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
     if (set.has('CG Review Status')) platforms.push('cg');
   }
   return platforms;
+}
+
+// Dynamic registry — lazy-loaded to avoid circular dependency with tabs.ts.
+// tabs.ts imports TAB_COLUMN_CONFIGS, and dynamicTabRegistry imports tabs.ts (OPERATIONAL_TABS).
+// So we use dynamic import()'s promise-based loading to defer the import until after
+// the module is fully loaded.
+let getDynamicTabColumnsFunc: ((tab: string) => string[] | null) | null = null;
+const dynamicRegistryLoaded = import('./dynamicTabRegistry.ts').then((mod) => {
+  getDynamicTabColumnsFunc = mod.getDynamicTabColumns;
+  return mod;
+});
+
+function getDynamicTabColumnsLocal(tab: string): string[] | null {
+  // If the dynamic registry hasn't loaded yet (shouldn't happen in practice), return null.
+  // This is only called after the app has initialized, so the async import should complete.
+  if (!getDynamicTabColumnsFunc) {
+    return null;
+  }
+  return getDynamicTabColumnsFunc(tab);
 }

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix, accountUsageKey } from './tab-configs';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol } from './tab-configs';
+import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -148,5 +149,43 @@ describe('getBrandGroup', () => {
   it('returns null for a tab with no configured groups at all', () => {
     expect(getBrandGroup('TP Affiliate', 'Aussie Online Pokies')).toBeNull();
     expect(getBrandGroup('Rooster Partners', 'Best Online Casino in Canada 2026 | Top Rated Online Casinos')).toBeNull();
+  });
+});
+
+describe('tab-configs.ts dynamic tab fallback', () => {
+  beforeEach(() => {
+    unregisterDynamicTab('Test Dynamic Tab');
+  });
+
+  it('getTabColumns falls back to a registered dynamic tab', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] }]);
+    const cols = getTabColumns('Test Dynamic Tab');
+    expect(cols).not.toBeNull();
+    expect(cols).toContain('AG Review Status');
+  });
+
+  it('getTabColumns returns null for an unregistered, non-hardcoded tab', () => {
+    expect(getTabColumns('Nonexistent Tab')).toBeNull();
+  });
+
+  it('getBrandNameCol resolves "Brand Name" for a dynamic tab', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'] }]);
+    expect(getBrandNameCol('Test Dynamic Tab')).toBe('Brand Name');
+  });
+
+  it('hasMultiPlatform is true only when a dynamic tab has both AG and CG', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] }]);
+    expect(hasMultiPlatform('Test Dynamic Tab')).toBe(false);
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag', 'cg'] }]);
+    expect(hasMultiPlatform('Test Dynamic Tab')).toBe(true);
+  });
+
+  it('getTabPlatforms reflects a dynamic tab\'s selected platforms', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'cg'] }]);
+    expect(getTabPlatforms('Test Dynamic Tab')).toEqual(['tp', 'cg']);
+  });
+
+  it('a hardcoded tab is unaffected by the dynamic fallback', () => {
+    expect(getTabColumns('Hanan')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
   });
 });
