@@ -19,6 +19,13 @@ interface ScheduleCellProps {
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
   removedByPlatform: Partial<Record<Platform, boolean>>;
   confirmedByPlatform: Partial<Record<Platform, boolean>>;
+  // Read-only PMS assignee name for this exact platform+day's linked task, if
+  // any (from pullScheduleDrift's assignees list). Purely informational --
+  // folded into the chip's existing tooltip text, never its own badge, and
+  // never written back to any dashboard data. Absent/undefined for a
+  // platform+day with no linked PMS task, or when the sync feature isn't
+  // configured.
+  assigneeByPlatform?: Partial<Record<Platform, string>>;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
   // day would otherwise look identical to a confirmed post even though the
@@ -67,7 +74,7 @@ interface ScheduleCellProps {
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, assigneeByPlatform, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -93,12 +100,14 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
           : isPaused
             ? 'Paused (scheduler)'
             : statusLabel(status);
+        const assignee = assigneeByPlatform?.[platform];
+        const title = assignee ? `${PLATFORM_FULL_LABEL[platform]}: ${label} — Assigned to ${assignee}` : `${PLATFORM_FULL_LABEL[platform]}: ${label}`;
         return (
           <span
             key={platform}
             tabIndex={clickable && planUnverified ? 0 : undefined}
             onClick={clickable ? () => onToggle(platform) : undefined}
-            title={`${PLATFORM_FULL_LABEL[platform]}: ${label}`}
+            title={title}
             className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''} ${planUnverified ? 'opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
           >
             <img

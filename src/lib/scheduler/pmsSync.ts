@@ -14,6 +14,7 @@ import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate
 const PMS_BASE_URL = 'https://pms-nu-eight.vercel.app/api';
 const PMS_PROJECT_ID = 'cmsoh1uvs000004l4fbdvqmir';
 const PMS_TODO_COLUMN_ID = 'cmsoh1uxz000204l46gf88k3f';
+const PMS_TEAM_ID = 'cmsd98mtx000204lgyb0abodx';
 const PMS_CLIENT_LABEL_NAME = 'Client';
 const PMS_PLATFORM_LABEL_NAMES: Record<Platform, string> = { tp: 'TP', ag: 'AG', cg: 'CG', wo: 'WO' };
 // Every existing platform label (TP/AG/CG) already has its own color; WO is
@@ -31,6 +32,12 @@ export interface PmsSyncItem {
   brand: string;
   platform: Platform;
   date: string;
+  // The dashboard's Agent value for this brand (from buildAgentIndex,
+  // caller-resolved -- this module has no reason to re-derive it from raw
+  // entries itself). Null/undefined means no agent could be resolved (no
+  // entries, or a blank Agent column) -- the created task is left
+  // unassigned, same as when the resolved name has no PMS team match.
+  agent?: string | null;
 }
 
 export interface PmsPushResult {
@@ -48,8 +55,33 @@ interface PmsTaskCreated {
   id: string;
 }
 
+interface PmsTeamMember {
+  id: string;
+  name: string;
+}
+
 function pmsHeaders(credentials: PmsCredentials): Record<string, string> {
   return { Authorization: `Bearer ${credentials.apiToken}`, 'Content-Type': 'application/json' };
+}
+
+async function fetchPmsTeamMembers(credentials: PmsCredentials, fetchFn: typeof fetch): Promise<PmsTeamMember[]> {
+  const res = await fetchFn(`${PMS_BASE_URL}/teams/${PMS_TEAM_ID}`, { headers: pmsHeaders(credentials) });
+  if (!res.ok) throw new Error(`PMS team fetch failed: ${res.status}`);
+  const team = (await res.json()) as { members: { user: { id: string; name: string } }[] };
+  return team.members.map((m) => ({ id: m.user.id, name: m.user.name }));
+}
+
+// Case/whitespace-insensitive match against the real PMS team roster -- the
+// dashboard's own Agent values are free text with real casing/whitespace
+// variants in production data (e.g. "Jen"/"LAI"/"ANN"/"Ann "), same
+// normalization spirit as normalizeBrandKey elsewhere in this codebase. No
+// match (an agent not on the PMS team, or a placeholder value) returns null
+// -- the caller leaves the task unassigned rather than guessing.
+function resolveAssigneeId(agent: string | null | undefined, members: PmsTeamMember[]): string | null {
+  if (!agent) return null;
+  const key = agent.trim().toLowerCase();
+  if (!key) return null;
+  return members.find((m) => m.name.trim().toLowerCase() === key)?.id ?? null;
 }
 
 async function fetchPmsLabels(credentials: PmsCredentials, fetchFn: typeof fetch): Promise<PmsLabel[]> {
@@ -92,13 +124,26 @@ async function createPmsTask(title: string, dueDate: string, credentials: PmsCre
   return (await res.json()) as PmsTaskCreated;
 }
 
-async function setPmsTaskLabels(taskId: string, labelIds: string[], credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
+// One PATCH call covers both labels and assignee (confirmed live: the API
+// accepts labelIds and assigneeIds together) -- assigneeId is omitted from
+// the body entirely, not sent as an empty array, when no agent resolved to a
+// real PMS team member, since the task should simply stay unassigned rather
+// than the API being asked to clear an assignee that was never set.
+async function setPmsTaskLabelsAndAssignee(
+  taskId: string,
+  labelIds: string[],
+  assigneeId: string | null,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+): Promise<void> {
+  const body: { labelIds: string[]; assigneeIds?: string[] } = { labelIds };
+  if (assigneeId) body.assigneeIds = [assigneeId];
   const res = await fetchFn(`${PMS_BASE_URL}/tasks/${taskId}`, {
     method: 'PATCH',
     headers: pmsHeaders(credentials),
-    body: JSON.stringify({ labelIds }),
+    body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`PMS task label update failed: ${res.status}`);
+  if (!res.ok) throw new Error(`PMS task label/assignee update failed: ${res.status}`);
 }
 
 // One PMS task per exact (tab, brand, platform, date) -- idempotent via
@@ -120,6 +165,7 @@ export async function pushScheduleToPms(
 
   const linksByTab = new Map<string, SchedulePmsLink[]>();
   let labelCache: PmsLabel[] | null = null;
+  let teamMembers: PmsTeamMember[] | null = null;
 
   for (const item of items) {
     try {
@@ -138,9 +184,14 @@ export async function pushScheduleToPms(
       if (!labelCache) labelCache = await fetchPmsLabels(credentials, fetchFn);
       const platformLabelId = await resolveLabelId(PMS_PLATFORM_LABEL_NAMES[item.platform], WO_LABEL_COLOR, labelCache, credentials, fetchFn);
       const clientLabelId = await resolveLabelId(PMS_CLIENT_LABEL_NAME, WO_LABEL_COLOR, labelCache, credentials, fetchFn);
+      // Lazy: only fetched the first time an item actually carries an agent
+      // to resolve, so a push with no agent info (or run before this field
+      // existed) never makes this extra call at all.
+      if (!teamMembers && item.agent) teamMembers = await fetchPmsTeamMembers(credentials, fetchFn);
+      const assigneeId = resolveAssigneeId(item.agent, teamMembers ?? []);
 
       const task = await createPmsTask(`${item.tabLabel} | ${item.brand}`, item.date, credentials, fetchFn);
-      await setPmsTaskLabels(task.id, [platformLabelId, clientLabelId], credentials, fetchFn);
+      await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
       await insertSchedulePmsLink(item.tab, item.brand, item.platform, item.date, task.id, client);
       // Reflect the just-created link back into this tab's in-memory `links`
       // array so a later item in the SAME batch that repeats this exact combo
@@ -173,9 +224,24 @@ export interface PmsDeletedItem {
   date: string;
 }
 
+// Read-only display info only -- never written back to any dashboard data.
+// assigneeName is the PMS task's current first assignee (this integration
+// only ever sets one), or null if the task is unassigned in PMS. Reported
+// against the link's CURRENT date (the post-drift-reconciliation date, if
+// this same pull cycle just moved it), so the frontend can key it directly
+// to whichever calendar cell it's about to render/move to.
+export interface PmsAssigneeInfo {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  date: string;
+  assigneeName: string | null;
+}
+
 export interface PmsPullResult {
   drifted: PmsDriftedItem[];
   deleted: PmsDeletedItem[];
+  assignees: PmsAssigneeInfo[];
 }
 
 interface PmsTaskListed {
@@ -185,6 +251,7 @@ interface PmsTaskListed {
   // action comes back with dueDate null/undefined at runtime. See the
   // liveDate guard below.
   dueDate: string | null | undefined;
+  assignees: { user: { name: string } }[];
 }
 
 async function fetchPmsProjectTasks(credentials: PmsCredentials, fetchFn: typeof fetch): Promise<PmsTaskListed[]> {
@@ -206,9 +273,10 @@ export async function pullScheduleFromPms(
 ): Promise<PmsPullResult> {
   const drifted: PmsDriftedItem[] = [];
   const deleted: PmsDeletedItem[] = [];
+  const assignees: PmsAssigneeInfo[] = [];
 
   const links = await fetchSchedulePmsLinks(tab, client);
-  if (links.length === 0) return { drifted, deleted };
+  if (links.length === 0) return { drifted, deleted, assignees };
 
   const tasks = await fetchPmsProjectTasks(credentials, fetchFn);
   const taskById = new Map(tasks.map((t) => [t.id, t]));
@@ -220,18 +288,24 @@ export async function pullScheduleFromPms(
       deleted.push({ tab: link.tab, brand: link.brand, platform: link.platform, date: link.date });
       continue;
     }
+    const assigneeName = task.assignees[0]?.user.name ?? null;
     // A cleared due date (a one-click action in the PMS UI) makes task.dueDate
     // null/undefined at runtime despite the interface typing it as string --
     // treat that as "nothing to reconcile for this link right now", not as
     // deleted, since a cleared date is a genuinely different, ambiguous state
     // from a task that no longer exists and shouldn't silently un-schedule a
-    // real brand_schedule day.
+    // real brand_schedule day. The assignee is still reported against the
+    // link's existing date in this case, since there's no new date to move it to.
     const liveDate = task.dueDate?.slice(0, 10);
-    if (!liveDate) continue;
+    if (!liveDate) {
+      assignees.push({ tab: link.tab, brand: link.brand, platform: link.platform, date: link.date, assigneeName });
+      continue;
+    }
     if (liveDate !== link.date) {
       await updateSchedulePmsLinkDate(link.id, liveDate, client);
       drifted.push({ tab: link.tab, brand: link.brand, platform: link.platform, oldDate: link.date, newDate: liveDate });
     }
+    assignees.push({ tab: link.tab, brand: link.brand, platform: link.platform, date: liveDate, assigneeName });
   }
-  return { drifted, deleted };
+  return { drifted, deleted, assignees };
 }

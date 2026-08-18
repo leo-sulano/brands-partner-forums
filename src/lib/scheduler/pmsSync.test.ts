@@ -121,6 +121,92 @@ describe('pushScheduleToPms', () => {
     expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' }]);
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
+
+  it('sets assigneeIds on the task-patch call when the item\'s agent matches a real PMS team member', async () => {
+    const { client } = fakeSupabase([]);
+    const itemWithAgent: PmsSyncItem = { ...ITEM, agent: 'Jen' };
+    let patchBody: unknown;
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'user-jen', name: 'Jen' } }, { user: { id: 'user-ann', name: 'Ann' } }] } },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const spiedFetch = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'PATCH') patchBody = JSON.parse(init.body as string);
+      return (fetchFn as unknown as (u: string, i: RequestInit) => Promise<Response>)(url, init);
+    }) as unknown as typeof fetch;
+    const result = await pushScheduleToPms([itemWithAgent], client, CREDENTIALS, spiedFetch);
+    expect(result.created).toEqual([itemWithAgent]);
+    expect(patchBody).toEqual({ labelIds: ['label-tp', 'label-client'], assigneeIds: ['user-jen'] });
+  });
+
+  it('leaves the task unassigned (no assigneeIds field) when the agent has no matching PMS team member', async () => {
+    const { client } = fakeSupabase([]);
+    const itemWithUnknownAgent: PmsSyncItem = { ...ITEM, agent: 'Venus' };
+    let patchBody: unknown;
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'user-jen', name: 'Jen' } }] } },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const spiedFetch = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'PATCH') patchBody = JSON.parse(init.body as string);
+      return (fetchFn as unknown as (u: string, i: RequestInit) => Promise<Response>)(url, init);
+    }) as unknown as typeof fetch;
+    const result = await pushScheduleToPms([itemWithUnknownAgent], client, CREDENTIALS, spiedFetch);
+    expect(result.created).toEqual([itemWithUnknownAgent]);
+    expect(patchBody).toEqual({ labelIds: ['label-tp', 'label-client'] });
+  });
+
+  it('matches an agent name case/whitespace-insensitively against the PMS team roster', async () => {
+    const { client } = fakeSupabase([]);
+    const itemWithMessyAgent: PmsSyncItem = { ...ITEM, agent: '  JEN  ' };
+    let patchBody: unknown;
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'user-jen', name: 'Jen' } }] } },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const spiedFetch = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'PATCH') patchBody = JSON.parse(init.body as string);
+      return (fetchFn as unknown as (u: string, i: RequestInit) => Promise<Response>)(url, init);
+    }) as unknown as typeof fetch;
+    await pushScheduleToPms([itemWithMessyAgent], client, CREDENTIALS, spiedFetch);
+    expect(patchBody).toEqual({ labelIds: ['label-tp', 'label-client'], assigneeIds: ['user-jen'] });
+  });
+
+  it('fetches the PMS team roster only once across a batch of agent-bearing items, and never when no item has an agent', async () => {
+    const { client } = fakeSupabase([]);
+    const item1: PmsSyncItem = { ...ITEM, brand: 'BrandA', agent: 'Jen' };
+    const item2: PmsSyncItem = { ...ITEM, brand: 'BrandB', agent: 'Ann' };
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'user-jen', name: 'Jen' } }, { user: { id: 'user-ann', name: 'Ann' } }] } },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-2', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-2$/, method: 'PATCH', body: {} },
+      // No second /teams/ call expected -- fakeFetchSequence throws on any
+      // unexpected extra call, so a second fetch would fail this test.
+    ]);
+    const result = await pushScheduleToPms([item1, item2], client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([item1, item2]);
+  });
+
+  it('never fetches the PMS team roster when no item in the batch has an agent', async () => {
+    const { client } = fakeSupabase([]);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      // No /teams/ call expected at all.
+    ]);
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([ITEM]);
+  });
 });
 
 function fakeSupabaseWithLinks(links: any[]) {
@@ -159,12 +245,13 @@ describe('pullScheduleFromPms', () => {
     const { client, updated } = fakeSupabaseWithLinks([LINK]);
     const fetchFn = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [{ id: 'task-1', dueDate: '2026-08-22T00:00:00.000Z' }],
+      json: async () => [{ id: 'task-1', dueDate: '2026-08-22T00:00:00.000Z', assignees: [] }],
     });
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
     expect(result).toEqual({
       drifted: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', oldDate: '2026-08-20', newDate: '2026-08-22' }],
       deleted: [],
+      assignees: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-22', assigneeName: null }],
     });
     expect(updated).toEqual([{ id: 'link-1', date: '2026-08-22' }]);
   });
@@ -173,18 +260,22 @@ describe('pullScheduleFromPms', () => {
     const { client, deletedIds } = fakeSupabaseWithLinks([LINK]);
     const fetchFn = vi.fn().mockResolvedValue({ ok: true, json: async () => [] }); // task-1 is gone
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ drifted: [], deleted: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20' }] });
+    expect(result).toEqual({ drifted: [], deleted: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20' }], assignees: [] });
     expect(deletedIds).toEqual(['link-1']);
   });
 
-  it('does nothing when the live due date still matches the stored date', async () => {
+  it('does nothing when the live due date still matches the stored date, but still reports the current assignee', async () => {
     const { client, updated, deletedIds } = fakeSupabaseWithLinks([LINK]);
     const fetchFn = vi.fn().mockResolvedValue({
       ok: true,
-      json: async () => [{ id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' }],
+      json: async () => [{ id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z', assignees: [{ user: { name: 'Jen' } }] }],
     });
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ drifted: [], deleted: [] });
+    expect(result).toEqual({
+      drifted: [],
+      deleted: [],
+      assignees: [{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Jen' }],
+    });
     expect(updated).toEqual([]);
     expect(deletedIds).toEqual([]);
   });
@@ -193,26 +284,40 @@ describe('pullScheduleFromPms', () => {
     const { client } = fakeSupabaseWithLinks([]);
     const fetchFn = vi.fn();
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ drifted: [], deleted: [] });
+    expect(result).toEqual({ drifted: [], deleted: [], assignees: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('skips a link whose live task has a cleared (null) due date without throwing, while still processing other links', async () => {
+  it('skips a link whose live task has a cleared (null) due date without throwing, while still processing other links and still reporting its assignee', async () => {
     const LINK_2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-2' };
     const { client, updated, deletedIds } = fakeSupabaseWithLinks([LINK, LINK_2]);
     const fetchFn = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => [
-        { id: 'task-1', dueDate: null }, // due date cleared in PMS
-        { id: 'task-2', dueDate: '2026-08-22T00:00:00.000Z' }, // still processed normally
+        { id: 'task-1', dueDate: null, assignees: [{ user: { name: 'Lai' } }] }, // due date cleared in PMS
+        { id: 'task-2', dueDate: '2026-08-22T00:00:00.000Z', assignees: [] }, // still processed normally
       ],
     });
     const outcome = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
     expect(outcome).toEqual({
       drifted: [{ tab: 'BITP', brand: 'OtherBrand', platform: 'tp', oldDate: '2026-08-20', newDate: '2026-08-22' }],
       deleted: [],
+      assignees: [
+        { tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Lai' },
+        { tab: 'BITP', brand: 'OtherBrand', platform: 'tp', date: '2026-08-22', assigneeName: null },
+      ],
     });
     expect(updated).toEqual([{ id: 'link-2', date: '2026-08-22' }]);
     expect(deletedIds).toEqual([]);
+  });
+
+  it('resolves assigneeName from the task\'s first assignee entry when one is set', async () => {
+    const { client } = fakeSupabaseWithLinks([LINK]);
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [{ id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z', assignees: [{ user: { name: 'Ann' } }] }],
+    });
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result.assignees).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Ann' }]);
   });
 });

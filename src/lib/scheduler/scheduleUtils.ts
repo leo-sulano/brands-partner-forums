@@ -121,6 +121,34 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   return { removed, confirmed };
 }
 
+// Resolves one Agent name per brand for PMS task assignment: brand_schedule
+// itself carries no Agent column (only individual entry/account rows do, via
+// the 'Agent' column every tab's whitelist includes identically), and a
+// brand's entries don't always agree on one Agent (a brand can be reassigned
+// over time). Picks the most-recently-updated entry's Agent as the best
+// proxy for "who currently owns this" -- built once per tab load from
+// entries already in memory, same "build once, not per row" pattern as
+// buildDateStatusIndex above. A brand with no entries, or whose most-recent
+// entry has a blank Agent, has no key in the returned map (never an empty
+// string) so callers can use a plain .get(brandKey) ?? null.
+export function buildAgentIndex(entries: Entry[]): Map<string, string> {
+  const latestByBrand = new Map<string, { agent: string; updatedAt: string }>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const agent = (entry.data.Agent ?? '').trim();
+    if (!agent) continue;
+    const brandKey = normalizeBrandKey(brand);
+    const existing = latestByBrand.get(brandKey);
+    if (!existing || entry.updated_at > existing.updatedAt) {
+      latestByBrand.set(brandKey, { agent, updatedAt: entry.updated_at });
+    }
+  }
+  const result = new Map<string, string>();
+  for (const [brandKey, { agent }] of latestByBrand) result.set(brandKey, agent);
+  return result;
+}
+
 // Brand Tab Completion Rule: scheduled = total non-null day-slots across this
 // week's platform-tagged rows (legacy platform:null rows are excluded —
 // they carry no meaningful per-platform scheduled/completed concept);

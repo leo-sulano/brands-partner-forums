@@ -49,14 +49,15 @@ describe('pullScheduleDrift', () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
   });
 
-  it('posts action:pull with the tab and returns the parsed result', async () => {
-    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ drifted: [], deleted: [] }) });
+  it('posts action:pull with the tab and returns the parsed result, including assignees', async () => {
+    const assignees = [{ tab: 'BITP', brand: 'WinMega', platform: 'tp' as const, date: '2026-08-20', assigneeName: 'Jen' }];
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ drifted: [], deleted: [], assignees }) });
     const result = await pullScheduleDrift('BITP');
     expect(fetch).toHaveBeenCalledWith(
       'https://example.com/sync-schedule-pms',
       expect.objectContaining({ method: 'POST', body: JSON.stringify({ action: 'pull', tab: 'BITP' }) }),
     );
-    expect(result).toEqual({ drifted: [], deleted: [] });
+    expect(result).toEqual({ drifted: [], deleted: [], assignees });
   });
 
   it('throws on a non-OK response', async () => {

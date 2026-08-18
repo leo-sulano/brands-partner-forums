@@ -16,6 +16,11 @@ export interface PmsSyncItem {
   brand: string;
   platform: Platform;
   date: string;
+  // The dashboard's Agent value for this brand, resolved by the caller (see
+  // buildAgentIndex in src/lib/scheduler/scheduleUtils.ts) -- used server-side
+  // to set the PMS task's assignee when it matches a real PMS team member.
+  // Null/undefined means the task is created unassigned.
+  agent?: string | null;
 }
 
 export interface PmsDriftedItem {
@@ -31,6 +36,18 @@ export interface PmsDeletedItem {
   brand: string;
   platform: Platform;
   date: string;
+}
+
+// Read-only display info -- the PMS task's current assignee, reported for
+// every still-linked cell so the calendar can show it as a badge/tooltip.
+// Never written back to any dashboard data (Agent stays exactly what the
+// entries say; this is purely "what does PMS currently show").
+export interface PmsAssigneeInfo {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  date: string;
+  assigneeName: string | null;
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -58,13 +75,13 @@ export async function pushScheduleActivations(items: PmsSyncItem[]): Promise<voi
   if (!res.ok) throw new Error('Failed to sync schedule to PMS.');
 }
 
-export async function pullScheduleDrift(tab: string): Promise<{ drifted: PmsDriftedItem[]; deleted: PmsDeletedItem[] }> {
-  if (!SYNC_SCHEDULE_PMS_URL) return { drifted: [], deleted: [] };
+export async function pullScheduleDrift(tab: string): Promise<{ drifted: PmsDriftedItem[]; deleted: PmsDeletedItem[]; assignees: PmsAssigneeInfo[] }> {
+  if (!SYNC_SCHEDULE_PMS_URL) return { drifted: [], deleted: [], assignees: [] };
   const res = await fetch(SYNC_SCHEDULE_PMS_URL, {
     method: 'POST',
     headers: await authHeaders(),
     body: JSON.stringify({ action: 'pull', tab }),
   });
   if (!res.ok) throw new Error('Failed to pull PMS schedule updates.');
-  return (await res.json()) as { drifted: PmsDriftedItem[]; deleted: PmsDeletedItem[] };
+  return (await res.json()) as { drifted: PmsDriftedItem[]; deleted: PmsDeletedItem[]; assignees: PmsAssigneeInfo[] };
 }

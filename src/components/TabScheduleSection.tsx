@@ -22,7 +22,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -231,7 +231,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           if (canceled) return;
           if (activated.length > 0) {
             pushScheduleActivations(
-              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date })),
+              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date, agent: agentIndex.get(a.brandKey) ?? null })),
             ).catch((err) => {
               setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
             });
@@ -263,7 +263,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     let canceled = false;
     (async () => {
       try {
-        const { drifted, deleted } = await pullScheduleDrift(tab);
+        const { drifted, deleted, assignees } = await pullScheduleDrift(tab);
         if (canceled) return;
         for (const d of deleted) {
           const loc = weekdayAndWeekStartFor(d.date);
@@ -278,6 +278,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         if (!canceled && (drifted.length > 0 || deleted.length > 0)) {
           const rows = await fetchBrandSchedule(tab, weekStartISO);
           if (!canceled) setScheduleRows(rows);
+        }
+        if (!canceled) {
+          const nextAssigneeIndex = new Map<string, string>();
+          for (const a of assignees) {
+            if (a.assigneeName) nextAssigneeIndex.set(`${normalizeBrandKey(a.brand)}::${a.platform}::${a.date}`, a.assigneeName);
+          }
+          setAssigneeIndex(nextAssigneeIndex);
         }
       } catch (err) {
         if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to check PMS schedule updates', kind: 'error' });
@@ -296,6 +303,20 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     () => buildDateStatusIndex(tabCtx?.entries ?? []),
     [tabCtx],
   );
+
+  // Brand -> Agent, for PMS task assignment on push (see buildAgentIndex's own
+  // doc comment for the most-recently-updated-entry resolution rule). Built
+  // from the same already-loaded tabCtx.entries, no extra fetch.
+  const agentIndex = useMemo(
+    () => buildAgentIndex(tabCtx?.entries ?? []),
+    [tabCtx],
+  );
+
+  // Read-only PMS assignee display, keyed by `brandKey::platform::date`.
+  // Populated from the pull effect below and never written back to any
+  // dashboard data — purely a tooltip overlay on top of ScheduleCell's
+  // existing chips.
+  const [assigneeIndex, setAssigneeIndex] = useState<Map<string, string>>(new Map());
 
   // Declared here (not further down, near where it's historically lived)
   // because brandPlatforms/filteredBrands below close over it inside a
@@ -347,6 +368,19 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return confirmedByPlatform;
   }
 
+  // Read-only PMS assignee lookup for a brand's day cell, from assigneeIndex
+  // (populated by the pull effect above). Purely a tooltip overlay — see
+  // ScheduleCellProps.assigneeByPlatform's own doc comment.
+  function computeAssigneeByPlatform(brand: string, dayISO: string): Partial<Record<Platform, string>> {
+    const brandKey = normalizeBrandKey(brand);
+    const assigneeByPlatform: Partial<Record<Platform, string>> = {};
+    for (const platform of brandPlatforms(brand)) {
+      const name = assigneeIndex.get(`${brandKey}::${platform}::${dayISO}`);
+      if (name) assigneeByPlatform[platform] = name;
+    }
+    return assigneeByPlatform;
+  }
+
   // A brand with zero remaining platforms after brandPlatforms' exclusion —
   // on a single-platform tab, that means its only platform is flagged
   // removed — has nothing left to show at all: no chip in any day cell, no
@@ -389,7 +423,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, next);
       if (next === 'active') {
         const dayIndex = WEEKDAYS.indexOf(day);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)) }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: agentIndex.get(normalizeBrandKey(brand)) ?? null }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       }
@@ -408,7 +442,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, status);
       if (status === 'active') {
         const dayIndex = WEEKDAYS.indexOf(day);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)) }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: agentIndex.get(normalizeBrandKey(brand)) ?? null }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       }
@@ -557,6 +591,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const dayISO = toISODate(addDays(weekStart, dayIndex));
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
+                      const assigneeByPlatform = computeAssigneeByPlatform(brand, dayISO);
                       return (
                         <td key={day} className="px-3 py-2 text-left align-top">
                           <ScheduleCell
@@ -567,6 +602,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             pausesByPlatform={pausesByPlatform}
                             removedByPlatform={removedByPlatform}
                             confirmedByPlatform={confirmedByPlatform}
+                            assigneeByPlatform={assigneeByPlatform}
                             isPastDay={dayISO < todayISO}
                             // Legacy weeks (imported platform-null brand_schedule rows,
                             // pre-dating per-platform tracking) are read-only: forcing

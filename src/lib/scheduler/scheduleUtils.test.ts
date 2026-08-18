@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, trailingManualPauseDays, hasNoScheduleThisWeek } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek } from './scheduleUtils';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
@@ -216,5 +216,45 @@ describe('buildDateStatusIndex', () => {
     expect(removed.size).toBe(2);
     expect(confirmed.has('otherbrand::tp::2026-07-30')).toBe(true);
     expect(confirmed.size).toBe(1);
+  });
+});
+
+describe('buildAgentIndex', () => {
+  const entry = (data: Record<string, string | null>, updatedAt: string): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: updatedAt, last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('maps a brand to its one entry\'s Agent value', () => {
+    const entries = [entry({ Brands: 'WinMega', Agent: 'Jen' }, '2026-08-01T00:00:00Z')];
+    const index = buildAgentIndex(entries);
+    expect(index.get('winmega')).toBe('Jen');
+  });
+
+  it('picks the most-recently-updated entry\'s Agent when a brand has multiple, disagreeing entries', () => {
+    const entries = [
+      entry({ Brands: 'Spinjo', Agent: 'Ann' }, '2026-07-01T00:00:00Z'),
+      entry({ Brands: 'Spinjo', Agent: 'Lai' }, '2026-08-10T00:00:00Z'),
+      entry({ Brands: 'Spinjo', Agent: 'Jen' }, '2026-07-15T00:00:00Z'),
+    ];
+    const index = buildAgentIndex(entries);
+    expect(index.get('spinjo')).toBe('Lai');
+  });
+
+  it('has no key for a brand whose entries all have a blank Agent', () => {
+    const entries = [entry({ Brands: 'NoAgentBrand', Agent: '' }, '2026-08-01T00:00:00Z')];
+    const index = buildAgentIndex(entries);
+    expect(index.has('noagentbrand')).toBe(false);
+  });
+
+  it('has no key for a brand whose Agent column is missing entirely', () => {
+    const entries = [entry({ Brands: 'NoAgentColumn' }, '2026-08-01T00:00:00Z')];
+    const index = buildAgentIndex(entries);
+    expect(index.has('noagentcolumn')).toBe(false);
+  });
+
+  it('normalizes the brand key the same way the rest of this file does (trim + lowercase)', () => {
+    const entries = [entry({ Brands: '  WinMega  ', Agent: 'Jen' }, '2026-08-01T00:00:00Z')];
+    const index = buildAgentIndex(entries);
+    expect(index.get('winmega')).toBe('Jen');
   });
 });
