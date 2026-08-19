@@ -1,5 +1,6 @@
 import { TAB_COLUMN_CONFIGS } from './tab-configs';
 import { OPERATIONAL_TABS, tabToSlug } from './tabs';
+import { isTabArchived } from './archivedTabRegistry';
 
 // Shared by AddBrandTabModal (create) and EditBrandTabModal (rename) so the
 // two can't drift on what makes a candidate Brand Tab name valid — both
@@ -11,6 +12,13 @@ export function validateNewTabName(name: string): string | null {
   if (!trimmed) return 'Enter a tab name.';
   const collision = OPERATIONAL_TABS.includes(trimmed) || trimmed in TAB_COLUMN_CONFIGS;
   if (collision) return `A tab named "${trimmed}" already exists.`;
+  // Once an archived *dynamic* tab is spliced out of OPERATIONAL_TABS, the
+  // check above stops seeing it -- without this, a new tab could be created
+  // with the exact same name while the archived one's custom_tabs row and
+  // entries still exist.
+  if (isTabArchived(trimmed)) {
+    return `"${trimmed}" is currently archived — unarchive it, or choose a different name.`;
+  }
   // A tab's URL is /brands/<tabToSlug(name)>, and slugToTab resolves a slug
   // back to the *first* matching tab — so a name that only collides by slug
   // (e.g. "Gulf Recovery Group" → gulf-recovery-group, already claimed by

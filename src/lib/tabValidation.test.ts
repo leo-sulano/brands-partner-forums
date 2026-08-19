@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { validateNewTabName } from './tabValidation';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
+import { archiveTabLocally, unarchiveTabLocally } from './archivedTabRegistry';
 
 describe('validateNewTabName', () => {
   beforeEach(() => {
@@ -38,5 +39,13 @@ describe('validateNewTabName', () => {
 
   it('trims surrounding whitespace before validating', () => {
     expect(validateNewTabName('  Hanan  ')).toBe('A tab named "Hanan" already exists.');
+  });
+
+  it('rejects a name matching a currently-archived tab', () => {
+    archiveTabLocally('Old Archived Tab');
+    expect(validateNewTabName('Old Archived Tab')).toBe(
+      '"Old Archived Tab" is currently archived — unarchive it, or choose a different name.',
+    );
+    unarchiveTabLocally('Old Archived Tab');
   });
 });
