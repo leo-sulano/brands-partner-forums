@@ -4625,3 +4625,113 @@ confirmed the "All agents" dropdown disappeared regardless of that real data —
 allow-list overrides cardinality, not just supplements it — then re-checked it and confirmed it
 came back. Cleaned up: deleted both throwaway entries, then deleted "RenameVerifyTabRenamed" itself
 via its own delete flow (type-to-confirm "yes"), confirming it left the sidebar with no trace.
+
+---
+
+## Task 240: Brand Tab Archive (Reversible Delete + Reason)
+
+**Date:** August 19, 2026
+
+Reported live: hardcoded Brand Tabs (e.g. Rooster Partners) had no delete option at all — only
+self-service tabs did, by Task 232's original design. Brainstormed interactively into a genuine
+architecture reversal, confirmed step by step: **every** tab, hardcoded or dynamic, becomes
+archivable (hidden, reversibly, with a required reason) — and the old dynamic-tab-only
+hard-delete (`deleteCustomTab`, Task 232/238) is retired entirely, not kept alongside the new
+mechanism. A new `tab_archive_log` table (migration `20260819150000`, applied live), shaped like
+`delete_log`/`edit_log` but keyed by `tab` text instead of `entity_id` uuid — a hardcoded tab has
+no row/uuid anywhere to key off — deliberately kept separate from `delete_log` rather than forcing
+a fit, to avoid touching that already-shipped, already-tested entry/account restore code. A row
+with `restored_at is null` means a tab is currently archived; a partial unique index enforces one
+active archive per tab.
+
+New `src/lib/archivedTabRegistry.ts` (`archiveTabLocally`/`unarchiveTabLocally`/`applyArchivedTabs`/
+`resetArchivedTabs`/`isTabArchived`) splices archived tab names out of `OPERATIONAL_TABS` **in
+place** — the same proven mechanism `dynamicTabRegistry.ts` already uses — which is what gives
+every existing `OPERATIONAL_TABS` reader (Sidebar, Overview, Score Summary, Schedule Planner, both
+entry modals) the update for free, with zero call-site changes; explicitly verified during this
+task rather than assumed, since Task 219 previously found exactly this class of surface
+(`TAB_ICONS`) had silently drifted before. Applied once at `AuthContext` bootstrap, after
+`registerDynamicTabs` (ordering matters: a since-archived dynamic tab must be registered then
+immediately re-excluded, not the reverse). `BrandGroup.tsx`'s trash-icon button changed from
+`isApproved && isDynamicTab(tab)` to `isApproved` alone (icon swapped `Trash2` → `Archive`); its
+confirmation modal gained a required reason textarea and dropped the old "blocked while entries
+exist" language, since archiving is safe regardless of entry count; a new early guard renders "This
+Brand Tab has been archived" instead of the table when navigating directly to an archived tab's
+URL. `tabValidation.ts`'s `validateNewTabName` gained an `isTabArchived` check — without it, once
+an archived dynamic tab is spliced out of `OPERATIONAL_TABS`, a new tab could be created with the
+same name while the archived one's real `custom_tabs` row/entries still exist underneath it.
+`ActivityLog.tsx` shows archive events informationally in the general chronological feed (no
+restore action there, matching how tab-creation events already render) and with a real Unarchive
+button in a new section under the existing "deletes" tab — `unarchiveTab` (DB write) is always
+followed by `unarchiveTabLocally` (registry update) so the Sidebar/etc. update immediately with no
+reload, the same pattern the pre-existing tab-restore flow already used.
+
+Both Edge Functions this reaches got their own code changes in this same task, per this project's
+standing cross-dashboard-consistency rule — deploys stay pending, documented below, not deferred as
+code:
+`generate-weekly-schedule` now resets-then-applies the archived-tab set every invocation (mirroring
+its existing dynamic-tab reset/register dance, same warm-isolate reasoning), after
+`registerDynamicTabs` — confirmed via direct grep of the live file that the ordering constraint
+actually holds, not just assumed from the diff. `ai-assistant/tools.ts` gained a new
+`buildArchivedTabNameSet`/`fetchArchivedTabNameSet` pair (matching the file's existing
+`fetchRemovedPlatformBrandSet` pure/impure style) and now excludes archived-tab rows/names from
+`list_tabs`, `query_entries`, `get_score_summary`, `get_success_rate_by_field`, `get_schedule`,
+`get_paused_combos`, and `get_review_texts`; `list_tabs`'s description now discloses the exclusion
+with the same anti-hallucination wording Task 220 established for hidden/restricted/removed-brand
+filtering. Deliberately **not** touched: `get_removed_platform_flags` and `get_entry` — a stale
+flag or a direct id lookup on an archived tab is low-impact trivia, not the "model asserts an
+archived tab doesn't exist" risk the other 7 tools carry.
+
+Built via Subagent-Driven Development (10 tasks, dedicated worktree) against a spec/plan pair
+(`docs/superpowers/specs/2026-08-19-brand-tab-archive-design.md`,
+`docs/superpowers/plans/2026-08-19-brand-tab-archive.md`). Two real cross-task/brief issues, both
+ruled on and resolved during execution rather than surfacing later:
+1. **Pre-flight scan caught a genuine intermediate-broken-build gap** before any task was
+   dispatched: the task that removes `deleteCustomTab` from `queries.ts` (Task 3) necessarily lands
+   two tasks before the one that stops `BrandGroup.tsx` from importing it (Task 6) — `npm run
+   build` was explicitly expected (and confirmed) to show exactly that one stale-import error for
+   those two tasks in between, `npm test` unaffected throughout since no test file imports
+   `BrandGroup.tsx`.
+2. **Task 9's brief had two pieces of literal code that didn't survive contact with the real
+   file:** `list_tabs`'s inlined `Promise.all` element failed `deno check` on an `unknown`-type
+   inference (fixed by assigning the query to a variable first, matching every other edited
+   branch's own existing pattern — behavior-preserving, verified by a real test); and the
+   pre-existing `mockSupabase` test helper in `tools_test.ts` was table-oblivious, which would have
+   spuriously marked every tab archived for 9 unrelated tests the moment `query_entries` started
+   also querying `tab_archive_log` — fixed by making the mock table-aware. Both deviations were
+   independently re-verified by the task reviewer (re-running `deno check`/`deno test` directly,
+   not trusting the implementer's report) before being accepted.
+
+Full suite (561 tests) and `npm run build` both pass; `deno check`/`deno test` clean on both
+touched Edge Functions. `tab_archive_log` is applied live (confirmed via a direct
+`information_schema.columns` query). One live-infrastructure note from Task 1: this worktree's
+first `supabase db push` attempt failed because a concurrent session's own migration
+(`20260819120000_add_brand_agent_assignments.sql`, from the separate `brand-agent-mapping`
+worktree/plan) had already been applied to the shared remote database ahead of this branch —
+resolved by copying that file into this worktree (uncommitted, matching how it'll arrive for real
+once that other branch merges) rather than running `supabase migration repair --status reverted`
+against infrastructure another session owns.
+
+**Not live-verified in a real browser this session** — the Playwright MCP tool that every prior
+live-verification pass in this project's history has used disconnected partway through this
+session and did not reconnect, an environment gap rather than a design gap. Everything reachable
+without a browser was verified directly: full suite, build, `deno check`/`deno test`, a live SQL
+query confirming the new table's real shape, and a direct grep confirming the two Edge Functions'
+internal ordering constraints actually hold in the committed files (not just in the diffs).
+**Recommend this be the first live check performed once a browser tool is available**, following
+this plan's own Task 10 checklist: archive a real, low-traffic hardcoded tab (GRG - Gulf Recovery
+Group) with a reason, confirm it vanishes from Sidebar/Overview/Score Summary immediately with no
+reload, confirm direct navigation to its old URL shows the archived message, confirm the Log
+page's Deletes tab shows the reason and an Unarchive button that brings it back everywhere with no
+reload; separately create-archive-unarchive a throwaway dynamic tab and confirm a same-name create
+attempt is rejected while it's archived, then clean it up via a manual SQL delete in the Supabase
+SQL editor (there is no in-app way to remove a tab anymore, per this task's own accepted
+trade-off — archive is the only mechanism, permanently reserving the name until unarchived).
+
+**Pending manual deploy:** `supabase functions deploy generate-weekly-schedule` (already pending
+before this task, per its own long-standing Known Issues entry; now additionally carries the
+archived-tab exclusion) and `supabase functions deploy ai-assistant` (this task's `tools.ts`
+changes are live in code only until deployed — until then, the live assistant can still surface an
+archived tab's data or claim it "doesn't exist" instead of "may be archived"). Spec:
+`docs/superpowers/specs/2026-08-19-brand-tab-archive-design.md`. Plan:
+`docs/superpowers/plans/2026-08-19-brand-tab-archive.md`.
