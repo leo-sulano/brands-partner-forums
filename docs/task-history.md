@@ -4692,3 +4692,10 @@ updates its code, per this project's established "fix code now, defer deploy" pa
   build `TabContext` manually and never call the real `getTabPlatforms()`). Worth a deliberate
   repo-wide grep for tests resolving non-real tab names through `getTabPlatforms()` before this
   surfaces again as a surprise in some future task.
+- **Ask AI's `get_success_rate_by_field`/`query_entries(group_by: "Agent")` are not wired to
+  `brand_agent_assignments` and still read only the raw per-entry `Agent` column** — this is a
+  known, deliberately-deferred gap (not silently missed), documented directly in
+  `supabase/functions/ai-assistant/tools.ts` above `FIELD_KEYS` and in `get_success_rate_by_field`'s
+  own tool description. The real fix requires resolving each function's agent bucketing per-brand
+  via `resolveAgentForBrand`, which is a semantic change to existing passing test suites significant
+  enough to warrant its own dedicated task rather than folding into this plan's final fix wave.

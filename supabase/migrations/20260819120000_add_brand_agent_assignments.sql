@@ -15,7 +15,9 @@
 -- HazEmirates UAE) have no 'Agent' column in their entries' jsonb data at
 -- all -- their source Google Sheets never had one -- so buildAgentIndex has
 -- always resolved nothing for their brands. This table is the only way
--- those tabs' brands can ever get a real PMS assignee.
+-- those tabs' brands can ever get a real PMS assignee -- except HazEmirates
+-- UAE, which has zero seeded rows below (the source spreadsheet had no data
+-- for it) and so remains fully unassigned even after this migration.
 --
 -- One-time seed only -- no admin UI exists to edit this table. Future
 -- reassignments are made directly in the Supabase table editor, same as

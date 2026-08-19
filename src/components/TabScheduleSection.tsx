@@ -156,7 +156,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           withFlagFallback(fetchBrandPlatformOverrides(tab)),
           withFlagFallback(fetchScheduleHiddenBrands(tab)),
           withFlagFallback(fetchScheduleRestrictedBrands(tab)),
-          withFlagFallback(fetchBrandAgentAssignments(tab)),
+          // Agent data is purely informational (tooltip/filter/PMS-assignee
+          // display), not an exclusion flag like the four above — a
+          // transient failure here must not gate the scheduler-invocation
+          // effect (recalculatePauses/ensureWeekGenerated/PMS push) via
+          // flagsLoaded. Fails open with a plain .catch, matching every
+          // other brand_agent_assignments reader (SchedulePlanner.tsx's two
+          // effects, generate-weekly-schedule/index.ts).
+          fetchBrandAgentAssignments(tab).catch(() => []),
         ]);
         if (canceled) return;
         const uniqueBrands = deriveTabBrands(tab, rawEntries, headers);

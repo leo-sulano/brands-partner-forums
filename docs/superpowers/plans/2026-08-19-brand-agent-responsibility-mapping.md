@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-08-19-brand-agent-responsibility-mapping-design.md`
 
+> **Note (final review fix wave):** Task 1's migration was actually committed as
+> `20260819120000_add_brand_agent_assignments.sql`, not the `20260819110000` filename used
+> throughout the rest of this document — renamed mid-plan after a real version collision with a
+> concurrent session's migration. See `docs/task-history.md`'s Task 239 entry for the full
+> incident writeup. The rest of this plan's `20260819110000` references are left as-is.
+
 ## Global Constraints
 
 - Brand-key matching is always `lower(trim(brand))` (`normalizeBrandKey` / `generated always as (lower(btrim(brand)))`) — no punctuation stripping. Seed data must use each brand's *exact* live spelling (verified below), not the CSV's spelling where they differ.

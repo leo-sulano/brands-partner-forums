@@ -304,6 +304,22 @@ function filterHiddenOrRestricted<T extends { tab: string; brand: string; platfo
   });
 }
 
+// KNOWN GAP (Task 239, Brand -> Agent Responsibility Mapping, 2026-08-19/20): the
+// 'agent' field here still reads each entry's raw per-entry `Agent` column value —
+// it is NOT wired to the newer, authoritative `brand_agent_assignments` table the
+// dashboard's Schedule Planner now resolves through (see
+// `src/lib/scheduler/scheduleUtils.ts`'s `resolveAgentForPlatform`/
+// `buildResolvedAgentIndex`). This means Ask AI's agent-grouped answers
+// (`successRateByField('agent', ...)` and `groupByField(..., 'Agent')` via
+// `query_entries`) can diverge from what Schedule Planner shows — most visibly for
+// the 5 tabs with no per-entry Agent column at all (Revolution Casino, Trybet,
+// SilverPlay, Hanan, HazEmirates UAE), where these tools will report nothing for
+// "agent" queries even though `brand_agent_assignments` may have a real answer.
+// A real fix needs `successRateByField`/`groupByField` to resolve agent
+// per-BRAND the same way (via `resolveAgentForBrand`), which is a deliberate
+// semantic change to two widely-used, currently-passing test suites — left as a
+// dedicated follow-up task, not folded into this plan's final fix wave. See
+// docs/task-history.md's Task 239 entry (Known Issues / Backlog sub-section).
 const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
   proxy: ['Proxy Used'],
   agent: ['Agent'],
@@ -656,7 +672,11 @@ export const TOOL_DEFS = [
         'whose status is pending, paused, or otherwise undecided are not counted (contribute to ' +
         'neither live nor removed) — total may be lower than raw row count for that value. ' +
         'Brands whose page on the queried platform was flagged removed (see ' +
-        'get_removed_platform_flags) are excluded from these results entirely.',
+        'get_removed_platform_flags) are excluded from these results entirely. ' +
+        'The "agent" field reflects only each account\'s own recorded Agent value, which ' +
+        'may be blank or stale for several tabs (it does not yet consult the newer, more ' +
+        'authoritative brand-agent responsibility mapping) — do not claim a brand "has no ' +
+        'agent" with full confidence based on this alone.',
       parameters: {
         type: 'object',
         properties: {

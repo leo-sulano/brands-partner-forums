@@ -32,11 +32,13 @@ export interface PmsSyncItem {
   brand: string;
   platform: Platform;
   date: string;
-  // The dashboard's Agent value for this brand (from buildAgentIndex,
-  // caller-resolved -- this module has no reason to re-derive it from raw
-  // entries itself). Null/undefined means no agent could be resolved (no
-  // entries, or a blank Agent column) -- the created task is left
-  // unassigned, same as when the resolved name has no PMS team match.
+  // The dashboard's Agent value for this brand (resolved via
+  // resolveAgentForPlatform, which checks brand_agent_assignments before
+  // falling back to buildAgentIndex -- caller-resolved, this module has no
+  // reason to re-derive it from raw entries itself). Null/undefined means no
+  // agent could be resolved (no entries, or a blank Agent column) -- the
+  // created task is left unassigned, same as when the resolved name has no
+  // PMS team match.
   agent?: string | null;
 }
 
