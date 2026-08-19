@@ -752,6 +752,55 @@ export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   return hidden ? raw.filter((p) => !hidden.has(p)) : raw;
 }
 
+export type ToolbarFilterKey = 'brand' | 'agent' | 'proxy' | 'country' | 'status' | 'platform';
+
+// Single source of truth for the toolbar-filter checkbox list shown by both
+// AddBrandTabModal (create) and EditBrandTabModal (edit), mirroring how
+// PLATFORM_LIST (dynamicTabRegistry.ts) is the one shared source for the
+// platform checkbox list.
+export const TOOLBAR_FILTER_LIST: { key: ToolbarFilterKey; label: string }[] = [
+  { key: 'brand', label: 'Brand' },
+  { key: 'agent', label: 'Agent' },
+  { key: 'proxy', label: 'Proxy' },
+  { key: 'country', label: 'Country' },
+  { key: 'status', label: 'Status' },
+  { key: 'platform', label: 'Platform' },
+];
+
+export const ALL_TOOLBAR_FILTERS: ToolbarFilterKey[] = TOOLBAR_FILTER_LIST.map((f) => f.key);
+
+// In-memory registry of each tab's toolbar filter allow-list
+// (docs/superpowers/specs/2026-08-19-brand-tab-rename-and-toolbar-filters-design.md).
+// A tab absent from this map has no override — every filter is allowed,
+// still subject to each dropdown's own data-cardinality auto-hide check in
+// BrandGroup.tsx. Populated at session bootstrap (AuthContext.tsx), same
+// pattern as hiddenTabPlatforms above.
+const toolbarFilterOverrides: Record<string, Set<ToolbarFilterKey>> = {};
+
+export function registerToolbarFilters(rows: { tab: string; enabled_filters: ToolbarFilterKey[] }[]): void {
+  for (const row of rows) {
+    toolbarFilterOverrides[row.tab] = new Set(row.enabled_filters);
+  }
+  notifyTabPlatformsChanged();
+}
+
+export function unregisterToolbarFilters(tab: string): void {
+  delete toolbarFilterOverrides[tab];
+  notifyTabPlatformsChanged();
+}
+
+export function resetToolbarFilters(): void {
+  for (const key of Object.keys(toolbarFilterOverrides)) delete toolbarFilterOverrides[key];
+}
+
+// Returns the toolbar filters currently allowed for a tab — every filter if
+// the tab has no override row, else exactly the registered set (which may
+// be empty, meaning no filter dropdowns show at all).
+export function getEnabledToolbarFilters(tab: string): ToolbarFilterKey[] {
+  const override = toolbarFilterOverrides[tab];
+  return override ? ALL_TOOLBAR_FILTERS.filter((f) => override.has(f)) : [...ALL_TOOLBAR_FILTERS];
+}
+
 // Set once by dynamicTabRegistry.ts (a synchronous self-registration side
 // effect at that module's own top level) to hand this module a reference
 // to getDynamicTabColumns, without tab-configs.ts itself ever statically
