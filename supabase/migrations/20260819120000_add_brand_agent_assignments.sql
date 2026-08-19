@@ -1,4 +1,4 @@
--- supabase/migrations/20260819110000_add_brand_agent_assignments.sql
+-- supabase/migrations/20260819120000_add_brand_agent_assignments.sql
 -- Brand -> Agent responsibility mapping
 -- (docs/superpowers/specs/2026-08-19-brand-agent-responsibility-mapping-design.md):
 --
