@@ -103,6 +103,24 @@ export function unregisterDynamicTab(name: string): void {
   notifyTabPlatformsChanged();
 }
 
+// Renames a previously-registered dynamic tab in place: removes the old key
+// from both dynamicTabColumns and OPERATIONAL_TABS and adds the new one
+// with the same platform set, at the same array position, firing exactly
+// one tab-platforms-changed event — doing this as a separate unregister
+// then register would leave a window where neither name is registered,
+// which a listener firing in between (e.g. Sidebar's tabsVersion bump)
+// could render against.
+export function renameDynamicTab(oldName: string, newName: string, platforms: DynamicTabPlatform[]): void {
+  if (!(oldName in dynamicTabColumns)) return;
+  if (newName in TAB_COLUMN_CONFIGS) return;
+  delete dynamicTabColumns[oldName];
+  dynamicTabColumns[newName] = buildDynamicTabColumns(platforms);
+  const idx = OPERATIONAL_TABS.indexOf(oldName);
+  if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1, newName);
+  else if (!OPERATIONAL_TABS.includes(newName)) OPERATIONAL_TABS.push(newName);
+  notifyTabPlatformsChanged();
+}
+
 // Clears every registered dynamic tab, from both the column registry and
 // OPERATIONAL_TABS. Needed by the generate-weekly-schedule Edge Function,
 // which re-registers custom_tabs on every invocation: Deno isolates are
