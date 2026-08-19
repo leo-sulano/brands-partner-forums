@@ -697,8 +697,8 @@ function computeRawTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   return platforms;
 }
 
-// Exposed for the Edit Platforms modal (BrandGroup.tsx /
-// EditBrandTabPlatformsModal.tsx), which must always offer every platform a
+// Exposed for the Edit Brand Tab modal (BrandGroup.tsx /
+// EditBrandTabModal.tsx), which must always offer every platform a
 // tab has ever tracked as a checkbox — including one currently hidden —
 // never just what's presently visible.
 export function getTabPlatformsUnfiltered(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {

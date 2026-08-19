@@ -14,7 +14,7 @@ import { setDynamicColumnsResolver, TAB_COLUMN_CONFIGS } from './tab-configs.ts'
 export type DynamicTabPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 
 // Single source of truth for the platform checkbox list shown by both
-// AddBrandTabModal (create) and EditBrandTabPlatformsModal (edit) — kept here
+// AddBrandTabModal (create) and EditBrandTabModal (edit) — kept here
 // rather than duplicated per-component so the two can't drift the way
 // BrandGroup.tsx's own separate tp/ag/cg-only card list did.
 export const PLATFORM_LIST: { key: DynamicTabPlatform; label: string }[] = [
