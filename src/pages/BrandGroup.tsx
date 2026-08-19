@@ -10,7 +10,7 @@ import SuccessRateBadge from '../components/SuccessRateBadge';
 import EditEntryModal from '../components/EditEntryModal';
 import AddReviewAccountModal from '../components/AddReviewAccountModal';
 import TotalBreakdownModal from '../components/TotalBreakdownModal';
-import EditBrandTabPlatformsModal from '../components/EditBrandTabPlatformsModal';
+import EditBrandTabModal from '../components/EditBrandTabModal';
 import Toast, { type ToastKind } from '../components/Toast';
 import PlatformRemovedBadge from '../components/PlatformRemovedBadge';
 import AccountUsageBadges from '../components/AccountUsageBadges';
@@ -23,7 +23,7 @@ import { isDynamicTab, unregisterDynamicTab } from '../lib/dynamicTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
@@ -1027,6 +1027,11 @@ export default function BrandGroup() {
     return result.filter((p) => visible.has(p));
   })();
 
+  // Which of the 6 toolbar filter dropdowns this tab allows — an explicit
+  // allow-list on top of (never wider than) each dropdown's own
+  // data-cardinality auto-hide check below.
+  const enabledFilters = getEnabledToolbarFilters(decodedTab);
+
   const GUEST_HIDDEN_COLS = new Set(['User Name', 'AG User', 'CG User']);
 
   // Always hide a platform's own columns when it's not in activePlatforms
@@ -1848,7 +1853,7 @@ export default function BrandGroup() {
             </button>
           )}
           {isApproved && (
-            <Tooltip content={`Edit ${tabDisplayName(decodedTab)}'s platforms`}>
+            <Tooltip content={`Edit ${tabDisplayName(decodedTab)}`}>
               <button
                 type="button"
                 onClick={() => setShowEditPlatformsModal(true)}
@@ -1873,12 +1878,16 @@ export default function BrandGroup() {
       </div>
 
       {showEditPlatformsModal && (
-        <EditBrandTabPlatformsModal
+        <EditBrandTabModal
           tabName={decodedTab}
           onClose={() => setShowEditPlatformsModal(false)}
-          onUpdated={() => {
+          onUpdated={(renamedTo) => {
             setShowEditPlatformsModal(false);
-            reloadRef.current();
+            if (renamedTo) {
+              navigate(`/brands/${tabToSlug(renamedTo)}`);
+            } else {
+              reloadRef.current();
+            }
           }}
         />
       )}
@@ -2107,7 +2116,7 @@ export default function BrandGroup() {
             </div>
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
-          {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && (
+          {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && enabledFilters.includes('brand') && (
             <MultiSelectDropdown
               noun="brand"
               values={brandFilter}
@@ -2124,7 +2133,7 @@ export default function BrandGroup() {
               searchable
             />
           )}
-          {uniqueAgents.length > 1 && (
+          {uniqueAgents.length > 1 && enabledFilters.includes('agent') && (
             <MultiSelectDropdown
               noun="agent"
               values={agentFilter}
@@ -2133,7 +2142,7 @@ export default function BrandGroup() {
               searchable
             />
           )}
-          {uniqueProxies.length > 1 && (
+          {uniqueProxies.length > 1 && enabledFilters.includes('proxy') && (
             <MultiSelectDropdown
               noun="proxie"
               values={proxyFilter}
@@ -2142,7 +2151,7 @@ export default function BrandGroup() {
               searchable
             />
           )}
-          {uniqueCountries.length > 1 && (
+          {uniqueCountries.length > 1 && enabledFilters.includes('country') && (
             <MultiSelectDropdown
               noun="countrie"
               values={countryFilter}
@@ -2151,13 +2160,15 @@ export default function BrandGroup() {
               searchable
             />
           )}
-          <MultiSelectDropdown
-            noun="statuse"
-            values={statusFilter}
-            onChange={(v) => { setStatusFilter(v as StatusValue[]); setPage(1); }}
-            options={STATUS_MULTI_OPTS}
-          />
-          {activePlatforms.length > 1 && (
+          {enabledFilters.includes('status') && (
+            <MultiSelectDropdown
+              noun="statuse"
+              values={statusFilter}
+              onChange={(v) => { setStatusFilter(v as StatusValue[]); setPage(1); }}
+              options={STATUS_MULTI_OPTS}
+            />
+          )}
+          {activePlatforms.length > 1 && enabledFilters.includes('platform') && (
             <MultiSelectDropdown
               noun="platform"
               values={platformFilter}

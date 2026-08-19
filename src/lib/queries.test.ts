@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { singletonFrom } = vi.hoisted(() => ({ singletonFrom: vi.fn() }));
+const { singletonFrom, singletonRpc } = vi.hoisted(() => ({ singletonFrom: vi.fn(), singletonRpc: vi.fn() }));
 vi.mock('./supabase', () => ({
   supabase: {
     from: singletonFrom,
+    rpc: singletonRpc,
     // setBrandPlatformOverride (unlike the fetch* functions above) always
     // goes through the singleton and calls currentUserEmail() ->
     // supabase.auth.getSession() internally -- stub it out so those tests
@@ -39,6 +40,9 @@ import {
   createCustomTab,
   updateCustomTabPlatforms,
   deleteCustomTab,
+  renameCustomTab,
+  fetchToolbarFilters,
+  setToolbarFilters,
   fetchHiddenTabPlatforms,
   setTabPlatformHidden,
   fetchRecentTabCreations,
@@ -951,6 +955,93 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
       throw new Error(`unexpected table: ${table}`);
     });
     await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Delete had no effect');
+  });
+});
+
+describe('renameCustomTab', () => {
+  beforeEach(() => {
+    singletonRpc.mockReset();
+  });
+
+  it('calls the rename_custom_tab RPC with old and new names', async () => {
+    singletonRpc.mockResolvedValue({ error: null });
+    await renameCustomTab('Acme Tab', 'Acme Tab Renamed');
+    expect(singletonRpc).toHaveBeenCalledWith('rename_custom_tab', {
+      old_name: 'Acme Tab',
+      new_name: 'Acme Tab Renamed',
+    });
+  });
+
+  it('throws the RPC error', async () => {
+    singletonRpc.mockResolvedValue({ error: new Error('a tab named "X" already exists') });
+    await expect(renameCustomTab('Acme Tab', 'X')).rejects.toThrow('a tab named "X" already exists');
+  });
+});
+
+describe('fetchToolbarFilters / setToolbarFilters', () => {
+  it('fetchToolbarFilters maps rows to tab/enabled_filters', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ tab: 'Acme Tab', enabled_filters: ['brand', 'status'] }], error: null }),
+    );
+    const rows = await fetchToolbarFilters();
+    expect(rows).toEqual([{ tab: 'Acme Tab', enabled_filters: ['brand', 'status'] }]);
+  });
+
+  it('setToolbarFilters upserts by tab', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await setToolbarFilters('Acme Tab', ['brand', 'status']);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'Acme Tab', enabled_filters: ['brand', 'status'] }),
+      { onConflict: 'tab' },
+    );
+  });
+
+  it('setToolbarFilters throws on error', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    singletonFrom.mockReturnValue({ upsert });
+    await expect(setToolbarFilters('Acme Tab', ['brand'])).rejects.toThrow('db down');
+  });
+});
+
+describe('createCustomTab with enabledFilters', () => {
+  it('does not write tab_toolbar_filters when enabledFilters is omitted', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    const upsert = vi.fn();
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'custom_tabs') return { insert };
+      if (table === 'tab_toolbar_filters') return { upsert };
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await createCustomTab('Acme Tab', ['tp']);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not write tab_toolbar_filters when enabledFilters equals the full default set', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    const upsert = vi.fn();
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'custom_tabs') return { insert };
+      if (table === 'tab_toolbar_filters') return { upsert };
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await createCustomTab('Acme Tab', ['tp'], ['brand', 'agent', 'proxy', 'country', 'status', 'platform']);
+    expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it('writes tab_toolbar_filters when enabledFilters narrows the default set', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'custom_tabs') return { insert };
+      if (table === 'tab_toolbar_filters') return { upsert };
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await createCustomTab('Acme Tab', ['tp'], ['brand', 'status']);
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'Acme Tab', enabled_filters: ['brand', 'status'] }),
+      { onConflict: 'tab' },
+    );
   });
 });
 

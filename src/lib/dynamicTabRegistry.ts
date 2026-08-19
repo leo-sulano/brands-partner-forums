@@ -14,7 +14,7 @@ import { setDynamicColumnsResolver, TAB_COLUMN_CONFIGS } from './tab-configs.ts'
 export type DynamicTabPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 
 // Single source of truth for the platform checkbox list shown by both
-// AddBrandTabModal (create) and EditBrandTabPlatformsModal (edit) — kept here
+// AddBrandTabModal (create) and EditBrandTabModal (edit) — kept here
 // rather than duplicated per-component so the two can't drift the way
 // BrandGroup.tsx's own separate tp/ag/cg-only card list did.
 export const PLATFORM_LIST: { key: DynamicTabPlatform; label: string }[] = [
@@ -100,6 +100,24 @@ export function unregisterDynamicTab(name: string): void {
   delete dynamicTabColumns[name];
   const idx = OPERATIONAL_TABS.indexOf(name);
   if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1);
+  notifyTabPlatformsChanged();
+}
+
+// Renames a previously-registered dynamic tab in place: removes the old key
+// from both dynamicTabColumns and OPERATIONAL_TABS and adds the new one
+// with the same platform set, at the same array position, firing exactly
+// one tab-platforms-changed event — doing this as a separate unregister
+// then register would leave a window where neither name is registered,
+// which a listener firing in between (e.g. Sidebar's tabsVersion bump)
+// could render against.
+export function renameDynamicTab(oldName: string, newName: string, platforms: DynamicTabPlatform[]): void {
+  if (!(oldName in dynamicTabColumns)) return;
+  if (newName in TAB_COLUMN_CONFIGS) return;
+  delete dynamicTabColumns[oldName];
+  dynamicTabColumns[newName] = buildDynamicTabColumns(platforms);
+  const idx = OPERATIONAL_TABS.indexOf(oldName);
+  if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1, newName);
+  else if (!OPERATIONAL_TABS.includes(newName)) OPERATIONAL_TABS.push(newName);
   notifyTabPlatformsChanged();
 }
 

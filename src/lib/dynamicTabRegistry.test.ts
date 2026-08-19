@@ -6,6 +6,7 @@ import {
   resetDynamicTabs,
   getDynamicTabColumns,
   isDynamicTab,
+  renameDynamicTab,
 } from './dynamicTabRegistry';
 import { OPERATIONAL_TABS } from './tabs';
 import { TAB_COLUMN_CONFIGS, getTabColumns } from './tab-configs';
@@ -156,5 +157,49 @@ describe('registerDynamicTabs / unregisterDynamicTab / getDynamicTabColumns / is
     expect(OPERATIONAL_TABS).not.toContain('Second Dynamic Tab');
     // Hardcoded tabs are untouched.
     expect(OPERATIONAL_TABS).toContain('Hanan');
+  });
+});
+
+describe('renameDynamicTab', () => {
+  beforeEach(() => {
+    unregisterDynamicTab('Test Dynamic Tab');
+    unregisterDynamicTab('Renamed Dynamic Tab');
+    unregisterDynamicTab('Second Dynamic Tab');
+  });
+
+  it('renames a registered tab in place, preserving its OPERATIONAL_TABS position', () => {
+    registerDynamicTabs([
+      { name: 'Second Dynamic Tab', platforms: ['tp'] },
+      { name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] },
+    ]);
+    const idxBefore = OPERATIONAL_TABS.indexOf('Test Dynamic Tab');
+    renameDynamicTab('Test Dynamic Tab', 'Renamed Dynamic Tab', ['tp', 'ag']);
+    expect(OPERATIONAL_TABS.indexOf('Renamed Dynamic Tab')).toBe(idxBefore);
+    expect(OPERATIONAL_TABS).not.toContain('Test Dynamic Tab');
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(false);
+    expect(isDynamicTab('Renamed Dynamic Tab')).toBe(true);
+    expect(getDynamicTabColumns('Renamed Dynamic Tab')).toEqual(buildDynamicTabColumns(['tp', 'ag']));
+  });
+
+  it('is a no-op when the old name was never registered as a dynamic tab', () => {
+    const before = [...OPERATIONAL_TABS];
+    renameDynamicTab('Never Registered', 'Also Never', ['tp']);
+    expect(OPERATIONAL_TABS).toEqual(before);
+    expect(isDynamicTab('Also Never')).toBe(false);
+  });
+
+  it('refuses to rename into a hardcoded tab name, leaving the original registered', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'] }]);
+    renameDynamicTab('Test Dynamic Tab', 'Hanan', ['tp']);
+    expect(isDynamicTab('Test Dynamic Tab')).toBe(true);
+    expect(OPERATIONAL_TABS.filter((t) => t === 'Hanan').length).toBe(1);
+    expect(getTabColumns('Hanan')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
+  });
+
+  it('refuses to rename a hardcoded tab', () => {
+    const before = [...OPERATIONAL_TABS];
+    renameDynamicTab('Hanan', 'Hanan Renamed', ['tp']);
+    expect(OPERATIONAL_TABS).toEqual(before);
+    expect(isDynamicTab('Hanan Renamed')).toBe(false);
   });
 });

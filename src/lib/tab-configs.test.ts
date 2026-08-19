@@ -4,6 +4,7 @@ import {
   getTabPlatforms, getTabPlatformsUnfiltered, registerHiddenTabPlatforms,
   unregisterHiddenTabPlatform, resetHiddenTabPlatforms,
   stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol,
+  getEnabledToolbarFilters, registerToolbarFilters, unregisterToolbarFilters, resetToolbarFilters, ALL_TOOLBAR_FILTERS,
 } from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 
@@ -251,5 +252,56 @@ describe('tab-configs.ts dynamic tab fallback', () => {
 
   it('a hardcoded tab is unaffected by the dynamic fallback', () => {
     expect(getTabColumns('Hanan')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
+  });
+});
+
+describe('toolbar filter overrides', () => {
+  beforeEach(() => {
+    resetToolbarFilters();
+  });
+
+  afterAll(() => {
+    resetToolbarFilters();
+  });
+
+  it('returns all 6 filters for a tab with no override row', () => {
+    expect(getEnabledToolbarFilters('Rooster Partners')).toEqual(ALL_TOOLBAR_FILTERS);
+  });
+
+  it('narrows to exactly the registered set', () => {
+    registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: ['brand', 'status'] }]);
+    expect(getEnabledToolbarFilters('Rooster Partners')).toEqual(['brand', 'status']);
+  });
+
+  it('does not affect a different tab', () => {
+    registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: ['brand'] }]);
+    expect(getEnabledToolbarFilters('Hanan')).toEqual(ALL_TOOLBAR_FILTERS);
+  });
+
+  it('unregisterToolbarFilters reverts a tab to the all-6 default', () => {
+    registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: ['brand'] }]);
+    unregisterToolbarFilters('Rooster Partners');
+    expect(getEnabledToolbarFilters('Rooster Partners')).toEqual(ALL_TOOLBAR_FILTERS);
+  });
+
+  it('resetToolbarFilters clears every tab\'s override', () => {
+    registerToolbarFilters([
+      { tab: 'Rooster Partners', enabled_filters: ['brand'] },
+      { tab: 'Hanan', enabled_filters: ['status'] },
+    ]);
+    resetToolbarFilters();
+    expect(getEnabledToolbarFilters('Rooster Partners')).toEqual(ALL_TOOLBAR_FILTERS);
+    expect(getEnabledToolbarFilters('Hanan')).toEqual(ALL_TOOLBAR_FILTERS);
+  });
+
+  it('re-registering the same tab replaces its set rather than merging', () => {
+    registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: ['brand', 'agent'] }]);
+    registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: ['status'] }]);
+    expect(getEnabledToolbarFilters('Rooster Partners')).toEqual(['status']);
+  });
+
+  it('allows registering an empty filter set', () => {
+    registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: [] }]);
+    expect(getEnabledToolbarFilters('Rooster Partners')).toEqual([]);
   });
 });
