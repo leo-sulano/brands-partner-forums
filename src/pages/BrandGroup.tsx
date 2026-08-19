@@ -3,7 +3,7 @@ import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   CheckCircle2, XCircle, Circle, Building2, ExternalLink,
   ChevronLeft, ChevronRight, ChevronsUpDown, ChevronUp, ChevronDown,
-  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2, Star, Trash2, Pencil,
+  Search, X, Check, CalendarDays, Plus, RefreshCw, Loader2, Star, Archive, Pencil,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import SuccessRateBadge from '../components/SuccessRateBadge';
@@ -18,8 +18,8 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, deleteCustomTab, type StatusCheckScope } from '../lib/queries';
-import { isDynamicTab, unregisterDynamicTab } from '../lib/dynamicTabRegistry';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, type StatusCheckScope } from '../lib/queries';
+import { archiveTabLocally, isTabArchived } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
@@ -604,10 +604,11 @@ export default function BrandGroup() {
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showDeleteTabModal, setShowDeleteTabModal] = useState(false);
-  const [deleteTabConfirmText, setDeleteTabConfirmText] = useState('');
-  const [deletingTab, setDeletingTab] = useState(false);
-  const [deleteTabError, setDeleteTabError] = useState<string | null>(null);
+  const [showArchiveTabModal, setShowArchiveTabModal] = useState(false);
+  const [archiveTabConfirmText, setArchiveTabConfirmText] = useState('');
+  const [archiveTabReason, setArchiveTabReason] = useState('');
+  const [archivingTab, setArchivingTab] = useState(false);
+  const [archiveTabError, setArchiveTabError] = useState<string | null>(null);
   const [showEditPlatformsModal, setShowEditPlatformsModal] = useState(false);
 
   const [reloadSeq, setReloadSeq] = useState(0);
@@ -623,17 +624,17 @@ export default function BrandGroup() {
   // from a same-tab query-string change it should still react to.
   const lastResyncedTabRef = useRef<string | null>(null);
 
-  // Escape-to-close for the delete-tab confirmation dialog — a document-level
+  // Escape-to-close for the archive-tab confirmation dialog — a document-level
   // listener rather than relying on focus already being inside the dialog
   // (matches the pattern this project's other modals use).
   useEffect(() => {
-    if (!showDeleteTabModal) return;
+    if (!showArchiveTabModal) return;
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') setShowDeleteTabModal(false);
+      if (e.key === 'Escape') setShowArchiveTabModal(false);
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [showDeleteTabModal]);
+  }, [showArchiveTabModal]);
 
   // Sticky toolbar: the column-header row sticks just below this element,
   // offset by its live height. The toolbar's height isn't fixed — it wraps
@@ -1784,19 +1785,20 @@ export default function BrandGroup() {
   const initialOverridesForEditEntry: Partial<Record<Platform, OverrideState>> =
     editEntry && brandCol ? overridesFor(editEntry.data[brandCol]) : {};
 
-  async function handleConfirmDeleteTab() {
-    if (deleteTabConfirmText.trim().toLowerCase() !== 'yes') return;
-    setDeleteTabError(null);
-    setDeletingTab(true);
+  async function handleConfirmArchiveTab() {
+    if (archiveTabConfirmText.trim().toLowerCase() !== 'yes') return;
+    if (!archiveTabReason.trim()) return;
+    setArchiveTabError(null);
+    setArchivingTab(true);
     try {
-      await deleteCustomTab(decodedTab);
-      unregisterDynamicTab(decodedTab);
-      setShowDeleteTabModal(false);
+      await archiveTab(decodedTab, archiveTabReason.trim());
+      archiveTabLocally(decodedTab);
+      setShowArchiveTabModal(false);
       navigate('/');
     } catch (err) {
-      setDeleteTabError(err instanceof Error ? err.message : 'Failed to delete tab');
+      setArchiveTabError(err instanceof Error ? err.message : 'Failed to archive tab');
     } finally {
-      setDeletingTab(false);
+      setArchivingTab(false);
     }
   }
 
@@ -1804,6 +1806,21 @@ export default function BrandGroup() {
     return (
       <div className="rounded-md border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
         Failed to load: {error}
+      </div>
+    );
+  }
+
+  if (isTabArchived(decodedTab)) {
+    return (
+      <div className="rounded-md border border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-600">
+        <p>This Brand Tab has been archived.</p>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="mt-2 text-blue-600 hover:underline"
+        >
+          Back to Overview
+        </button>
       </div>
     );
   }
@@ -1863,14 +1880,19 @@ export default function BrandGroup() {
               </button>
             </Tooltip>
           )}
-          {isApproved && isDynamicTab(decodedTab) && (
-            <Tooltip content={`Delete ${tabDisplayName(decodedTab)}`}>
+          {isApproved && (
+            <Tooltip content={`Archive ${tabDisplayName(decodedTab)}`}>
               <button
                 type="button"
-                onClick={() => { setDeleteTabError(null); setDeleteTabConfirmText(''); setShowDeleteTabModal(true); }}
+                onClick={() => {
+                  setArchiveTabError(null);
+                  setArchiveTabConfirmText('');
+                  setArchiveTabReason('');
+                  setShowArchiveTabModal(true);
+                }}
                 className="inline-flex items-center justify-center rounded-md border border-rose-200 p-2 text-rose-600 hover:bg-rose-50 transition-colors"
               >
-                <Trash2 className="size-4" />
+                <Archive className="size-4" />
               </button>
             </Tooltip>
           )}
@@ -1892,42 +1914,53 @@ export default function BrandGroup() {
         />
       )}
 
-      {showDeleteTabModal && (
+      {showArchiveTabModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => !deletingTab && setShowDeleteTabModal(false)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => !archivingTab && setShowArchiveTabModal(false)} />
           <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-slate-800">Delete "{tabDisplayName(decodedTab)}"?</h2>
-            <p className="text-xs text-slate-500">This cannot be undone. Deletion is blocked if the tab still has any entries.</p>
+            <h2 className="text-sm font-semibold text-slate-800">Archive "{tabDisplayName(decodedTab)}"?</h2>
+            <p className="text-xs text-slate-500">
+              It will disappear from the dashboard for everyone until it's unarchived — no entries or data are deleted.
+            </p>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-600">Reason (required)</label>
+              <textarea
+                value={archiveTabReason}
+                onChange={(e) => setArchiveTabReason(e.target.value)}
+                rows={2}
+                placeholder="Why is this tab being archived?"
+                className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
+              />
+            </div>
             <div className="space-y-1">
               <label className="text-xs text-slate-600">
                 Type <span className="font-semibold text-slate-800">yes</span> to confirm
               </label>
               <input
                 type="text"
-                autoFocus
-                value={deleteTabConfirmText}
-                onChange={(e) => setDeleteTabConfirmText(e.target.value)}
+                value={archiveTabConfirmText}
+                onChange={(e) => setArchiveTabConfirmText(e.target.value)}
                 placeholder="yes"
                 className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-400"
               />
             </div>
-            {deleteTabError && <p className="text-xs text-rose-600">{deleteTabError}</p>}
+            {archiveTabError && <p className="text-xs text-rose-600">{archiveTabError}</p>}
             <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 type="button"
-                onClick={() => setShowDeleteTabModal(false)}
-                disabled={deletingTab}
+                onClick={() => setShowArchiveTabModal(false)}
+                disabled={archivingTab}
                 className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                onClick={handleConfirmDeleteTab}
-                disabled={deleteTabConfirmText.trim().toLowerCase() !== 'yes' || deletingTab}
+                onClick={handleConfirmArchiveTab}
+                disabled={archiveTabConfirmText.trim().toLowerCase() !== 'yes' || !archiveTabReason.trim() || archivingTab}
                 className="rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {deletingTab ? 'Deleting…' : 'Delete'}
+                {archivingTab ? 'Archiving…' : 'Archive'}
               </button>
             </div>
           </div>
