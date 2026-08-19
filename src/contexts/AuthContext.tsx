@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters } from '../lib/queries';
+import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs } from '../lib/queries';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import { registerHiddenTabPlatforms, registerToolbarFilters } from '../lib/tab-configs';
+import { applyArchivedTabs } from '../lib/archivedTabRegistry';
 import type { Profile } from '../types/profile';
 
 interface AuthContextValue {
@@ -91,11 +92,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Failed to fetch toolbar filters:', err);
             return [];
           }),
-        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters]) => {
+          fetchArchivedTabs().catch((err) => {
+            console.error('Failed to fetch archived tabs:', err);
+            return [];
+          }),
+        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs]) => {
           if (!mounted) return;
           registerDynamicTabs(customTabs);
           registerHiddenTabPlatforms(hiddenPlatforms);
           registerToolbarFilters(toolbarFilters);
+          // Must run after registerDynamicTabs: a dynamic tab archived since
+          // its custom_tabs row was created gets registered (added back to
+          // OPERATIONAL_TABS) and then immediately archived again (removed)
+          // in that order -- reversed, it would incorrectly reappear.
+          applyArchivedTabs(archivedTabs);
           setProfile(p);
           setLoading(false);
         });
