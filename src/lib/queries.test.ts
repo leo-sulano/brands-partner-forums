@@ -39,7 +39,10 @@ import {
   fetchCustomTabs,
   createCustomTab,
   updateCustomTabPlatforms,
-  deleteCustomTab,
+  archiveTab,
+  unarchiveTab,
+  fetchArchivedTabs,
+  fetchRecentTabArchives,
   renameCustomTab,
   fetchToolbarFilters,
   setToolbarFilters,
@@ -847,7 +850,7 @@ describe('saveReviewAnalysis', () => {
   });
 });
 
-describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
+describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
   it('fetchCustomTabs maps rows to name/platforms', async () => {
     singletonFrom.mockReturnValue(
       chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'] }], error: null }),
@@ -890,72 +893,6 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
     await expect(updateCustomTabPlatforms('Acme Tab', ['tp'])).rejects.toThrow('db down');
   });
 
-  it('deleteCustomTab blocks deletion when entries exist for the tab', async () => {
-    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
-    singletonFrom.mockImplementation((table: string) => {
-      if (table === 'entries') return chain({ data: null, error: null, count: 3 } as never);
-      return { delete: del, ...chain({ data: null, error: null }) };
-    });
-    await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Cannot delete "Acme Tab": it still has 3 entries.');
-    // The guard must actually stop the write, not just report it.
-    expect(del).not.toHaveBeenCalled();
-  });
-
-  const existingTabRow = { id: 'tab-1', name: 'Acme Tab', platforms: ['tp'], created_by: 'a@b.com', created_at: '2026-01-01T00:00:00Z' };
-
-  it('deleteCustomTab snapshots the row into delete_log before deleting', async () => {
-    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
-    const logInsert = vi.fn().mockResolvedValue({ error: null });
-    singletonFrom.mockImplementation((table: string) => {
-      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
-      if (table === 'custom_tabs') return { ...chain({ data: existingTabRow, error: null }), delete: del };
-      if (table === 'delete_log') return { insert: logInsert };
-      throw new Error(`unexpected table: ${table}`);
-    });
-    await deleteCustomTab('Acme Tab');
-    expect(logInsert).toHaveBeenCalledWith(
-      expect.objectContaining({ entity_type: 'tab', entity_id: 'tab-1', before_data: existingTabRow }),
-    );
-    // The log write must happen before the delete, not after — otherwise a
-    // delete that fails partway could leave a real deletion with no snapshot
-    // to restore from.
-    expect(logInsert.mock.invocationCallOrder[0]).toBeLessThan(del.mock.invocationCallOrder[0]);
-  });
-
-  it('deleteCustomTab throws a friendly error when the tab no longer exists', async () => {
-    singletonFrom.mockImplementation((table: string) => {
-      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
-      if (table === 'custom_tabs') return chain({ data: null, error: null });
-      throw new Error(`unexpected table: ${table}`);
-    });
-    await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('"Acme Tab" no longer exists.');
-  });
-
-  it('deleteCustomTab deletes when the tab has zero entries', async () => {
-    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
-    singletonFrom.mockImplementation((table: string) => {
-      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
-      if (table === 'custom_tabs') return { ...chain({ data: existingTabRow, error: null }), delete: del };
-      if (table === 'delete_log') return { insert: vi.fn().mockResolvedValue({ error: null }) };
-      throw new Error(`unexpected table: ${table}`);
-    });
-    await expect(deleteCustomTab('Acme Tab')).resolves.toBeUndefined();
-    expect(del).toHaveBeenCalledWith({ count: 'exact' });
-  });
-
-  it('deleteCustomTab throws when the delete affected zero rows (blocked by RLS)', async () => {
-    // Supabase returns error:null with zero affected rows when an RLS DELETE
-    // policy denies the write — without the count check the caller would
-    // unregister a tab whose row actually survived.
-    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 0 } as never));
-    singletonFrom.mockImplementation((table: string) => {
-      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
-      if (table === 'custom_tabs') return { ...chain({ data: existingTabRow, error: null }), delete: del };
-      if (table === 'delete_log') return { insert: vi.fn().mockResolvedValue({ error: null }) };
-      throw new Error(`unexpected table: ${table}`);
-    });
-    await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Delete had no effect');
-  });
 });
 
 describe('renameCustomTab', () => {
@@ -1001,6 +938,76 @@ describe('fetchToolbarFilters / setToolbarFilters', () => {
     const upsert = vi.fn().mockResolvedValue({ error: new Error('db down') });
     singletonFrom.mockReturnValue({ upsert });
     await expect(setToolbarFilters('Acme Tab', ['brand'])).rejects.toThrow('db down');
+  });
+});
+
+describe('archiveTab / unarchiveTab / fetchArchivedTabs / fetchRecentTabArchives', () => {
+  it('archiveTab inserts a row with the current actor email', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ insert });
+    await archiveTab('Rooster Partners', 'No longer partnered');
+    expect(insert).toHaveBeenCalledWith({
+      tab: 'Rooster Partners',
+      reason: 'No longer partnered',
+      actor_email: '',
+    });
+  });
+
+  it('archiveTab throws a friendly error when the tab is already archived', async () => {
+    const insert = vi.fn().mockResolvedValue({
+      error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+    singletonFrom.mockReturnValue({ insert });
+    await expect(archiveTab('Rooster Partners', 'x')).rejects.toThrow('"Rooster Partners" is already archived.');
+  });
+
+  it('unarchiveTab sets restored_at/restored_by_email and succeeds', async () => {
+    const is = vi.fn().mockResolvedValue({ error: null, count: 1 });
+    const eq = vi.fn().mockReturnValue({ is });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await unarchiveTab('log-1');
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ restored_by_email: null }),
+      { count: 'exact' },
+    );
+    expect(eq).toHaveBeenCalledWith('id', 'log-1');
+    expect(is).toHaveBeenCalledWith('restored_at', null);
+  });
+
+  it('unarchiveTab throws when zero rows were affected (already unarchived)', async () => {
+    const is = vi.fn().mockResolvedValue({ error: null, count: 0 });
+    const eq = vi.fn().mockReturnValue({ is });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await expect(unarchiveTab('log-1')).rejects.toThrow('already been unarchived');
+  });
+
+  it('fetchArchivedTabs returns only active (non-restored) rows', async () => {
+    const is = vi.fn().mockResolvedValue({ data: [{ tab: 'Rooster Partners' }], error: null });
+    const select = vi.fn().mockReturnValue({ is });
+    singletonFrom.mockReturnValue({ select });
+    const rows = await fetchArchivedTabs();
+    expect(select).toHaveBeenCalledWith('tab');
+    expect(is).toHaveBeenCalledWith('restored_at', null);
+    expect(rows).toEqual([{ tab: 'Rooster Partners' }]);
+  });
+
+  it('fetchRecentTabArchives maps all rows (active and restored) to the event shape', async () => {
+    singletonFrom.mockReturnValue(
+      chain({
+        data: [{
+          id: 'log-1', tab: 'Rooster Partners', reason: 'x', actor_email: 'a@b.com',
+          created_at: '2026-08-19T00:00:00Z', restored_at: null, restored_by_email: null,
+        }],
+        error: null,
+      }),
+    );
+    const rows = await fetchRecentTabArchives();
+    expect(rows).toEqual([{
+      id: 'log-1', tab: 'Rooster Partners', reason: 'x', actorEmail: 'a@b.com',
+      createdAt: '2026-08-19T00:00:00Z', restoredAt: null, restoredByEmail: null,
+    }]);
   });
 });
 

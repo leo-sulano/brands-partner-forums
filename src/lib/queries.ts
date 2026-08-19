@@ -1617,42 +1617,66 @@ export async function setToolbarFilters(tab: string, enabledFilters: ToolbarFilt
   if (error) throw error;
 }
 
-export async function deleteCustomTab(name: string): Promise<void> {
-  const { count, error: countError } = await supabase
-    .from('entries')
-    .select('id', { count: 'exact', head: true })
-    .eq('tab', name);
-  if (countError) throw countError;
-  if (count && count > 0) {
-    throw new Error(`Cannot delete "${name}": it still has ${count} ${count === 1 ? 'entry' : 'entries'}.`);
+export async function archiveTab(tab: string, reason: string): Promise<void> {
+  const { error } = await supabase
+    .from('tab_archive_log')
+    .insert({ tab, reason, actor_email: (await currentUserEmail()) ?? '' });
+  if (error) {
+    if (error.code === '23505') throw new Error(`"${tab}" is already archived.`);
+    throw error;
   }
+}
 
-  // Snapshot into delete_log before deleting, so the tab can be restored
-  // later the same way an entry or account is — see restoreDeletedEntity's
-  // 'tab' branch.
-  const { data: existing, error: selErr } = await supabase
-    .from('custom_tabs')
-    .select('*')
-    .eq('name', name)
-    .maybeSingle();
-  if (selErr) throw selErr;
-  if (!existing) throw new Error(`"${name}" no longer exists.`);
-  const actor = await currentActor();
-  await logChange('delete_log', 'tab', existing.id as string, existing, actor);
-
-  // count: 'exact' so a blocked delete can't be mistaken for a successful one
-  // — Supabase returns error:null and zero affected rows when an RLS DELETE
-  // policy denies the write (the same trap restoreEditedEntity guards against
-  // above). Without this the caller would unregister a tab whose row survived,
-  // making it vanish from the sidebar until the next reload brought it back.
-  const { error, count: deleted } = await supabase
-    .from('custom_tabs')
-    .delete({ count: 'exact' })
-    .eq('name', name);
+export async function unarchiveTab(logId: string): Promise<void> {
+  const actorEmail = await currentUserEmail();
+  const { error, count } = await supabase
+    .from('tab_archive_log')
+    .update({ restored_at: new Date().toISOString(), restored_by_email: actorEmail }, { count: 'exact' })
+    .eq('id', logId)
+    .is('restored_at', null);
   if (error) throw error;
-  if (!deleted) {
-    throw new Error(`Delete had no effect — "${name}" may already be gone, or the "approved users can delete custom_tabs" RLS policy may not be applied in your Supabase project.`);
-  }
+  if (!count) throw new Error('This tab has already been unarchived.');
+}
+
+export interface ArchivedTabRow {
+  tab: string;
+}
+
+export async function fetchArchivedTabs(client: SupabaseClient = supabase): Promise<ArchivedTabRow[]> {
+  const { data, error } = await client
+    .from('tab_archive_log')
+    .select('tab')
+    .is('restored_at', null);
+  if (error) throw error;
+  return (data ?? []) as ArchivedTabRow[];
+}
+
+export interface TabArchivedEvent {
+  id: string;
+  tab: string;
+  reason: string;
+  actorEmail: string;
+  createdAt: string;
+  restoredAt: string | null;
+  restoredByEmail: string | null;
+}
+
+export async function fetchRecentTabArchives(limit = 50): Promise<TabArchivedEvent[]> {
+  const { data, error } = await supabase
+    .from('tab_archive_log')
+    .select('id, tab, reason, actor_email, created_at, restored_at, restored_by_email')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    tab: row.tab as string,
+    reason: row.reason as string,
+    actorEmail: row.actor_email as string,
+    createdAt: row.created_at as string,
+    restoredAt: (row.restored_at as string | null) ?? null,
+    restoredByEmail: (row.restored_by_email as string | null) ?? null,
+  }));
 }
 
 export async function fetchHiddenTabPlatforms(client: SupabaseClient = supabase): Promise<{ tab: string; platform: Platform }[]> {
