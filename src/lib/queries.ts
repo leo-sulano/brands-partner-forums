@@ -203,6 +203,34 @@ export async function fetchRecentEdits(limit = 50): Promise<EditEvent[]> {
   });
 }
 
+export interface TabCreatedEvent {
+  id: string;
+  name: string;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+// Reads custom_tabs directly for the "Recent Activity" feed, the same
+// "read the live table, don't log it separately" pattern fetchRecentEdits
+// already uses for entry edits — a tab creation has no "before" state to
+// snapshot into edit_log/delete_log, so it's purely informational (no
+// restore action), unlike a tab deletion (which does go through delete_log,
+// see deleteCustomTab/restoreDeletedEntity).
+export async function fetchRecentTabCreations(limit = 50): Promise<TabCreatedEvent[]> {
+  const { data, error } = await supabase
+    .from('custom_tabs')
+    .select('id, name, created_by, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    createdBy: (row.created_by as string | null) ?? null,
+    createdAt: row.created_at as string,
+  }));
+}
+
 export async function fetchAvailableTabs(): Promise<string[]> {
   const { data, error } = await supabase
     .from('tab_schemas')
@@ -1422,14 +1450,14 @@ export async function restoreDeletedEntity(logId: string): Promise<void> {
   if (log.restored_at) throw new Error('This item has already been restored.');
 
   const actor = await currentActor();
-  const table = log.entity_type === 'account' ? 'profiles' : 'entries';
+  const table = log.entity_type === 'account' ? 'profiles' : log.entity_type === 'tab' ? 'custom_tabs' : 'entries';
 
-  // Accounts have no sync-related bookkeeping fields, so the snapshot can be
-  // reinserted verbatim. Entries do — restoring should refresh those to
-  // reflect the restore happening now, not backdate them to the deleted
-  // row's old state (same rationale as restoreEditedEntity).
+  // Accounts and tabs have no sync-related bookkeeping fields, so the
+  // snapshot can be reinserted verbatim. Entries do — restoring should
+  // refresh those to reflect the restore happening now, not backdate them to
+  // the deleted row's old state (same rationale as restoreEditedEntity).
   const insertPayload =
-    log.entity_type === 'account'
+    log.entity_type === 'account' || log.entity_type === 'tab'
       ? log.before_data
       : {
           ...(log.before_data as Record<string, unknown>),
@@ -1559,6 +1587,20 @@ export async function deleteCustomTab(name: string): Promise<void> {
   if (count && count > 0) {
     throw new Error(`Cannot delete "${name}": it still has ${count} ${count === 1 ? 'entry' : 'entries'}.`);
   }
+
+  // Snapshot into delete_log before deleting, so the tab can be restored
+  // later the same way an entry or account is — see restoreDeletedEntity's
+  // 'tab' branch.
+  const { data: existing, error: selErr } = await supabase
+    .from('custom_tabs')
+    .select('*')
+    .eq('name', name)
+    .maybeSingle();
+  if (selErr) throw selErr;
+  if (!existing) throw new Error(`"${name}" no longer exists.`);
+  const actor = await currentActor();
+  await logChange('delete_log', 'tab', existing.id as string, existing, actor);
+
   // count: 'exact' so a blocked delete can't be mistaken for a successful one
   // — Supabase returns error:null and zero affected rows when an RLS DELETE
   // policy denies the write (the same trap restoreEditedEntity guards against

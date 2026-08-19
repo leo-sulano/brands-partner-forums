@@ -1,4 +1,4 @@
-export type AuditEntityType = 'account' | 'entry';
+export type AuditEntityType = 'account' | 'entry' | 'tab';
 
 export interface AuditLogEntry {
   id: string;

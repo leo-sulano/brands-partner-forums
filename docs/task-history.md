@@ -4470,3 +4470,77 @@ live/2 removed) dropped Overview's card to 103 total with the AG row gone entire
 row-level-OR-classified decrease, not the naive 32-row subtraction, matching `classifyEntry`'s
 documented per-row (not per-platform-sum) counting rule — then re-checking AG restored Overview's
 card exactly. Production confirmed clean (`tab_hidden_platforms` empty) at the end of this pass.
+
+---
+
+## Task 238: Brand Tab Create/Delete in Activity Log, Restorable
+
+**Date:** August 19, 2026
+
+Mid-way through committing/pushing Task 237 (above), the user asked whether deleting a hardcoded/
+dynamic Brand Tab shows up in this project's existing Activity Log, and — after confirming it did
+not — requested it be added, with deletion specifically restorable. Brainstormed as an architectural
+task (real design decisions: which log a creation with no "before" state belongs in, and who gets to
+restore a tab vs. the existing entry/account restore's admin-only gate) but implemented directly, no
+separate spec/plan doc, since it reuses this project's existing audit-log infrastructure end to end
+rather than inventing new mechanics. Two scope questions were confirmed with the user via
+`AskUserQuestion` before implementing: (1) only Create + Delete are logged, not the "Edit Platforms"
+action Tasks 236/237 just shipped; (2) restoring a deleted Brand Tab is available to any **approved**
+user, not admin-only — a deliberate divergence from how entry/account restores already work, matching
+Brand Tab creation/deletion/platform-editing's own existing approved-user-level access rest of this
+feature already has.
+
+Brand Tab **deletion** now flows through the exact same `delete_log`/restore mechanism an entry or
+account deletion already uses: `deleteCustomTab` (`src/lib/queries.ts`) selects the live
+`custom_tabs` row and calls the existing `logChange('delete_log', 'tab', ...)` helper before
+deleting, and `restoreDeletedEntity` gained a `'tab'` branch (table = `custom_tabs`, re-inserted
+verbatim like the existing `'account'` branch, since a tab row — unlike an entry — carries no
+sync-bookkeeping fields needing a fresh timestamp on restore). `delete_log`'s
+`entity_type` check constraint was widened via a new migration
+(`20260819090000_add_tab_to_delete_log.sql`, applied live via `supabase db push`) to accept `'tab'`
+alongside the existing `'account'`/`'entry'`, plus a new policy pair scoped to
+`entity_type = 'tab'` (`using (entity_type = 'tab' and is_approved())` for both read and
+restore-update) — independent of, and without narrowing, the existing admin-only account policies
+or the approved-read/admin-restore-only entry policies. `edit_log`'s constraint was deliberately left
+untouched — no tab-creation logging goes there (see below).
+
+Brand Tab **creation** does not go through `edit_log`/`delete_log` at all — there's no "before"
+state for a creation to snapshot or revert to. Instead it reuses this project's own existing "read
+the live table directly, don't log it separately" pattern that `fetchRecentEdits` already uses for
+entry edits (which reads `entries.updated_at`/`last_edited_by` rather than a separate log table): a
+new `fetchRecentTabCreations()` reads `custom_tabs.created_by`/`created_at` directly, with a new
+`TabCreatedEvent` type. A direct, load-bearing consequence of this design, confirmed via live
+verification below: a tab's "created" activity-feed entry only exists for as long as the tab itself
+still exists in `custom_tabs` — deleting it removes the creation event from the feed at the same
+time, since there's no separate persisted log row for it to survive in. This was accepted as correct
+given the chosen design, not treated as a gap.
+
+`ActivityLog.tsx`'s `AuditTab` (`isAdmin`/`isApproved` from `useAuth`) now computes
+`canRestore = isAdmin || (entry.entity_type === 'tab' && isApproved)`, replacing the old bare
+`isAdmin &&` gate — the one place this feature's access model actually diverges from the
+pre-existing entry/account restore behavior. `entityLabel()`/`entityWord` both gained a `'tab'`
+branch (reads `before_data.name` through the existing `tabDisplayName` helper, which already
+no-ops gracefully for names outside its hardcoded override maps). The "Recent Activity" feed
+(`ActivityFeed`) merges a third `Promise.allSettled` source alongside entry edits and admin logs,
+rendering a new `Plus`-icon "Brand Tab created by X" row; `handleRestore` now takes the whole
+`AuditLogEntry` (not just its id) so it can call the existing `registerDynamicTabs(...)` helper
+after a successful tab restore — the same "registry mutation happens at the UI layer, not inside
+`queries.ts`" convention Task 232's self-service creation flow already established, needed so the
+sidebar shows the restored tab immediately with no reload.
+
+`queries.test.ts` gained 2 new `deleteCustomTab` tests (snapshot-before-delete ordering via
+`invocationCallOrder`, and a friendly error when the tab is already gone), plus new
+`fetchRecentTabCreations` (2 tests) and `restoreDeletedEntity ('tab')` (2 tests) describe blocks; the
+3 pre-existing `deleteCustomTab` tests were updated for the new `custom_tabs`-select +
+`delete_log`-insert mock shape. Full suite (1213 tests) and `npm run build` both pass.
+
+Live-verified end to end against the real production Supabase instance: created a real test tab
+("Log Feature Test Tab", TP only) via the sidebar's "+ Add Brand Tab" flow, confirmed it appeared as
+the feed's very first "Brand Tab created / by leo@optinetsolutions.com" entry on `/log`; deleted it
+via the tab's own Delete flow (type-to-confirm "yes"); confirmed the creation event had disappeared
+from Recent Activity (expected, per the live-read design above) while a new "Brand Tab deleted / by
+leo@optinetsolutions.com / Log Feature Test Tab" entry with a Restore control appeared on the Deletes
+sub-tab; clicked Restore, confirmed its Confirm/Cancel step, confirmed it — the tab reappeared live
+in the sidebar (`/brands/log-feature-test-tab`, correct TP chip) with zero reload, no console errors.
+Deleted the test tab a second time afterward to leave production in its original state (no stray
+"Log Feature Test Tab" left behind, sidebar back to the original 11 tabs).

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
-  AlertCircle, ChevronLeft, ChevronRight, Loader2, Pencil, RotateCcw,
+  AlertCircle, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, RotateCcw,
   ShieldCheck, ShieldOff, Trash2, UserCheck, UserX,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  fetchRecentEdits, fetchAdminLogs, fetchEditLog, fetchDeleteLog, fetchWatchdogEvents,
+  fetchRecentEdits, fetchAdminLogs, fetchRecentTabCreations, fetchEditLog, fetchDeleteLog, fetchWatchdogEvents,
   restoreEditedEntity, restoreDeletedEntity,
-  type EditEvent, type AdminLogEvent, type AdminAction, type WatchdogEvent,
+  type EditEvent, type AdminLogEvent, type AdminAction, type TabCreatedEvent, type WatchdogEvent,
 } from '../lib/queries';
+import { registerDynamicTabs, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import type { AuditLogEntry } from '../types/audit-log';
 import Toast, { type ToastKind } from '../components/Toast';
 import { tabDisplayName } from '../lib/tabs';
@@ -26,7 +27,8 @@ function relativeTime(iso: string): string {
 
 type FeedItem =
   | { kind: 'edit'; data: EditEvent }
-  | { kind: 'admin'; data: AdminLogEvent };
+  | { kind: 'admin'; data: AdminLogEvent }
+  | { kind: 'tab_created'; data: TabCreatedEvent };
 
 const ACTION_META: Record<AdminAction, { label: string; icon: React.ReactNode; color: string }> = {
   approve:      { label: 'User approved',       icon: <UserCheck className="size-4 shrink-0" />,  color: 'text-green-500' },
@@ -42,26 +44,29 @@ function ActivityFeed() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // The two sources are independent: entry edits always exist, but admin_logs
-    // may not be provisioned in every environment. Use allSettled so a missing
-    // admin_logs table degrades to an edits-only feed instead of blanking the
-    // whole page — only surface an error when BOTH sources fail.
-    Promise.allSettled([fetchRecentEdits(100), fetchAdminLogs(100)])
-      .then(([editsRes, adminRes]) => {
-        if (editsRes.status === 'rejected' && adminRes.status === 'rejected') {
+    // The three sources are independent: entry edits always exist, but
+    // admin_logs may not be provisioned in every environment, and custom_tabs
+    // may simply be empty. Use allSettled so any one source failing degrades
+    // the feed instead of blanking the whole page — only surface an error
+    // when every source fails.
+    Promise.allSettled([fetchRecentEdits(100), fetchAdminLogs(100), fetchRecentTabCreations(100)])
+      .then(([editsRes, adminRes, tabsRes]) => {
+        if (editsRes.status === 'rejected' && adminRes.status === 'rejected' && tabsRes.status === 'rejected') {
           const reason = editsRes.reason;
           setError(reason instanceof Error ? reason.message : 'Failed to load log');
           return;
         }
         const edits = editsRes.status === 'fulfilled' ? editsRes.value : [];
         const adminLogs = adminRes.status === 'fulfilled' ? adminRes.value : [];
+        const tabsCreated = tabsRes.status === 'fulfilled' ? tabsRes.value : [];
         const items: FeedItem[] = [
           ...edits.map((e): FeedItem => ({ kind: 'edit', data: e })),
           ...adminLogs.map((a): FeedItem => ({ kind: 'admin', data: a })),
+          ...tabsCreated.map((t): FeedItem => ({ kind: 'tab_created', data: t })),
         ];
         items.sort((a, b) => {
-          const ta = a.kind === 'edit' ? a.data.updated_at : a.data.created_at;
-          const tb = b.kind === 'edit' ? b.data.updated_at : b.data.created_at;
+          const ta = a.kind === 'edit' ? a.data.updated_at : a.kind === 'admin' ? a.data.created_at : a.data.createdAt;
+          const tb = b.kind === 'edit' ? b.data.updated_at : b.kind === 'admin' ? b.data.created_at : b.data.createdAt;
           return tb.localeCompare(ta);
         });
         setFeed(items);
@@ -116,6 +121,26 @@ function ActivityFeed() {
           );
         }
 
+        if (item.kind === 'tab_created') {
+          const created = item.data;
+          return (
+            <li
+              key={`tab-created-${created.id}`}
+              className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+            >
+              <Plus className="mt-0.5 size-4 shrink-0 text-emerald-500" />
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-slate-800">
+                  Brand Tab created
+                  {created.createdBy ? <span className="font-normal text-slate-500"> by {created.createdBy}</span> : null}
+                </span>
+                <p className="mt-0.5 text-xs text-slate-500">{tabDisplayName(created.name)}</p>
+              </div>
+              <span className="shrink-0 text-xs text-slate-400">{relativeTime(created.createdAt)}</span>
+            </li>
+          );
+        }
+
         const log = item.data;
         const meta = ACTION_META[log.action];
         return (
@@ -145,6 +170,10 @@ function entityLabel(entry: AuditLogEntry): string {
     const before = entry.before_data as { email?: string };
     return before.email ?? 'Unknown account';
   }
+  if (entry.entity_type === 'tab') {
+    const before = entry.before_data as { name?: string };
+    return before.name ? tabDisplayName(before.name) : 'Unknown tab';
+  }
   const before = entry.before_data as { data?: Record<string, string | null> };
   const data = before.data ?? {};
   const name = data['Account Name'] ?? data['Account'] ?? data['Brand Name'] ?? data['Brand'];
@@ -153,7 +182,7 @@ function entityLabel(entry: AuditLogEntry): string {
 }
 
 function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
-  const { isAdmin, profile } = useAuth();
+  const { isAdmin, isApproved, profile } = useAuth();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,12 +203,24 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
       .finally(() => setLoading(false));
   }, [kind]);
 
-  async function handleRestore(id: string) {
+  async function handleRestore(entry: AuditLogEntry) {
+    const id = entry.id;
     setRestoringId(id);
     setConfirmId(null);
     try {
-      if (kind === 'edits') await restoreEditedEntity(id);
-      else await restoreDeletedEntity(id);
+      if (kind === 'edits') {
+        await restoreEditedEntity(id);
+      } else {
+        await restoreDeletedEntity(id);
+        // A restored tab needs its column registry refreshed in this
+        // session too, same as create/delete already do at the UI layer
+        // (queries.ts's restoreDeletedEntity only writes the DB row) — the
+        // sidebar would otherwise not show the tab again until a reload.
+        if (entry.entity_type === 'tab') {
+          const before = entry.before_data as { name: string; platforms: DynamicTabPlatform[] };
+          registerDynamicTabs([{ name: before.name, platforms: before.platforms }]);
+        }
+      }
       setEntries((prev) =>
         prev.map((e) =>
           e.id === id
@@ -228,6 +269,12 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
         {pageEntries.map((entry) => {
           const isRestoring = restoringId === entry.id;
           const isExpanded = expandedId === entry.id;
+          // Restoring an entry/account stays admin-only, matching this
+          // system's original design — but a Brand Tab's own create/delete/
+          // edit-platforms actions are all approved-user-level, not
+          // admin-gated, so its restore matches that instead.
+          const canRestore = isAdmin || (entry.entity_type === 'tab' && isApproved);
+          const entityWord = entry.entity_type === 'account' ? 'Account' : entry.entity_type === 'tab' ? 'Brand Tab' : 'Row';
           return (
             <li key={entry.id} className="rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
               <div className="flex items-start gap-3">
@@ -236,7 +283,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
                   : <Pencil className="mt-0.5 size-4 shrink-0 text-blue-500" />}
                 <div className="min-w-0 flex-1">
                   <span className="text-sm font-medium text-slate-800">
-                    {entry.entity_type === 'account' ? 'Account' : 'Row'} {kind === 'deletes' ? 'deleted' : 'edited'}
+                    {entityWord} {kind === 'deletes' ? 'deleted' : 'edited'}
                     <span className="font-normal text-slate-500"> by {entry.actor_email}</span>
                   </span>
                   <p className="mt-0.5 text-xs text-slate-500">{entityLabel(entry)}</p>
@@ -254,7 +301,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="text-xs text-slate-400">{relativeTime(entry.created_at)}</span>
-                  {isAdmin && (
+                  {canRestore && (
                     entry.restored_at ? (
                       <span className="text-xs text-emerald-600">
                         Restored{entry.restored_by_email ? ` by ${entry.restored_by_email}` : ''}
@@ -264,7 +311,7 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
                     ) : confirmId === entry.id ? (
                       <span className="flex items-center gap-1">
                         <button
-                          onClick={() => handleRestore(entry.id)}
+                          onClick={() => handleRestore(entry)}
                           className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
                         >
                           Confirm

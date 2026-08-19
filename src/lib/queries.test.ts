@@ -41,6 +41,8 @@ import {
   deleteCustomTab,
   fetchHiddenTabPlatforms,
   setTabPlatformHidden,
+  fetchRecentTabCreations,
+  restoreDeletedEntity,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -55,6 +57,9 @@ function chain(result: { data: unknown; error: null; count?: number }) {
   const builder: Record<string, unknown> = {
     select: () => builder,
     eq: () => builder,
+    order: () => builder,
+    limit: () => builder,
+    maybeSingle: () => Promise.resolve(result),
     then: (resolve: (v: { data: unknown; error: null; count?: number }) => unknown) => resolve(result),
   };
   return builder;
@@ -892,11 +897,43 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
     expect(del).not.toHaveBeenCalled();
   });
 
+  const existingTabRow = { id: 'tab-1', name: 'Acme Tab', platforms: ['tp'], created_by: 'a@b.com', created_at: '2026-01-01T00:00:00Z' };
+
+  it('deleteCustomTab snapshots the row into delete_log before deleting', async () => {
+    const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
+    const logInsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
+      if (table === 'custom_tabs') return { ...chain({ data: existingTabRow, error: null }), delete: del };
+      if (table === 'delete_log') return { insert: logInsert };
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await deleteCustomTab('Acme Tab');
+    expect(logInsert).toHaveBeenCalledWith(
+      expect.objectContaining({ entity_type: 'tab', entity_id: 'tab-1', before_data: existingTabRow }),
+    );
+    // The log write must happen before the delete, not after — otherwise a
+    // delete that fails partway could leave a real deletion with no snapshot
+    // to restore from.
+    expect(logInsert.mock.invocationCallOrder[0]).toBeLessThan(del.mock.invocationCallOrder[0]);
+  });
+
+  it('deleteCustomTab throws a friendly error when the tab no longer exists', async () => {
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
+      if (table === 'custom_tabs') return chain({ data: null, error: null });
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('"Acme Tab" no longer exists.');
+  });
+
   it('deleteCustomTab deletes when the tab has zero entries', async () => {
     const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 1 } as never));
     singletonFrom.mockImplementation((table: string) => {
       if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
-      return { delete: del, ...chain({ data: null, error: null }) };
+      if (table === 'custom_tabs') return { ...chain({ data: existingTabRow, error: null }), delete: del };
+      if (table === 'delete_log') return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      throw new Error(`unexpected table: ${table}`);
     });
     await expect(deleteCustomTab('Acme Tab')).resolves.toBeUndefined();
     expect(del).toHaveBeenCalledWith({ count: 'exact' });
@@ -909,9 +946,57 @@ describe('fetchCustomTabs / createCustomTab / deleteCustomTab', () => {
     const del = vi.fn().mockReturnValue(chain({ data: null, error: null, count: 0 } as never));
     singletonFrom.mockImplementation((table: string) => {
       if (table === 'entries') return chain({ data: null, error: null, count: 0 } as never);
-      return { delete: del, ...chain({ data: null, error: null }) };
+      if (table === 'custom_tabs') return { ...chain({ data: existingTabRow, error: null }), delete: del };
+      if (table === 'delete_log') return { insert: vi.fn().mockResolvedValue({ error: null }) };
+      throw new Error(`unexpected table: ${table}`);
     });
     await expect(deleteCustomTab('Acme Tab')).rejects.toThrow('Delete had no effect');
+  });
+});
+
+describe('fetchRecentTabCreations', () => {
+  it('maps custom_tabs rows to created-tab events', async () => {
+    singletonFrom.mockReturnValue(chain({
+      data: [{ id: 'tab-1', name: 'Acme Tab', created_by: 'a@b.com', created_at: '2026-01-01T00:00:00Z' }],
+      error: null,
+    }));
+    const rows = await fetchRecentTabCreations();
+    expect(rows).toEqual([{ id: 'tab-1', name: 'Acme Tab', createdBy: 'a@b.com', createdAt: '2026-01-01T00:00:00Z' }]);
+  });
+
+  it('maps a null created_by to null, not undefined-crashing', async () => {
+    singletonFrom.mockReturnValue(chain({
+      data: [{ id: 'tab-1', name: 'Acme Tab', created_by: null, created_at: '2026-01-01T00:00:00Z' }],
+      error: null,
+    }));
+    const rows = await fetchRecentTabCreations();
+    expect(rows[0].createdBy).toBeNull();
+  });
+});
+
+describe('restoreDeletedEntity (tab)', () => {
+  it('re-inserts the snapshotted row into custom_tabs verbatim and marks the log restored', async () => {
+    const snapshot = { id: 'tab-1', name: 'Acme Tab', platforms: ['tp', 'ag'], created_by: 'a@b.com', created_at: '2026-01-01T00:00:00Z' };
+    const log = { id: 'log-1', entity_type: 'tab', entity_id: 'tab-1', tab: null, before_data: snapshot, restored_at: null };
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const updEq = vi.fn().mockReturnValue({ is: vi.fn().mockResolvedValue({ error: null, count: 1 }) });
+    const update = vi.fn().mockReturnValue({ eq: updEq });
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'delete_log') return { ...chain({ data: log, error: null }), update };
+      if (table === 'custom_tabs') return { insert };
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await restoreDeletedEntity('log-1');
+    expect(insert).toHaveBeenCalledWith(snapshot);
+  });
+
+  it('throws if the log entry was already restored', async () => {
+    const log = { id: 'log-1', entity_type: 'tab', entity_id: 'tab-1', before_data: {}, restored_at: '2026-01-01T00:00:00Z' };
+    singletonFrom.mockImplementation((table: string) => {
+      if (table === 'delete_log') return chain({ data: log, error: null });
+      throw new Error(`unexpected table: ${table}`);
+    });
+    await expect(restoreDeletedEntity('log-1')).rejects.toThrow('already been restored');
   });
 });
 
