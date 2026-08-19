@@ -11,8 +11,8 @@
 //     supabase/functions/generate-weekly-schedule/index.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
-import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache, fetchCustomTabs } from '../../../src/lib/queries.ts';
+import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms, registerHiddenTabPlatforms, resetHiddenTabPlatforms } from '../../../src/lib/tab-configs.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
@@ -132,6 +132,17 @@ Deno.serve(async (_req: Request): Promise<Response> => {
   });
   resetDynamicTabs();
   registerDynamicTabs(customTabs);
+  // Same reset-then-register shape, same reason: this Edge isolate may be
+  // warm from a prior invocation, and registerHiddenTabPlatforms only ever
+  // adds to its in-memory registry (see tab-configs.ts) — without the reset
+  // a platform un-hidden since the last invocation would incorrectly stay
+  // hidden forever in a reused isolate.
+  const hiddenPlatforms = await fetchHiddenTabPlatforms(client).catch((err) => {
+    console.error('[generate-weekly-schedule] failed to fetch hidden tab platforms:', err);
+    return [];
+  });
+  resetHiddenTabPlatforms();
+  registerHiddenTabPlatforms(hiddenPlatforms);
   // Computed in the runtime's local zone (UTC on Supabase Edge). This is
   // only correct because the migration's cron
   // (supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql)

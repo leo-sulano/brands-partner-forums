@@ -1,8 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { fetchCustomTabs } from '../lib/queries';
+import { fetchCustomTabs, fetchHiddenTabPlatforms } from '../lib/queries';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
+import { registerHiddenTabPlatforms } from '../lib/tab-configs';
 import type { Profile } from '../types/profile';
 
 interface AuthContextValue {
@@ -82,9 +83,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Failed to fetch custom tabs:', err);
             return [];
           }),
-        ]).then(([p, customTabs]) => {
+          fetchHiddenTabPlatforms().catch((err) => {
+            console.error('Failed to fetch hidden tab platforms:', err);
+            return [];
+          }),
+        ]).then(([p, customTabs, hiddenPlatforms]) => {
           if (!mounted) return;
           registerDynamicTabs(customTabs);
+          registerHiddenTabPlatforms(hiddenPlatforms);
           setProfile(p);
           setLoading(false);
         });

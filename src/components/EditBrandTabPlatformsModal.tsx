@@ -1,18 +1,34 @@
 // src/components/EditBrandTabPlatformsModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms } from '../lib/queries';
-import { PLATFORM_LIST, registerDynamicTabs, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { updateCustomTabPlatforms, setTabPlatformHidden } from '../lib/queries';
+import {
+  PLATFORM_LIST, registerDynamicTabs, isDynamicTab, type DynamicTabPlatform,
+} from '../lib/dynamicTabRegistry';
+import {
+  getTabPlatforms, getTabPlatformsUnfiltered,
+  registerHiddenTabPlatforms, unregisterHiddenTabPlatform,
+} from '../lib/tab-configs';
 
 interface Props {
   tabName: string;
-  initialPlatforms: DynamicTabPlatform[];
-  onUpdated: (platforms: DynamicTabPlatform[]) => void;
+  onUpdated: () => void;
   onClose: () => void;
 }
 
-export default function EditBrandTabPlatformsModal({ tabName, initialPlatforms, onUpdated, onClose }: Props) {
-  const [platforms, setPlatforms] = useState<DynamicTabPlatform[]>(initialPlatforms);
+export default function EditBrandTabPlatformsModal({ tabName, onUpdated, onClose }: Props) {
+  const dynamic = isDynamicTab(tabName);
+  // Checkbox universe: a dynamic tab can gain a genuinely new platform
+  // (Task 236 — buildDynamicTabColumns just generates fresh, empty
+  // columns for it), so it always offers all 4. A hardcoded tab's schema
+  // is permanently fixed — it can only ever hide/show what it already has
+  // real columns for, so its universe is its own real (unfiltered) set.
+  const toggleable: DynamicTabPlatform[] = dynamic
+    ? PLATFORM_LIST.map((p) => p.key)
+    : (getTabPlatformsUnfiltered(tabName) as DynamicTabPlatform[]);
+  const [platforms, setPlatforms] = useState<DynamicTabPlatform[]>(
+    () => getTabPlatforms(tabName) as DynamicTabPlatform[],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,9 +57,22 @@ export default function EditBrandTabPlatformsModal({ tabName, initialPlatforms, 
     setSubmitting(true);
     setError(null);
     try {
-      await updateCustomTabPlatforms(tabName, platforms);
-      registerDynamicTabs([{ name: tabName, platforms }]);
-      onUpdated(platforms);
+      if (dynamic) {
+        await updateCustomTabPlatforms(tabName, platforms);
+        registerDynamicTabs([{ name: tabName, platforms }]);
+      } else {
+        const before = new Set(getTabPlatforms(tabName));
+        const after = new Set(platforms);
+        for (const p of toggleable) {
+          const wasVisible = before.has(p);
+          const nowVisible = after.has(p);
+          if (wasVisible === nowVisible) continue;
+          await setTabPlatformHidden(tabName, p, !nowVisible);
+          if (nowVisible) unregisterHiddenTabPlatform(tabName, p);
+          else registerHiddenTabPlatforms([{ tab: tabName, platform: p }]);
+        }
+      }
+      onUpdated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update platforms');
       setSubmitting(false);
@@ -68,7 +97,7 @@ export default function EditBrandTabPlatformsModal({ tabName, initialPlatforms, 
         <div className="px-5 pb-5 space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Platforms</label>
-            {PLATFORM_LIST.map(({ key, label }) => (
+            {PLATFORM_LIST.filter((p) => toggleable.includes(p.key)).map(({ key, label }) => (
               <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
                 <input
                   type="checkbox"

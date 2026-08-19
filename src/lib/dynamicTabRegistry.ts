@@ -54,16 +54,19 @@ export function buildDynamicTabColumns(platforms: DynamicTabPlatform[]): string[
 const dynamicTabColumns: Record<string, string[]> = {};
 
 // Notifies any mounted component that reads OPERATIONAL_TABS/dynamicTabColumns
-// inline (e.g. Sidebar's platform-icon list) that the registry changed, since
-// mutating these module-level structures in place — by design, so every
-// existing importer picks up a new/changed/removed tab with zero call-site
-// changes — does NOT itself trigger a React re-render. Guarded the same way
+// inline (e.g. Sidebar's platform-icon list) that the tab/platform registry
+// changed, since mutating these module-level structures in place — by
+// design, so every existing importer picks up a change with zero call-site
+// changes — does NOT itself trigger a React re-render. Same event name as
+// tab-configs.ts's own notifyTabPlatformsChanged (hidden hardcoded-tab
+// platforms, docs/superpowers/specs/2026-08-18-hardcoded-tab-platform-visibility-design.md)
+// so Sidebar.tsx's one listener covers both. Guarded the same way
 // supabase.ts's SITE_URL learned to guard `window`: Supabase's real Edge
 // Runtime defines a bare `window` global (so `typeof window !== 'undefined'`
 // alone is not proof it's safe), but never a real `dispatchEvent`.
-function notifyDynamicTabsChanged(): void {
+function notifyTabPlatformsChanged(): void {
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-    window.dispatchEvent(new Event('dynamic-tabs-changed'));
+    window.dispatchEvent(new Event('tab-platforms-changed'));
   }
 }
 
@@ -85,7 +88,7 @@ export function registerDynamicTabs(rows: { name: string; platforms: DynamicTabP
     dynamicTabColumns[row.name] = buildDynamicTabColumns(row.platforms);
     if (!OPERATIONAL_TABS.includes(row.name)) OPERATIONAL_TABS.push(row.name);
   }
-  notifyDynamicTabsChanged();
+  notifyTabPlatformsChanged();
 }
 
 // Inverse of registerDynamicTabs, for the delete flow — removes the tab
@@ -97,7 +100,7 @@ export function unregisterDynamicTab(name: string): void {
   delete dynamicTabColumns[name];
   const idx = OPERATIONAL_TABS.indexOf(name);
   if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1);
-  notifyDynamicTabsChanged();
+  notifyTabPlatformsChanged();
 }
 
 // Clears every registered dynamic tab, from both the column registry and

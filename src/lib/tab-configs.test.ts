@@ -1,5 +1,10 @@
 import { describe, it, expect, afterAll, beforeEach } from 'vitest';
-import { TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup, getTabPlatforms, stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol } from './tab-configs';
+import {
+  TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup,
+  getTabPlatforms, getTabPlatformsUnfiltered, registerHiddenTabPlatforms,
+  unregisterHiddenTabPlatform, resetHiddenTabPlatforms,
+  stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol,
+} from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 
 describe('TAB_COLUMN_CONFIGS', () => {
@@ -78,6 +83,53 @@ describe('getTabPlatforms', () => {
 
   it('resolves Wizard of Odds to wo only, with no dependency on a live header match', () => {
     expect(getTabPlatforms('Wizard of Odds')).toEqual(['wo']);
+  });
+});
+
+describe('getTabPlatforms / hidden platform overrides', () => {
+  beforeEach(() => {
+    resetHiddenTabPlatforms();
+  });
+
+  afterAll(() => {
+    resetHiddenTabPlatforms();
+  });
+
+  it('is a no-op for every hardcoded tab when nothing is hidden', () => {
+    expect(getTabPlatforms('Rooster Partners')).toEqual(['tp', 'ag', 'cg']);
+    expect(getTabPlatforms('Wizard of Odds')).toEqual(['wo']);
+    expect(getTabPlatforms('TP Brand Injection')).toEqual(['tp']);
+  });
+
+  it('filters a hidden platform out of getTabPlatforms', () => {
+    registerHiddenTabPlatforms([{ tab: 'Rooster Partners', platform: 'ag' }]);
+    expect(getTabPlatforms('Rooster Partners')).toEqual(['tp', 'cg']);
+  });
+
+  it('getTabPlatformsUnfiltered still reports a hidden platform as real', () => {
+    registerHiddenTabPlatforms([{ tab: 'Rooster Partners', platform: 'ag' }]);
+    expect(getTabPlatformsUnfiltered('Rooster Partners')).toEqual(['tp', 'ag', 'cg']);
+  });
+
+  it('unregisterHiddenTabPlatform restores a previously-hidden platform', () => {
+    registerHiddenTabPlatforms([{ tab: 'Rooster Partners', platform: 'ag' }]);
+    unregisterHiddenTabPlatform('Rooster Partners', 'ag');
+    expect(getTabPlatforms('Rooster Partners')).toEqual(['tp', 'ag', 'cg']);
+  });
+
+  it('hiding one tab\'s platform does not affect another tab', () => {
+    registerHiddenTabPlatforms([{ tab: 'Rooster Partners', platform: 'ag' }]);
+    expect(getTabPlatforms('Hanan')).toEqual(['tp', 'ag', 'cg']);
+  });
+
+  it('resetHiddenTabPlatforms clears every tab\'s hidden set', () => {
+    registerHiddenTabPlatforms([
+      { tab: 'Rooster Partners', platform: 'ag' },
+      { tab: 'Hanan', platform: 'cg' },
+    ]);
+    resetHiddenTabPlatforms();
+    expect(getTabPlatforms('Rooster Partners')).toEqual(['tp', 'ag', 'cg']);
+    expect(getTabPlatforms('Hanan')).toEqual(['tp', 'ag', 'cg']);
   });
 });
 

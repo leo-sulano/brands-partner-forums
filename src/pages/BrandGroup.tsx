@@ -19,7 +19,7 @@ import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, deleteCustomTab, type StatusCheckScope } from '../lib/queries';
-import { isDynamicTab, unregisterDynamicTab, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { isDynamicTab, unregisterDynamicTab } from '../lib/dynamicTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
@@ -1018,22 +1018,37 @@ export default function BrandGroup() {
     if (colSet.has('AG Review Status')) result.push('ag');
     if (colSet.has('CG Review Status')) result.push('cg');
     if (colSet.has('WoO Review Status')) result.push('wo');
-    return result;
+    // Intersect with getTabPlatforms so a platform hidden via the Edit
+    // Platforms modal (src/lib/tab-configs.ts's hidden-platform registry)
+    // actually disappears from this page's KPI cards, Platform filter, and
+    // column-hiding logic — activePlatforms' own column-presence detection
+    // above is otherwise unaware of hidden state.
+    const visible = new Set(getTabPlatforms(decodedTab));
+    return result.filter((p) => visible.has(p));
   })();
 
   const GUEST_HIDDEN_COLS = new Set(['User Name', 'AG User', 'CG User']);
 
-  // Hide other platforms' columns when one or more specific platforms are selected —
-  // shows the union of every selected platform's own columns, hiding the rest.
-  const visibleHeaders = (platformFilter.length > 0 && activePlatforms.length > 1
-    ? headers.filter((h) => {
-        for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as [Platform, Set<string>][]) {
-          if (!platformFilter.includes(key) && cols.has(h)) return false;
-        }
-        return true;
-      })
-    : headers
-  ).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
+  // Always hide a platform's own columns when it's not in activePlatforms
+  // (covers both "this tab never tracked it" and "it's currently hidden via
+  // the Edit Platforms modal" — activePlatforms is hidden-aware as of the
+  // fix above). On top of that, further narrow to the union of only the
+  // selected platforms' own columns when the Platform filter is active,
+  // same as before.
+  const visibleHeaders = headers.filter((h) => {
+    for (const [key, cols] of Object.entries(PLATFORM_OWN_COLS) as [Platform, Set<string>][]) {
+      if (!cols.has(h)) continue;
+      // 'Link to the profile' is TP's own column everywhere except Wizard
+      // of Odds, which reuses the same header for its own brand link
+      // (linkColPlatform, defined above) — PLATFORM_OWN_COLS.tp doesn't
+      // know about this tab-specific override, so resolve the header's
+      // real owner here before gating on it.
+      const owner = linkColPlatform(h, decodedTab) ?? key;
+      if (!activePlatforms.includes(owner)) return false;
+      if (platformFilter.length > 0 && !platformFilter.includes(owner)) return false;
+    }
+    return true;
+  }).filter((h) => session || !GUEST_HIDDEN_COLS.has(h));
 
   // Export uses the tab's full field set (fullHeaders, from tab_schemas — Score and
   // Behavior Flags columns included, the same fields the Edit Entry modal exposes),
@@ -1052,12 +1067,16 @@ export default function BrandGroup() {
   const exportHeaders = (() => {
     const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders]))
       .filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
-    const scoped = (platformFilter.length > 0 && activePlatforms.length > 1)
-      ? allFields.filter((h) => {
-          const sec = sectionOf(h);
-          return sec !== 'tp' && sec !== 'ag' && sec !== 'cg' ? true : platformFilter.includes(sec);
-        })
-      : allFields;
+    const scoped = allFields.filter((h) => {
+      // Resolve the TP/Wizard-of-Odds "Link to the profile" ambiguity the
+      // same way visibleHeaders does, before falling back to sectionOf's
+      // generic (tab-unaware) classification.
+      const sec = linkColPlatform(h, decodedTab) ?? sectionOf(h);
+      if (sec !== 'tp' && sec !== 'ag' && sec !== 'cg') return true;
+      if (!activePlatforms.includes(sec)) return false;
+      if (platformFilter.length > 0 && !platformFilter.includes(sec)) return false;
+      return true;
+    });
     const buckets: Record<'account' | 'tp' | 'ag' | 'cg' | 'yesno', string[]> = {
       account: [], tp: [], ag: [], cg: [], yesno: [],
     };
@@ -1828,7 +1847,7 @@ export default function BrandGroup() {
               Add Review Account
             </button>
           )}
-          {isApproved && isDynamicTab(decodedTab) && (
+          {isApproved && (
             <Tooltip content={`Edit ${tabDisplayName(decodedTab)}'s platforms`}>
               <button
                 type="button"
@@ -1856,7 +1875,6 @@ export default function BrandGroup() {
       {showEditPlatformsModal && (
         <EditBrandTabPlatformsModal
           tabName={decodedTab}
-          initialPlatforms={getTabPlatforms(decodedTab) as DynamicTabPlatform[]}
           onClose={() => setShowEditPlatformsModal(false)}
           onUpdated={() => {
             setShowEditPlatformsModal(false);

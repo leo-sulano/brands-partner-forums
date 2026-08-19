@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
-import { getTabColumns, getBrandNameCol } from './tab-configs.ts';
+import { getTabColumns, getBrandNameCol, getTabPlatforms } from './tab-configs.ts';
 import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
@@ -393,7 +393,7 @@ function addToBreakdown(
   map[key][kind]++;
 }
 
-function resolveReviewColumns(rawHeaders: string[]): {
+function resolveReviewColumns(rawHeaders: string[], tab: string): {
   tpCol: string | null; agCol: string | null; cgCol: string | null; woCol: string | null; genericCol: string | null;
   activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[];
 } {
@@ -405,11 +405,24 @@ function resolveReviewColumns(rawHeaders: string[]): {
     return null;
   }
 
-  const tpCol = resolveHeader('TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status');
-  const agCol = resolveHeader('AG Review Status');
-  const cgCol = resolveHeader('CG Review Status');
-  const woCol = resolveHeader('WoO Review Status');
+  const rawTpCol = resolveHeader('TP Review Status', 'Trust Pilot Review Status', 'Trustpilot Review Status', 'Trust pilot Review Status');
+  const rawAgCol = resolveHeader('AG Review Status');
+  const rawCgCol = resolveHeader('CG Review Status');
+  const rawWoCol = resolveHeader('WoO Review Status');
   const genericCol = resolveHeader('Review Status', 'status', 'Status');
+
+  // A platform hidden via the Edit Platforms modal (src/lib/tab-configs.ts's
+  // hidden-platform registry) must stop contributing to this tab's KPI
+  // totals here too, not just on BrandGroup.tsx's own cards — otherwise
+  // Overview and BrandGroup silently disagree on the same tab's numbers the
+  // moment a platform is hidden. Nulling the column reference makes
+  // classifyEntry (below) treat a hidden platform exactly like one this tab
+  // never tracked at all — no other code path needs to change.
+  const visible = new Set(getTabPlatforms(tab));
+  const tpCol = visible.has('tp') ? rawTpCol : null;
+  const agCol = visible.has('ag') ? rawAgCol : null;
+  const cgCol = visible.has('cg') ? rawCgCol : null;
+  const woCol = visible.has('wo') ? rawWoCol : null;
 
   const activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[] = [];
   if (tpCol) activePlatforms.push('tp');
@@ -532,7 +545,7 @@ export function computeTabKpisFromEntries(
   proxyFilter?: string[],
   platformFilter?: Platform[],
 ): TabKpis | null {
-  const cols = resolveReviewColumns(rawHeaders);
+  const cols = resolveReviewColumns(rawHeaders, tab);
   const { activePlatforms } = cols;
 
   // A tab is excluded only if it tracks NONE of the selected platforms — it's
@@ -633,7 +646,7 @@ export function computeBrandKpisFromEntries(
   proxyFilter?: string[],
   platformFilter?: Platform[],
 ): { brand: string; kpis: BrandKpis }[] {
-  const cols = resolveReviewColumns(rawHeaders);
+  const cols = resolveReviewColumns(rawHeaders, tab);
   const { activePlatforms } = cols;
 
   if (platformFilter?.length && !platformFilter.some((p) => activePlatforms.includes(p))) {
@@ -1558,5 +1571,35 @@ export async function deleteCustomTab(name: string): Promise<void> {
   if (error) throw error;
   if (!deleted) {
     throw new Error(`Delete had no effect — "${name}" may already be gone, or the "approved users can delete custom_tabs" RLS policy may not be applied in your Supabase project.`);
+  }
+}
+
+export async function fetchHiddenTabPlatforms(client: SupabaseClient = supabase): Promise<{ tab: string; platform: Platform }[]> {
+  const { data, error } = await client
+    .from('tab_hidden_platforms')
+    .select('tab, platform');
+  if (error) throw error;
+  return (data ?? []) as { tab: string; platform: Platform }[];
+}
+
+// Hides or un-hides one platform on one tab (any tab, though in practice
+// only ever called for a hardcoded tab — a dynamic tab keeps using
+// updateCustomTabPlatforms/registerDynamicTabs instead, see Task 236).
+// Never touches entries.data: a hidden platform's columns still exist and
+// still hold real data, they simply stop being reported by
+// getTabPlatforms() (src/lib/tab-configs.ts) until un-hidden again.
+export async function setTabPlatformHidden(tab: string, platform: Platform, hidden: boolean): Promise<void> {
+  if (hidden) {
+    const { error } = await supabase
+      .from('tab_hidden_platforms')
+      .upsert({ tab, platform, hidden_by: await currentUserEmail() }, { onConflict: 'tab,platform' });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('tab_hidden_platforms')
+      .delete()
+      .eq('tab', tab)
+      .eq('platform', platform);
+    if (error) throw error;
   }
 }
