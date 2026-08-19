@@ -12,12 +12,13 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms, registerHiddenTabPlatforms, resetHiddenTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms, fetchArchivedTabs } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 import { registerDynamicTabs, resetDynamicTabs } from '../../../src/lib/dynamicTabRegistry.ts';
+import { applyArchivedTabs, resetArchivedTabs } from '../../../src/lib/archivedTabRegistry.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
 import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 
@@ -143,6 +144,17 @@ Deno.serve(async (_req: Request): Promise<Response> => {
   });
   resetHiddenTabPlatforms();
   registerHiddenTabPlatforms(hiddenPlatforms);
+  // Same reset-then-apply shape as the dynamic-tab/hidden-platform registries
+  // above, same reason: a tab unarchived since the last invocation must not
+  // stay excluded forever in a reused isolate. Runs after registerDynamicTabs
+  // (above) for the same ordering reason AuthContext.tsx's bootstrap applies
+  // it after registering dynamic tabs.
+  const archivedTabs = await fetchArchivedTabs(client).catch((err) => {
+    console.error('[generate-weekly-schedule] failed to fetch archived tabs:', err);
+    return [];
+  });
+  resetArchivedTabs();
+  applyArchivedTabs(archivedTabs);
   // Computed in the runtime's local zone (UTC on Supabase Edge). This is
   // only correct because the migration's cron
   // (supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql)
