@@ -2,8 +2,7 @@
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { createCustomTab } from '../lib/queries';
-import { TAB_COLUMN_CONFIGS } from '../lib/tab-configs';
-import { OPERATIONAL_TABS, tabToSlug } from '../lib/tabs';
+import { validateNewTabName } from '../lib/tabValidation';
 import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 
 interface Props {
@@ -40,28 +39,9 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
 
   async function handleSubmit() {
     const trimmed = name.trim();
-    if (!trimmed) {
-      setError('Enter a tab name.');
-      return;
-    }
-    const collision = OPERATIONAL_TABS.includes(trimmed) || trimmed in TAB_COLUMN_CONFIGS;
-    if (collision) {
-      setError(`A tab named "${trimmed}" already exists.`);
-      return;
-    }
-    // A tab's URL is /brands/<tabToSlug(name)>, and slugToTab resolves a slug
-    // back to the *first* matching tab — so a name that only collides by slug
-    // (e.g. "Gulf Recovery Group" → gulf-recovery-group, already claimed by
-    // 'GRG - Gulf Recovery Group' via SLUG_OVERRIDES) would create a tab that
-    // is permanently unreachable, silently landing on the other tab instead.
-    if (OPERATIONAL_TABS.some((t) => tabToSlug(t) === tabToSlug(trimmed))) {
-      setError(`"${trimmed}" produces the same URL as an existing tab. Pick a more distinct name.`);
-      return;
-    }
-    // '/' would split the route, '?' and '#' would terminate the path — any of
-    // them breaks /brands/:tab for the new tab.
-    if (/[/?#]/.test(trimmed)) {
-      setError('A tab name cannot contain /, ? or #.');
+    const nameError = validateNewTabName(trimmed);
+    if (nameError) {
+      setError(nameError);
       return;
     }
     if (platforms.length === 0) {
