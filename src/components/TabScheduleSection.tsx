@@ -13,7 +13,9 @@ import {
   fetchBrandPlatformOverrides,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
+  fetchBrandAgentAssignments,
   type BrandPlatformPause,
+  type BrandAgentAssignmentRow,
 } from '../lib/queries';
 import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, addDays, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
@@ -22,7 +24,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -91,6 +93,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     overrideMap: Map<string, OverrideState>;
     hiddenBrandSet: Set<string>;
     platformRestrictionMap: Map<string, Platform>;
+    agentAssignmentRows: BrandAgentAssignmentRow[];
     flagsLoaded: boolean;
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
@@ -146,13 +149,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       });
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, agentAssignmentRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           withFlagFallback(fetchRemovedPlatformBrands()),
           withFlagFallback(fetchBrandPlatformOverrides(tab)),
           withFlagFallback(fetchScheduleHiddenBrands(tab)),
           withFlagFallback(fetchScheduleRestrictedBrands(tab)),
+          withFlagFallback(fetchBrandAgentAssignments(tab)),
         ]);
         if (canceled) return;
         const uniqueBrands = deriveTabBrands(tab, rawEntries, headers);
@@ -170,6 +174,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           overrideMap: buildOverrideMap(overrideRows),
           hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
           platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
+          agentAssignmentRows,
           flagsLoaded,
         });
       } catch (err) {
@@ -230,7 +235,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           if (canceled) return;
           if (activated.length > 0) {
             pushScheduleActivations(
-              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date, agent: agentIndex.get(a.brandKey) ?? null })),
+              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date, agent: resolveAgentForPlatform(a.brandKey, a.platform, agentAssignments, rawAgentFallback) })),
             ).catch((err) => {
               setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
             });
@@ -303,14 +308,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [tabCtx],
   );
 
-  // Brand -> Agent, for PMS task assignment on push (see buildAgentIndex's own
-  // doc comment for the most-recently-updated-entry resolution rule). Built
-  // from the same already-loaded tabCtx.entries, no extra fetch.
-  const agentIndex = useMemo(
-    () => buildAgentIndex(tabCtx?.entries ?? []),
-    [tabCtx],
-  );
-
   // Brand -> Country, for the same tooltip that shows Agent below (see
   // buildCountryIndex's own doc comment for the resolution rule — identical
   // to agentIndex above, just a different column). Purely a display-only
@@ -334,6 +331,28 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // functions further down that only ever get called from JSX, safely after
   // every top-level const in this component has already been assigned.
   const activePlatforms = tabCtx?.activePlatforms ?? [];
+
+  // Per-entry fallback only (buildAgentIndex's own heuristic) and the
+  // brand_agent_assignments table, kept separate so the 3 PMS-push call
+  // sites below can resolve per-platform accuracy via resolveAgentForPlatform
+  // without a merged brand-level value masking a real per-platform split
+  // (e.g. Silver Play: no TP agent, JEN on AG/CG).
+  const rawAgentFallback = useMemo(
+    () => buildAgentIndex(tabCtx?.entries ?? []),
+    [tabCtx],
+  );
+  const agentAssignments = useMemo(
+    () => buildAgentAssignmentMap(tabCtx?.agentAssignmentRows ?? []),
+    [tabCtx],
+  );
+  // Brand -> Agent, one representative value per brand for every existing
+  // display/filter consumer below (tooltip, Agent filter) -- unchanged
+  // Map<string, string> shape, so those call sites need no further edits.
+  // See buildResolvedAgentIndex's own doc comment for the merge rule.
+  const agentIndex = useMemo(
+    () => buildResolvedAgentIndex(tabCtx?.entries ?? [], tabCtx?.agentAssignmentRows ?? [], activePlatforms),
+    [tabCtx, activePlatforms],
+  );
 
   // Drops any platform whose page was flagged removed for this exact
   // (tab, brand) — same per-platform exclusion scoreSummary.ts already
@@ -437,7 +456,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, next);
       if (next === 'active') {
         const dayIndex = WEEKDAYS.indexOf(day);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: agentIndex.get(normalizeBrandKey(brand)) ?? null }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       }
@@ -456,7 +475,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, status);
       if (status === 'active') {
         const dayIndex = WEEKDAYS.indexOf(day);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: agentIndex.get(normalizeBrandKey(brand)) ?? null }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       }
