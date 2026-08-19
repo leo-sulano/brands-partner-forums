@@ -4464,3 +4464,9 @@ removes that platform's field-editing section from `EditEntryModal` for every en
 data (`updateEntryData` merges rather than replaces), just temporarily removes the ability to
 edit that platform's fields from the UI until it's un-hidden again, same "hidden means invisible,
 not deleted" principle as everywhere else in this feature.
+
+Live-verified the fix directly: hiding AskGamblers on SilverPlay (baseline 110 total, AG 30
+live/2 removed) dropped Overview's card to 103 total with the AG row gone entirely — a real,
+row-level-OR-classified decrease, not the naive 32-row subtraction, matching `classifyEntry`'s
+documented per-row (not per-platform-sum) counting rule — then re-checking AG restored Overview's
+card exactly. Production confirmed clean (`tab_hidden_platforms` empty) at the end of this pass.
