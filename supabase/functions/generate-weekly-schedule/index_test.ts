@@ -104,14 +104,15 @@ Deno.test('buildTabContext populates platformRestrictionMap from schedule_platfo
   assertEquals(ctx.platformRestrictionMap?.get('Revolution Casino::god of casino'), 'ag');
 });
 
-Deno.test('generateForTab pushes every combo ensureWeekGenerated just activated to PMS', async () => {
+Deno.test('generateForTab pushes every combo ensureWeekGenerated just activated to PMS, with the resolved Agent', async () => {
   const client = fakeClient({
-    entries: [entry('BITP', '1', { Brands: 'WinMega' })],
+    entries: [entry('TP Affiliate', '1', { Brands: 'WinMega' })],
     tab_schemas: [{ headers: ['Brands'] }],
     removed_platform_brands: [],
     brand_platform_override: [],
     schedule_hidden_brands: [],
     schedule_platform_restrictions: [],
+    brand_agent_assignments: [{ tab: 'TP Affiliate', brand: 'WinMega', platform: 'tp', agent: 'Jen' }],
   });
   const pushedBatches: unknown[][] = [];
   const fakePush = async (items: unknown[]) => {
@@ -127,16 +128,17 @@ Deno.test('generateForTab pushes every combo ensureWeekGenerated just activated 
   const priorToken = Deno.env.get('PMS_API_TOKEN');
   Deno.env.set('PMS_API_TOKEN', 'test-token');
   try {
-    await generateForTab('BITP', '2026-08-17', client, fakePush);
+    await generateForTab('TP Affiliate', '2026-08-17', client, fakePush);
   } finally {
     if (priorToken === undefined) Deno.env.delete('PMS_API_TOKEN');
     else Deno.env.set('PMS_API_TOKEN', priorToken);
   }
   assertEquals(pushedBatches.length, 1);
-  const batch = pushedBatches[0] as { brand: string; platform: string }[];
+  const batch = pushedBatches[0] as { brand: string; platform: string; agent?: string | null }[];
   assertEquals(batch.length > 0, true);
   assertEquals(batch[0].brand, 'WinMega');
   assertEquals(batch[0].platform, 'tp');
+  assertEquals(batch[0].agent, 'Jen');
 });
 
 Deno.test('generateAllTabs continues past a single tab failure', async () => {
