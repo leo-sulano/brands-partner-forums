@@ -2,17 +2,19 @@
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { createCustomTab } from '../lib/queries';
-import { validateNewTabName } from '../lib/tabValidation';
 import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { TOOLBAR_FILTER_LIST, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from '../lib/tab-configs';
+import { validateNewTabName } from '../lib/tabValidation';
 
 interface Props {
-  onCreated: (name: string, platforms: DynamicTabPlatform[]) => void;
+  onCreated: (name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) => void;
   onClose: () => void;
 }
 
 export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   const [name, setName] = useState('');
   const [platforms, setPlatforms] = useState<DynamicTabPlatform[]>([]);
+  const [filters, setFilters] = useState<ToolbarFilterKey[]>(() => [...ALL_TOOLBAR_FILTERS]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,6 +39,10 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
     setPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   }
 
+  function toggleFilter(f: ToolbarFilterKey) {
+    setFilters((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
+  }
+
   async function handleSubmit() {
     const trimmed = name.trim();
     const nameError = validateNewTabName(trimmed);
@@ -51,8 +57,8 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
     setSubmitting(true);
     setError(null);
     try {
-      await createCustomTab(trimmed, platforms);
-      onCreated(trimmed, platforms);
+      await createCustomTab(trimmed, platforms, filters);
+      onCreated(trimmed, platforms, filters);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create tab');
       setSubmitting(false);
@@ -103,6 +109,24 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
                 {label}
               </label>
             ))}
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1.5">Toolbar Filters</label>
+            {TOOLBAR_FILTER_LIST.map(({ key, label }) => (
+              <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={filters.includes(key)}
+                  onChange={() => toggleFilter(key)}
+                  className="size-4"
+                />
+                {label}
+              </label>
+            ))}
+            <p className="mt-1 text-xs text-slate-400">
+              Choose which filter dropdowns appear on this tab's toolbar. You can change this later.
+            </p>
           </div>
 
           {error && <p className="text-xs text-rose-600">{error}</p>}

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
-import { getTabPlatforms } from '../lib/tab-configs';
+import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { useAuth } from '../contexts/AuthContext';
 import AddBrandTabModal from './AddBrandTabModal';
@@ -83,8 +83,9 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     return () => window.removeEventListener('tab-platforms-changed', handleChange);
   }, []);
 
-  function handleTabCreated(name: string, platforms: DynamicTabPlatform[]) {
+  function handleTabCreated(name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) {
     registerDynamicTabs([{ name, platforms }]);
+    registerToolbarFilters([{ tab: name, enabled_filters: enabledFilters }]);
     setShowAddTab(false);
     navigate(`/brands/${tabToSlug(name)}`);
     onClose?.();
