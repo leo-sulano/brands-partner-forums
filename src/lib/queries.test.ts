@@ -24,6 +24,7 @@ import {
   fetchRemovedPlatformBrands,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
+  fetchBrandAgentAssignments,
   bulkUpsertBrandSchedule,
   computeTabKpisFromEntries,
   computeBrandKpisFromEntries,
@@ -148,6 +149,23 @@ describe('queries.ts injectable Supabase client', () => {
     expect(fakeFrom).toHaveBeenCalledWith('schedule_platform_restrictions');
     expect(singletonFrom).not.toHaveBeenCalled();
     expect(rows).toEqual([{ tab: 'X', brand: 'GOC', allowed_platform: 'ag' }]);
+  });
+
+  it('fetchBrandAgentAssignments uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({
+      data: [{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp', agent: 'ANN' }],
+      error: null,
+    }));
+    const rows = await fetchBrandAgentAssignments('Hanan', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('brand_agent_assignments');
+    expect(singletonFrom).not.toHaveBeenCalled();
+    expect(rows).toEqual([{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp', agent: 'ANN' }]);
+  });
+
+  it('fetchBrandAgentAssignments falls back to the singleton when no client is passed', async () => {
+    singletonFrom.mockReturnValue(chain({ data: [], error: null }));
+    await fetchBrandAgentAssignments('Hanan');
+    expect(singletonFrom).toHaveBeenCalledWith('brand_agent_assignments');
   });
 
   it('setBrandPlatformOverride upserts into brand_platform_override', async () => {

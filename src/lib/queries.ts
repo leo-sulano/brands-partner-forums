@@ -274,6 +274,25 @@ export async function fetchScheduleRestrictedBrands(
   return (data ?? []) as { tab: string; brand: string; allowed_platform: Platform }[];
 }
 
+export interface BrandAgentAssignmentRow {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  agent: string | null;
+}
+
+export async function fetchBrandAgentAssignments(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<BrandAgentAssignmentRow[]> {
+  const { data, error } = await client
+    .from('brand_agent_assignments')
+    .select('tab, brand, platform, agent')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as BrandAgentAssignmentRow[];
+}
+
 export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   const { data, error } = await supabase
     .from('entries')
