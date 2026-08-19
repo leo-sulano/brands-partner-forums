@@ -14,6 +14,7 @@ import {
   normalizeBrandKey,
   platformRemovedKey,
   buildRemovedPlatformBrandSet,
+  buildArchivedTabNameSet,
   isSensitiveField,
   collectFieldNames,
   matchesFieldFilters,
@@ -113,10 +114,13 @@ Deno.test('redactSensitive strips credential keys with different case or trailin
   assertEquals('cg password' in out2, false);
 });
 
+// Single-table mock: `rows` back the `entries` table only. Any other table
+// (e.g. `tab_archive_log`, queried by query_entries' archived-tab exclusion)
+// returns empty — these tests aren't exercising archive/removal state.
 function mockSupabase(rows: EntryRow[]) {
   return {
-    from(_table: string) {
-      let filtered = rows;
+    from(table: string) {
+      let filtered = table === 'entries' ? rows : [];
       const builder: any = {
         select(_cols: string) {
           return builder;
@@ -419,6 +423,40 @@ Deno.test('buildRemovedPlatformBrandSet builds one key per row', () => {
   assertEquals(set.size, 2);
   assertEquals(set.has(platformRemovedKey('TP Brand Injection', 'Acme', 'tp')), true);
   assertEquals(set.has(platformRemovedKey('Rooster Partners', 'Beta', 'ag')), true);
+});
+
+Deno.test('buildArchivedTabNameSet includes only rows with no restored_at', () => {
+  const set = buildArchivedTabNameSet([
+    { tab: 'Rooster Partners', restored_at: null },
+    { tab: 'Hanan', restored_at: '2026-08-19T00:00:00Z' },
+  ]);
+  assertEquals(set.has('Rooster Partners'), true);
+  assertEquals(set.has('Hanan'), false);
+});
+
+Deno.test('list_tabs excludes an archived tab via runTool', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Rooster Partners', data: {} },
+      { id: '2', tab: 'Hanan', data: {} },
+    ],
+    tab_archive_log: [{ tab: 'Hanan', restored_at: null }],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'list_tabs', {});
+  assertEquals(result.tabs, ['Rooster Partners']);
+});
+
+Deno.test('query_entries excludes rows from an archived tab via runTool', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Rooster Partners', data: { Brand: 'Acme' } },
+      { id: '2', tab: 'Hanan', data: { Brand: 'Beta' } },
+    ],
+    tab_archive_log: [{ tab: 'Hanan', restored_at: null }],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {});
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].tab, 'Rooster Partners');
 });
 
 Deno.test('get_removed_platform_flags lists flagged rows, optionally filtered by tab', async () => {
