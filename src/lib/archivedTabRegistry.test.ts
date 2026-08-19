@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { OPERATIONAL_TABS } from './tabs';
 import {
   archiveTabLocally, unarchiveTabLocally, applyArchivedTabs, resetArchivedTabs, isTabArchived,
+  archivedTabForSlug,
 } from './archivedTabRegistry';
 
 describe('archivedTabRegistry', () => {
@@ -43,5 +44,17 @@ describe('archivedTabRegistry', () => {
     expect(isTabArchived('Wizard of Odds')).toBe(false);
     expect(OPERATIONAL_TABS).toContain('Hanan');
     expect(OPERATIONAL_TABS).toContain('Wizard of Odds');
+  });
+
+  it('archivedTabForSlug resolves an archived hardcoded tab by its URL slug', () => {
+    archiveTabLocally('Hanan');
+    expect(archivedTabForSlug('hanan')).toBe('Hanan');
+    expect(archivedTabForSlug('not-a-real-tab')).toBeNull();
+  });
+
+  it('unarchiveTabLocally does not resurrect a name that is no longer a real tab', () => {
+    archiveTabLocally('Some Ghost Tab');
+    unarchiveTabLocally('Some Ghost Tab');
+    expect(OPERATIONAL_TABS).not.toContain('Some Ghost Tab');
   });
 });

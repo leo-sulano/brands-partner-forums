@@ -19,7 +19,7 @@ import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, type StatusCheckScope } from '../lib/queries';
-import { archiveTabLocally, isTabArchived } from '../lib/archivedTabRegistry';
+import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
@@ -558,7 +558,11 @@ export default function BrandGroup() {
   // URL carries kebab-case slug (e.g. "tp-brand-injection"); resolve to the
   // canonical tab name ("TP Brand Injection") that the DB and queries expect.
   // Fall back to a decoded raw param so legacy %20-encoded links still work.
-  const decodedTab = slugToTab(tab ?? '') ?? decodeURIComponent(tab ?? '');
+  // archivedTabForSlug sits between the two because archiving splices a tab out
+  // of OPERATIONAL_TABS, so slugToTab can never resolve an archived tab's slug —
+  // without it, a bookmarked archived-tab URL would fall through to the raw
+  // lowercase slug and the isTabArchived guard below would never fire.
+  const decodedTab = slugToTab(tab ?? '') ?? archivedTabForSlug(tab ?? '') ?? decodeURIComponent(tab ?? '');
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [headers, setHeaders] = useState<string[]>([]);

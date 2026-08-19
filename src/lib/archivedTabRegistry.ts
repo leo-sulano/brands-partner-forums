@@ -10,7 +10,9 @@
 // Same Deno-safety constraints as dynamicTabRegistry.ts/tab-configs.ts (no
 // React/npm imports, no I/O) -- this module is also imported by the
 // generate-weekly-schedule Edge Function.
-import { OPERATIONAL_TABS } from './tabs.ts';
+import { OPERATIONAL_TABS, tabToSlug } from './tabs.ts';
+import { TAB_COLUMN_CONFIGS } from './tab-configs.ts';
+import { isDynamicTab } from './dynamicTabRegistry.ts';
 
 const archivedTabNames = new Set<string>();
 
@@ -33,9 +35,19 @@ export function archiveTabLocally(tab: string): void {
   notifyTabPlatformsChanged();
 }
 
+// Legitimacy guard mirrors registerDynamicTabs' own `row.name in
+// TAB_COLUMN_CONFIGS` check: only a name that is currently a real tab -- one
+// of the 11 hardcoded entries, or a registered dynamic tab -- may be pushed
+// back into OPERATIONAL_TABS. Without it, a tab archived and then had its
+// custom_tabs row deleted (this feature's own documented cleanup path for a
+// throwaway test tab) would resurrect as a ghost sidebar entry on unarchive,
+// and generate-weekly-schedule's warm isolate could push a stale name from a
+// prior invocation into the generation loop. The archivedTabNames delete is
+// unconditional either way, so a bogus name can always be cleared.
 export function unarchiveTabLocally(tab: string): void {
   archivedTabNames.delete(tab);
-  if (!OPERATIONAL_TABS.includes(tab)) OPERATIONAL_TABS.push(tab);
+  const isLegitimateTab = tab in TAB_COLUMN_CONFIGS || isDynamicTab(tab);
+  if (isLegitimateTab && !OPERATIONAL_TABS.includes(tab)) OPERATIONAL_TABS.push(tab);
   notifyTabPlatformsChanged();
 }
 
@@ -54,4 +66,18 @@ export function resetArchivedTabs(): void {
 
 export function isTabArchived(tab: string): boolean {
   return archivedTabNames.has(tab);
+}
+
+// Resolves a URL slug against currently-archived tab names, mirroring
+// tabs.ts's slugToTab matching logic but searching archivedTabNames instead
+// of OPERATIONAL_TABS -- needed because archiving a tab, by design, splices
+// it OUT of OPERATIONAL_TABS, so slugToTab alone can never resolve its real
+// name once archived, leaving the archived-tab guard in BrandGroup.tsx
+// permanently unreachable for a real bookmarked URL.
+export function archivedTabForSlug(slug: string): string | null {
+  const decoded = decodeURIComponent(slug).toLowerCase();
+  for (const tab of archivedTabNames) {
+    if (tabToSlug(tab) === decoded) return tab;
+  }
+  return null;
 }
