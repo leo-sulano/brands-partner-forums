@@ -4445,3 +4445,22 @@ regression fix). Production was left in its original state (no platform hidden o
 end of the session. Spec:
 `docs/superpowers/specs/2026-08-18-hardcoded-tab-platform-visibility-design.md`. Plan:
 `docs/superpowers/plans/2026-08-18-hardcoded-tab-platform-visibility.md`.
+
+The final whole-branch review (this session, run on Sonnet after 3 consecutive transient 529
+overload errors made Opus unavailable) found one more Critical, load-bearing gap the live
+walkthrough hadn't checked: `Overview.tsx`'s per-tab/per-brand KPI counts go through
+`resolveReviewColumns` (`queries.ts`), a second independent platform-detection path that never
+consulted `getTabPlatforms`/the hidden-platform registry — so hiding a platform correctly updated
+`BrandGroup.tsx` but left Overview showing stale, disagreeing numbers for the same tab. Fixed by
+having `resolveReviewColumns` null out a hidden platform's column reference (via a new `tab`
+parameter calling `getTabPlatforms(tab)`), which `classifyEntry` — the one shared per-row
+classifier both `computeTabKpisFromEntries` and `computeBrandKpisFromEntries` call — already
+treats identically to "this tab never tracked this platform." Two new regression tests in
+`queries.test.ts` cover the exclusion and the no-op-when-nothing-hidden safety property.
+
+One documentation-only note the same review flagged: hiding a platform on a hardcoded tab also
+removes that platform's field-editing section from `EditEntryModal` for every entry on that tab
+(including ones with real historical data for it) — confirmed this doesn't destroy or alter saved
+data (`updateEntryData` merges rather than replaces), just temporarily removes the ability to
+edit that platform's fields from the UI until it's un-hidden again, same "hidden means invisible,
+not deleted" principle as everywhere else in this feature.

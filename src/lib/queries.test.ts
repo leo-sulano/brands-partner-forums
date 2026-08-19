@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { singletonFrom } = vi.hoisted(() => ({ singletonFrom: vi.fn() }));
 vi.mock('./supabase', () => ({
@@ -44,6 +44,7 @@ import {
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
+import { registerHiddenTabPlatforms, resetHiddenTabPlatforms } from './tab-configs';
 import type { Entry } from '../types/entry.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 
@@ -594,6 +595,51 @@ describe('computeTabKpisFromEntries', () => {
     const empty = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, []);
     expect(empty).toEqual(omitted);
   });
+
+  describe('hidden platforms (Edit Platforms modal)', () => {
+    afterEach(() => {
+      resetHiddenTabPlatforms();
+    });
+
+    it('excludes a hidden platform\'s rows from the tab total and its own breakdown', () => {
+      const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+      const entries = [
+        { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+          Brands: 'BrandX',
+          'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+          'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+        }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+      ];
+
+      registerHiddenTabPlatforms([{ tab: 'Rooster Partners', platform: 'cg' }]);
+
+      const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set())!;
+
+      // CG is hidden: its own breakdown must read zero, and its live row must
+      // not contribute to the tab-wide total (only TP's Removed row does).
+      expect(kpis.cg).toEqual({ live: 0, removed: 0 });
+      expect(kpis.activePlatforms).toEqual(['tp']);
+      expect(kpis.live).toBe(0);
+      expect(kpis.removed).toBe(1);
+    });
+
+    it('is a no-op when nothing is hidden (regression lock matching the BrandGroup.tsx/tab-configs.ts safety property)', () => {
+      const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+      const entries = [
+        { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+          Brands: 'BrandX',
+          'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+          'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+        }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+      ];
+
+      const kpis = computeTabKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set())!;
+      expect(kpis.cg).toEqual({ live: 1, removed: 0 });
+      expect(kpis.activePlatforms).toEqual(['tp', 'cg']);
+      expect(kpis.live).toBe(1);
+      expect(kpis.removed).toBe(0);
+    });
+  });
 });
 
 describe('computeBrandKpisFromEntries', () => {
@@ -678,6 +724,34 @@ describe('computeBrandKpisFromEntries', () => {
     ];
     const perBrand = computeBrandKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set());
     expect(perBrand.map((b) => b.brand)).toEqual(['Alpha Casino', 'Zebra Casino']);
+  });
+
+  describe('hidden platforms (Edit Platforms modal)', () => {
+    afterEach(() => {
+      resetHiddenTabPlatforms();
+    });
+
+    it('excludes a hidden platform\'s rows from a brand\'s own breakdown and activePlatforms list', () => {
+      const rawHeadersMulti = ['Brands', 'Trust Pilot', 'TP Review Status', 'Casino Guru review added', 'CG Review Status'];
+      const entries = [
+        { id: '1', tab: 'Rooster Partners', sheet_row_id: '1', data: {
+          Brands: 'BrandX',
+          'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed',
+          'Casino Guru review added': '10/06/2026', 'CG Review Status': 'Published',
+        }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard' as const, last_sync_tag: null },
+      ];
+
+      registerHiddenTabPlatforms([{ tab: 'Rooster Partners', platform: 'cg' }]);
+
+      const perBrand = computeBrandKpisFromEntries(entries, rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set());
+      const brand = perBrand.find((b) => b.brand === 'BrandX')!;
+
+      expect(brand).toBeDefined();
+      expect(brand.kpis.cg).toEqual({ live: 0, removed: 0 });
+      expect(brand.kpis.activePlatforms).toEqual(['tp']);
+      expect(brand.kpis.live).toBe(0);
+      expect(brand.kpis.removed).toBe(1);
+    });
   });
 });
 
