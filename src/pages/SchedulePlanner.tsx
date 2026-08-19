@@ -6,7 +6,7 @@ import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow, type Weekday } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildAgentIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -14,6 +14,7 @@ import {
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
   fetchRemovedPlatformBrands,
+  fetchBrandAgentAssignments,
 } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
@@ -82,10 +83,11 @@ interface TabPreview {
   restrictionMap: Map<string, Platform>;
   removedSet: Set<string>;
   scheduleRows: BrandScheduleRow[];
-  // Brand -> Agent, same most-recently-updated-entry resolution rule as
-  // TabScheduleSection's own agentIndex (buildAgentIndex's doc comment) —
-  // built here too so the landing-grid cards can filter by Agent without a
-  // second fetch of the same raw entries.
+  // Brand -> Agent, same resolution rule as TabScheduleSection's own
+  // agentIndex (buildResolvedAgentIndex's doc comment: brand_agent_assignments
+  // wins when set, falling back to the most-recently-updated entry's Agent
+  // otherwise) — built here too so the landing-grid cards can filter by Agent
+  // without a second fetch of the same raw entries.
   agentIndex: Map<string, string>;
 }
 
@@ -124,9 +126,10 @@ export default function SchedulePlanner() {
   });
   // Filters both the landing-grid preview cards and, once a tab is open, the
   // full calendar's brand list (TabScheduleSection) down to brands whose
-  // most-recently-updated entry's Agent matches — same resolution rule as
-  // buildAgentIndex everywhere else on this page, so a brand can't show up
-  // under one Agent here and a different one elsewhere.
+  // resolved Agent matches — same buildResolvedAgentIndex rule (assignment
+  // table wins, most-recently-updated entry otherwise) used everywhere else
+  // on this page, so a brand can't show up under one Agent here and a
+  // different one elsewhere.
   const [agentFilter, setAgentFilter] = useState<string[]>(() => {
     try {
       const raw = sessionStorage.getItem(AGENT_STORAGE_KEY);
@@ -149,8 +152,11 @@ export default function SchedulePlanner() {
       await Promise.all(
         OPERATIONAL_TABS.map(async (t) => {
           try {
-            const rawEntries = await fetchRawEntriesByTab(t);
-            for (const agent of buildAgentIndex(rawEntries).values()) agents.add(agent);
+            const [rawEntries, assignmentRows] = await Promise.all([
+              fetchRawEntriesByTab(t),
+              fetchBrandAgentAssignments(t).catch(() => []),
+            ]);
+            for (const agent of buildResolvedAgentIndex(rawEntries, assignmentRows, getTabPlatforms(t)).values()) agents.add(agent);
           } catch {
             // best-effort — a tab that fails to load just contributes no agents
           }
@@ -306,17 +312,18 @@ export default function SchedulePlanner() {
       const entries = await Promise.all(
         OPERATIONAL_TABS.map(async (t) => {
           try {
-            const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek] = await Promise.all([
+            const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek, agentAssignmentRows] = await Promise.all([
               fetchRawEntriesByTab(t),
               fetchTabHeaders(t),
               fetchScheduleHiddenBrands(t),
               fetchScheduleRestrictedBrands(t),
               Promise.all(weeks.map((w) => fetchBrandSchedule(t, w))),
+              fetchBrandAgentAssignments(t).catch(() => []),
             ]);
             const activePlatforms = getTabPlatforms(t);
             const hiddenSet = buildHiddenBrandSet(hiddenRows);
             const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
-            const agentIndex = buildAgentIndex(rawEntries);
+            const agentIndex = buildResolvedAgentIndex(rawEntries, agentAssignmentRows, activePlatforms);
             const brands = deriveTabBrands(t, rawEntries, headers).filter(
               (b) => resolveBrandPlatforms(t, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
             );
