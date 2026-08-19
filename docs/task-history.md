@@ -4544,3 +4544,84 @@ sub-tab; clicked Restore, confirmed its Confirm/Cancel step, confirmed it — th
 in the sidebar (`/brands/log-feature-test-tab`, correct TP chip) with zero reload, no console errors.
 Deleted the test tab a second time afterward to leave production in its original state (no stray
 "Log Feature Test Tab" left behind, sidebar back to the original 11 tabs).
+
+---
+
+## Task 239: Brand Tab Rename + Customizable Toolbar Filters
+
+**Date:** August 19, 2026
+
+On the existing "Edit Platforms" pencil button (`BrandGroup.tsx`), added two capabilities: (1) a
+dynamic (self-service-created) Brand Tab's name becomes editable, cascading everywhere that name is
+used as a key; (2) which of the 6 toolbar filter dropdowns (Brand/Agent/Proxy/Country/Status/
+Platform) a tab offers becomes an explicit, per-tab allow-list — for both dynamic and hardcoded tabs
+— configurable from the same pencil button and from "+ Add Brand Tab" at creation time. Built via
+Subagent-Driven Development against a spec/plan pair
+(`docs/superpowers/specs/2026-08-19-brand-tab-rename-and-toolbar-filters-design.md`,
+`docs/superpowers/plans/2026-08-19-brand-tab-rename-and-toolbar-filters.md`) across 10 tasks in a
+dedicated worktree, picked back up and finished in this session after the first 8 tasks' commits
+were already in place from an earlier pass.
+
+New `tab_toolbar_filters` table (migration `20260819100000`, sparse opt-in overlay shaped exactly
+like the existing `tab_hidden_platforms` — no row means all 6 filters allowed, so no tab's toolbar
+changes on deploy day) backs an in-memory `toolbarFilterOverrides` registry in `tab-configs.ts`
+(`getEnabledToolbarFilters`/`registerToolbarFilters`/`unregisterToolbarFilters`), populated at
+`AuthContext` bootstrap the same way `hiddenTabPlatforms` already is. `BrandGroup.tsx`'s 6 toolbar
+`MultiSelectDropdown` blocks each gained an `enabledFilters.includes(...)` guard layered *on top of*
+(never wider than) their existing data-cardinality auto-hide checks — an allow-list narrows what's
+possible, it never forces a dropdown to show for data that can't support it.
+
+Rename is dynamic-tab-only (the 11 hardcoded tabs in `TAB_COLUMN_CONFIGS` keep their permanent
+names — migrating their name across a dozen tables' worth of months-old real history was ruled out
+of scope at the design stage). A new `rename_custom_tab(old_name, new_name)` Postgres RPC
+(migration `20260819110000`, `security definer`) does the actual rename atomically: it updates
+`custom_tabs.name` and then, via an `information_schema.columns` introspection loop (not a
+hardcoded table list — this project has already renamed tab-scoped tables more than once, e.g.
+`removed_tp_brands` → `removed_platform_brands`), the `tab` column of every other table keyed by
+it, all in one transaction. The frontend mirrors this with `renameDynamicTab` in
+`dynamicTabRegistry.ts`, which atomically swaps the in-memory `OPERATIONAL_TABS`/
+`dynamicTabColumns` entry (delete-old + set-new + one `notifyTabPlatformsChanged()` event) rather
+than doing it as two separate calls, so no listener firing mid-swap ever sees the tab missing
+entirely. `EditBrandTabPlatformsModal.tsx` was deleted and replaced by a broader
+`EditBrandTabModal.tsx` — gains a "Tab name" field (editable input for a dynamic tab, read-only
+text + "Hardcoded tabs can't be renamed" note otherwise) and a "Toolbar Filters" checkbox group
+alongside its existing "Platforms" section; a shared `validateNewTabName` helper (new
+`src/lib/tabValidation.ts`) is used by both this modal's rename path and `AddBrandTabModal`'s
+create path so the two can't drift on what makes a tab name valid (hardcoded-tab collision, dynamic-
+tab collision, slug collision via `tabToSlug`, forbidden `/?#` characters).
+
+Picking this up mid-plan in this session: Tasks 1-8 (the shared registries, migrations, and
+`AddBrandTabModal`'s filter checkboxes) were already committed from an earlier pass in the
+`.worktrees/brand-tab-rename-toolbar-filters` worktree. Found and fixed one real gap before
+resuming — `supabase migration list` showed the `20260819100000_add_tab_toolbar_filters` migration
+as local-only (never applied to the live remote), while `20260819110000_add_rename_custom_tab_
+function` (dated *after* it) was already live. A first `supabase db push` refused to apply it
+out-of-order; `--include-all` then hit `relation "tab_toolbar_filters" already exists` — a live
+`information_schema` query confirmed the table (and all 4 RLS policies) already existed with the
+exact shape the migration file specifies, meaning it had been applied by hand at some point without
+the CLI's own ledger recording it, the same class of migration-ledger drift this project has hit
+before (see `project_delete_edit_audit_log_migration` in agent memory). Repaired via
+`supabase migration repair --status applied 20260819100000` rather than re-running the SQL — the
+ledger and live schema now agree cleanly (confirmed via `supabase migration list` afterward).
+Finished Task 9 (creating `EditBrandTabModal.tsx` + wiring `BrandGroup.tsx`, which was left
+uncommitted mid-edit) and Task 10 (final verification) in this session.
+
+Full suite (554 tests, 36 files) and `npm run build` both pass. Live-verified end to end against the
+real production Supabase instance via a throwaway dynamic tab ("RenameVerifyTab", TP-only, created
+with only Brand + Status checked in the new Toolbar Filters section): confirmed the toolbar showed
+only a Status dropdown immediately post-creation (Brand didn't show yet — 0 entries, correctly
+still gated by the existing cardinality check); added 2 entries under 2 distinct brands (Brand
+Alpha/Brand Beta), confirmed the Brand dropdown then appeared; renamed the tab via the pencil →
+Edit Brand Tab modal to "RenameVerifyTabRenamed" — the URL, the Sidebar link, and the page heading
+all updated with zero reload, both entries stayed correctly attributed under the new name, and
+re-opening Edit Brand Tab confirmed the `tab_toolbar_filters` row itself had followed the rename
+(still showing only Brand + Status checked, not reverted to default) — the one thing the RPC's
+atomicity claim needed to actually prove live, not just in a unit test. Widened back to all 6
+filters and confirmed the save persisted (Agent/Proxy/Country/Platform still correctly didn't
+render, since this tab's data has no real cardinality for them — the auto-hide layering, not a
+bug). Separately, on a real hardcoded tab (GRG - Gulf Recovery Group, 14 entries, real distinct
+Agent values ANN/JEN/LAI already visible in its table), unchecked Agent in Edit Brand Tab and
+confirmed the "All agents" dropdown disappeared regardless of that real data — proving the
+allow-list overrides cardinality, not just supplements it — then re-checked it and confirmed it
+came back. Cleaned up: deleted both throwaway entries, then deleted "RenameVerifyTabRenamed" itself
+via its own delete flow (type-to-confirm "yes"), confirming it left the sidebar with no trace.
