@@ -4678,9 +4678,10 @@ actually holds, not just assumed from the diff. `ai-assistant/tools.ts` gained a
 `list_tabs`, `query_entries`, `get_score_summary`, `get_success_rate_by_field`, `get_schedule`,
 `get_paused_combos`, and `get_review_texts`; `list_tabs`'s description now discloses the exclusion
 with the same anti-hallucination wording Task 220 established for hidden/restricted/removed-brand
-filtering. Deliberately **not** touched: `get_removed_platform_flags` and `get_entry` — a stale
-flag or a direct id lookup on an archived tab is low-impact trivia, not the "model asserts an
-archived tab doesn't exist" risk the other 7 tools carry.
+filtering. Deliberately **not** touched: `get_removed_platform_flags`, `get_entry`, and
+`list_fields` — a stale flag, a direct id lookup on an archived tab, or a list of field *names*
+(never row data) is low-impact trivia, not the "model asserts an archived tab doesn't exist" risk
+the other 7 tools carry.
 
 Built via Subagent-Driven Development (10 tasks, dedicated worktree) against a spec/plan pair
 (`docs/superpowers/specs/2026-08-19-brand-tab-archive-design.md`,

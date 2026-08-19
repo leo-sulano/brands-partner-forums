@@ -21,11 +21,15 @@ create unique index tab_archive_log_active_idx
 
 alter table public.tab_archive_log enable row level security;
 
--- Same access model as every other tab-management table in this feature
--- area (tab_hidden_platforms, tab_toolbar_filters, custom_tabs): any
--- approved user, not admin-only. No delete policy -- this is an append-only
--- audit table, matching the existing delete_log/edit_log precedent, which
--- also has no delete policy.
+-- Deliberately STRICTER on reads than the other tab-management tables in
+-- this feature area: tab_hidden_platforms, tab_toolbar_filters, and
+-- custom_tabs all use `for select using (true)` (anyone, including anon, can
+-- read), whereas this table gates all three policies behind
+-- public.is_approved() -- a design-spec choice, since these rows carry an
+-- actor_email and a free-text human-written reason, not just config. Write
+-- access matches those tables (any approved user, not admin-only). No delete
+-- policy -- this is an append-only audit table, matching the existing
+-- delete_log/edit_log precedent, which also has no delete policy.
 create policy "approved users can read tab_archive_log"
   on public.tab_archive_log for select using (public.is_approved());
 create policy "approved users can insert tab_archive_log"

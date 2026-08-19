@@ -274,6 +274,20 @@ async function fetchRemovedPlatformBrandSet(supabase: any): Promise<Set<string>>
   return buildRemovedPlatformBrandSet(data ?? []);
 }
 
+// Archived-tab exclusion (Brand Tab archive feature). Applied to the 7 tools
+// that return review data or tab names: list_tabs, query_entries,
+// get_score_summary, get_success_rate_by_field, get_schedule,
+// get_paused_combos, get_review_texts.
+// Deliberately NOT applied to three tools:
+//   - get_removed_platform_flags: lists removed_platform_brands rows, not
+//     review data — a stale flag on an archived tab is low-impact trivia.
+//   - get_entry: single-row lookup by id, not tab-scoped from the caller's
+//     perspective.
+//   - list_fields: returns field *names* only, never row data, so
+//     archived-tab exposure risk there is negligible.
+// None of the three carry the "model asserts an archived tab doesn't exist"
+// or "returns an archived tab's data as current" hallucination risk that
+// motivated the exclusion in the other 7.
 export function buildArchivedTabNameSet(rows: { tab: string; restored_at: string | null }[]): Set<string> {
   return new Set(rows.filter((r) => !r.restored_at).map((r) => r.tab));
 }

@@ -214,8 +214,9 @@ export interface TabCreatedEvent {
 // "read the live table, don't log it separately" pattern fetchRecentEdits
 // already uses for entry edits — a tab creation has no "before" state to
 // snapshot into edit_log/delete_log, so it's purely informational (no
-// restore action), unlike a tab deletion (which does go through delete_log,
-// see deleteCustomTab/restoreDeletedEntity).
+// restore action), unlike a tab archival (which is recorded in its own
+// tab_archive_log table and IS restorable, see archiveTab/unarchiveTab
+// — tabs are no longer hard-deleted, so they never go through delete_log).
 export async function fetchRecentTabCreations(limit = 50): Promise<TabCreatedEvent[]> {
   const { data, error } = await supabase
     .from('custom_tabs')
