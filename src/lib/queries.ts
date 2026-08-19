@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
-import { getTabColumns, getBrandNameCol, getTabPlatforms } from './tab-configs.ts';
+import { getTabColumns, getBrandNameCol, getTabPlatforms, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from './tab-configs.ts';
 import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
@@ -1552,7 +1552,11 @@ export async function fetchCustomTabs(client: SupabaseClient = supabase): Promis
   return (data ?? []) as CustomTabRow[];
 }
 
-export async function createCustomTab(name: string, platforms: DynamicTabPlatform[]): Promise<void> {
+export async function createCustomTab(
+  name: string,
+  platforms: DynamicTabPlatform[],
+  enabledFilters?: ToolbarFilterKey[],
+): Promise<void> {
   const actor = await currentActor();
   const { error } = await supabase
     .from('custom_tabs')
@@ -1561,6 +1565,18 @@ export async function createCustomTab(name: string, platforms: DynamicTabPlatfor
     if (error.code === '23505') throw new Error(`A tab named "${name}" already exists.`);
     throw error;
   }
+  // Only write a tab_toolbar_filters row when the creator actually narrowed
+  // from the default — keeps the table sparse, matching tab_hidden_platforms'
+  // "no row means default" shape, and means most tab creations (which never
+  // touch this section of the modal) write nothing extra at all.
+  if (enabledFilters && !isDefaultFilterSet(enabledFilters)) {
+    await setToolbarFilters(name, enabledFilters);
+  }
+}
+
+function isDefaultFilterSet(filters: ToolbarFilterKey[]): boolean {
+  return filters.length === ALL_TOOLBAR_FILTERS.length
+    && ALL_TOOLBAR_FILTERS.every((f) => filters.includes(f));
 }
 
 // Updates which platforms a dynamic Brand Tab tracks. Never touches
@@ -1575,6 +1591,29 @@ export async function updateCustomTabPlatforms(name: string, platforms: DynamicT
     .from('custom_tabs')
     .update({ platforms })
     .eq('name', name);
+  if (error) throw error;
+}
+
+export async function renameCustomTab(oldName: string, newName: string): Promise<void> {
+  const { error } = await supabase.rpc('rename_custom_tab', { old_name: oldName, new_name: newName });
+  if (error) throw error;
+}
+
+export interface ToolbarFilterRow {
+  tab: string;
+  enabled_filters: ToolbarFilterKey[];
+}
+
+export async function fetchToolbarFilters(client: SupabaseClient = supabase): Promise<ToolbarFilterRow[]> {
+  const { data, error } = await client.from('tab_toolbar_filters').select('tab, enabled_filters');
+  if (error) throw error;
+  return (data ?? []) as ToolbarFilterRow[];
+}
+
+export async function setToolbarFilters(tab: string, enabledFilters: ToolbarFilterKey[]): Promise<void> {
+  const { error } = await supabase
+    .from('tab_toolbar_filters')
+    .upsert({ tab, enabled_filters: enabledFilters, updated_by: await currentUserEmail() }, { onConflict: 'tab' });
   if (error) throw error;
 }
 
