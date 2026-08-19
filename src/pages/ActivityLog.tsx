@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
-  AlertCircle, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, RotateCcw,
+  AlertCircle, Archive, ChevronLeft, ChevronRight, Loader2, Pencil, Plus, RotateCcw,
   ShieldCheck, ShieldOff, Trash2, UserCheck, UserX,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  fetchRecentEdits, fetchAdminLogs, fetchRecentTabCreations, fetchEditLog, fetchDeleteLog, fetchWatchdogEvents,
-  restoreEditedEntity, restoreDeletedEntity,
-  type EditEvent, type AdminLogEvent, type AdminAction, type TabCreatedEvent, type WatchdogEvent,
+  fetchRecentEdits, fetchAdminLogs, fetchRecentTabCreations, fetchRecentTabArchives, fetchEditLog, fetchDeleteLog, fetchWatchdogEvents,
+  restoreEditedEntity, restoreDeletedEntity, unarchiveTab,
+  type EditEvent, type AdminLogEvent, type AdminAction, type TabCreatedEvent, type TabArchivedEvent, type WatchdogEvent,
 } from '../lib/queries';
 import { registerDynamicTabs, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { unarchiveTabLocally } from '../lib/archivedTabRegistry';
 import type { AuditLogEntry } from '../types/audit-log';
 import Toast, { type ToastKind } from '../components/Toast';
 import { tabDisplayName } from '../lib/tabs';
@@ -28,7 +29,8 @@ function relativeTime(iso: string): string {
 type FeedItem =
   | { kind: 'edit'; data: EditEvent }
   | { kind: 'admin'; data: AdminLogEvent }
-  | { kind: 'tab_created'; data: TabCreatedEvent };
+  | { kind: 'tab_created'; data: TabCreatedEvent }
+  | { kind: 'tab_archived'; data: TabArchivedEvent };
 
 const ACTION_META: Record<AdminAction, { label: string; icon: React.ReactNode; color: string }> = {
   approve:      { label: 'User approved',       icon: <UserCheck className="size-4 shrink-0" />,  color: 'text-green-500' },
@@ -49,9 +51,12 @@ function ActivityFeed() {
     // may simply be empty. Use allSettled so any one source failing degrades
     // the feed instead of blanking the whole page — only surface an error
     // when every source fails.
-    Promise.allSettled([fetchRecentEdits(100), fetchAdminLogs(100), fetchRecentTabCreations(100)])
-      .then(([editsRes, adminRes, tabsRes]) => {
-        if (editsRes.status === 'rejected' && adminRes.status === 'rejected' && tabsRes.status === 'rejected') {
+    Promise.allSettled([fetchRecentEdits(100), fetchAdminLogs(100), fetchRecentTabCreations(100), fetchRecentTabArchives(100)])
+      .then(([editsRes, adminRes, tabsRes, archivesRes]) => {
+        if (
+          editsRes.status === 'rejected' && adminRes.status === 'rejected' &&
+          tabsRes.status === 'rejected' && archivesRes.status === 'rejected'
+        ) {
           const reason = editsRes.reason;
           setError(reason instanceof Error ? reason.message : 'Failed to load log');
           return;
@@ -59,15 +64,20 @@ function ActivityFeed() {
         const edits = editsRes.status === 'fulfilled' ? editsRes.value : [];
         const adminLogs = adminRes.status === 'fulfilled' ? adminRes.value : [];
         const tabsCreated = tabsRes.status === 'fulfilled' ? tabsRes.value : [];
+        const tabsArchived = archivesRes.status === 'fulfilled' ? archivesRes.value : [];
         const items: FeedItem[] = [
           ...edits.map((e): FeedItem => ({ kind: 'edit', data: e })),
           ...adminLogs.map((a): FeedItem => ({ kind: 'admin', data: a })),
           ...tabsCreated.map((t): FeedItem => ({ kind: 'tab_created', data: t })),
+          ...tabsArchived.map((t): FeedItem => ({ kind: 'tab_archived', data: t })),
         ];
         items.sort((a, b) => {
-          const ta = a.kind === 'edit' ? a.data.updated_at : a.kind === 'admin' ? a.data.created_at : a.data.createdAt;
-          const tb = b.kind === 'edit' ? b.data.updated_at : b.kind === 'admin' ? b.data.created_at : b.data.createdAt;
-          return tb.localeCompare(ta);
+          const timeOf = (i: FeedItem) =>
+            i.kind === 'edit' ? i.data.updated_at :
+            i.kind === 'admin' ? i.data.created_at :
+            i.kind === 'tab_created' ? i.data.createdAt :
+            i.data.createdAt;
+          return timeOf(b).localeCompare(timeOf(a));
         });
         setFeed(items);
       })
@@ -137,6 +147,26 @@ function ActivityFeed() {
                 <p className="mt-0.5 text-xs text-slate-500">{tabDisplayName(created.name)}</p>
               </div>
               <span className="shrink-0 text-xs text-slate-400">{relativeTime(created.createdAt)}</span>
+            </li>
+          );
+        }
+
+        if (item.kind === 'tab_archived') {
+          const archived = item.data;
+          return (
+            <li
+              key={`tab-archived-${archived.id}`}
+              className="flex items-start gap-3 rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm"
+            >
+              <Archive className="mt-0.5 size-4 shrink-0 text-amber-500" />
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-medium text-slate-800">
+                  Brand Tab archived
+                  <span className="font-normal text-slate-500"> by {archived.actorEmail}</span>
+                </span>
+                <p className="mt-0.5 text-xs text-slate-500">{tabDisplayName(archived.tab)} · {archived.reason}</p>
+              </div>
+              <span className="shrink-0 text-xs text-slate-400">{relativeTime(archived.createdAt)}</span>
             </li>
           );
         }
@@ -370,6 +400,121 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
   );
 }
 
+function ArchivedTabsSection() {
+  const { isApproved, profile } = useAuth();
+  const [entries, setEntries] = useState<TabArchivedEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+
+  useEffect(() => {
+    fetchRecentTabArchives(200)
+      .then(setEntries)
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load archived tabs'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleUnarchive(entry: TabArchivedEvent) {
+    setRestoringId(entry.id);
+    setConfirmId(null);
+    try {
+      await unarchiveTab(entry.id);
+      unarchiveTabLocally(entry.tab);
+      setEntries((prev) =>
+        prev.map((e) =>
+          e.id === entry.id
+            ? { ...e, restoredAt: new Date().toISOString(), restoredByEmail: profile?.email ?? null }
+            : e,
+        ),
+      );
+      setToast({ message: 'Unarchived.', kind: 'success' });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Unarchive failed', kind: 'error' });
+    } finally {
+      setRestoringId(null);
+    }
+  }
+
+  if (loading) {
+    return <div className="h-14 animate-pulse rounded-lg bg-slate-100" />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        <AlertCircle className="size-4 shrink-0" />
+        {error}
+      </div>
+    );
+  }
+
+  if (entries.length === 0) {
+    return <p className="text-sm text-slate-400">No archived tabs.</p>;
+  }
+
+  return (
+    <div>
+      <ul className="space-y-2">
+        {entries.map((entry) => {
+          const isRestoring = restoringId === entry.id;
+          return (
+            <li key={entry.id} className="rounded-lg border border-slate-100 bg-white px-4 py-3 shadow-sm">
+              <div className="flex items-start gap-3">
+                <Archive className="mt-0.5 size-4 shrink-0 text-amber-500" />
+                <div className="min-w-0 flex-1">
+                  <span className="text-sm font-medium text-slate-800">
+                    Brand Tab archived
+                    <span className="font-normal text-slate-500"> by {entry.actorEmail}</span>
+                  </span>
+                  <p className="mt-0.5 text-xs text-slate-500">{tabDisplayName(entry.tab)} — {entry.reason}</p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-xs text-slate-400">{relativeTime(entry.createdAt)}</span>
+                  {isApproved && (
+                    entry.restoredAt ? (
+                      <span className="text-xs text-emerald-600">
+                        Unarchived{entry.restoredByEmail ? ` by ${entry.restoredByEmail}` : ''}
+                      </span>
+                    ) : isRestoring ? (
+                      <Loader2 className="size-4 animate-spin text-slate-400" />
+                    ) : confirmId === entry.id ? (
+                      <span className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleUnarchive(entry)}
+                          className="rounded bg-blue-600 px-2 py-1 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmId(null)}
+                          className="rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-blue-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmId(entry.id)}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                      >
+                        <RotateCcw className="size-3.5" />
+                        Unarchive
+                      </button>
+                    )
+                  )}
+                </div>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      {toast && <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
 function ServerHealthFeed() {
   const [events, setEvents] = useState<WatchdogEvent[]>([]);
   const [loading, setLoading] = useState(true);
@@ -460,7 +605,15 @@ export default function ActivityLog() {
 
       {tab === 'activity' && <ActivityFeed />}
       {tab === 'edits' && <AuditTab kind="edits" />}
-      {tab === 'deletes' && <AuditTab kind="deletes" />}
+      {tab === 'deletes' && (
+        <div className="space-y-6">
+          <AuditTab kind="deletes" />
+          <div>
+            <h2 className="mb-2 text-sm font-semibold text-slate-700">Archived Brand Tabs</h2>
+            <ArchivedTabsSection />
+          </div>
+        </div>
+      )}
       {tab === 'server health' && isServerHealthOwner && <ServerHealthFeed />}
     </div>
   );
