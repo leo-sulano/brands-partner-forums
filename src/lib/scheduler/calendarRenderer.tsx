@@ -34,16 +34,12 @@ interface ScheduleCellProps {
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
   removedByPlatform: Partial<Record<Platform, boolean>>;
   confirmedByPlatform: Partial<Record<Platform, boolean>>;
-  // Read-only PMS assignee name for this exact platform+day's linked task, if
-  // any (from pullScheduleDrift's assignees list). Purely informational --
-  // folded into the chip's existing tooltip text, never its own badge, and
-  // never written back to any dashboard data. Absent/undefined for a
-  // platform+day with no linked PMS task, or when the sync feature isn't
-  // configured.
-  assigneeByPlatform?: Partial<Record<Platform, string>>;
   // Brand-level Agent/Country (most-recently-updated entry, same resolution
   // rule buildAgentIndex/buildCountryIndex use for PMS assignment) shown as
-  // extra tooltip lines below the existing status/assignee text. Not
+  // extra tooltip lines below the existing status text — Agent doubles as
+  // "who this would be assigned to in PMS", so it deliberately isn't paired
+  // with a separate PMS-reported assignee name (redundant, and can disagree
+  // with Agent when a task predates the current Agent value). Not
   // per-platform or per-day — a brand has one Agent/Country regardless of
   // which platform's chip is hovered.
   agent?: string;
@@ -67,7 +63,6 @@ interface PlatformChipProps {
   clickable: boolean;
   planUnverified: boolean;
   label: string;
-  assignee?: string;
   agent?: string;
   country?: string;
   onClick: () => void;
@@ -82,12 +77,11 @@ interface PlatformChipProps {
 // chips) — wrapping it in Tooltip's own extra trigger <span> would add a
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
-function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clickable, planUnverified, label, assignee, agent, country, onClick }: PlatformChipProps) {
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clickable, planUnverified, label, agent, country, onClick }: PlatformChipProps) {
   const badge = PLATFORM_BADGE[platform];
   const content = (
     <div>
       <div>{PLATFORM_FULL_LABEL[platform]}: {label}</div>
-      {assignee && <div>Assigned to {assignee}</div>}
       <AgentCountryLines agent={agent} country={country} />
     </div>
   );
@@ -166,7 +160,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clicka
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, assigneeByPlatform, agent, country, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, agent, country, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -192,7 +186,6 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
           : isPaused
             ? 'Paused (scheduler)'
             : statusLabel(status);
-        const assignee = assigneeByPlatform?.[platform];
         return (
           <PlatformChip
             key={platform}
@@ -203,7 +196,6 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             clickable={clickable}
             planUnverified={planUnverified}
             label={label}
-            assignee={assignee}
             agent={agent}
             country={country}
             onClick={() => onToggle(platform)}
@@ -225,10 +217,15 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
   );
 }
 
-type PausedPlatformIndicatorProps =
+// agent/country: same brand-level values as ScheduleCell's own props (see
+// their doc comment above) — shown as extra tooltip lines below the reason
+// text, so this indicator's tooltip matches the day-cell chips' instead of
+// omitting the brand's Agent/Country entirely.
+type PausedPlatformIndicatorProps = { agent?: string; country?: string } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
-  | { platform: Platform; source: 'no-schedule' };
+  | { platform: Platform; source: 'no-schedule' }
+);
 
 function resumeWeekLabel(pausedWeekStart: string): string {
   const [y, m, d] = pausedWeekStart.split('-').map(Number);
@@ -263,7 +260,7 @@ function titleFor(props: PausedPlatformIndicatorProps): string {
 }
 
 export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
-  const { platform } = props;
+  const { platform, agent, country } = props;
   const [line1, line2] = titleFor(props).split('\n');
   return (
     <Tooltip
@@ -271,6 +268,7 @@ export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
         <div>
           <div>{line1}</div>
           {line2 && <div>{line2}</div>}
+          <AgentCountryLines agent={agent} country={country} />
         </div>
       )}
     >

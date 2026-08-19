@@ -262,7 +262,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     let canceled = false;
     (async () => {
       try {
-        const { drifted, deleted, assignees } = await pullScheduleDrift(tab);
+        const { drifted, deleted } = await pullScheduleDrift(tab);
         if (canceled) return;
         for (const d of deleted) {
           const loc = weekdayAndWeekStartFor(d.date);
@@ -277,13 +277,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         if (!canceled && (drifted.length > 0 || deleted.length > 0)) {
           const rows = await fetchBrandSchedule(tab, weekStartISO);
           if (!canceled) setScheduleRows(rows);
-        }
-        if (!canceled) {
-          const nextAssigneeIndex = new Map<string, string>();
-          for (const a of assignees) {
-            if (a.assigneeName) nextAssigneeIndex.set(`${normalizeBrandKey(a.brand)}::${a.platform}::${a.date}`, a.assigneeName);
-          }
-          setAssigneeIndex(nextAssigneeIndex);
         }
       } catch (err) {
         if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to check PMS schedule updates', kind: 'error' });
@@ -319,12 +312,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     () => buildCountryIndex(tabCtx?.entries ?? []),
     [tabCtx],
   );
-
-  // Read-only PMS assignee display, keyed by `brandKey::platform::date`.
-  // Populated from the pull effect below and never written back to any
-  // dashboard data — purely a tooltip overlay on top of ScheduleCell's
-  // existing chips.
-  const [assigneeIndex, setAssigneeIndex] = useState<Map<string, string>>(new Map());
 
   // Declared here (not further down, near where it's historically lived)
   // because brandPlatforms/filteredBrands below close over it inside a
@@ -374,19 +361,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       if (dateStatusIndex.confirmed.has(`${brandKey}::${platform}::${dayISO}`)) confirmedByPlatform[platform] = true;
     }
     return confirmedByPlatform;
-  }
-
-  // Read-only PMS assignee lookup for a brand's day cell, from assigneeIndex
-  // (populated by the pull effect above). Purely a tooltip overlay — see
-  // ScheduleCellProps.assigneeByPlatform's own doc comment.
-  function computeAssigneeByPlatform(brand: string, dayISO: string): Partial<Record<Platform, string>> {
-    const brandKey = normalizeBrandKey(brand);
-    const assigneeByPlatform: Partial<Record<Platform, string>> = {};
-    for (const platform of brandPlatforms(brand)) {
-      const name = assigneeIndex.get(`${brandKey}::${platform}::${dayISO}`);
-      if (name) assigneeByPlatform[platform] = name;
-    }
-    return assigneeByPlatform;
   }
 
   // A brand with zero remaining platforms after brandPlatforms' exclusion —
@@ -609,7 +583,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const dayISO = toISODate(addDays(weekStart, dayIndex));
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
-                      const assigneeByPlatform = computeAssigneeByPlatform(brand, dayISO);
                       return (
                         <td key={day} className="px-3 py-2 text-left align-top">
                           <ScheduleCell
@@ -620,7 +593,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             pausesByPlatform={pausesByPlatform}
                             removedByPlatform={removedByPlatform}
                             confirmedByPlatform={confirmedByPlatform}
-                            assigneeByPlatform={assigneeByPlatform}
                             agent={agent}
                             country={country}
                             isPastDay={dayISO < todayISO}
@@ -645,13 +617,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0 || noSchedulePlatforms.length > 0) && (
                         <div className="flex flex-wrap gap-1">
                           {pausedPlatforms.map((p) => (
-                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={pausesByPlatform[p] as BrandPlatformPause} />
+                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={pausesByPlatform[p] as BrandPlatformPause} agent={agent} country={country} />
                           ))}
                           {manualPausedPlatforms.map(({ platform, days }) => (
-                            <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} />
+                            <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} />
                           ))}
                           {noSchedulePlatforms.map((platform) => (
-                            <PausedPlatformIndicator key={platform} platform={platform} source="no-schedule" />
+                            <PausedPlatformIndicator key={platform} platform={platform} source="no-schedule" agent={agent} country={country} />
                           ))}
                         </div>
                       )}
