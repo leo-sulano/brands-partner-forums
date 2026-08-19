@@ -50,6 +50,15 @@ export function formatCellValue(value: string): string {
       return `${d}/${m}/${y}`;
     }
   }
+  if (/^[A-Za-z]+\s+\d{1,2},\s+\d{4}(\s+\d{1,2}:\d{2}(:\d{2})?)?$/.test(value)) {
+    const date = new Date(value);
+    if (!isNaN(date.getTime())) {
+      const d = String(date.getDate()).padStart(2, '0');
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      const y = date.getFullYear();
+      return `${d}/${m}/${y}`;
+    }
+  }
   return value;
 }
 
