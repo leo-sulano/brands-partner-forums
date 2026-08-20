@@ -8,6 +8,7 @@ import {
 import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
+import { isTabPaused } from '../lib/pausedTabRegistry';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { useAuth } from '../contexts/AuthContext';
 import AddBrandTabModal from './AddBrandTabModal';
@@ -193,6 +194,11 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     >
                       <Icon className="size-4 shrink-0" />
                       {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
+                      {!isCollapsed && isTabPaused(tab) && (
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-400/20 text-amber-300">
+                          Paused
+                        </span>
+                      )}
                       {!isCollapsed && (
                         <span className="flex items-center gap-0.5 shrink-0">
                           {platforms.map((p) => (
