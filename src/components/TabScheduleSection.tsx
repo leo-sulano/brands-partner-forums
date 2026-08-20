@@ -24,7 +24,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildCurrentStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -308,10 +308,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  // A live-patched copy of tabCtx.entries, read only by the two evidence
-  // indexes below (dateStatusIndex/currentStatusIndex) — kept deliberately
-  // separate from tabCtx itself so a live status change never touches
-  // tabCtx's own object identity. tabCtx feeds the scheduler-invocation
+  // A live-patched copy of tabCtx.entries, read only by dateStatusIndex
+  // below — kept deliberately separate from tabCtx itself so a live status
+  // change never touches tabCtx's own object identity. tabCtx feeds the
+  // scheduler-invocation
   // effect above (recalculatePauses/ensureWeekGenerated), which writes to
   // the database and pushes to PMS; that effect is designed to run once per
   // tab visit, not on every live edit, so it deliberately keeps reading
@@ -329,8 +329,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Keeps the Confirmed/Removed/Pending/Done overlay current without a
   // manual reload: an entry's status change (e.g. Check Status finishing,
   // or another user editing it) merges straight into liveEntries, which
-  // dateStatusIndex/currentStatusIndex below both derive from. Mirrors
-  // BrandGroup.tsx's own subscribeEntries consumer exactly — UPDATE/DELETE
+  // dateStatusIndex below derives from. Mirrors BrandGroup.tsx's own
+  // subscribeEntries consumer exactly — UPDATE/DELETE
   // patch the local list directly; INSERT (or any other event this doesn't
   // recognize) falls back to a full tabCtx refetch via reloadSeq, since a
   // brand-new row can introduce a brand/platform combination a targeted
@@ -359,15 +359,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // here must match BRAND_COLS, not scoreSummary.ts's separate BRAND_KEYS.
   const dateStatusIndex = useMemo(
     () => buildDateStatusIndex(liveEntries),
-    [liveEntries],
-  );
-
-  // Built off the same liveEntries as dateStatusIndex above, but keyed by
-  // brand+platform only (no date) — see buildCurrentStatusIndex's own doc
-  // comment for why Pending/Done can't use the same exact-date matching
-  // Confirmed/Removed use.
-  const currentStatusIndex = useMemo(
-    () => buildCurrentStatusIndex(liveEntries),
     [liveEntries],
   );
 
@@ -452,37 +443,20 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return confirmedByPlatform;
   }
 
-  // Pending/Done have no date to match against (see buildCurrentStatusIndex's
-  // own doc comment), so unlike computeRemovedByPlatform/
-  // computeConfirmedByPlatform above these take a Weekday + rowsByPlatform
-  // instead of a dayISO. They read `isCurrentWeek`, a const declared further
-  // below in this component — safe because these are plain functions only
-  // ever invoked from JSX during render, after every top-level const here has
-  // already been assigned (same reasoning as brandPlatforms/
-  // flaggedRemovedPlatforms above, which read tabCtx the same way). Gated to
-  // isCurrentWeek because Pending/Done describe "what's true right now," with
-  // no date to anchor them to a specific past/future week. Gated to a day
-  // that already has an active/paused plan slot
-  // (rowsByPlatform[platform]?.[day] != null) so this never creates a chip
-  // where none exists today — it only changes what an existing chip says.
-  function computePendingByPlatform(brand: string, day: Weekday, rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>): Partial<Record<Platform, boolean>> {
-    const pendingByPlatform: Partial<Record<Platform, boolean>> = {};
-    if (!isCurrentWeek) return pendingByPlatform;
+  function computePendingByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
+    const pendingByPlatform: Partial<Record<Platform, boolean>> = {};
     for (const platform of brandPlatforms(brand)) {
-      if (rowsByPlatform[platform]?.[day] == null) continue;
-      if (currentStatusIndex.pending.has(`${brandKey}::${platform}`)) pendingByPlatform[platform] = true;
+      if (dateStatusIndex.pending.has(`${brandKey}::${platform}::${dayISO}`)) pendingByPlatform[platform] = true;
     }
     return pendingByPlatform;
   }
 
-  function computeDoneByPlatform(brand: string, day: Weekday, rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>): Partial<Record<Platform, boolean>> {
-    const doneByPlatform: Partial<Record<Platform, boolean>> = {};
-    if (!isCurrentWeek) return doneByPlatform;
+  function computeDoneByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
+    const doneByPlatform: Partial<Record<Platform, boolean>> = {};
     for (const platform of brandPlatforms(brand)) {
-      if (rowsByPlatform[platform]?.[day] == null) continue;
-      if (currentStatusIndex.done.has(`${brandKey}::${platform}`)) doneByPlatform[platform] = true;
+      if (dateStatusIndex.done.has(`${brandKey}::${platform}::${dayISO}`)) doneByPlatform[platform] = true;
     }
     return doneByPlatform;
   }
@@ -707,8 +681,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const dayISO = toISODate(addDays(weekStart, dayIndex));
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
-                      const pendingByPlatform = computePendingByPlatform(brand, day, rowsByPlatform);
-                      const doneByPlatform = computeDoneByPlatform(brand, day, rowsByPlatform);
+                      const pendingByPlatform = computePendingByPlatform(brand, dayISO);
+                      const doneByPlatform = computeDoneByPlatform(brand, dayISO);
                       return (
                         <td key={day} className="px-3 py-2 text-left align-top">
                           <ScheduleCell

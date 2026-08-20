@@ -32,18 +32,15 @@ interface ScheduleCellProps {
   platforms: Platform[];
   rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+  // removed/confirmed/pending/doneByPlatform are all matched to this exact
+  // calendar day via buildDateStatusIndex — the date column (e.g. "Trust
+  // Pilot") records when the account/entry was added, independent of its
+  // current status, so even a Pending/Done row anchors to one real day the
+  // same way Removed/Live do. At most one of the four is ever true for a
+  // given platform+day in real data (buildDateStatusIndex classifies each
+  // entry into a single bucket).
   removedByPlatform: Partial<Record<Platform, boolean>>;
   confirmedByPlatform: Partial<Record<Platform, boolean>>;
-  // Pending/Done, resolved from buildCurrentStatusIndex — unlike
-  // removed/confirmedByPlatform above (which are matched to this exact
-  // calendar day), these have no date component: the caller
-  // (TabScheduleSection.tsx) only populates them for the real current week,
-  // and only for a day that already has an active/paused plan slot for that
-  // platform. See buildCurrentStatusIndex's own doc comment for why. Because
-  // they're dateless, they do NOT exempt a past day's chip from the
-  // "ghosting" effect the way exact-date Confirmed/Removed evidence does —
-  // see planUnverified below, which checks hasDateEvidence, not the wider
-  // hasEvidence.
   pendingByPlatform: Partial<Record<Platform, boolean>>;
   doneByPlatform: Partial<Record<Platform, boolean>>;
   // Brand-level Agent/Country (most-recently-updated entry, same resolution
@@ -155,24 +152,23 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 
 // Each day cell renders a chip for a platform actually scheduled that day
 // (status !== null), scheduler-paused for the week (pausesByPlatform[platform]
-// truthy), or confirmed/removed by a real entry's add-date matching this
-// exact day (confirmedByPlatform[platform]/removedByPlatform[platform]
-// truthy, from buildDateStatusIndex) — an otherwise-unset platform+day
-// renders nothing, not even a placeholder. isConfirmed and isRemoved are
-// checked independently (both gate the render guard, both drive their own
-// corner badge) rather than folded into one flag, because a caller that
-// merged them to satisfy the guard would make a removed-only day show both
-// the ✓ and ✕ badges at once — buildDateStatusIndex's removed/confirmed sets
-// are mutually exclusive per platform+date, so in real data at most one of
-// isConfirmed/isRemoved is ever true for a given chip; keeping them separate
-// preserves that.
-// A plan-only chip (status !== null with no confirmed/removed evidence) on a
-// PAST day is a claim the generator made about what should happen, not proof
-// it did — e.g. the scheduler planned a TP post for a brand on a day that
-// already passed with no matching Live/Removed entry on the Brand Tabs page.
-// Showing that identically to a confirmed post reads as "this happened" when
-// it's unverified. Such chips are ghosted (invisible until hover/focus/touch,
-// via the same opacity-0 pattern as the "+" button below) rather than removed
+// truthy), or matched by a real entry's add-date to this exact day
+// (removed/confirmed/pending/doneByPlatform[platform] truthy, from
+// buildDateStatusIndex) — an otherwise-unset platform+day renders nothing,
+// not even a placeholder. The four evidence flags are checked independently
+// (all four gate the render guard, all four drive their own corner badge)
+// rather than folded into one, because a caller that merged them to satisfy
+// the guard would make a single day show two badges at once —
+// buildDateStatusIndex classifies each entry into at most one of the four
+// sets, so in real data at most one of these flags is ever true for a given
+// chip; keeping them separate preserves that.
+// A plan-only chip (status !== null with no matching real-entry evidence) on
+// a PAST day is a claim the generator made about what should happen, not
+// proof it did — e.g. the scheduler planned a TP post for a brand on a day
+// that already passed with no matching entry on the Brand Tabs page. Showing
+// that identically to a confirmed post reads as "this happened" when it's
+// unverified. Such chips are ghosted (invisible until hover/focus/touch, via
+// the same opacity-0 pattern as the "+" button below) rather than removed
 // outright, so click-to-cycle editing of a wrongly-planned past day stays
 // reachable — hiding it completely would leave no click target to correct it
 // (the "+" button only offers days with no existing row at all). Today and
@@ -200,13 +196,9 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const status: DayStatus = row?.[day] ?? null;
         const isConfirmed = !!confirmedByPlatform[platform];
         const isRemoved = !!removedByPlatform[platform];
-        const hasDateEvidence = isConfirmed || isRemoved;
-        // Exact-date Published/Removed evidence always wins over the
-        // dateless Pending/Done overlay for the same cell — see this
-        // component's own doc comment on ScheduleCellProps above.
-        const isPending = !hasDateEvidence && !!pendingByPlatform[platform];
-        const isDone = !hasDateEvidence && !isPending && !!doneByPlatform[platform];
-        const hasEvidence = hasDateEvidence || isPending || isDone;
+        const isPending = !isConfirmed && !isRemoved && !!pendingByPlatform[platform];
+        const isDone = !isConfirmed && !isRemoved && !isPending && !!doneByPlatform[platform];
+        const hasEvidence = isConfirmed || isRemoved || isPending || isDone;
         if (!isPaused && status == null && !hasEvidence) return null;
         const badge = PLATFORM_BADGE[platform];
         const isActiveLook = status === 'active' || (status == null && hasEvidence);
@@ -216,19 +208,21 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             ? badge.className
             : `${badge.className} opacity-40`;
         const clickable = isApproved && !isPaused;
-        const planUnverified = isPastDay && !isPaused && !hasDateEvidence && status != null;
-        const isManuallyPaused = !isPaused && status === 'paused';
-        const pauseSuffix = isPending ? ' — Pending' : isDone ? ' — Done' : '';
-        const label = hasDateEvidence
-          ? (isRemoved ? 'Removed' : 'Published')
-          : isPaused
-            ? `Paused (scheduler)${pauseSuffix}`
-            : isManuallyPaused
-              ? `Paused (manual)${pauseSuffix}`
-              : isPending
-                ? 'Pending'
-                : isDone
-                  ? 'Done'
+        // Real add-date evidence (any of the four) always wins over the plan
+        // labels below, and always exempts the chip from past-day ghosting —
+        // it's a verified fact about that exact day, the same footing
+        // Removed/Confirmed already had before Pending/Done joined them.
+        const planUnverified = isPastDay && !isPaused && !hasEvidence && status != null;
+        const label = isRemoved
+          ? 'Removed'
+          : isConfirmed
+            ? 'Published'
+            : isPending
+              ? 'Pending'
+              : isDone
+                ? 'Done'
+                : isPaused
+                  ? 'Paused (scheduler)'
                   : statusLabel(status);
         return (
           <PlatformChip

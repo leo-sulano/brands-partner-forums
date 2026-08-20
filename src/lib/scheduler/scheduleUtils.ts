@@ -90,6 +90,15 @@ export interface DateStatusIndex {
   // Live/Published on that exact date — evidence a real post actually
   // happened there, independent of whatever brand_schedule's plan says.
   confirmed: Set<string>;
+  // brandKey::platform::date keys of posts whose recorded status is
+  // Pending on that exact date. The date column (e.g. "Trust Pilot") records
+  // when the account/entry was added, independent of its current status —
+  // a Pending row still carries a real add-date, so it anchors to an exact
+  // day the same way Removed/Live do.
+  pending: Set<string>;
+  // brandKey::platform::date keys of posts whose recorded status is
+  // Done on that exact date.
+  done: Set<string>;
 }
 
 // A brand+platform+exact-date lookup, in both directions, of what a real
@@ -97,11 +106,16 @@ export interface DateStatusIndex {
 // per tab load from raw entries. Brand resolution matches SchedulePlanner's
 // own brand-list resolution (BRAND_COLS), not scoreSummary.ts's separate
 // BRAND_KEYS list — see the note in schedulerService.ts's normalizedRates for
-// why those two lists disagree. A status that is neither Removed/Refused nor
-// Live/Published (e.g. Pending) lands in neither set.
+// why those two lists disagree. A status that is none of
+// Removed/Refused/Live/Published/Pending/Done (e.g. On Pause, Not Done) lands
+// in none of the four sets. Each entry is classified into at most one set —
+// removed/confirmed/pending/done are checked in that priority order, so a
+// row can never appear in two sets at once.
 export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   const removed = new Set<string>();
   const confirmed = new Set<string>();
+  const pending = new Set<string>();
+  const done = new Set<string>();
   for (const entry of entries) {
     const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
     if (!brand) continue;
@@ -109,62 +123,23 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
     for (const platform of ALL_PLATFORMS) {
       const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
       if (!status) continue;
-      const isRemoved = isRemovedStatus(status);
-      const isConfirmed = !isRemoved && isLiveStatus(status);
-      if (!isRemoved && !isConfirmed) continue;
+      const target = isRemovedStatus(status)
+        ? removed
+        : isLiveStatus(status)
+          ? confirmed
+          : isPendingStatus(status)
+            ? pending
+            : isDoneStatus(status)
+              ? done
+              : null;
+      if (!target) continue;
       const date = parsePostDate(pick(entry.data, PLATFORM_DATE_KEYS[platform]));
       if (!date) continue;
       const key = `${brandKey}::${platform}::${toISODate(date)}`;
-      (isRemoved ? removed : confirmed).add(key);
+      target.add(key);
     }
   }
-  return { removed, confirmed };
-}
-
-export interface CurrentStatusIndex {
-  // brandKey::platform keys whose most-recently-updated entry's status is
-  // currently Pending.
-  pending: Set<string>;
-  // brandKey::platform keys whose most-recently-updated entry's status is
-  // currently Done.
-  done: Set<string>;
-}
-
-// A brand+platform's single "right now" status, independent of any date —
-// unlike buildDateStatusIndex above (which needs a real post date to anchor
-// a Removed/Live entry to one exact calendar day), Pending has no date to
-// anchor to at all: it means "not yet decided." Resolves the same way
-// buildAgentIndex/buildCountryIndex below resolve Agent/Country — the
-// most-recently-updated entry wins — but per (brand, platform) rather than
-// per brand, since a brand's platforms can each be at a different stage
-// independently. Only Pending/Done are surfaced; a latest status that's
-// something else (Live, Removed, On Pause, Not Done, blank) has no key in
-// either set — this function isn't meant to represent every status, only
-// the two Schedule Planner has no other way to show (Live/Removed already
-// have buildDateStatusIndex above).
-export function buildCurrentStatusIndex(entries: Entry[]): CurrentStatusIndex {
-  const latestByKey = new Map<string, { status: string; updatedAt: string }>();
-  for (const entry of entries) {
-    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
-    if (!brand) continue;
-    const brandKey = normalizeBrandKey(brand);
-    for (const platform of ALL_PLATFORMS) {
-      const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
-      if (!status) continue;
-      const key = `${brandKey}::${platform}`;
-      const existing = latestByKey.get(key);
-      if (!existing || entry.updated_at > existing.updatedAt) {
-        latestByKey.set(key, { status, updatedAt: entry.updated_at });
-      }
-    }
-  }
-  const pending = new Set<string>();
-  const done = new Set<string>();
-  for (const [key, { status }] of latestByKey) {
-    if (isPendingStatus(status)) pending.add(key);
-    else if (isDoneStatus(status)) done.add(key);
-  }
-  return { pending, done };
+  return { removed, confirmed, pending, done };
 }
 
 // Resolves one Agent name per brand for PMS task assignment: brand_schedule
