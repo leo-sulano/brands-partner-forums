@@ -430,7 +430,7 @@ export default function SchedulePlanner() {
                 key={p}
                 content={`${PLATFORM_BADGE[p].label} scheduled ${hasDateFilter ? 'in the selected date range' : 'this week'}`}
               >
-                <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold ${PLATFORM_BADGE[p].className}`}>
+                <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold ${PLATFORM_BADGE[p].className}`}>
                   <img
                     src={PLATFORM_FAVICON[p]}
                     alt=""
