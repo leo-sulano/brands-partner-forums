@@ -44,6 +44,9 @@ import {
   unarchiveTab,
   fetchArchivedTabs,
   fetchRecentTabArchives,
+  pauseTab,
+  unpauseTab,
+  fetchPausedTabs,
   renameCustomTab,
   fetchToolbarFilters,
   setToolbarFilters,
@@ -1150,5 +1153,48 @@ describe('fetchHiddenTabPlatforms / setTabPlatformHidden', () => {
     const upsert = vi.fn().mockResolvedValue({ error: new Error('db down') });
     singletonFrom.mockReturnValue({ upsert });
     await expect(setTabPlatformHidden('Rooster Partners', 'ag', true)).rejects.toThrow('db down');
+  });
+});
+
+describe('pauseTab / unpauseTab / fetchPausedTabs', () => {
+  it('pauseTab inserts a row with the current actor email', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ insert });
+    await pauseTab('Rooster Partners');
+    expect(insert).toHaveBeenCalledWith({
+      tab: 'Rooster Partners',
+      paused_by_email: '',
+    });
+  });
+
+  it('pauseTab silently no-ops when the tab is already paused (23505)', async () => {
+    const insert = vi.fn().mockResolvedValue({
+      error: { code: '23505', message: 'duplicate key value violates unique constraint' },
+    });
+    singletonFrom.mockReturnValue({ insert });
+    await expect(pauseTab('Rooster Partners')).resolves.toBeUndefined();
+  });
+
+  it('pauseTab throws on a real (non-duplicate) error', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: { code: '42501', message: 'permission denied' } });
+    singletonFrom.mockReturnValue({ insert });
+    await expect(pauseTab('Rooster Partners')).rejects.toThrow('permission denied');
+  });
+
+  it('unpauseTab deletes the row for that tab', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const del = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ delete: del });
+    await unpauseTab('Rooster Partners');
+    expect(del).toHaveBeenCalled();
+    expect(eq).toHaveBeenCalledWith('tab', 'Rooster Partners');
+  });
+
+  it('fetchPausedTabs returns all rows', async () => {
+    const select = vi.fn().mockResolvedValue({ data: [{ tab: 'Rooster Partners' }], error: null });
+    singletonFrom.mockReturnValue({ select });
+    const rows = await fetchPausedTabs();
+    expect(select).toHaveBeenCalledWith('tab');
+    expect(rows).toEqual([{ tab: 'Rooster Partners' }]);
   });
 });

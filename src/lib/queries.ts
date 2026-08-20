@@ -1700,6 +1700,37 @@ export async function fetchRecentTabArchives(limit = 50): Promise<TabArchivedEve
   }));
 }
 
+// Brand Tab Pause (docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md):
+// a lightweight, reversible, current-state-only toggle -- deliberately
+// distinct from archiveTab/unarchiveTab above (no reason, no history, no
+// UPDATE policy on paused_tabs -- see that table's migration comment).
+export async function pauseTab(tab: string): Promise<void> {
+  const { error } = await supabase
+    .from('paused_tabs')
+    .insert({ tab, paused_by_email: (await currentUserEmail()) ?? '' });
+  if (error && error.code !== '23505') throw error;
+}
+
+export async function unpauseTab(tab: string): Promise<void> {
+  const { error } = await supabase
+    .from('paused_tabs')
+    .delete()
+    .eq('tab', tab);
+  if (error) throw error;
+}
+
+export interface PausedTabRow {
+  tab: string;
+}
+
+export async function fetchPausedTabs(client: SupabaseClient = supabase): Promise<PausedTabRow[]> {
+  const { data, error } = await client
+    .from('paused_tabs')
+    .select('tab');
+  if (error) throw error;
+  return (data ?? []) as PausedTabRow[];
+}
+
 export async function fetchHiddenTabPlatforms(client: SupabaseClient = supabase): Promise<{ tab: string; platform: Platform }[]> {
   const { data, error } = await client
     .from('tab_hidden_platforms')
