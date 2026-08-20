@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
 import { slugToTab, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { isTabPaused } from '../lib/pausedTabRegistry';
 import { avatarColor, initials } from '../lib/avatar';
 import { useState, useRef, useEffect } from 'react';
 import Tooltip from './Tooltip';
@@ -102,6 +103,7 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
   }
 
   const platforms = brandTab ? getTabPlatforms(brandTab) : [];
+  const paused = brandTab ? isTabPaused(brandTab) : false;
 
   return (
     <header className="h-14 border-b border-slate-200 bg-white px-6 flex items-center justify-between">
@@ -125,6 +127,11 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
                 </span>
               ))}
             </div>
+          )}
+          {paused && (
+            <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-100 text-amber-700 border border-amber-200">
+              Paused
+            </span>
           )}
         </div>
       </div>
