@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots } from './scheduleUtils';
+import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
@@ -414,5 +415,89 @@ describe('buildResolvedAgentIndex', () => {
     ];
     const index = buildResolvedAgentIndex([], assignmentRows, ['tp', 'ag', 'cg']);
     expect(index.has('novadreams2')).toBe(false);
+  });
+});
+
+describe('weekdayColumnsInRange', () => {
+  it('returns every weekday between the two dates inclusive, skipping weekends', () => {
+    // Mon 2026-08-17 .. Fri 2026-08-21, spilling one day into the next Mon
+    const cols = weekdayColumnsInRange('2026-08-20', '2026-08-24');
+    expect(cols.map((c) => c.iso)).toEqual(['2026-08-20', '2026-08-21', '2026-08-24']);
+    expect(cols.map((c) => c.weekday)).toEqual(['thursday', 'friday', 'monday']);
+  });
+
+  it('tags each column with the week_start of the week it belongs to', () => {
+    const cols = weekdayColumnsInRange('2026-08-20', '2026-08-24');
+    expect(cols.map((c) => c.weekStartISO)).toEqual(['2026-08-17', '2026-08-17', '2026-08-24']);
+  });
+
+  it('returns a single column for a single-day range', () => {
+    const cols = weekdayColumnsInRange('2026-08-19', '2026-08-19');
+    expect(cols).toEqual([{ iso: '2026-08-19', weekday: 'wednesday', weekStartISO: '2026-08-17' }]);
+  });
+
+  it('returns no columns for a range that only covers a weekend', () => {
+    expect(weekdayColumnsInRange('2026-08-22', '2026-08-23')).toEqual([]);
+  });
+});
+
+describe('columnsForWeek / currentWeekColumns', () => {
+  it('returns the 5 weekday columns of the given week, all sharing that week_start', () => {
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    expect(cols.map((c) => c.weekday)).toEqual(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
+    expect(cols.every((c) => c.weekStartISO === '2026-08-17')).toBe(true);
+  });
+
+  it('currentWeekColumns matches columnsForWeek(mondayOf(today))', () => {
+    expect(currentWeekColumns()).toEqual(columnsForWeek(mondayOf(new Date())));
+  });
+});
+
+describe('countActivePlatformSlots', () => {
+  const row = (brand: string, platform: 'tp' | 'ag', weekStart: string, days: Partial<Record<Weekday, 'active' | 'paused'>>): BrandScheduleRow => ({
+    tab: 'BITP', brand_key: brand, week_start: weekStart, platform,
+    monday: days.monday ?? null, tuesday: days.tuesday ?? null, wednesday: days.wednesday ?? null,
+    thursday: days.thursday ?? null, friday: days.friday ?? null,
+  });
+  const allPlatforms = () => ['tp', 'ag'] as const;
+
+  it('counts one per active (brand, day) cell, per platform', () => {
+    const rows = [
+      row('a', 'tp', '2026-08-17', { monday: 'active', thursday: 'active' }),
+      row('b', 'ag', '2026-08-17', { tuesday: 'active' }),
+    ];
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a', 'b'], () => [...allPlatforms()], cols);
+    expect(counts).toEqual({ tp: 2, ag: 1 });
+  });
+
+  it('does not count paused or null days', () => {
+    const rows = [row('a', 'tp', '2026-08-17', { monday: 'paused' })];
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols);
+    expect(counts).toEqual({ tp: 0 });
+  });
+
+  it('reports 0 (not omitted) for a platform with no active cells, as long as brandPlatformsFn returns it', () => {
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp', 'ag'], cols);
+    expect(counts).toEqual({ tp: 0, ag: 0 });
+  });
+
+  it('only counts platforms brandPlatformsFn actually returns for that brand (respects exclusion)', () => {
+    const rows = [row('a', 'tp', '2026-08-17', { monday: 'active' })];
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['ag'], cols);
+    expect(counts).toEqual({ ag: 0 });
+  });
+
+  it('sums across multiple weeks when columns span more than one week_start', () => {
+    const rows = [
+      row('a', 'tp', '2026-08-17', { friday: 'active' }),
+      row('a', 'tp', '2026-08-24', { monday: 'active' }),
+    ];
+    const cols = weekdayColumnsInRange('2026-08-21', '2026-08-24');
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols);
+    expect(counts).toEqual({ tp: 2 });
   });
 });

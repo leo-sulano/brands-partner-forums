@@ -24,7 +24,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -57,6 +57,11 @@ function RemovedPlatformIcon({ platform }: { platform: Platform }) {
   );
 }
 
+// Stable singleton fallback for "no active platforms yet" (tabCtx still
+// loading) — see the activePlatforms doc comment below for why a fresh `[]`
+// literal here caused a real infinite render loop.
+const EMPTY_PLATFORMS: Platform[] = [];
+
 interface Props {
   tab: string;
   weekStart: Date;
@@ -64,6 +69,13 @@ interface Props {
   todayISO: string;
   search: string;
   agentFilter: string[];
+  // Shared toolbar date-range filter (both blank = no filter) — used only to
+  // compute the platform-count strip reported via onPlatformCounts below.
+  // Never affects which week the interactive grid itself renders; that stays
+  // governed by weekStart/weekStartISO and the Prev/Next/Today nav alone.
+  dateFrom: string;
+  dateTo: string;
+  onPlatformCounts?: (tab: string, counts: Partial<Record<Platform, number>>) => void;
   onRemove: () => void;
 }
 
@@ -71,7 +83,7 @@ interface Props {
 // overlays, export. Instantiated once per tab the Schedule Planner shell has
 // selected, each running its own independent data load/scheduler-invocation
 // cycle keyed by its own `tab` prop; multiple instances never share state.
-export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, onRemove }: Props) {
+export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, dateFrom, dateTo, onPlatformCounts, onRemove }: Props) {
   // Bundles brands/activePlatforms/entries/removedPlatformBrandSet together,
   // tagged with the tab they were loaded for. This lets the schedule-loading
   // effect below confirm the data it's about to hand to the scheduler
@@ -378,7 +390,17 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // temporal dead zone the moment that memo actually executes, unlike the
   // functions further down that only ever get called from JSX, safely after
   // every top-level const in this component has already been assigned.
-  const activePlatforms = tabCtx?.activePlatforms ?? [];
+  //
+  // The `?? EMPTY_PLATFORMS` fallback (a stable module-level singleton, not
+  // a fresh `[]` literal) matters while tabCtx is still null (loading): a
+  // fresh array every render would give agentIndex/filteredBrands' useMemos
+  // below a new "unchanged" dependency identity on every render, and once
+  // their result (platformCounts) feeds the onPlatformCounts effect further
+  // down, that manifests as a real infinite render loop — this component
+  // re-rendering, recomputing a "new" empty array, firing onPlatformCounts
+  // again, re-rendering the parent, re-rendering this component — not just
+  // wasted recomputation, since a parent setState is now in that chain.
+  const activePlatforms = tabCtx?.activePlatforms ?? EMPTY_PLATFORMS;
 
   // Per-entry fallback only (buildAgentIndex's own heuristic) and the
   // brand_agent_assignments table, kept separate so the 3 PMS-push call
@@ -480,6 +502,71 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
   }, [tabCtx, search, agentFilter, agentIndex]);
+
+  // Platform-count strip reported up to the shared Schedule Planner toolbar
+  // (see onPlatformCounts). Sums over the picked date range when one is set,
+  // otherwise over the week this section's grid is currently displaying
+  // (weekStart, driven by the parent's Prev/Next/Today nav) — deliberately
+  // NOT "today's real week," unlike the landing-grid preview cards, since
+  // here the nav is the thing actually controlling what's on screen.
+  const hasDateFilter = !!(dateFrom || dateTo);
+  const [normFrom, normTo] = useMemo(() => {
+    if (!hasDateFilter) return ['', ''];
+    const f = dateFrom || dateTo;
+    const t = dateTo || dateFrom;
+    return f > t ? [t, f] : [f, t];
+  }, [hasDateFilter, dateFrom, dateTo]);
+  const countColumns = useMemo(
+    () => (hasDateFilter ? weekdayColumnsInRange(normFrom, normTo) : columnsForWeek(weekStart)),
+    [hasDateFilter, normFrom, normTo, weekStart],
+  );
+  const countWeekISOs = useMemo(
+    () => [...new Set(countColumns.map((c) => c.weekStartISO))],
+    [countColumns],
+  );
+  const countWeekKey = countWeekISOs.join(',');
+  const countUsesDisplayedWeekOnly = countWeekISOs.length === 1 && countWeekISOs[0] === weekStartISO;
+
+  // Extra schedule-row fetch used ONLY to compute the platform-count strip
+  // for a date range that spans a week other than the one already displayed
+  // — kept entirely separate from `scheduleRows` (which drives the
+  // interactive grid and the scheduler-invocation effect above) so picking a
+  // wide date range can never affect which week this section actually
+  // renders or writes to. Skipped whenever the range collapses to exactly
+  // the already-loaded displayed week, reusing scheduleRows instead of
+  // duplicating that fetch.
+  const [rangeScheduleRows, setRangeScheduleRows] = useState<BrandScheduleRow[]>([]);
+  useEffect(() => {
+    if (!hasDateFilter || countUsesDisplayedWeekOnly) {
+      setRangeScheduleRows([]);
+      return;
+    }
+    let canceled = false;
+    (async () => {
+      const rowsPerWeek = await Promise.all(countWeekISOs.map((w) => fetchBrandSchedule(tab, w).catch(() => [])));
+      if (!canceled) setRangeScheduleRows(rowsPerWeek.flat());
+    })();
+    return () => {
+      canceled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, hasDateFilter, countUsesDisplayedWeekOnly, countWeekKey]);
+
+  const countingRows = !hasDateFilter || countUsesDisplayedWeekOnly ? scheduleRows : rangeScheduleRows;
+
+  const platformCounts = useMemo(
+    () => countActivePlatformSlots(countingRows, tab, filteredBrands, brandPlatforms, countColumns),
+    // brandPlatforms is a plain function closing over tabCtx/activePlatforms
+    // (both re-derived fresh every render) rather than a memoized value —
+    // included here via tabCtx itself so this recomputes whenever the
+    // exclusion sets it reads from actually change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [countingRows, tab, filteredBrands, countColumns, tabCtx],
+  );
+
+  useEffect(() => {
+    onPlatformCounts?.(tab, platformCounts);
+  }, [tab, platformCounts, onPlatformCounts]);
 
   function computeCellData(brand: string): {
     rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;

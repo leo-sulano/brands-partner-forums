@@ -1,4 +1,4 @@
-import { WEEKDAYS, toISODate, type Weekday, type BrandScheduleRow } from '../scheduleBrands.ts';
+import { WEEKDAYS, toISODate, mondayOf, addDays, scheduleFor, type Weekday, type BrandScheduleRow } from '../scheduleBrands.ts';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
 import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, isPendingStatus, isDoneStatus, parsePostDate } from '../scoreSummary.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
@@ -293,4 +293,81 @@ export function weeklyCompletion(
     }
   }
   return { scheduled, completed, ratio: scheduled === 0 ? null : completed / scheduled };
+}
+
+// One calendar weekday, tagged with the brand_schedule week_start it reads
+// from -- the shared unit both the Schedule Planner toolbar's platform-count
+// strip and its landing-grid preview cards iterate over. Weekend dates are
+// never represented (the schedule model has no weekend columns anywhere in
+// the app), so a range spanning a weekend simply omits those two days rather
+// than producing a column with no matching weekday.
+export interface ScheduleColumn {
+  iso: string;
+  weekday: Weekday;
+  weekStartISO: string;
+}
+
+function isoDateToWeekday(iso: string): Weekday | null {
+  const day = new Date(`${iso}T00:00:00`).getDay();
+  const map: Partial<Record<number, Weekday>> = { 1: 'monday', 2: 'tuesday', 3: 'wednesday', 4: 'thursday', 5: 'friday' };
+  return map[day] ?? null;
+}
+
+// Every weekday between fromISO and toISO inclusive, in order, uncapped --
+// callers that need a display cap (the landing-grid preview's per-card mini
+// table) apply it themselves; count-only callers (the platform-count strip)
+// deliberately use the full uncapped result so a count can't silently
+// undercount just because a preview table stopped rendering columns.
+export function weekdayColumnsInRange(fromISO: string, toISO: string): ScheduleColumn[] {
+  const cols: ScheduleColumn[] = [];
+  const cursor = new Date(`${fromISO}T00:00:00`);
+  const end = new Date(`${toISO}T00:00:00`);
+  while (cursor <= end) {
+    const iso = toISODate(cursor);
+    const weekday = isoDateToWeekday(iso);
+    if (weekday) cols.push({ iso, weekday, weekStartISO: toISODate(mondayOf(cursor)) });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return cols;
+}
+
+// The 5 weekday columns of the week starting at `monday` -- used both for
+// "today's real week" (currentWeekColumns below) and, in specific-tab mode,
+// for whatever week the Prev/Next/Today nav currently has displayed.
+export function columnsForWeek(monday: Date): ScheduleColumn[] {
+  const weekStartISO = toISODate(monday);
+  return WEEKDAYS.map((weekday, i) => ({ iso: toISODate(addDays(monday, i)), weekday, weekStartISO }));
+}
+
+export function currentWeekColumns(): ScheduleColumn[] {
+  return columnsForWeek(mondayOf(new Date()));
+}
+
+// Counts, per platform, how many (brand, day) cells across `columns` are
+// scheduled 'active' -- the shared computation behind the Schedule Planner
+// toolbar's platform-count strip in both overview mode (landing-grid cards,
+// summed across tabs) and specific-tab mode (one TabScheduleSection's own
+// count, reported up to the shared toolbar). `brandPlatformsFn` is whatever
+// per-brand active-platform resolution the caller already has (it already
+// accounts for hidden/restricted/removed-platform exclusion), so this
+// function never needs its own copy of that logic.
+export function countActivePlatformSlots(
+  rows: BrandScheduleRow[],
+  tab: string,
+  brands: string[],
+  brandPlatformsFn: (brand: string) => Platform[],
+  columns: ScheduleColumn[],
+): Partial<Record<Platform, number>> {
+  const counts: Partial<Record<Platform, number>> = {};
+  for (const brand of brands) {
+    const platforms = brandPlatformsFn(brand);
+    for (const platform of platforms) {
+      counts[platform] = counts[platform] ?? 0;
+      for (const col of columns) {
+        const row = scheduleFor(rows, tab, brand, col.weekStartISO, platform);
+        if (row?.[col.weekday] === 'active') counts[platform] = (counts[platform] ?? 0) + 1;
+      }
+    }
+  }
+  return counts;
 }

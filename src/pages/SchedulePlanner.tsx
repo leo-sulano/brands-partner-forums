@@ -1,13 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { tabDisplayName } from '../lib/tabs';
 import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
-import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow, type Weekday } from '../lib/scheduleBrands';
+import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, currentWeekColumns, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -25,47 +25,9 @@ import Tooltip from '../components/Tooltip';
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
 const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
-const PREVIEW_FROM_STORAGE_KEY = 'schedulePlanner.previewFrom';
-const PREVIEW_TO_STORAGE_KEY = 'schedulePlanner.previewTo';
+const DATE_FROM_STORAGE_KEY = 'schedulePlanner.dateFrom';
+const DATE_TO_STORAGE_KEY = 'schedulePlanner.dateTo';
 const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
-
-// Maps an ISO date to the matching brand_schedule weekday column — null for
-// Saturday/Sunday, since the schedule model (here and everywhere else in the
-// app) has no weekend columns at all.
-function isoDateToWeekday(iso: string): Weekday | null {
-  const day = new Date(`${iso}T00:00:00`).getDay();
-  const map: Partial<Record<number, Weekday>> = { 1: 'monday', 2: 'tuesday', 3: 'wednesday', 4: 'thursday', 5: 'friday' };
-  return map[day] ?? null;
-}
-
-// One landing-grid mini-calendar column: a real calendar date, the weekday
-// column it reads from a brand_schedule row, and that row's own week_start —
-// needed per-column (not just once) because a From/To range can span more
-// than one week, unlike the old single-week Mon–Fri view.
-interface PreviewColumn {
-  iso: string;
-  weekday: Weekday;
-  weekStartISO: string;
-}
-
-function enumerateWeekdayColumns(fromISO: string, toISO: string): PreviewColumn[] {
-  const cols: PreviewColumn[] = [];
-  const cursor = new Date(`${fromISO}T00:00:00`);
-  const end = new Date(`${toISO}T00:00:00`);
-  while (cursor <= end) {
-    const iso = toISODate(cursor);
-    const weekday = isoDateToWeekday(iso);
-    if (weekday) cols.push({ iso, weekday, weekStartISO: toISODate(mondayOf(cursor)) });
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return cols;
-}
-
-function currentWeekColumns(): PreviewColumn[] {
-  const monday = mondayOf(new Date());
-  const weekStartISO = toISODate(monday);
-  return WEEKDAYS.map((weekday, i) => ({ iso: toISODate(addDays(monday, i)), weekday, weekStartISO }));
-}
 
 // Same idea for days: a wide From/To range (e.g. a full month) would make
 // every card's mini-table 20+ columns wide. Capped uniformly across all 11
@@ -189,42 +151,46 @@ export default function SchedulePlanner() {
   // to track the actual clock across a long-lived tab.
   const todayISO = useMemo(() => toISODate(new Date()), []);
 
-  // Landing-grid-only date-range filter — narrows every card's mini calendar
-  // down to specific days instead of the whole current Mon–Fri week. Both
-  // blank means "show the whole current week" (the original behavior).
-  // Filling in only one side treats it as a single-day filter (the other
-  // side defaults to match it) rather than an open-ended range, since an
-  // unbounded range has no sensible size for a landing-grid preview. Only
-  // ever read while showGrid is true (see the toolbar below), but kept as
-  // page-level state so it persists across a tab click and back, same as
-  // the other filters here.
-  const [previewFrom, setPreviewFrom] = useState<string>(() => {
+  // Shared date-range filter — used both by the landing-grid preview cards
+  // (narrows each card's mini calendar to specific days instead of the whole
+  // current Mon–Fri week) and by the platform-count strip in both modes
+  // (narrows the count from "this week" to the picked range). Both blank
+  // means "this week" (the original landing-grid behavior). Filling in only
+  // one side treats it as a single-day filter (the other side defaults to
+  // match it) rather than an open-ended range, since an unbounded range has
+  // no sensible size for either a preview table or a count. Page-level state
+  // so it persists across a tab click and back, same as the other filters
+  // here.
+  const [dateFrom, setDateFrom] = useState<string>(() => {
     try {
-      return sessionStorage.getItem(PREVIEW_FROM_STORAGE_KEY) || '';
+      return sessionStorage.getItem(DATE_FROM_STORAGE_KEY) || '';
     } catch {
       return '';
     }
   });
-  const [previewTo, setPreviewTo] = useState<string>(() => {
+  const [dateTo, setDateTo] = useState<string>(() => {
     try {
-      return sessionStorage.getItem(PREVIEW_TO_STORAGE_KEY) || '';
+      return sessionStorage.getItem(DATE_TO_STORAGE_KEY) || '';
     } catch {
       return '';
     }
   });
-  const hasDateFilter = !!(previewFrom || previewTo);
+  const hasDateFilter = !!(dateFrom || dateTo);
   const [rangeFrom, rangeTo] = useMemo(() => {
     if (!hasDateFilter) return ['', ''];
-    const from = previewFrom || previewTo;
-    const to = previewTo || previewFrom;
+    const from = dateFrom || dateTo;
+    const to = dateTo || dateFrom;
     return from > to ? [to, from] : [from, to];
-  }, [hasDateFilter, previewFrom, previewTo]);
+  }, [hasDateFilter, dateFrom, dateTo]);
 
-  // Every weekday in the picked range (uncapped) vs. what actually renders —
-  // the difference drives the "+N more days" note in the toolbar. When no
-  // filter is set, this is just the real current week's 5 weekdays.
-  const allRangeColumns = useMemo(
-    () => (hasDateFilter ? enumerateWeekdayColumns(rangeFrom, rangeTo) : currentWeekColumns()),
+  // Every weekday in the picked range (uncapped) vs. what actually renders in
+  // a landing-grid card — the difference drives that card's "+N more days"
+  // note. When no filter is set, this is just the real current week's 5
+  // weekdays. Also the uncapped source the platform-count strip sums over,
+  // so a count can never undercount just because a preview table stopped
+  // rendering columns.
+  const allRangeColumns: ScheduleColumn[] = useMemo(
+    () => (hasDateFilter ? weekdayColumnsInRange(rangeFrom, rangeTo) : currentWeekColumns()),
     [hasDateFilter, rangeFrom, rangeTo],
   );
   const previewColumns = useMemo(
@@ -232,15 +198,28 @@ export default function SchedulePlanner() {
     [hasDateFilter, allRangeColumns],
   );
   const hiddenDayCount = hasDateFilter ? allRangeColumns.length - previewColumns.length : 0;
-  // The distinct weeks the displayed columns actually need — usually one,
-  // but a multi-week range needs a fetchBrandSchedule call per week it
-  // touches. Joined to a stable string so the fetch effect below doesn't
-  // re-fire on every render just because array identity changed.
+  // The distinct weeks the picked range actually needs fetched — usually
+  // one, but a multi-week range needs a fetchBrandSchedule call per week it
+  // touches. Deliberately derived from the uncapped allRangeColumns (not the
+  // display-capped previewColumns), since the platform-count strip must
+  // reflect the full range even for the weeks a preview card doesn't render.
+  // Joined to a stable string so the fetch effect below doesn't re-fire on
+  // every render just because array identity changed.
   const previewWeekISOs = useMemo(
-    () => [...new Set(previewColumns.map((c) => c.weekStartISO))],
-    [previewColumns],
+    () => [...new Set(allRangeColumns.map((c) => c.weekStartISO))],
+    [allRangeColumns],
   );
   const previewWeekKey = previewWeekISOs.join(',');
+
+  // Reported up by each mounted TabScheduleSection via onPlatformCounts,
+  // keyed by tab — lets the shared toolbar's platform-count strip aggregate
+  // across every currently-selected tab without lifting each section's own
+  // schedule-row fetching/state up to this page (each section keeps loading
+  // and writing its own data independently, as today).
+  const [sectionCounts, setSectionCounts] = useState<Record<string, Partial<Record<Platform, number>>>>({});
+  const handlePlatformCounts = useCallback((t: string, counts: Partial<Record<Platform, number>>) => {
+    setSectionCounts((prev) => ({ ...prev, [t]: counts }));
+  }, []);
 
   useEffect(() => {
     try {
@@ -276,15 +255,21 @@ export default function SchedulePlanner() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(PREVIEW_FROM_STORAGE_KEY, previewFrom);
-      sessionStorage.setItem(PREVIEW_TO_STORAGE_KEY, previewTo);
+      sessionStorage.setItem(DATE_FROM_STORAGE_KEY, dateFrom);
+      sessionStorage.setItem(DATE_TO_STORAGE_KEY, dateTo);
     } catch {
       // same as above
     }
-  }, [previewFrom, previewTo]);
+  }, [dateFrom, dateTo]);
 
   function removeTab(tab: string) {
     setSelectedTabs((prev) => prev.filter((t) => t !== tab));
+    setSectionCounts((prev) => {
+      if (!(tab in prev)) return prev;
+      const next = { ...prev };
+      delete next[tab];
+      return next;
+    });
   }
 
   const showGrid = selectedTabs.length === 0;
@@ -346,6 +331,63 @@ export default function SchedulePlanner() {
     };
   }, [showGrid, previewWeekKey]);
 
+  // A tab's preview brands narrowed to the Agent filter — shared by the
+  // platform-count aggregation below and the landing-grid card render loop,
+  // so the two can never disagree about which brands are "currently visible."
+  function previewBrandsFor(t: string): string[] {
+    const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+    if (agentFilter.length === 0) return preview.brands;
+    return preview.brands.filter((b) => {
+      const agent = preview.agentIndex.get(normalizeBrandKey(b));
+      return !!agent && agentFilter.includes(agent);
+    });
+  }
+
+  // Overview-mode platform counts: summed across every active operational
+  // tab's currently-visible (Agent-filtered) brands, using the same
+  // countActivePlatformSlots helper specific-tab mode's TabScheduleSection
+  // uses for its own count — one shared computation, two callers, so they
+  // can't independently drift on what "scheduled" means. Uses the uncapped
+  // allRangeColumns (not the display-capped previewColumns) so the count
+  // reflects the full picked range even where a card's own mini-table stops
+  // rendering columns.
+  const overviewPlatformCounts = useMemo(() => {
+    const totals: Partial<Record<Platform, number>> = {};
+    for (const t of getActiveOperationalTabs()) {
+      const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+      const brands = previewBrandsFor(t);
+      const tabCounts = countActivePlatformSlots(
+        preview.scheduleRows,
+        t,
+        brands,
+        (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
+        allRangeColumns,
+      );
+      for (const platform of Object.keys(tabCounts) as Platform[]) {
+        totals[platform] = (totals[platform] ?? 0) + (tabCounts[platform] ?? 0);
+      }
+    }
+    return totals;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewByTab, agentFilter, allRangeColumns]);
+
+  // Specific-tab-mode platform counts: summed across every currently
+  // selected tab's own reported counts (see handlePlatformCounts above).
+  const selectedPlatformCounts = useMemo(() => {
+    const totals: Partial<Record<Platform, number>> = {};
+    for (const t of selectedTabs) {
+      const counts = sectionCounts[t];
+      if (!counts) continue;
+      for (const platform of Object.keys(counts) as Platform[]) {
+        totals[platform] = (totals[platform] ?? 0) + (counts[platform] ?? 0);
+      }
+    }
+    return totals;
+  }, [selectedTabs, sectionCounts]);
+
+  const displayedPlatformCounts = showGrid ? overviewPlatformCounts : selectedPlatformCounts;
+  const displayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in displayedPlatformCounts);
+
   return (
     <div className="space-y-4">
       <h1 className="text-xl font-semibold text-slate-900">Schedule Planner</h1>
@@ -370,76 +412,95 @@ export default function SchedulePlanner() {
           />
         </div>
 
-        {showGrid && (
-          <div className="flex shrink-0 items-center gap-2">
-            <DatePicker
-              value={previewFrom}
-              onChange={setPreviewFrom}
-              placeholder="From date"
-              align="left"
-              max={previewTo || undefined}
-              triggerTextClassName="text-sm"
-            />
-            <span className="text-xs text-slate-400">→</span>
-            <DatePicker
-              value={previewTo}
-              onChange={setPreviewTo}
-              placeholder="To date"
-              align="left"
-              min={previewFrom || undefined}
-              triggerTextClassName="text-sm"
-            />
-            {hiddenDayCount > 0 && (
-              <span className="text-xs text-slate-400 whitespace-nowrap">
-                showing first {previewColumns.length} of {allRangeColumns.length} weekdays
-              </span>
-            )}
+        <div className="flex shrink-0 items-center gap-2">
+          <DatePicker
+            value={dateFrom}
+            onChange={setDateFrom}
+            placeholder="From date"
+            align="left"
+            max={dateTo || undefined}
+            triggerTextClassName="text-sm"
+          />
+          <span className="text-xs text-slate-400">→</span>
+          <DatePicker
+            value={dateTo}
+            onChange={setDateTo}
+            placeholder="To date"
+            align="left"
+            min={dateFrom || undefined}
+            triggerTextClassName="text-sm"
+          />
+          {showGrid && hiddenDayCount > 0 && (
+            <span className="text-xs text-slate-400 whitespace-nowrap">
+              showing first {previewColumns.length} of {allRangeColumns.length} weekdays
+            </span>
+          )}
+        </div>
+
+        {displayedPlatforms.length > 0 && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            {displayedPlatforms.map((p) => (
+              <Tooltip
+                key={p}
+                content={`${PLATFORM_BADGE[p].label} scheduled ${hasDateFilter ? 'in the selected date range' : 'this week'}`}
+              >
+                <span className={`inline-flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-semibold ${PLATFORM_BADGE[p].className}`}>
+                  <img
+                    src={PLATFORM_FAVICON[p]}
+                    alt=""
+                    className="size-3 rounded-[1px]"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                  />
+                  {PLATFORM_BADGE[p].label} {displayedPlatformCounts[p] ?? 0}
+                </span>
+              </Tooltip>
+            ))}
           </div>
         )}
 
-        {selectedTabs.length > 0 && (
-          <>
-            <div className="flex flex-1 items-center gap-1.5 min-w-[160px] max-w-xs rounded-md border border-slate-200 px-2 py-1.5">
-              <Search className="size-4 text-slate-400 shrink-0" />
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search brands…"
-                className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none"
-              />
-            </div>
+        <div className={`flex flex-1 items-center gap-1.5 min-w-[160px] max-w-xs rounded-md border border-slate-200 px-2 py-1.5 ${showGrid ? 'opacity-50' : ''}`}>
+          <Search className="size-4 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search brands…"
+            disabled={showGrid}
+            className="flex-1 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 outline-none disabled:cursor-not-allowed"
+          />
+        </div>
 
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setWeekStart((d) => addDays(d, -7))}
-                className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
-                aria-label="Previous week"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <span className="text-sm text-slate-600 whitespace-nowrap">
-                Week of {formatWeekdayDate(weekStart, 0)} – {formatWeekdayDate(weekStart, 4)}
-              </span>
-              <button
-                type="button"
-                onClick={() => setWeekStart((d) => addDays(d, 7))}
-                className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100"
-                aria-label="Next week"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setWeekStart(mondayOf(new Date()))}
-                className="text-sm text-blue-600 hover:text-blue-700"
-              >
-                Today
-              </button>
-            </div>
-          </>
-        )}
+        <div className={`ml-auto flex items-center gap-2 ${showGrid ? 'opacity-50' : ''}`}>
+          <button
+            type="button"
+            onClick={() => setWeekStart((d) => addDays(d, -7))}
+            disabled={showGrid}
+            className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            aria-label="Previous week"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <span className="text-sm text-slate-600 whitespace-nowrap">
+            Week of {formatWeekdayDate(weekStart, 0)} – {formatWeekdayDate(weekStart, 4)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setWeekStart((d) => addDays(d, 7))}
+            disabled={showGrid}
+            className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+            aria-label="Next week"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setWeekStart(mondayOf(new Date()))}
+            disabled={showGrid}
+            className="text-sm text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:text-slate-400"
+          >
+            Today
+          </button>
+        </div>
       </div>
 
       {showGrid ? (
@@ -447,12 +508,7 @@ export default function SchedulePlanner() {
           {getActiveOperationalTabs().map((t) => {
             const Icon = TAB_ICONS[t] ?? DEFAULT_TAB_ICON;
             const preview = previewByTab[t] ?? EMPTY_PREVIEW;
-            const previewBrands = agentFilter.length === 0
-              ? preview.brands
-              : preview.brands.filter((b) => {
-                  const agent = preview.agentIndex.get(normalizeBrandKey(b));
-                  return !!agent && agentFilter.includes(agent);
-                });
+            const previewBrands = previewBrandsFor(t);
             return (
               <div
                 key={t}
@@ -561,6 +617,9 @@ export default function SchedulePlanner() {
               todayISO={todayISO}
               search={search}
               agentFilter={agentFilter}
+              dateFrom={dateFrom}
+              dateTo={dateTo}
+              onPlatformCounts={handlePlatformCounts}
               onRemove={() => removeTab(t)}
             />
           ))}
