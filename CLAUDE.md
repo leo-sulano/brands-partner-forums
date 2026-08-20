@@ -70,18 +70,28 @@ Brands Partner Forum/
   deliberately no date component, since Pending has no date to anchor to (unlike Confirmed/Removed,
   which match an entry's real add-date to one exact calendar day). New `isPendingStatus`/
   `isDoneStatus` in `src/lib/scoreSummary.ts` are character-for-character mirrors of the
-  same-named functions already in `src/lib/queries.ts`. The overlay only applies on the real
-  current week (never a past/future week — "Pending right now" isn't meaningful for history) and
-  only onto a day that already has an active/paused plan slot for that brand+platform — it never
-  creates a chip where none exists. Exact-date Confirmed/Removed evidence still wins when both
-  would apply (`isPending`/`isDone` gated on `!hasDateEvidence`), so a cell shows at most one
-  badge. Deliberately not wired into the CSV/Excel export or landing-grid preview, matching the
-  existing Confirmed/Removed precedent there. Built via 4 subagent-driven-development tasks plus a
-  final whole-branch review (no findings — re-confirmed the `BRAND_COLS` usage,
-  `queries.ts` parity, and single-badge gating). Full suite (1272 tests, 9 new) and build both
-  pass; live-verified via Playwright on BITP/Alf Casino — set Pending then Done via Edit Entry,
-  confirmed both badges/tooltips render on the current week and neither leaks into the previous
-  week, confirmed an existing ✓/✕ cell is unaffected, reverted the test entry afterward. Spec:
+  same-named functions already in `src/lib/queries.ts` (now cross-referenced by a comment in each
+  direction). The overlay only applies on the real current week (never a past/future week —
+  "Pending right now" isn't meaningful for history) and only onto a day that already has an
+  active/paused plan slot for that brand+platform — it never creates a chip where none exists.
+  Exact-date Confirmed/Removed evidence still wins when both would apply (`isPending`/`isDone`
+  gated on `!hasDateEvidence`), so a cell shows at most one badge. A paused day's tooltip composes
+  the pause label with a pending/done suffix (e.g. "Paused (manual) — Pending") instead of the
+  overlay silently replacing it. Unlike Confirmed/Removed, Pending/Done do NOT exempt a past day's
+  chip from the existing "ghosting" effect (Task 173) — since `isPastDay` covers any day strictly
+  before today, including earlier days of the current week, a Pending/Done badge on e.g. Monday's
+  cell viewed on Thursday still ghosts until hover/focus/touch, same as any other unconfirmed
+  plan-only chip. Deliberately not wired into the CSV/Excel export or landing-grid preview,
+  matching the existing Confirmed/Removed precedent there (now two more states joining that same
+  documented export gap — see Known Issues). Built via 4 subagent-driven-development tasks plus a
+  final whole-branch review that caught 3 Important findings after the task-scoped reviews had all
+  passed clean — the pause-label-overwrite and ghosting-exemption bugs above, plus a missing
+  cross-reference comment on `queries.ts`'s mirrored functions — all fixed in a same-day follow-up
+  before the branch was considered done, a normal part of this project's process. Full suite (1272
+  tests, 9 new) and build both pass; live-verified via Playwright on BITP/Alf Casino — set Pending
+  then Done via Edit Entry, confirmed both badges/tooltips render on the current week and neither
+  leaks into the previous week, confirmed an existing ✓/✕ cell is unaffected, reverted the test
+  entry afterward. Spec:
   `docs/superpowers/specs/2026-08-20-schedule-planner-pending-done-status-design.md`. Plan:
   `docs/superpowers/plans/2026-08-20-schedule-planner-pending-done-status.md`. Task 243.
 - *2026-08-18 (prior):* Add Brand Tab modal (self-service Brand Tab creation, Task 232) no
@@ -1147,7 +1157,10 @@ Brands Partner Forum/
   screen while exporting as blank, or export a confident `Active` for a past day the grid itself
   ghosts as unverified. This is spec-sanctioned (the design spec explicitly scopes the day columns to
   the plan lookup) but breaks that same spec's own "what you see is what you get" framing, and is the
-  same class of plan-vs-evidence divergence Task 173 fixed on the calendar itself. Fix direction: add
+  same class of plan-vs-evidence divergence Task 173 fixed on the calendar itself. Task 243's
+  Pending/Done overlay (amber "P"/blue "D" badges) has the same gap — the export has no equivalent
+  column for either, so a cell showing a Pending or Done badge on screen exports with no visual
+  distinction at all; not a new gap, just two more states joining this one. Fix direction: add
   two more export columns (`Confirmed Days`, `Removed Days`) built from the `dateStatusIndex`
   `SchedulePlanner.tsx` already computes via `computeConfirmedByPlatform`/`computeRemovedByPlatform`.
 - The `xlsx` dependency (Data Export feature) is pinned at `0.18.5` — the last version SheetJS

@@ -407,6 +407,7 @@ function isLiveStatus(s: string) {
 function isRemovedStatus(s: string) {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
+// Mirrored (by hand) in src/lib/scoreSummary.ts as isPendingStatus/isDoneStatus — keep in sync if either changes.
 export function isDoneStatus(s: string) { return s === 'done'; }
 function isPendingStatus(s: string) { return s.includes('pending') || s === 'not published'; }
 function isOnPauseStatus(s: string) { return s.includes('pause'); }

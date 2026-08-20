@@ -4993,23 +4993,41 @@ corner-badge states mirroring the existing ✓/✕ treatment: a small amber circ
 Pending, a small blue circle with "D" for Done. Both are subordinate to the existing exact-date
 evidence — `isPending` is gated on `!hasDateEvidence` and `isDone` additionally on `!isPending`, so
 a cell can only ever show one of Removed/Confirmed/Pending/Done at a time, with real dated evidence
-always winning over the dateless Pending/Done overlay whenever both would technically apply.
-Pending/Done chips are also exempted from the existing past-day "ghosting" effect (Task 173) —
-moot in practice since the current-week gate already means they can never appear on a past day, but
-kept consistent with `hasEvidence`'s existing shape. Deliberately not wired into Schedule Planner's
-CSV/Excel export (`scheduleExport.ts`) or the tab-selector's landing-grid preview table — matching
-the precedent Confirmed/Removed already set (that export reads only the raw `brand_schedule` plan
-row, a known, already-documented Known Issues gap this task doesn't widen or narrow) — confirmed via
-this task's whole-branch review that the diff touches only the 6 expected files
-(`scoreSummary.ts`/`.test.ts`, `scheduleUtils.ts`/`.test.ts`, `calendarRenderer.tsx`,
+always winning over the dateless Pending/Done overlay whenever both would technically apply. A
+paused day's tooltip composes the pause label with a pending/done suffix (e.g. "Paused (manual) —
+Pending") instead of the overlay silently replacing the pause information the plain "Pending"/"Done"
+label would otherwise erase. Pending/Done do NOT exempt a past day's chip from the existing past-day
+"ghosting" effect (Task 173) — only exact-date Confirmed/Removed evidence does (`planUnverified`
+checks `hasDateEvidence`, not the wider `hasEvidence`); a Pending/Done badge on an already-elapsed
+day of the current week (e.g. Monday's cell, viewed on Thursday — `isPastDay` covers any day
+strictly before today, including earlier days of the CURRENT week, not just prior weeks) is ghosted
+(hover/focus/touch-revealed) exactly like any other unconfirmed plan-only chip, since Pending/Done
+say nothing about whether that specific day's post happened. Deliberately not wired into Schedule
+Planner's CSV/Excel export (`scheduleExport.ts`) or the tab-selector's landing-grid preview table —
+matching the precedent Confirmed/Removed already set (that export reads only the raw `brand_schedule`
+plan row, a known, already-documented Known Issues gap this task widens by two more states rather
+than narrows) — confirmed via this task's whole-branch review that the diff touches only the 6
+expected files (`scoreSummary.ts`/`.test.ts`, `scheduleUtils.ts`/`.test.ts`, `calendarRenderer.tsx`,
 `TabScheduleSection.tsx`) and nothing in `scheduleExport.ts`, the landing-grid preview, or
 `AddPlatformModal.tsx`.
 
 Built across 4 tasks (Tasks 1-4), each independently reviewed clean, plus this Task 5's
-whole-branch review re-confirming all of the above with no findings. Full suite (1272 tests, 9 new:
-7 for `buildCurrentStatusIndex` covering independent-per-platform resolution, most-recent-wins
+whole-branch review. A first-pass review found no findings; a follow-up final whole-branch review
+(run on the most capable model, before the branch was considered done) caught 3 real Important
+findings the first pass missed: a paused day's tooltip label was being silently overwritten by the
+new Pending/Done text (losing the "Paused (manual)"/"Paused (scheduler)" information entirely
+instead of composing with it), the Pending/Done overlay was wrongly exempting a past-day chip from
+the existing "ghosting" effect (`hasEvidence`, not the narrower `hasDateEvidence`, gated
+`planUnverified` — reachable on the current week's own Mon-Wed cells, not just prior weeks, since
+`isPastDay` means "strictly before today"), and `queries.ts`'s `isPendingStatus`/`isDoneStatus` had
+no comment pointing to their hand-mirrored copy in `scoreSummary.ts`. All 3 were fixed in a same-day
+follow-up before merge, along with a doc-comment correction to this same entry's own earlier
+"exempted... moot in practice" claim, which was itself wrong once the ghosting fix landed. This is a
+normal, expected part of this project's process (see this project's own `CLAUDE.md` on why a final
+whole-branch review exists), not a failure to hide. Full suite (1272 tests, 9 new: 7 for
+`buildCurrentStatusIndex` covering independent-per-platform resolution, most-recent-wins
 tie-breaking, and blank-status skipping; 2 for `isPendingStatus`/`isDoneStatus`) and `npm run build`
-both pass.
+both pass after the follow-up fixes.
 
 Live-verified end to end via Playwright against the real production Supabase instance, signed in as
 leo@optinetsolutions.com. On the BITP tab's real current week (Aug 17–21), Alf Casino's Thursday

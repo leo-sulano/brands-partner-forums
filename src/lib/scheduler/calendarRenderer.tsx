@@ -39,7 +39,11 @@ interface ScheduleCellProps {
   // calendar day), these have no date component: the caller
   // (TabScheduleSection.tsx) only populates them for the real current week,
   // and only for a day that already has an active/paused plan slot for that
-  // platform. See buildCurrentStatusIndex's own doc comment for why.
+  // platform. See buildCurrentStatusIndex's own doc comment for why. Because
+  // they're dateless, they do NOT exempt a past day's chip from the
+  // "ghosting" effect the way exact-date Confirmed/Removed evidence does —
+  // see planUnverified below, which checks hasDateEvidence, not the wider
+  // hasEvidence.
   pendingByPlatform: Partial<Record<Platform, boolean>>;
   doneByPlatform: Partial<Record<Platform, boolean>>;
   // Brand-level Agent/Country (most-recently-updated entry, same resolution
@@ -212,16 +216,20 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             ? badge.className
             : `${badge.className} opacity-40`;
         const clickable = isApproved && !isPaused;
-        const planUnverified = isPastDay && !isPaused && !hasEvidence && status != null;
+        const planUnverified = isPastDay && !isPaused && !hasDateEvidence && status != null;
+        const isManuallyPaused = !isPaused && status === 'paused';
+        const pauseSuffix = isPending ? ' — Pending' : isDone ? ' — Done' : '';
         const label = hasDateEvidence
           ? (isRemoved ? 'Removed' : 'Published')
-          : isPending
-            ? 'Pending'
-            : isDone
-              ? 'Done'
-              : isPaused
-                ? 'Paused (scheduler)'
-                : statusLabel(status);
+          : isPaused
+            ? `Paused (scheduler)${pauseSuffix}`
+            : isManuallyPaused
+              ? `Paused (manual)${pauseSuffix}`
+              : isPending
+                ? 'Pending'
+                : isDone
+                  ? 'Done'
+                  : statusLabel(status);
         return (
           <PlatformChip
             key={platform}
