@@ -440,12 +440,32 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // failure shape as pushScheduleActivations/pullScheduleDrift above. Keyed
   // on dateStatusIndex (not just `tab`) so it reruns once this tab's real
   // entry evidence has actually loaded/changed, not on a stale prior tab's
-  // data -- see the tabCtx.tab === tab guard below, same pattern the
+  // data — see the tabCtx.tab === tab guard below, same pattern the
   // pull-drift effect uses. A currently-paused (brand, platform) combo is
-  // skipped entirely (resolvePmsSyncStatus returns null) -- Paused
+  // skipped entirely (resolvePmsSyncStatus returns null) — Paused
   // deliberately never syncs to PMS.
+  //
+  // Three correctness guards, added in a final whole-branch review:
+  // - Also waits on `!scheduleLoading`: `pauses` is reset to [] at the start
+  //   of every tab load and only populated once the slower
+  //   recalculatePauses -> ensureWeekGenerated -> fetch chain above finishes
+  //   (see setScheduleLoading in the scheduling effect). Without this guard,
+  //   this effect fires as soon as tabCtx is set and almost always reads a
+  //   stale, empty pauses array, silently treating every actually-paused
+  //   combo as unpaused.
+  // - Pause matching is week-scoped (`p.paused_week_start === linkWeekStart`,
+  //   via weekdayAndWeekStartFor(link.date)), matching how the calendar
+  //   itself matches pauses elsewhere in this file (see paused_week_start
+  //   below). A pause only ever covers the one week it was recorded for; a
+  //   bare brand_key+platform match would incorrectly suppress sync for
+  //   every week that combo has a link in, not just the paused one.
+  // - Skips any link whose platform isn't in that brand's currently-allowed
+  //   platform list (`brandPlatforms`, the same hidden/restricted/
+  //   flagged-removed-platform filter the calendar itself renders through)
+  //   so a combo the dashboard deliberately shows nothing for never has its
+  //   linked PMS card moved.
   useEffect(() => {
-    if (!isApproved || !tabCtx || tabCtx.tab !== tab) return;
+    if (!isApproved || !tabCtx || tabCtx.tab !== tab || scheduleLoading) return;
     let canceled = false;
     (async () => {
       try {
@@ -453,7 +473,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         if (canceled || links.length === 0) return;
         const items: PmsStatusSyncItem[] = [];
         for (const link of links) {
-          const isPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform);
+          if (!brandPlatforms(link.brand).includes(link.platform)) continue;
+          const linkWeekStart = weekdayAndWeekStartFor(link.date)?.weekStart;
+          const isPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === linkWeekStart);
           const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
           if (targetStatus !== null && targetStatus !== link.synced_status) {
             items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus });
@@ -470,7 +492,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       canceled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, dateStatusIndex, pauses, isApproved]);
+  }, [tab, dateStatusIndex, pauses, isApproved, scheduleLoading]);
 
   // Brand -> Country, for the same tooltip that shows Agent below (see
   // buildCountryIndex's own doc comment for the resolution rule — identical
