@@ -24,6 +24,9 @@ const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
 
 const topLinks = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+];
+
+const secondaryTopLinks = [
   { to: '/ask-ai', label: 'Ask AI', icon: Bot, end: true },
   { to: '/how-it-works', label: 'How it works', icon: BookOpen, end: true },
 ];
@@ -121,6 +124,45 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </Tooltip>
         ))}
 
+        {!!session && (
+          <>
+            <Tooltip content={isCollapsed ? 'Score Summary' : undefined} block>
+              <NavLink
+                to="/score-summary"
+                onClick={() => onClose?.()}
+                className={({ isActive }) => linkClass(isActive, isCollapsed)}
+              >
+                <BarChart3 className="size-4 shrink-0" />
+                {!isCollapsed && 'Score Summary'}
+              </NavLink>
+            </Tooltip>
+            <Tooltip content={isCollapsed ? 'Schedule Planner' : undefined} block>
+              <NavLink
+                to="/schedule-planner"
+                onClick={() => onClose?.()}
+                className={({ isActive }) => linkClass(isActive, isCollapsed)}
+              >
+                <CalendarDays className="size-4 shrink-0" />
+                {!isCollapsed && 'Schedule Planner'}
+              </NavLink>
+            </Tooltip>
+          </>
+        )}
+
+        {secondaryTopLinks.map(({ to, label, icon: Icon, end }) => (
+          <Tooltip key={to} content={isCollapsed ? label : undefined} block>
+            <NavLink
+              to={to}
+              end={end}
+              onClick={() => onClose?.()}
+              className={({ isActive }) => linkClass(isActive, isCollapsed)}
+            >
+              <Icon className="size-4 shrink-0" />
+              {!isCollapsed && label}
+            </NavLink>
+          </Tooltip>
+        ))}
+
         {isCollapsed
           ? (
             <Tooltip content={brandsOpen ? 'Collapse Brands' : 'Expand Brands'} block>
@@ -202,26 +244,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
             {adminOpen && (
               <>
-                <Tooltip content={isCollapsed ? 'Score Summary' : undefined} block>
-                  <NavLink
-                    to="/score-summary"
-                    onClick={() => onClose?.()}
-                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                  >
-                    <BarChart3 className="size-4" />
-                    {!isCollapsed && 'Score Summary'}
-                  </NavLink>
-                </Tooltip>
-                <Tooltip content={isCollapsed ? 'Schedule Planner' : undefined} block>
-                  <NavLink
-                    to="/schedule-planner"
-                    onClick={() => onClose?.()}
-                    className={({ isActive }) => linkClass(isActive, isCollapsed)}
-                  >
-                    <CalendarDays className="size-4" />
-                    {!isCollapsed && 'Schedule Planner'}
-                  </NavLink>
-                </Tooltip>
                 <Tooltip content={isCollapsed ? 'Log' : undefined} block>
                   <NavLink
                     to="/log"
