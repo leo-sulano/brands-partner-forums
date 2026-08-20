@@ -7,6 +7,7 @@ import {
   fetchRawEntriesByTab,
   fetchTabHeaders,
   fetchBrandSchedule,
+  fetchSchedulePmsLinks,
   setBrandScheduleDay,
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
@@ -22,9 +23,9 @@ import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PL
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
-import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
+import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -430,6 +431,46 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     () => buildDateStatusIndex(liveEntries),
     [liveEntries],
   );
+
+  // Reflects each linked task's current calendar-cell status (Removed >
+  // Confirmed/Published > Pending > Done > Active) onto its PMS task's
+  // column, so someone working the PMS board can see status without opening
+  // the dashboard. One-way (dashboard -> PMS only; a manual PMS column move
+  // never writes back here) and best-effort, same fire-and-forget/toast-on-
+  // failure shape as pushScheduleActivations/pullScheduleDrift above. Keyed
+  // on dateStatusIndex (not just `tab`) so it reruns once this tab's real
+  // entry evidence has actually loaded/changed, not on a stale prior tab's
+  // data -- see the tabCtx.tab === tab guard below, same pattern the
+  // pull-drift effect uses. A currently-paused (brand, platform) combo is
+  // skipped entirely (resolvePmsSyncStatus returns null) -- Paused
+  // deliberately never syncs to PMS.
+  useEffect(() => {
+    if (!isApproved || !tabCtx || tabCtx.tab !== tab) return;
+    let canceled = false;
+    (async () => {
+      try {
+        const links = await fetchSchedulePmsLinks(tab);
+        if (canceled || links.length === 0) return;
+        const items: PmsStatusSyncItem[] = [];
+        for (const link of links) {
+          const isPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform);
+          const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
+          if (targetStatus !== null && targetStatus !== link.synced_status) {
+            items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus });
+          }
+        }
+        if (!canceled && items.length > 0) {
+          await pushScheduleStatusSync(items);
+        }
+      } catch (err) {
+        if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to sync schedule status to PMS', kind: 'error' });
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, dateStatusIndex, pauses, isApproved]);
 
   // Brand -> Country, for the same tooltip that shows Agent below (see
   // buildCountryIndex's own doc comment for the resolution rule — identical
