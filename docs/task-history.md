@@ -5047,3 +5047,72 @@ Planner's chip reverting to its original plain "Scheduled" appearance — leavin
 in the live database. Spec:
 `docs/superpowers/specs/2026-08-20-schedule-planner-pending-done-status-design.md`. Plan:
 `docs/superpowers/plans/2026-08-20-schedule-planner-pending-done-status.md`.
+
+---
+
+Same-day follow-up to Task 243: Schedule Planner's Confirmed/Removed/Pending/Done overlay (and
+its underlying `dateStatusIndex`) previously only refreshed on a manual page reload — an entry's
+status changing elsewhere (Check Status finishing, another user editing it) left the calendar
+stale until the tab was revisited. `TabScheduleSection.tsx` now subscribes to the `entries` table
+via `subscribeEntries` (`src/lib/realtime.ts`), the same Supabase realtime helper `BrandGroup.tsx`
+already uses for its own live updates — no new library code, just reuse of an already-proven
+pattern. A new `liveEntries` state, re-synced from `tabCtx.entries` whenever `tabCtx` itself
+changes (a real tab switch or reload), feeds `dateStatusIndex` instead of `tabCtx.entries` directly;
+an `UPDATE` payload patches the matching entry into `liveEntries` in place, a `DELETE` removes it,
+and an `INSERT` (or any other event) falls back to a full `tabCtx` refetch via a new `reloadSeq`
+counter added to the brand-loading effect's dependency array, mirroring `BrandGroup.tsx`'s own
+`reloadRef` fallback exactly. Deliberately kept `liveEntries` separate from `tabCtx.entries` itself
+so a live status change never touches `tabCtx`'s object identity — the scheduler-invocation effect
+(`recalculatePauses`/`ensureWeekGenerated`, which writes to the database and pushes to PMS) reads
+`tabCtx.entries` and is keyed off the whole `tabCtx` object, so if `liveEntries` updates had instead
+gone through `tabCtx` too, every live status change would have re-triggered that effect — repeated,
+unwanted writes and PMS-push attempts on every edit, not just once per tab visit as designed. That
+effect is untouched by this change and still only runs once per tab visit. Live-verified via
+Playwright: with two browser tabs open (Schedule Planner on one, Edit Entry on the other), changing
+an entry's TP Status from Pending to Done and back, without ever reloading the Schedule Planner
+tab, updated the badge (amber "P" ↔ blue "D") within about a second each time; confirmed via a
+temporary `console.log` in `subscribeEntries` (removed before commit) that the postgres_changes
+payload actually arrives and the merge fires. No schema change, no deploy — pure frontend. Task 244.
+
+---
+
+Second same-day follow-up to Task 243, reported live by the user with side-by-side screenshots of
+Brand Tabs and Schedule Planner: Rooster Partners' Luckyvibe brand showed AskGamblers status as
+Pending (dated 18/08/2026) on Brand Tabs, but Schedule Planner's Tuesday Aug 18 cell showed "Done"
+instead — a different account's status, dated 20/08/2026 (Thursday), bleeding onto the wrong day.
+Root cause: Task 243's `buildCurrentStatusIndex` resolved one Pending/Done status per
+`(brand, platform)` from whichever entry was most recently updated, then painted it onto *every*
+scheduled day that week for that brand+platform — not the specific day the plan-only chip actually
+represented. The design's own stated premise ("Pending has no date to anchor to, since it means
+'not yet decided'") was wrong: the date column (e.g. "AG Added") records when the account/entry was
+added, independent of its current status — a Pending row still carries a real add-date, exactly
+like a Live or Removed row does. Fix: deleted `buildCurrentStatusIndex`/`CurrentStatusIndex`
+entirely and folded Pending/Done into `buildDateStatusIndex`'s existing exact-date matching
+(`removed`/`confirmed`/`pending`/`done`, all four now populated the same way, classified in that
+priority order per entry so a single entry only ever lands in one set). `TabScheduleSection.tsx`'s
+`computePendingByPlatform`/`computeDoneByPlatform` now take a `dayISO` and read `dateStatusIndex`
+directly, mirroring `computeRemovedByPlatform`/`computeConfirmedByPlatform` exactly — the
+current-week-only and already-scheduled-slot-only gating from Task 243 is gone entirely, since an
+exact-date match is just as safe to show on a past or future week as Confirmed/Removed's already
+was. This also fixes a second, related complaint from the same report: since Pending/Done are now
+real day-specific evidence, `calendarRenderer.tsx`'s `planUnverified` (past-day "ghosting") no
+longer excludes them — `hasEvidence` covers all four states uniformly now, so a Pending/Done badge
+on an already-elapsed day renders fully visible instead of hover-only, the same footing
+Confirmed/Removed already had. The paused-day label composition Task 243's own fix wave added
+("Paused (manual) — Pending") is gone too — Pending/Done now unconditionally override the Paused
+label, the same precedent Removed/Confirmed already set, since a dated Pending/Done entry is just as
+real a fact as a dated Removed/Confirmed one. `scoreSummary.ts`'s `isPendingStatus`/`isDoneStatus`
+(added in Task 243) are unchanged and still used, just now by `buildDateStatusIndex` instead of the
+deleted function. Test suite updated to match: the 7 `buildCurrentStatusIndex`-specific tests were
+removed and `buildDateStatusIndex`'s own suite gained coverage for Pending/Done classification, a
+status matching none of the four buckets (On Pause), a Pending entry with no parseable date (skipped,
+same as Removed already was), and one test explicitly documenting the same open question the
+original design already had for Removed/Confirmed — two different accounts colliding on the same
+exact brand+platform+date+status-conflict is possible in principle and not guarded against, each
+just lands in whichever set its own status maps to. Full suite (1269 tests, net -3 from Task 243's
+1272 after removing 7 obsolete tests and adding 4 new ones) and `npm run build` both pass.
+Live-verified via Playwright directly against the reported scenario: Rooster Partners → Luckyvibe →
+Tuesday Aug 18 now shows the tooltip "AskGamblers: Pending" (matching Brand Tabs exactly, not
+"Done"), and a full-page screenshot of the Rooster Partners week confirmed every P/D/✕ badge on
+Monday/Tuesday (both already-elapsed relative to today, Thursday Aug 20) renders at full opacity,
+not ghosted. Task 245.

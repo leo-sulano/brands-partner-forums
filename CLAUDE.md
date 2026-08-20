@@ -61,7 +61,30 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-20 (newest):* Schedule Planner day cells gained a second status overlay, Pending
+- *2026-08-20 (newest):* Two same-day follow-ups to the Task 243 entry directly below, both
+  reported live by the user. **Task 244:** Schedule Planner's Confirmed/Removed/Pending/Done
+  overlay now updates live via a `subscribeEntries` (`src/lib/realtime.ts`) subscription in
+  `TabScheduleSection.tsx` — the same Supabase realtime helper `BrandGroup.tsx` already uses —
+  instead of only refreshing on a manual reload; a new `liveEntries` state is kept deliberately
+  separate from `tabCtx` so a live edit never re-triggers the scheduler-invocation effect
+  (`recalculatePauses`/`ensureWeekGenerated`, which writes to the DB/PMS and must still run only
+  once per tab visit). **Task 245:** fixes a real bug this surfaced — Rooster Partners' Luckyvibe
+  brand showed AskGamblers Pending on Brand Tabs (dated 18/08/2026) but "Done" on Schedule
+  Planner's Tuesday cell, because Task 243's `buildCurrentStatusIndex` painted one brand+platform's
+  most-recently-updated status onto *every* scheduled day that week, not the specific day. Its
+  premise ("Pending has no date to anchor to") was wrong — the date column records when an entry
+  was *added*, independent of current status, so Pending/Done anchor to an exact day just like
+  Published/Removed. Deleted `buildCurrentStatusIndex` entirely and folded Pending/Done into
+  `buildDateStatusIndex`'s existing exact-date matching; this also fixes the second complaint from
+  the same report — Pending/Done are no longer exempt from the past-day "ghosting" effect
+  (Task 173) the way the Task 243 entry below describes, since they're now real day-specific
+  evidence and render fully visible like Published/Removed, not hover-only. The pause-label
+  composition ("Paused (manual) — Pending") from Task 243's own fix wave is gone too — Pending/Done
+  now unconditionally override the Paused label, same as Published/Removed always have. Full suite
+  (1269 tests) and build both pass; live-verified via Playwright directly against the reported
+  Luckyvibe/Tuesday scenario and a full-page screenshot confirming past-day badges render at full
+  opacity.
+- *2026-08-20 (prior):* Schedule Planner day cells gained a second status overlay, Pending
   (amber "P" badge) / Done (blue "D" badge), mirroring the existing Confirmed ✓ / Removed ✕
   overlay but for two more real TP/AG/CG/WO Review Status values that previously showed no signal
   at all. New `buildCurrentStatusIndex` (`src/lib/scheduler/scheduleUtils.ts`) resolves one
