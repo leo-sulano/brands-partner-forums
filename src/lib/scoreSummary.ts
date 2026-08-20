@@ -394,6 +394,16 @@ export function isLiveStatus(s: string): boolean {
 export function isRemovedStatus(s: string): boolean {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
+// Mirrors isPendingStatus/isDoneStatus in src/lib/queries.ts (same
+// Supabase-coupled-vs-pure-module split as isLiveStatus/isRemovedStatus
+// above — keep these two definitions in sync with queries.ts if either
+// changes).
+export function isPendingStatus(s: string): boolean {
+  return s.includes('pending') || s === 'not published';
+}
+export function isDoneStatus(s: string): boolean {
+  return s === 'done';
+}
 
 // Per-brand Success Rate for Score Summary: live / (live + removed) across
 // entries for that brand on the selected platform, not just the

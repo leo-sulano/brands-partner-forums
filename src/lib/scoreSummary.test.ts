@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, PLATFORM_REVIEW_TEXT_KEYS, pick, getReviewText, isRemovedStatus, passesPlatformDateFilter } from './scoreSummary';
+import { computeScoreSummary, computeSuccessRates, computeTabSuccessRates, computeAccountPlatformUsage, parseScore, ratingLabel, rateFromCounts, successRatePct, formatRatePct, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, PLATFORM_REVIEW_TEXT_KEYS, pick, getReviewText, isRemovedStatus, isPendingStatus, isDoneStatus, passesPlatformDateFilter } from './scoreSummary';
 import { buildRemovedPlatformBrandSet } from './removedPlatformBrands';
 import type { Entry } from '../types/entry';
 
@@ -312,6 +312,19 @@ describe('exported platform helpers (scheduler module reuse)', () => {
     expect(isRemovedStatus('refused')).toBe(true);
     expect(isRemovedStatus('rejected')).toBe(true);
     expect(isRemovedStatus('published')).toBe(false);
+  });
+
+  it('isPendingStatus matches "pending" and the literal "not published"', () => {
+    expect(isPendingStatus('pending')).toBe(true);
+    expect(isPendingStatus('not published')).toBe(true);
+    expect(isPendingStatus('done')).toBe(false);
+    expect(isPendingStatus('published')).toBe(false);
+  });
+
+  it('isDoneStatus matches only the exact string "done"', () => {
+    expect(isDoneStatus('done')).toBe(true);
+    expect(isDoneStatus('not done')).toBe(false);
+    expect(isDoneStatus('pending')).toBe(false);
   });
 });
 
