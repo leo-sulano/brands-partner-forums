@@ -10,6 +10,8 @@
 
 import { resolveProxyLabel, canonicalProxyKey, canonicalProxyName } from '../../../src/lib/proxyAliases.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, scheduleBrandKey } from '../../../src/lib/scheduleBrandConfig.ts';
+import { buildAgentIndex, buildAgentAssignmentMap, resolveAgentForBrand } from '../../../src/lib/scheduler/scheduleUtils.ts';
+import { getTabPlatforms } from '../../../src/lib/tab-configs.ts';
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
 // Matches src/lib/scoreSummary.ts's pick() exactly: blank is `v === ''`, no trim —
@@ -70,13 +72,17 @@ export interface FieldGroupCount {
   count: number;
 }
 
-export function groupByField(entries: EntryRow[], field: string): FieldGroupCount[] {
+export function groupByField(entries: EntryRow[], field: string, resolvedAgentLabels?: Map<string, string>): FieldGroupCount[] {
   // "Proxy Used" is grouped case-insensitively (canonicalProxyKey/canonicalProxyName),
   // matching every other proxy-grouping path in the codebase. Every other field stays
-  // a plain case-sensitive raw-value group.
+  // a plain case-sensitive raw-value group. "Agent" resolves through
+  // resolvedAgentLabels when the caller supplies one (see resolveAgentLabels below) —
+  // omitting it keeps the original raw-per-entry-column behavior.
   const buckets = new Map<string, { label: string; count: number }>();
   for (const e of entries) {
-    const raw = String(e.data?.[field] ?? '').trim();
+    const raw = field === 'Agent' && resolvedAgentLabels
+      ? (resolvedAgentLabels.get(e.id) ?? '')
+      : String(e.data?.[field] ?? '').trim();
     if (!raw) continue;
     const bucketKey = field === 'Proxy Used' ? canonicalProxyKey(raw) : raw;
     const label = field === 'Proxy Used' ? canonicalProxyName(raw) : raw;
@@ -274,6 +280,72 @@ async function fetchRemovedPlatformBrandSet(supabase: any): Promise<Set<string>>
   return buildRemovedPlatformBrandSet(data ?? []);
 }
 
+export interface AgentAssignmentRow {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  agent: string | null;
+}
+
+// Real import, not a ported copy (buildAgentIndex/buildAgentAssignmentMap/
+// resolveAgentForBrand from src/lib/scheduler/scheduleUtils.ts) — resolves one
+// representative Agent label per entry, the SAME brand-level rule Schedule
+// Planner's tooltip/filter use (buildResolvedAgentIndex), keyed by entry id so
+// successRateByField/groupByField can look a label up without re-deriving it
+// per bucket. Requires each entry's own `updated_at` (buildAgentIndex's
+// most-recently-updated-entry fallback needs it) — EntryRow itself intentionally
+// stays narrower (id/tab/data only, unchanged, so every other function/test in
+// this file is unaffected); callers of this helper pass the wider shape directly.
+export function resolveAgentLabels(
+  entries: { id: string; tab: string; data: Record<string, any>; updated_at: string }[],
+  assignmentRows: AgentAssignmentRow[],
+): Map<string, string> {
+  const entriesByTab = new Map<string, typeof entries>();
+  for (const e of entries) {
+    const list = entriesByTab.get(e.tab);
+    if (list) list.push(e);
+    else entriesByTab.set(e.tab, [e]);
+  }
+  const assignmentsByTab = new Map<string, AgentAssignmentRow[]>();
+  for (const row of assignmentRows) {
+    const list = assignmentsByTab.get(row.tab);
+    if (list) list.push(row);
+    else assignmentsByTab.set(row.tab, [row]);
+  }
+  const result = new Map<string, string>();
+  for (const [tab, tabEntries] of entriesByTab) {
+    const fallbackEntries = tabEntries.map((e) => ({
+      id: e.id,
+      tab: e.tab,
+      sheet_row_id: e.id,
+      data: e.data,
+      updated_at: e.updated_at,
+      last_edited_by: 'dashboard' as const,
+      last_sync_tag: null,
+    }));
+    const fallback = buildAgentIndex(fallbackEntries);
+    const assignments = buildAgentAssignmentMap(assignmentsByTab.get(tab) ?? []);
+    const platforms = getTabPlatforms(tab);
+    for (const e of tabEntries) {
+      const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
+      if (!brand) continue;
+      const label = resolveAgentForBrand(normalizeBrandKey(brand), platforms, assignments, fallback);
+      if (label) result.set(e.id, label);
+    }
+  }
+  return result;
+}
+
+// No tab filter -- the table is small (~70 rows total across all 11 tabs) and
+// query_entries/get_success_rate_by_field can both span multiple tabs in one
+// call, so resolveAgentLabels groups these by row.tab itself rather than this
+// function issuing one fetch per distinct tab present in the entries.
+async function fetchAgentAssignmentRows(supabase: any): Promise<AgentAssignmentRow[]> {
+  const { data, error } = await supabase.from('brand_agent_assignments').select('tab, brand, platform, agent');
+  if (error) throw error;
+  return (data ?? []) as AgentAssignmentRow[];
+}
+
 // Archived-tab exclusion (Brand Tab archive feature). Applied to the 7 tools
 // that return review data or tab names: list_tabs, query_entries,
 // get_score_summary, get_success_rate_by_field, get_schedule,
@@ -328,22 +400,17 @@ function filterHiddenOrRestricted<T extends { tab: string; brand: string; platfo
   });
 }
 
-// KNOWN GAP (Task 239, Brand -> Agent Responsibility Mapping, 2026-08-19/20): the
-// 'agent' field here still reads each entry's raw per-entry `Agent` column value —
-// it is NOT wired to the newer, authoritative `brand_agent_assignments` table the
-// dashboard's Schedule Planner now resolves through (see
-// `src/lib/scheduler/scheduleUtils.ts`'s `resolveAgentForPlatform`/
-// `buildResolvedAgentIndex`). This means Ask AI's agent-grouped answers
-// (`successRateByField('agent', ...)` and `groupByField(..., 'Agent')` via
-// `query_entries`) can diverge from what Schedule Planner shows — most visibly for
-// the 5 tabs with no per-entry Agent column at all (Revolution Casino, Trybet,
-// SilverPlay, Hanan, HazEmirates UAE), where these tools will report nothing for
-// "agent" queries even though `brand_agent_assignments` may have a real answer.
-// A real fix needs `successRateByField`/`groupByField` to resolve agent
-// per-BRAND the same way (via `resolveAgentForBrand`), which is a deliberate
-// semantic change to two widely-used, currently-passing test suites — left as a
-// dedicated follow-up task, not folded into this plan's final fix wave. See
-// docs/task-history.md's Task 239 entry (Known Issues / Backlog sub-section).
+// (Task 242, closing the gap Task 241 documented) The 'agent' field's raw
+// per-entry Agent column is still the base value read here, but callers that
+// pass a `resolvedAgentLabels` map (see `resolveAgentLabels` below) get each
+// entry's Agent resolved the SAME way Schedule Planner's tooltip/filter/PMS-push
+// do: `brand_agent_assignments` first (even an explicit-null "N/A" row is
+// authoritative), falling back to this per-entry column only when the table has
+// no row for that brand+platform. Both live tool handlers (get_success_rate_by_field,
+// query_entries) build and pass this map; a caller that omits it (every existing
+// test, and any future direct caller of these two functions) gets the original,
+// unresolved per-entry behavior unchanged — this is opt-in, not a breaking change
+// to either function's default behavior.
 const FIELD_KEYS: Record<'proxy' | 'agent' | 'country', string[]> = {
   proxy: ['Proxy Used'],
   agent: ['Agent'],
@@ -363,6 +430,7 @@ export function successRateByField(
   field: 'proxy' | 'agent' | 'country',
   platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
+  resolvedAgentLabels?: Map<string, string>,
 ): FieldSuccessRate[] {
   const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   const fieldKeys = FIELD_KEYS[field];
@@ -370,7 +438,9 @@ export function successRateByField(
   for (const e of entries) {
     const label = field === 'proxy'
       ? resolveProxyLabel(pick(e.data, fieldKeys))
-      : (pick(e.data, fieldKeys) ?? '').trim();
+      : field === 'agent' && resolvedAgentLabels
+        ? (resolvedAgentLabels.get(e.id) ?? '')
+        : (pick(e.data, fieldKeys) ?? '').trim();
     if (!label) continue;
     const bucketKey = field === 'proxy' ? canonicalProxyKey(label) : label;
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
@@ -699,10 +769,11 @@ export const TOOL_DEFS = [
         'neither live nor removed) — total may be lower than raw row count for that value. ' +
         'Brands whose page on the queried platform was flagged removed (see ' +
         'get_removed_platform_flags) are excluded from these results entirely. ' +
-        'The "agent" field reflects only each account\'s own recorded Agent value, which ' +
-        'may be blank or stale for several tabs (it does not yet consult the newer, more ' +
-        'authoritative brand-agent responsibility mapping) — do not claim a brand "has no ' +
-        'agent" with full confidence based on this alone.',
+        'The "agent" field is resolved per-brand the same way the dashboard\'s Schedule ' +
+        'Planner does (an authoritative brand-agent mapping first, falling back to each ' +
+        'account\'s own recorded Agent value only when that mapping has no answer for the ' +
+        'brand), so it agrees with what Schedule Planner shows even for tabs whose accounts ' +
+        'have no Agent field recorded at all.',
       parameters: {
         type: 'object',
         properties: {
@@ -842,9 +913,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (badFilterField) {
       return { error: `Cannot filter by "${badFilterField}" — this field is redacted for security.` };
     }
-    let q = supabase.from('entries').select('id, tab, data');
+    let q = supabase.from('entries').select('id, tab, data, updated_at');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data, error }, archivedSet] = await Promise.all([q, fetchArchivedTabNameSet(supabase)]);
+    const [{ data, error }, archivedSet, assignmentRows] = await Promise.all([
+      q,
+      fetchArchivedTabNameSet(supabase),
+      fetchAgentAssignmentRows(supabase),
+    ]);
     if (error) throw error;
     let rows: EntryRow[] = (data ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab));
     if (args?.status) rows = rows.filter((e) => matchesStatus(e, args.status));
@@ -853,7 +928,10 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     if (args?.field_filters) rows = rows.filter((e) => matchesFieldFilters(e, args.field_filters));
     const limit = Math.min(Number(args?.limit) || 25, 50);
     if (args?.group_by) {
-      const allGroups = groupByField(rows, args.group_by);
+      const agentLabels = args.group_by === 'Agent'
+        ? resolveAgentLabels(rows as (EntryRow & { updated_at: string })[], assignmentRows)
+        : undefined;
+      const allGroups = groupByField(rows, args.group_by, agentLabels);
       const groupedCount = allGroups.reduce((sum, g) => sum + g.count, 0);
       return {
         total: rows.length,
@@ -903,10 +981,10 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { flags: data ?? [] };
   }
   if (name === 'get_success_rate_by_field') {
-    let q = supabase.from('entries').select('id, tab, data');
+    let q = supabase.from('entries').select('id, tab, data, updated_at');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data: rawData, error }, removedSet, archivedSet] = await Promise.all([
-      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase),
+    const [{ data: rawData, error }, removedSet, archivedSet, assignmentRows] = await Promise.all([
+      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase), fetchAgentAssignmentRows(supabase),
     ]);
     if (error) throw error;
     const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab));
@@ -917,7 +995,10 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
     const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
     const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
-    return { results: successRateByField(data ?? [], args?.field, platforms, removedSet) };
+    const agentLabels = args?.field === 'agent'
+      ? resolveAgentLabels(data as (EntryRow & { updated_at: string })[], assignmentRows)
+      : undefined;
+    return { results: successRateByField(data ?? [], args?.field, platforms, removedSet, agentLabels) };
   }
   if (name === 'get_schedule') {
     if (!args?.tab || !args?.week_start) {

@@ -4884,10 +4884,60 @@ updates its code, per this project's established "fix code now, defer deploy" pa
   build `TabContext` manually and never call the real `getTabPlatforms()`). Worth a deliberate
   repo-wide grep for tests resolving non-real tab names through `getTabPlatforms()` before this
   surfaces again as a surprise in some future task.
-- **Ask AI's `get_success_rate_by_field`/`query_entries(group_by: "Agent")` are not wired to
-  `brand_agent_assignments` and still read only the raw per-entry `Agent` column** — this is a
-  known, deliberately-deferred gap (not silently missed), documented directly in
-  `supabase/functions/ai-assistant/tools.ts` above `FIELD_KEYS` and in `get_success_rate_by_field`'s
-  own tool description. The real fix requires resolving each function's agent bucketing per-brand
-  via `resolveAgentForBrand`, which is a semantic change to existing passing test suites significant
-  enough to warrant its own dedicated task rather than folding into this plan's final fix wave.
+- ~~Ask AI's `get_success_rate_by_field`/`query_entries(group_by: "Agent")` are not wired to
+  `brand_agent_assignments` and still read only the raw per-entry `Agent` column~~ — **closed the
+  same day, see Task 242 below.**
+
+---
+
+## Task 242: Ask AI Agent Resolution via brand_agent_assignments
+
+**Date:** August 20, 2026
+
+Closed the Known Issues gap from Task 241 (directly above): Ask AI's `get_success_rate_by_field`
+(`field: 'agent'`) and `query_entries(group_by: "Agent")` now resolve each entry's Agent the same
+way Schedule Planner's tooltip/filter do — `brand_agent_assignments` first (an explicit-null "N/A"
+row is authoritative), falling back to the raw per-entry `Agent` column only when the table has no
+row for that brand+platform — instead of reading only the raw column, which could never produce an
+answer at all for the 5 tabs with no per-entry Agent column (Revolution Casino, Trybet, SilverPlay,
+Hanan, HazEmirates UAE).
+
+New `resolveAgentLabels` in `supabase/functions/ai-assistant/tools.ts` is a real import of
+`buildAgentIndex`/`buildAgentAssignmentMap`/`resolveAgentForBrand` from
+`src/lib/scheduler/scheduleUtils.ts` (not a ported copy) plus a real import of `getTabPlatforms`
+from `src/lib/tab-configs.ts` — both already proven Deno-safe by `generate-weekly-schedule`'s own
+deploy. It resolves one representative Agent label per entry, grouped by tab (mirroring
+`buildResolvedAgentIndex`'s own per-tab scoping, so two tabs that happen to share a brand name —
+e.g. Lucky7even on both Rooster Partners and Wizard of Odds — can never cross-contaminate). Needs
+each entry's own `updated_at` for `buildAgentIndex`'s most-recently-updated-entry fallback rule, so
+both tool handlers' `entries` select widened from `'id, tab, data'` to `'id, tab, data, updated_at'`
+— `EntryRow` itself was deliberately left unchanged (still `id`/`tab`/`data` only) to avoid touching
+the dozens of existing `EntryRow[]` test fixtures across this file; `resolveAgentLabels` takes its
+own, separately-typed wider parameter instead.
+
+`successRateByField`/`groupByField` both gained one new, optional trailing parameter
+(`resolvedAgentLabels?: Map<string, string>`, keyed by entry id) rather than changing their
+existing behavior outright — a caller that omits it (every pre-existing test in this file, and any
+future direct caller) gets the exact original raw-per-entry-column behavior unchanged, so none of
+the 5 existing `successRateByField(..., 'agent', ...)` tests needed updating. Only the two live tool
+handlers actually build and pass the map. New `fetchAgentAssignmentRows` fetches the whole table
+with no tab filter (it's small, ~70 rows across all 11 tabs) since a single `query_entries`/
+`get_success_rate_by_field` call can span multiple tabs at once; `resolveAgentLabels` groups both
+the entries and the assignment rows by tab internally.
+
+11 new Deno tests: `resolveAgentLabels` directly (prefers the table over the raw column; resolves a
+brand with literally no Agent column at all; falls back correctly when no assignment row exists;
+produces no entry — not a falsy one — for an explicit `agent: null` row; keeps two tabs' rows
+independent), `successRateByField`/`groupByField` with and without the new parameter (confirming
+the backward-compatible default), and two `runTool` end-to-end tests exercising the real dispatcher
+against a mocked `brand_agent_assignments` table. `get_success_rate_by_field`'s tool description
+was updated to state the new, correct behavior instead of the caveat Task 241 added. `deno check`
+clean, full `tools_test.ts` suite passes (107 tests, 11 new), `npm run build` and the full Vitest
+suite both pass (this file is Deno-only; the frontend run was a sanity check, not because this
+change touches any TypeScript the frontend build itself compiles).
+
+Implemented directly in-session (no separate spec/plan/subagent fan-out) — a same-day, narrowly
+scoped follow-up closing a gap this same plan had already fully investigated and deliberately
+deferred, not new architectural work. **Pending manual deploy:** `supabase functions deploy
+ai-assistant` — until deployed, the live assistant still uses the pre-Task-242 raw-column behavior
+for agent queries; the fix is live in code only.

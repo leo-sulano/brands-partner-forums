@@ -20,6 +20,7 @@ import {
   matchesFieldFilters,
   groupByField,
   reviewTextsByStatus,
+  resolveAgentLabels,
   EntryRow,
 } from './tools.ts';
 
@@ -304,6 +305,123 @@ Deno.test('successRateByField picks up AG Review Status and CG Review Status (mu
   assertEquals(bob?.removed, 1);
   assertEquals(bob?.total, 1);
   assertEquals(cgOut.find((r) => r.value === 'ANN'), undefined);
+});
+
+Deno.test('resolveAgentLabels prefers brand_agent_assignments over the raw per-entry Agent column', () => {
+  const entries = [
+    { id: '1', tab: 'Hanan', data: { Brands: 'ZodiacBet.com' }, updated_at: '2026-08-01T00:00:00Z' },
+  ];
+  const assignmentRows = [{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp' as const, agent: 'ANN' }];
+  const labels = resolveAgentLabels(entries, assignmentRows);
+  assertEquals(labels.get('1'), 'ANN');
+});
+
+Deno.test('resolveAgentLabels resolves a brand with no per-entry Agent column at all (Hanan has none)', () => {
+  // No 'Agent' key anywhere in data — exactly the real-world shape for the 5
+  // tabs that motivated this table in the first place.
+  const entries = [
+    { id: '1', tab: 'Hanan', data: { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published' }, updated_at: '2026-08-01T00:00:00Z' },
+  ];
+  const assignmentRows = [{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp' as const, agent: 'ANN' }];
+  const labels = resolveAgentLabels(entries, assignmentRows);
+  assertEquals(labels.get('1'), 'ANN');
+});
+
+Deno.test('resolveAgentLabels falls back to the per-entry Agent column when no assignment row exists', () => {
+  const entries = [
+    { id: '1', tab: 'Rooster Partners', data: { Brands: 'Midasluck', Agent: 'BOB' }, updated_at: '2026-08-01T00:00:00Z' },
+  ];
+  const labels = resolveAgentLabels(entries, []);
+  assertEquals(labels.get('1'), 'BOB');
+});
+
+Deno.test('resolveAgentLabels has no entry for a brand+platform the sheet explicitly marks unassigned (agent: null)', () => {
+  const entries = [
+    { id: '1', tab: 'SilverPlay', data: { Brands: 'Silver Play', 'TP Review Status': 'Published' }, updated_at: '2026-08-01T00:00:00Z' },
+  ];
+  const assignmentRows = [{ tab: 'SilverPlay', brand: 'Silver Play', platform: 'tp' as const, agent: null }];
+  const labels = resolveAgentLabels(entries, assignmentRows);
+  assertEquals(labels.has('1'), false);
+});
+
+Deno.test('resolveAgentLabels keeps two tabs\' assignment rows independent (Lucky7even: LAI on Rooster Partners, JEN on Wizard of Odds)', () => {
+  const entries = [
+    { id: '1', tab: 'Rooster Partners', data: { Brands: 'Lucky7even' }, updated_at: '2026-08-01T00:00:00Z' },
+    { id: '2', tab: 'Wizard of Odds', data: { 'Brand Name': 'Lucky7even' }, updated_at: '2026-08-01T00:00:00Z' },
+  ];
+  const assignmentRows = [
+    { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp' as const, agent: 'LAI' },
+    { tab: 'Wizard of Odds', brand: 'Lucky7even', platform: 'wo' as const, agent: 'JEN' },
+  ];
+  const labels = resolveAgentLabels(entries, assignmentRows);
+  assertEquals(labels.get('1'), 'LAI');
+  assertEquals(labels.get('2'), 'JEN');
+});
+
+Deno.test('successRateByField uses resolvedAgentLabels when passed, ignoring the raw per-entry column', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 'Hanan', data: { 'TP Review Status': 'Published' } },
+  ];
+  const labels = new Map([['1', 'ANN']]);
+  const out = successRateByField(entries, 'agent', ['tp'], new Set(), labels);
+  assertEquals(out.length, 1);
+  assertEquals(out[0].value, 'ANN');
+  assertEquals(out[0].live, 1);
+});
+
+Deno.test('successRateByField without resolvedAgentLabels keeps the original raw per-entry behavior (backward compatible)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Agent: 'BOB', 'TP Review Status': 'Published' } },
+  ];
+  const out = successRateByField(entries, 'agent', ['tp']);
+  assertEquals(out[0].value, 'BOB');
+});
+
+Deno.test('groupByField uses resolvedAgentLabels for "Agent" when passed', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 'Hanan', data: {} },
+    { id: '2', tab: 'Hanan', data: {} },
+  ];
+  const labels = new Map([['1', 'ANN'], ['2', 'ANN']]);
+  assertEquals(groupByField(entries, 'Agent', labels), [{ value: 'ANN', count: 2 }]);
+});
+
+Deno.test('groupByField without resolvedAgentLabels keeps the original raw-column behavior for "Agent" (backward compatible)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Agent: 'BOB' } },
+  ];
+  assertEquals(groupByField(entries, 'Agent'), [{ value: 'BOB', count: 1 }]);
+});
+
+Deno.test('get_success_rate_by_field end-to-end resolves agent via brand_agent_assignments for a tab with no per-entry Agent column', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Hanan', data: { Brands: 'ZodiacBet.com', 'TP Review Status': 'Published' }, updated_at: '2026-08-01T00:00:00Z' },
+    ],
+    removed_platform_brands: [],
+    tab_archive_log: [],
+    brand_agent_assignments: [
+      { tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp', agent: 'ANN' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_success_rate_by_field', { field: 'agent', platform: 'tp' });
+  assertEquals(result.results.length, 1);
+  assertEquals(result.results[0].value, 'ANN');
+  assertEquals(result.results[0].live, 1);
+});
+
+Deno.test('query_entries group_by "Agent" end-to-end resolves via brand_agent_assignments', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Hanan', data: { Brands: 'ZodiacBet.com' }, updated_at: '2026-08-01T00:00:00Z' },
+    ],
+    tab_archive_log: [],
+    brand_agent_assignments: [
+      { tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp', agent: 'ANN' },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', { group_by: 'Agent' });
+  assertEquals(result.groups, [{ value: 'ANN', count: 1 }]);
 });
 
 Deno.test('parseScore respects a custom maxScore and floors fractional values', () => {
