@@ -202,17 +202,29 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         if (!isPaused && status == null && !hasEvidence) return null;
         const badge = PLATFORM_BADGE[platform];
         const isActiveLook = status === 'active' || (status == null && hasEvidence);
-        const stateClassName = isPaused
+        // A scheduler pause is per (brand, platform, week), not per day — it
+        // says nothing about any one day, it's just the absence of a real
+        // decision for days nobody has touched. The moment a day gets its own
+        // explicit status (a manual click scheduling/pausing it despite the
+        // week-level pause, or a leftover status from before the pause took
+        // effect), that real per-day fact should win over the generic
+        // "Paused (scheduler)" placeholder rather than being masked by it —
+        // so the pause is only "effective" for a day while status is unset.
+        const effectivePaused = isPaused && status == null;
+        const stateClassName = effectivePaused
           ? `${badge.className} opacity-30`
           : isActiveLook
             ? badge.className
             : `${badge.className} opacity-40`;
-        const clickable = isApproved && !isPaused;
+        // Always clickable when approved: a week-level pause is a
+        // recommendation to skip, not a lock — ops can still manually
+        // schedule/pause an individual day within a paused week.
+        const clickable = isApproved;
         // Real add-date evidence (any of the four) always wins over the plan
         // labels below, and always exempts the chip from past-day ghosting —
         // it's a verified fact about that exact day, the same footing
         // Removed/Confirmed already had before Pending/Done joined them.
-        const planUnverified = isPastDay && !isPaused && !hasEvidence && status != null;
+        const planUnverified = isPastDay && !effectivePaused && !hasEvidence && status != null;
         const label = isRemoved
           ? 'Removed'
           : isConfirmed
@@ -221,7 +233,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
               ? 'Pending'
               : isDone
                 ? 'Done'
-                : isPaused
+                : effectivePaused
                   ? 'Paused (scheduler)'
                   : statusLabel(status);
         return (

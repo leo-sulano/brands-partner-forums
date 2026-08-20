@@ -879,9 +879,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             // pre-dating per-platform tracking) are read-only: forcing
                             // isApproved to false here (rather than threading a separate
                             // readOnly prop through ScheduleCell) reuses its existing
-                            // `clickable = isApproved && !isPaused` gate, so no chip in a
-                            // legacy week ever gets an onClick/cursor-pointer or a "+ Add
-                            // Platform" button. Future weeks are fully interactive — see
+                            // `clickable = isApproved` gate, so no chip in a legacy week
+                            // ever gets an onClick/cursor-pointer or a "+ Add Platform"
+                            // button. Future weeks are fully interactive — see
                             // schedulerService.ts's per-combo ensureWeekGenerated/
                             // recalculatePauses guards for why a manual edit here stays
                             // safe once the week becomes current. Checked per-column now

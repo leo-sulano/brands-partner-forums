@@ -5315,3 +5315,26 @@ checklist above, per this project's established pattern for undeployed PMS-sync 
 
 Spec: `docs/superpowers/specs/2026-08-20-schedule-planner-pms-status-sync-design.md`. Plan:
 `docs/superpowers/plans/2026-08-20-schedule-planner-pms-status-sync.md`. Task 247.
+
+---
+
+*2026-08-21:* Fixed a Schedule Planner usability gap the user reported live: once the scheduler
+auto-pauses a brand+platform for the week (a `brand_platform_pause` row), every day cell for that
+platform rendered a dimmed, non-clickable "Paused (scheduler)" placeholder with no way to click
+through it — `ScheduleCell`'s `clickable = isApproved && !isPaused` (`src/lib/scheduler/
+calendarRenderer.tsx`) blocked manual scheduling for the entire week, not just the days the pause
+actually applied to. A scheduler pause is a per-(brand, platform, week) recommendation to skip, not
+a lock — ops still needs to be able to manually add/schedule a specific day within a paused week.
+Fix: new `effectivePaused = isPaused && status == null` — the week-level pause only "counts" for a
+day that has no explicit status of its own yet. `clickable` is now just `isApproved` (every day
+cell is clickable when approved, paused week or not); `stateClassName`/`label`/`planUnverified` all
+switch from raw `isPaused` to `effectivePaused`. Net effect: an untouched day in a paused week still
+shows the dimmed placeholder exactly as before; the moment a day is manually clicked (or already had
+a leftover status predating the pause), it shows its real status/label instead of being masked by
+the generic paused label — other days in that week stay showing paused until also touched.
+`unscheduledPlatforms`/the "+ Add Platform" button were deliberately left untouched — a paused
+platform already has its own always-rendered placeholder chip as the click target, so no separate
+"+" path was needed. Tier 2 (light path) — confined to one file's rendering logic, no shared
+date/status/platform filtering touched — implemented directly with one self-review pass. Full suite
+(1309 tests) and build both pass; no schema change, no live-browser verification performed this
+session. Task 248.
