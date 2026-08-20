@@ -389,12 +389,13 @@ export default function SchedulePlanner() {
 
   const displayedPlatformCounts = showGrid ? overviewPlatformCounts : selectedPlatformCounts;
   const displayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in displayedPlatformCounts);
-  // The week nav always drives specific-tab mode's grid. In overview mode it
-  // drives the no-filter default week too (see allRangeColumns above) — but
-  // once a date range is picked there, the range is already what governs the
-  // cards/counts, so paging weekStart would silently do nothing visible;
-  // disabled only for that one combination rather than for showGrid outright.
-  const navDisabled = showGrid && hasDateFilter;
+  // The week nav drives the no-filter default week in both modes (overview's
+  // cards via allRangeColumns above, a selected tab's grid via its own
+  // weekStart-driven columns in TabScheduleSection) — but once a date range
+  // is picked, the range is what governs what's shown/counted in either
+  // mode, so paging weekStart would silently do nothing visible; disabled
+  // for exactly that one combination, not tied to showGrid at all.
+  const navDisabled = hasDateFilter;
 
   return (
     <div className="space-y-4">

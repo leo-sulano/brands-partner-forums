@@ -17,14 +17,14 @@ import {
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
 } from '../lib/queries';
-import { WEEKDAYS, WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, toISODate, addDays, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -69,10 +69,14 @@ interface Props {
   todayISO: string;
   search: string;
   agentFilter: string[];
-  // Shared toolbar date-range filter (both blank = no filter) — used only to
-  // compute the platform-count strip reported via onPlatformCounts below.
-  // Never affects which week the interactive grid itself renders; that stays
-  // governed by weekStart/weekStartISO and the Prev/Next/Today nav alone.
+  // Shared toolbar date-range filter (both blank = no filter). When set, the
+  // interactive grid's day columns become every weekday in the range instead
+  // of just weekStart's single Mon–Fri week (matching the landing-grid
+  // preview cards) — the platform-count strip reported via onPlatformCounts
+  // sums over exactly the same columns the grid renders. weekStart/
+  // weekStartISO still solely govern the scheduler-invocation effect (which
+  // must only ever act on "the current week") and the Prev/Next/Today nav's
+  // own default (no-filter) view.
   dateFrom: string;
   dateTo: string;
   onPlatformCounts?: (tab: string, counts: Partial<Record<Platform, number>>) => void;
@@ -116,7 +120,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const loading = brandsLoading || scheduleLoading;
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
-  const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; day: Weekday } | null>(null);
+  const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
   const { isApproved } = useAuth();
 
   // Bumped by the live-entries subscription below on an INSERT (or any
@@ -136,6 +140,30 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // The day columns this section actually renders — every weekday in the
+  // picked date range when one is set, otherwise just weekStart's own
+  // Mon–Fri week (the nav-controlled default). Declared early (depends only
+  // on props, no tabCtx) since both the extra-week schedule fetch below and
+  // the platform-count strip further down need it. The same list drives the
+  // grid's real table columns further down in this render — one computation,
+  // so "what's counted" and "what's shown" can never disagree.
+  const hasDateFilter = !!(dateFrom || dateTo);
+  const [normFrom, normTo] = useMemo(() => {
+    if (!hasDateFilter) return ['', ''];
+    const f = dateFrom || dateTo;
+    const t = dateTo || dateFrom;
+    return f > t ? [t, f] : [f, t];
+  }, [hasDateFilter, dateFrom, dateTo]);
+  const columns: ScheduleColumn[] = useMemo(
+    () => (hasDateFilter ? weekdayColumnsInRange(normFrom, normTo) : columnsForWeek(weekStart)),
+    [hasDateFilter, normFrom, normTo, weekStart],
+  );
+  const columnWeekISOs = useMemo(
+    () => [...new Set(columns.map((c) => c.weekStartISO))],
+    [columns],
+  );
+  const columnWeekKey = columnWeekISOs.join(',');
 
   // Brand list depends only on the tab (raw entries + headers), never on the
   // displayed week — re-fetching this on every Prev/Next/Today click would
@@ -273,7 +301,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           fetchActiveBrandPlatformPauses(tab),
         ]);
         if (canceled) return;
-        setScheduleRows(rows);
+        // Merge rather than replace: scheduleRows can also hold other weeks
+        // fetched by the extra-weeks effect below (when a date range spans
+        // beyond this one), and a plain replace here would wipe those back
+        // out every time this effect re-fires (e.g. on Prev/Next/Today).
+        setScheduleRows((prev) => [...prev.filter((r) => r.week_start !== weekStartISO), ...rows]);
         setPauses(activePauses);
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
@@ -285,6 +317,31 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       canceled = true;
     };
   }, [tab, weekStartISO, tabCtx, isApproved]);
+
+  // Fetches every OTHER week a picked date range touches (weekStartISO's own
+  // week is always owned by the effect above, including its scheduler-
+  // invocation side effects — this effect never duplicates that). Kept as a
+  // separate, purely-read fetch so widening the date range can never affect
+  // which week actually gets generated/pause-checked. Self-cleaning: on
+  // every run it prunes scheduleRows down to exactly weekStartISO's own rows
+  // plus this run's freshly-fetched extra weeks, so a week that drops out of
+  // the range (e.g. the range was narrowed) doesn't linger stale in state.
+  useEffect(() => {
+    const extraWeeks = columnWeekISOs.filter((w) => w !== weekStartISO);
+    let canceled = false;
+    (async () => {
+      const rowsPerWeek = extraWeeks.length > 0
+        ? await Promise.all(extraWeeks.map((w) => fetchBrandSchedule(tab, w).catch(() => [])))
+        : [];
+      if (canceled) return;
+      const fresh = rowsPerWeek.flat();
+      setScheduleRows((prev) => [...prev.filter((r) => r.week_start === weekStartISO), ...fresh]);
+    })();
+    return () => {
+      canceled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, weekStartISO, columnWeekKey]);
 
   // Reconciles any due-date edit made directly in PMS back onto the calendar.
   // Runs once per tab visit, independent of which week is currently displayed
@@ -308,7 +365,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         }
         if (!canceled && (drifted.length > 0 || deleted.length > 0)) {
           const rows = await fetchBrandSchedule(tab, weekStartISO);
-          if (!canceled) setScheduleRows(rows);
+          if (!canceled) setScheduleRows((prev) => [...prev.filter((r) => r.week_start !== weekStartISO), ...rows]);
         }
       } catch (err) {
         if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to check PMS schedule updates', kind: 'error' });
@@ -504,71 +561,28 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }, [tabCtx, search, agentFilter, agentIndex]);
 
   // Platform-count strip reported up to the shared Schedule Planner toolbar
-  // (see onPlatformCounts). Sums over the picked date range when one is set,
-  // otherwise over the week this section's grid is currently displaying
-  // (weekStart, driven by the parent's Prev/Next/Today nav) — deliberately
-  // NOT "today's real week," unlike the landing-grid preview cards, since
-  // here the nav is the thing actually controlling what's on screen.
-  const hasDateFilter = !!(dateFrom || dateTo);
-  const [normFrom, normTo] = useMemo(() => {
-    if (!hasDateFilter) return ['', ''];
-    const f = dateFrom || dateTo;
-    const t = dateTo || dateFrom;
-    return f > t ? [t, f] : [f, t];
-  }, [hasDateFilter, dateFrom, dateTo]);
-  const countColumns = useMemo(
-    () => (hasDateFilter ? weekdayColumnsInRange(normFrom, normTo) : columnsForWeek(weekStart)),
-    [hasDateFilter, normFrom, normTo, weekStart],
-  );
-  const countWeekISOs = useMemo(
-    () => [...new Set(countColumns.map((c) => c.weekStartISO))],
-    [countColumns],
-  );
-  const countWeekKey = countWeekISOs.join(',');
-  const countUsesDisplayedWeekOnly = countWeekISOs.length === 1 && countWeekISOs[0] === weekStartISO;
-
-  // Extra schedule-row fetch used ONLY to compute the platform-count strip
-  // for a date range that spans a week other than the one already displayed
-  // — kept entirely separate from `scheduleRows` (which drives the
-  // interactive grid and the scheduler-invocation effect above) so picking a
-  // wide date range can never affect which week this section actually
-  // renders or writes to. Skipped whenever the range collapses to exactly
-  // the already-loaded displayed week, reusing scheduleRows instead of
-  // duplicating that fetch.
-  const [rangeScheduleRows, setRangeScheduleRows] = useState<BrandScheduleRow[]>([]);
-  useEffect(() => {
-    if (!hasDateFilter || countUsesDisplayedWeekOnly) {
-      setRangeScheduleRows([]);
-      return;
-    }
-    let canceled = false;
-    (async () => {
-      const rowsPerWeek = await Promise.all(countWeekISOs.map((w) => fetchBrandSchedule(tab, w).catch(() => [])));
-      if (!canceled) setRangeScheduleRows(rowsPerWeek.flat());
-    })();
-    return () => {
-      canceled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, hasDateFilter, countUsesDisplayedWeekOnly, countWeekKey]);
-
-  const countingRows = !hasDateFilter || countUsesDisplayedWeekOnly ? scheduleRows : rangeScheduleRows;
-
+  // (see onPlatformCounts) — sums active slots across exactly the same
+  // `columns`/`scheduleRows` the grid itself renders below, so the strip and
+  // the grid can never disagree about what's scheduled.
   const platformCounts = useMemo(
-    () => countActivePlatformSlots(countingRows, tab, filteredBrands, brandPlatforms, countColumns),
+    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, brandPlatforms, columns),
     // brandPlatforms is a plain function closing over tabCtx/activePlatforms
     // (both re-derived fresh every render) rather than a memoized value —
     // included here via tabCtx itself so this recomputes whenever the
     // exclusion sets it reads from actually change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [countingRows, tab, filteredBrands, countColumns, tabCtx],
+    [scheduleRows, tab, filteredBrands, columns, tabCtx],
   );
 
   useEffect(() => {
     onPlatformCounts?.(tab, platformCounts);
   }, [tab, platformCounts, onPlatformCounts]);
 
-  function computeCellData(brand: string): {
+  // colWeekStartISO defaults to weekStartISO (the nav's own week) so every
+  // existing call site that only ever cared about one week — the trailing
+  // Paused-column summary, Export — can keep calling this with no argument.
+  // The day-cell render loop below passes each column's own week explicitly.
+  function computeCellData(brand: string, colWeekStartISO: string = weekStartISO): {
     rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
     pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
   } {
@@ -576,59 +590,61 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
     const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
     for (const platform of brandPlatforms(brand)) {
-      const r = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform);
+      const r = scheduleFor(scheduleRows, tab, brand, colWeekStartISO, platform);
       if (r) rowsByPlatform[platform] = r;
       const p = pauses.find(
-        (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === weekStartISO,
+        (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === colWeekStartISO,
       );
       if (p) pausesByPlatform[platform] = p;
     }
     return { rowsByPlatform, pausesByPlatform };
   }
 
-  async function handleCellClick(brand: string, platform: Platform, day: Weekday) {
+  async function handleCellClick(brand: string, platform: Platform, col: ScheduleColumn) {
     if (!isApproved) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
     const next = nextStatus(currentStatus);
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, next));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, next));
     try {
-      await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, next);
+      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, next);
       if (next === 'active') {
-        const dayIndex = WEEKDAYS.indexOf(day);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       }
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     }
   }
 
-  async function handleSetDayStatus(brand: string, platform: Platform, day: Weekday, status: 'active' | 'paused') {
+  async function handleSetDayStatus(brand: string, platform: Platform, col: ScheduleColumn, status: 'active' | 'paused') {
     if (!isApproved) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[day] ?? null;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, status));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, status));
     try {
-      await setBrandScheduleDay(tab, brand, weekStartISO, platform, day, status);
+      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, status);
       if (status === 'active') {
-        const dayIndex = WEEKDAYS.indexOf(day);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: toISODate(addDays(weekStart, dayIndex)), agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       }
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, weekStartISO, platform, day, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     }
   }
 
-  const isLegacyWeek = useMemo(
-    () => scheduleRows.length > 0 && scheduleRows.every((r) => r.platform == null),
-    [scheduleRows],
-  );
+  // Legacy-ness (pre-platform-tracking, `platform: null` rows) is a
+  // per-week fact, not a per-section one — now that the grid can show
+  // several weeks at once, each column's own week must be checked
+  // independently rather than assuming scheduleRows is all one week.
+  function isLegacyWeekAt(colWeekStartISO: string): boolean {
+    const rows = scheduleRows.filter((r) => r.week_start === colWeekStartISO);
+    return rows.length > 0 && rows.every((r) => r.platform == null);
+  }
 
   // Gates the "no schedule this week" badge below to the actual current
   // week, for two independent reasons. First, a future week is legitimately
@@ -648,11 +664,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
 
   const addPlatformModalData = addPlatformTarget
     ? (() => {
-        const { rowsByPlatform, pausesByPlatform } = computeCellData(addPlatformTarget.brand);
-        const dayIndex = WEEKDAYS.indexOf(addPlatformTarget.day);
+        const { col } = addPlatformTarget;
+        const { rowsByPlatform, pausesByPlatform } = computeCellData(addPlatformTarget.brand, col.weekStartISO);
         return {
-          platforms: unscheduledPlatforms(brandPlatforms(addPlatformTarget.brand), addPlatformTarget.day, rowsByPlatform, pausesByPlatform),
-          dayLabel: `${WEEKDAY_LABELS[addPlatformTarget.day]} ${formatWeekdayDate(weekStart, dayIndex)}`,
+          platforms: unscheduledPlatforms(brandPlatforms(addPlatformTarget.brand), col.weekday, rowsByPlatform, pausesByPlatform),
+          dayLabel: `${WEEKDAY_LABELS[col.weekday]} ${formatWeekdayDate(new Date(`${col.iso}T00:00:00`), 0)}`,
         };
       })()
     : null;
@@ -667,6 +683,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           <div className="flex items-center gap-3 px-3 py-2">
             <h2 className="text-sm font-semibold text-slate-800">{tabDisplayName(tab)}</h2>
             <div className="ml-auto flex items-center gap-2">
+              {/* Deliberately still exports only weekStartISO's single Mon–Fri
+                  week (computeCellData's own default), not the wider range
+                  the grid may currently be showing — scheduleExport.ts's
+                  fixed 5-weekday-column shape doesn't yet support a variable
+                  multi-week range. Known gap, not yet extended. */}
               <ExportMenuButton
                 headers={SCHEDULE_EXPORT_HEADERS}
                 getRows={() => buildScheduleExportRows(
@@ -706,13 +727,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               >
                 Brand
               </th>
-              {WEEKDAYS.map((day, i) => (
+              {columns.map((col) => (
                 <th
-                  key={day}
+                  key={col.iso}
                   className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
                   style={{ top: toolbarHeight }}
                 >
-                  {WEEKDAY_LABELS[day]} {formatWeekdayDate(weekStart, i)}
+                  {WEEKDAY_LABELS[col.weekday]} {formatWeekdayDate(new Date(`${col.iso}T00:00:00`), 0)}
                 </th>
               ))}
               <th
@@ -724,31 +745,36 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={WEEKDAYS.length + 2} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             ) : filteredBrands.length === 0 ? (
               <tr>
-                <td colSpan={WEEKDAYS.length + 2} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-400">
                   No brands match.
                 </td>
               </tr>
             ) : (
               filteredBrands.map((brand) => {
-                const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
+                // Scoped to weekStartISO specifically (computeCellData's
+                // default) — the trailing Paused/No-schedule summary column
+                // below is inherently a "this week" concept, independent of
+                // however many extra weeks the grid's day cells might also
+                // be showing.
+                const { rowsByPlatform: weekRowsByPlatform, pausesByPlatform: weekPausesByPlatform } = computeCellData(brand);
                 const brandKey = normalizeBrandKey(brand);
                 const agent = agentIndex.get(brandKey);
                 const country = countryIndex.get(brandKey);
-                const pausedPlatforms = activePlatforms.filter((p) => pausesByPlatform[p]);
+                const pausedPlatforms = activePlatforms.filter((p) => weekPausesByPlatform[p]);
                 const manualPausedPlatforms = brandPlatforms(brand)
-                  .filter((p) => !pausesByPlatform[p])
-                  .map((p) => ({ platform: p, days: trailingManualPauseDays(rowsByPlatform[p]) }))
+                  .filter((p) => !weekPausesByPlatform[p])
+                  .map((p) => ({ platform: p, days: trailingManualPauseDays(weekRowsByPlatform[p]) }))
                   .filter((x) => x.days.length > 0);
                 const manuallyPausedPlatformSet = new Set(manualPausedPlatforms.map((x) => x.platform));
                 const noSchedulePlatforms = isCurrentWeek
                   ? brandPlatforms(brand).filter(
-                      (p) => !pausesByPlatform[p] && !manuallyPausedPlatformSet.has(p) && hasNoScheduleThisWeek(rowsByPlatform[p]),
+                      (p) => !weekPausesByPlatform[p] && !manuallyPausedPlatformSet.has(p) && hasNoScheduleThisWeek(weekRowsByPlatform[p]),
                     )
                   : [];
                 return (
@@ -764,17 +790,18 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
                     </td>
-                    {WEEKDAYS.map((day, dayIndex) => {
-                      const dayISO = toISODate(addDays(weekStart, dayIndex));
+                    {columns.map((col) => {
+                      const dayISO = col.iso;
+                      const { rowsByPlatform, pausesByPlatform } = computeCellData(brand, col.weekStartISO);
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
                       const pendingByPlatform = computePendingByPlatform(brand, dayISO);
                       const doneByPlatform = computeDoneByPlatform(brand, dayISO);
                       return (
-                        <td key={day} className="px-3 py-2 text-left align-top">
+                        <td key={col.iso} className="px-3 py-2 text-left align-top">
                           <ScheduleCell
                             brand={brand}
-                            day={day}
+                            day={col.weekday}
                             platforms={brandPlatforms(brand)}
                             rowsByPlatform={rowsByPlatform}
                             pausesByPlatform={pausesByPlatform}
@@ -794,10 +821,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             // Platform" button. Future weeks are fully interactive — see
                             // schedulerService.ts's per-combo ensureWeekGenerated/
                             // recalculatePauses guards for why a manual edit here stays
-                            // safe once the week becomes current.
-                            isApproved={isApproved && !isLegacyWeek}
-                            onToggle={(platform) => handleCellClick(brand, platform, day)}
-                            onAddPlatform={() => setAddPlatformTarget({ brand, day })}
+                            // safe once the week becomes current. Checked per-column now
+                            // (isLegacyWeekAt(col.weekStartISO)), not once for the whole
+                            // section, since a multi-week range can mix legacy and
+                            // platform-tracked weeks.
+                            isApproved={isApproved && !isLegacyWeekAt(col.weekStartISO)}
+                            onToggle={(platform) => handleCellClick(brand, platform, col)}
+                            onAddPlatform={() => setAddPlatformTarget({ brand, col })}
                           />
                         </td>
                       );
@@ -806,7 +836,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0 || noSchedulePlatforms.length > 0) && (
                         <div className="flex flex-wrap gap-1">
                           {pausedPlatforms.map((p) => (
-                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={pausesByPlatform[p] as BrandPlatformPause} agent={agent} country={country} />
+                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={weekPausesByPlatform[p] as BrandPlatformPause} agent={agent} country={country} />
                           ))}
                           {manualPausedPlatforms.map(({ platform, days }) => (
                             <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} />
@@ -830,7 +860,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           brand={addPlatformTarget.brand}
           dayLabel={addPlatformModalData.dayLabel}
           platforms={addPlatformModalData.platforms}
-          onSetStatus={(platform, status) => handleSetDayStatus(addPlatformTarget.brand, platform, addPlatformTarget.day, status)}
+          onSetStatus={(platform, status) => handleSetDayStatus(addPlatformTarget.brand, platform, addPlatformTarget.col, status)}
           onClose={() => setAddPlatformTarget(null)}
         />
       )}
