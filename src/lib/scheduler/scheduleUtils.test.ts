@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildCurrentStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex } from './scheduleUtils';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
@@ -216,6 +216,66 @@ describe('buildDateStatusIndex', () => {
     expect(removed.size).toBe(2);
     expect(confirmed.has('otherbrand::tp::2026-07-30')).toBe(true);
     expect(confirmed.size).toBe(1);
+  });
+});
+
+describe('buildCurrentStatusIndex', () => {
+  const entry = (data: Record<string, string | null>, updatedAt: string): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: updatedAt, last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('indexes a brand+platform whose latest status is Pending into pending, not done', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Pending' }, '2026-08-01T00:00:00Z')];
+    const { pending, done } = buildCurrentStatusIndex(entries);
+    expect(pending.has('winmega::tp')).toBe(true);
+    expect(done.has('winmega::tp')).toBe(false);
+  });
+
+  it('indexes a brand+platform whose latest status is Done into done, not pending', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Done' }, '2026-08-01T00:00:00Z')];
+    const { pending, done } = buildCurrentStatusIndex(entries);
+    expect(done.has('winmega::tp')).toBe(true);
+    expect(pending.has('winmega::tp')).toBe(false);
+  });
+
+  it('indexes neither set for a status that is neither pending nor done (e.g. Published)', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Published' }, '2026-08-01T00:00:00Z')];
+    const { pending, done } = buildCurrentStatusIndex(entries);
+    expect(pending.size).toBe(0);
+    expect(done.size).toBe(0);
+  });
+
+  it('picks the most-recently-updated entry\'s status per brand+platform when multiple entries disagree', () => {
+    const entries = [
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Pending' }, '2026-07-01T00:00:00Z'),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Done' }, '2026-08-10T00:00:00Z'),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Pending' }, '2026-07-15T00:00:00Z'),
+    ];
+    const { pending, done } = buildCurrentStatusIndex(entries);
+    expect(done.has('winmega::tp')).toBe(true);
+    expect(pending.has('winmega::tp')).toBe(false);
+  });
+
+  it('resolves each platform on the same entry independently', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Pending', 'AG Review Status': 'Done' }, '2026-08-01T00:00:00Z')];
+    const { pending, done } = buildCurrentStatusIndex(entries);
+    expect(pending.has('winmega::tp')).toBe(true);
+    expect(done.has('winmega::ag')).toBe(true);
+  });
+
+  it('skips a blank status in favor of an older non-blank one for the same brand+platform', () => {
+    const entries = [
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Pending' }, '2026-07-01T00:00:00Z'),
+      entry({ Brands: 'WinMega', 'TP Review Status': '' }, '2026-08-10T00:00:00Z'),
+    ];
+    const { pending, done } = buildCurrentStatusIndex(entries);
+    expect(pending.has('winmega::tp')).toBe(true);
+  });
+
+  it('returns empty sets for no entries', () => {
+    const { pending, done } = buildCurrentStatusIndex([]);
+    expect(pending.size).toBe(0);
+    expect(done.size).toBe(0);
   });
 });
 

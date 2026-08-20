@@ -1,6 +1,6 @@
 import { WEEKDAYS, toISODate, type Weekday, type BrandScheduleRow } from '../scheduleBrands.ts';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
-import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, parsePostDate } from '../scoreSummary.ts';
+import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, isPendingStatus, isDoneStatus, parsePostDate } from '../scoreSummary.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import type { Entry } from '../../types/entry.ts';
 
@@ -119,6 +119,52 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
     }
   }
   return { removed, confirmed };
+}
+
+export interface CurrentStatusIndex {
+  // brandKey::platform keys whose most-recently-updated entry's status is
+  // currently Pending.
+  pending: Set<string>;
+  // brandKey::platform keys whose most-recently-updated entry's status is
+  // currently Done.
+  done: Set<string>;
+}
+
+// A brand+platform's single "right now" status, independent of any date —
+// unlike buildDateStatusIndex above (which needs a real post date to anchor
+// a Removed/Live entry to one exact calendar day), Pending has no date to
+// anchor to at all: it means "not yet decided." Resolves the same way
+// buildAgentIndex/buildCountryIndex below resolve Agent/Country — the
+// most-recently-updated entry wins — but per (brand, platform) rather than
+// per brand, since a brand's platforms can each be at a different stage
+// independently. Only Pending/Done are surfaced; a latest status that's
+// something else (Live, Removed, On Pause, Not Done, blank) has no key in
+// either set — this function isn't meant to represent every status, only
+// the two Schedule Planner has no other way to show (Live/Removed already
+// have buildDateStatusIndex above).
+export function buildCurrentStatusIndex(entries: Entry[]): CurrentStatusIndex {
+  const latestByKey = new Map<string, { status: string; updatedAt: string }>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of ALL_PLATFORMS) {
+      const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status) continue;
+      const key = `${brandKey}::${platform}`;
+      const existing = latestByKey.get(key);
+      if (!existing || entry.updated_at > existing.updatedAt) {
+        latestByKey.set(key, { status, updatedAt: entry.updated_at });
+      }
+    }
+  }
+  const pending = new Set<string>();
+  const done = new Set<string>();
+  for (const [key, { status }] of latestByKey) {
+    if (isPendingStatus(status)) pending.add(key);
+    else if (isDoneStatus(status)) done.add(key);
+  }
+  return { pending, done };
 }
 
 // Resolves one Agent name per brand for PMS task assignment: brand_schedule
