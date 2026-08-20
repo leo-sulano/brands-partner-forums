@@ -24,7 +24,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, buildCurrentStatusIndex, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -308,6 +308,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [tabCtx],
   );
 
+  // Built once per tab load off the same tabCtx.entries as dateStatusIndex
+  // above, but keyed by brand+platform only (no date) — see
+  // buildCurrentStatusIndex's own doc comment for why Pending/Done can't use
+  // the same exact-date matching Confirmed/Removed use.
+  const currentStatusIndex = useMemo(
+    () => buildCurrentStatusIndex(tabCtx?.entries ?? []),
+    [tabCtx],
+  );
+
   // Brand -> Country, for the same tooltip that shows Agent below (see
   // buildCountryIndex's own doc comment for the resolution rule — identical
   // to agentIndex above, just a different column). Purely a display-only
@@ -387,6 +396,41 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       if (dateStatusIndex.confirmed.has(`${brandKey}::${platform}::${dayISO}`)) confirmedByPlatform[platform] = true;
     }
     return confirmedByPlatform;
+  }
+
+  // Pending/Done have no date to match against (see buildCurrentStatusIndex's
+  // own doc comment), so unlike computeRemovedByPlatform/
+  // computeConfirmedByPlatform above these take a Weekday + rowsByPlatform
+  // instead of a dayISO. They read `isCurrentWeek`, a const declared further
+  // below in this component — safe because these are plain functions only
+  // ever invoked from JSX during render, after every top-level const here has
+  // already been assigned (same reasoning as brandPlatforms/
+  // flaggedRemovedPlatforms above, which read tabCtx the same way). Gated to
+  // isCurrentWeek because Pending/Done describe "what's true right now," with
+  // no date to anchor them to a specific past/future week. Gated to a day
+  // that already has an active/paused plan slot
+  // (rowsByPlatform[platform]?.[day] != null) so this never creates a chip
+  // where none exists today — it only changes what an existing chip says.
+  function computePendingByPlatform(brand: string, day: Weekday, rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>): Partial<Record<Platform, boolean>> {
+    const pendingByPlatform: Partial<Record<Platform, boolean>> = {};
+    if (!isCurrentWeek) return pendingByPlatform;
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of brandPlatforms(brand)) {
+      if (rowsByPlatform[platform]?.[day] == null) continue;
+      if (currentStatusIndex.pending.has(`${brandKey}::${platform}`)) pendingByPlatform[platform] = true;
+    }
+    return pendingByPlatform;
+  }
+
+  function computeDoneByPlatform(brand: string, day: Weekday, rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>): Partial<Record<Platform, boolean>> {
+    const doneByPlatform: Partial<Record<Platform, boolean>> = {};
+    if (!isCurrentWeek) return doneByPlatform;
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of brandPlatforms(brand)) {
+      if (rowsByPlatform[platform]?.[day] == null) continue;
+      if (currentStatusIndex.done.has(`${brandKey}::${platform}`)) doneByPlatform[platform] = true;
+    }
+    return doneByPlatform;
   }
 
   // A brand with zero remaining platforms after brandPlatforms' exclusion —
@@ -609,6 +653,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const dayISO = toISODate(addDays(weekStart, dayIndex));
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
+                      const pendingByPlatform = computePendingByPlatform(brand, day, rowsByPlatform);
+                      const doneByPlatform = computeDoneByPlatform(brand, day, rowsByPlatform);
                       return (
                         <td key={day} className="px-3 py-2 text-left align-top">
                           <ScheduleCell
@@ -619,6 +665,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             pausesByPlatform={pausesByPlatform}
                             removedByPlatform={removedByPlatform}
                             confirmedByPlatform={confirmedByPlatform}
+                            pendingByPlatform={pendingByPlatform}
+                            doneByPlatform={doneByPlatform}
                             agent={agent}
                             country={country}
                             isPastDay={dayISO < todayISO}

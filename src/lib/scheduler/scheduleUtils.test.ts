@@ -268,7 +268,7 @@ describe('buildCurrentStatusIndex', () => {
       entry({ Brands: 'WinMega', 'TP Review Status': 'Pending' }, '2026-07-01T00:00:00Z'),
       entry({ Brands: 'WinMega', 'TP Review Status': '' }, '2026-08-10T00:00:00Z'),
     ];
-    const { pending, done } = buildCurrentStatusIndex(entries);
+    const { pending } = buildCurrentStatusIndex(entries);
     expect(pending.has('winmega::tp')).toBe(true);
   });
 
