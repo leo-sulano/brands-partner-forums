@@ -1136,12 +1136,13 @@ export interface SchedulePmsLink {
   platform: Platform;
   date: string;
   pms_task_id: string;
+  synced_status: string;
 }
 
 export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
   const { data, error } = await client
     .from('schedule_pms_links')
-    .select('id, tab, brand, brand_key, platform, date, pms_task_id')
+    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as SchedulePmsLink[];
@@ -1163,6 +1164,11 @@ export async function insertSchedulePmsLink(
 
 export async function updateSchedulePmsLinkDate(id: string, date: string, client: SupabaseClient = supabase): Promise<void> {
   const { error } = await client.from('schedule_pms_links').update({ date }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function updateSchedulePmsLinkStatus(id: string, status: string, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client.from('schedule_pms_links').update({ synced_status: status }).eq('id', id);
   if (error) throw error;
 }
 

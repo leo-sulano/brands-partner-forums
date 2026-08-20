@@ -36,6 +36,7 @@ import {
   fetchSchedulePmsLinks,
   insertSchedulePmsLink,
   updateSchedulePmsLinkDate,
+  updateSchedulePmsLinkStatus,
   deleteSchedulePmsLink,
   fetchCustomTabs,
   createCustomTab,
@@ -224,6 +225,16 @@ describe('queries.ts injectable Supabase client', () => {
     const fakeFrom = vi.fn().mockReturnValue({ update });
     await updateSchedulePmsLinkDate('link-1', '2026-08-21', { from: fakeFrom } as any);
     expect(update).toHaveBeenCalledWith({ date: '2026-08-21' });
+    expect(eq).toHaveBeenCalledWith('id', 'link-1');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('updateSchedulePmsLinkStatus uses the passed-in client and filters by id', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const fakeFrom = vi.fn().mockReturnValue({ update });
+    await updateSchedulePmsLinkStatus('link-1', 'published', { from: fakeFrom } as any);
+    expect(update).toHaveBeenCalledWith({ synced_status: 'published' });
     expect(eq).toHaveBeenCalledWith('id', 'link-1');
     expect(singletonFrom).not.toHaveBeenCalled();
   });

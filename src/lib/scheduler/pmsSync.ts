@@ -202,7 +202,7 @@ export async function pushScheduleToPms(
       // attempting a second PMS task create that would then fail
       // insertSchedulePmsLink on the table's (tab, brand_key, platform, date)
       // unique constraint and leave an orphaned PMS task with no link at all.
-      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id });
+      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id, synced_status: 'active' });
       created.push(item);
     } catch (err) {
       failed.push({ item, error: err instanceof Error ? err.message : String(err) });
