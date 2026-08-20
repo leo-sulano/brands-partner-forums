@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -260,6 +260,53 @@ describe('buildDateStatusIndex', () => {
     const { removed, pending } = buildDateStatusIndex(entries);
     expect(removed.has('winmega::tp::2026-07-28')).toBe(true);
     expect(pending.has('winmega::tp::2026-07-28')).toBe(true);
+  });
+});
+
+describe('resolvePmsSyncStatus', () => {
+  const emptyIndex = { removed: new Set<string>(), confirmed: new Set<string>(), pending: new Set<string>(), done: new Set<string>() };
+
+  it('returns "removed" when the key is in the removed set', () => {
+    const index = { ...emptyIndex, removed: new Set(['winmega::tp::2026-08-20']) };
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('removed');
+  });
+
+  it('returns "published" when the key is in the confirmed set', () => {
+    const index = { ...emptyIndex, confirmed: new Set(['winmega::tp::2026-08-20']) };
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('published');
+  });
+
+  it('returns "pending" when the key is in the pending set', () => {
+    const index = { ...emptyIndex, pending: new Set(['winmega::tp::2026-08-20']) };
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('pending');
+  });
+
+  it('returns "done" when the key is in the done set', () => {
+    const index = { ...emptyIndex, done: new Set(['winmega::tp::2026-08-20']) };
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('done');
+  });
+
+  it('returns null when paused and no evidence matches', () => {
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', emptyIndex, true)).toBeNull();
+  });
+
+  it('returns "active" when not paused and no evidence matches', () => {
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', emptyIndex, false)).toBe('active');
+  });
+
+  it('evidence wins over isPaused -- a removed key still resolves to "removed" even when isPaused is true', () => {
+    const index = { ...emptyIndex, removed: new Set(['winmega::tp::2026-08-20']) };
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, true)).toBe('removed');
+  });
+
+  it('follows removed > confirmed > pending > done precedence when a key somehow lands in more than one set', () => {
+    const index = {
+      removed: new Set(['winmega::tp::2026-08-20']),
+      confirmed: new Set(['winmega::tp::2026-08-20']),
+      pending: new Set<string>(),
+      done: new Set<string>(),
+    };
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('removed');
   });
 });
 

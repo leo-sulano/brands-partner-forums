@@ -142,6 +142,32 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   return { removed, confirmed, pending, done };
 }
 
+export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed';
+
+// Resolves the status that should be reflected onto a linked PMS task for one
+// exact (brand, platform, date) cell -- mirrors ScheduleCell's own render
+// precedence (Removed > Confirmed/Published > Pending > Done > Paused >
+// Active, calendarRenderer.tsx) exactly, so a PMS card can never disagree
+// with what the calendar itself shows. Returns null for a currently-paused
+// (brand, platform) combo with no evidence -- Paused is deliberately excluded
+// from PMS sync entirely; the caller must leave that link's synced_status
+// untouched rather than moving its task.
+export function resolvePmsSyncStatus(
+  brandKey: string,
+  platform: Platform,
+  dateISO: string,
+  index: DateStatusIndex,
+  isPaused: boolean,
+): PmsSyncStatus | null {
+  const key = `${brandKey}::${platform}::${dateISO}`;
+  if (index.removed.has(key)) return 'removed';
+  if (index.confirmed.has(key)) return 'published';
+  if (index.pending.has(key)) return 'pending';
+  if (index.done.has(key)) return 'done';
+  if (isPaused) return null;
+  return 'active';
+}
+
 // Resolves one Agent name per brand for PMS task assignment: brand_schedule
 // itself carries no Agent column (only individual entry/account rows do, via
 // the 'Agent' column every tab's whitelist includes identically), and a
