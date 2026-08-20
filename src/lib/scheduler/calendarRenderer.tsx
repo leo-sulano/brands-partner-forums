@@ -34,6 +34,14 @@ interface ScheduleCellProps {
   pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
   removedByPlatform: Partial<Record<Platform, boolean>>;
   confirmedByPlatform: Partial<Record<Platform, boolean>>;
+  // Pending/Done, resolved from buildCurrentStatusIndex — unlike
+  // removed/confirmedByPlatform above (which are matched to this exact
+  // calendar day), these have no date component: the caller
+  // (TabScheduleSection.tsx) only populates them for the real current week,
+  // and only for a day that already has an active/paused plan slot for that
+  // platform. See buildCurrentStatusIndex's own doc comment for why.
+  pendingByPlatform: Partial<Record<Platform, boolean>>;
+  doneByPlatform: Partial<Record<Platform, boolean>>;
   // Brand-level Agent/Country (most-recently-updated entry, same resolution
   // rule buildAgentIndex/buildCountryIndex use for PMS assignment) shown as
   // extra tooltip lines below the existing status text — Agent doubles as
@@ -60,6 +68,8 @@ interface PlatformChipProps {
   stateClassName: string;
   isRemoved: boolean;
   isConfirmed: boolean;
+  isPending: boolean;
+  isDone: boolean;
   clickable: boolean;
   planUnverified: boolean;
   label: string;
@@ -77,7 +87,7 @@ interface PlatformChipProps {
 // chips) — wrapping it in Tooltip's own extra trigger <span> would add a
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
-function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clickable, planUnverified, label, agent, country, onClick }: PlatformChipProps) {
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, onClick }: PlatformChipProps) {
   const badge = PLATFORM_BADGE[platform];
   const content = (
     <div>
@@ -115,6 +125,22 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clicka
             className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
           >
             ✓
+          </span>
+        )}
+        {isPending && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-amber-400 text-[8px] font-bold leading-none text-slate-900"
+          >
+            P
+          </span>
+        )}
+        {isDone && (
+          <span
+            aria-hidden="true"
+            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-blue-500 text-[8px] font-bold leading-none text-white"
+          >
+            D
           </span>
         )}
       </span>
@@ -160,7 +186,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, clicka
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, agent, country, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -170,7 +196,13 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const status: DayStatus = row?.[day] ?? null;
         const isConfirmed = !!confirmedByPlatform[platform];
         const isRemoved = !!removedByPlatform[platform];
-        const hasEvidence = isConfirmed || isRemoved;
+        const hasDateEvidence = isConfirmed || isRemoved;
+        // Exact-date Published/Removed evidence always wins over the
+        // dateless Pending/Done overlay for the same cell — see this
+        // component's own doc comment on ScheduleCellProps above.
+        const isPending = !hasDateEvidence && !!pendingByPlatform[platform];
+        const isDone = !hasDateEvidence && !isPending && !!doneByPlatform[platform];
+        const hasEvidence = hasDateEvidence || isPending || isDone;
         if (!isPaused && status == null && !hasEvidence) return null;
         const badge = PLATFORM_BADGE[platform];
         const isActiveLook = status === 'active' || (status == null && hasEvidence);
@@ -181,11 +213,15 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             : `${badge.className} opacity-40`;
         const clickable = isApproved && !isPaused;
         const planUnverified = isPastDay && !isPaused && !hasEvidence && status != null;
-        const label = hasEvidence
+        const label = hasDateEvidence
           ? (isRemoved ? 'Removed' : 'Published')
-          : isPaused
-            ? 'Paused (scheduler)'
-            : statusLabel(status);
+          : isPending
+            ? 'Pending'
+            : isDone
+              ? 'Done'
+              : isPaused
+                ? 'Paused (scheduler)'
+                : statusLabel(status);
         return (
           <PlatformChip
             key={platform}
@@ -193,6 +229,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             stateClassName={stateClassName}
             isRemoved={isRemoved}
             isConfirmed={isConfirmed}
+            isPending={isPending}
+            isDone={isDone}
             clickable={clickable}
             planUnverified={planUnverified}
             label={label}
