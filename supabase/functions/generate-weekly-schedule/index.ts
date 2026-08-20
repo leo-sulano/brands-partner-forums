@@ -12,7 +12,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms, registerHiddenTabPlatforms, resetHiddenTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms, fetchArchivedTabs } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchBrandAgentAssignments, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms, fetchArchivedTabs } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
@@ -21,6 +21,7 @@ import { registerDynamicTabs, resetDynamicTabs } from '../../../src/lib/dynamicT
 import { applyArchivedTabs, resetArchivedTabs } from '../../../src/lib/archivedTabRegistry.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
 import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
+import { buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform } from '../../../src/lib/scheduler/scheduleUtils.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -78,7 +79,27 @@ export async function generateForTab(
   // there's no meaningful perf cost to reading it live each time.
   const pmsApiToken = Deno.env.get('PMS_API_TOKEN') || '';
   if (activated.length > 0 && pmsApiToken) {
-    const items: PmsSyncItem[] = activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date }));
+    // Same resolveAgentForPlatform layer the browser-side manual push path
+    // uses (TabScheduleSection.tsx) -- this cron path previously built
+    // PmsSyncItem[] with no `agent` field at all, a pre-existing, previously
+    // dormant gap since this function has never been deployed. Fetched here
+    // (not in buildTabContext/TabContext) since recalculatePauses/
+    // ensureWeekGenerated have no use for Agent data themselves. Fails open
+    // (empty array) on a transient fetch error, same shape as this file's
+    // other best-effort fetches (fetchCustomTabs/fetchHiddenTabPlatforms
+    // above) -- a missing assignment table read must not block the push,
+    // it just means every item falls back to the per-entry heuristic.
+    const assignmentRows = await fetchBrandAgentAssignments(tab, client).catch(() => []);
+    const agentAssignments = buildAgentAssignmentMap(assignmentRows);
+    const rawAgentFallback = buildAgentIndex(ctx.entries);
+    const items: PmsSyncItem[] = activated.map((a) => ({
+      tab,
+      tabLabel: tabDisplayName(tab),
+      brand: a.brand,
+      platform: a.platform,
+      date: a.date,
+      agent: resolveAgentForPlatform(a.brandKey, a.platform, agentAssignments, rawAgentFallback),
+    }));
     await pushFn(items, client, { apiToken: pmsApiToken });
   }
 }

@@ -171,6 +171,85 @@ export function buildCountryIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+export interface BrandAgentAssignmentRow {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  agent: string | null;
+}
+
+// Keyed `${brandKey}::${platform}`. A present key -- even with a null value,
+// the sheet's explicit "N/A" -- is authoritative; see resolveAgentForPlatform.
+export function buildAgentAssignmentMap(rows: BrandAgentAssignmentRow[]): Map<string, string | null> {
+  const map = new Map<string, string | null>();
+  for (const row of rows) {
+    const brandKey = normalizeBrandKey(row.brand);
+    map.set(`${brandKey}::${row.platform}`, row.agent);
+  }
+  return map;
+}
+
+// brand_agent_assignments is checked first: a matching row -- even one with
+// agent === null (the sheet's explicit "N/A") -- is authoritative and skips
+// the fallback entirely, so a real per-entry Agent value can be deliberately
+// overridden to "unassigned." No row at all falls back to agentIndex
+// (buildAgentIndex's per-entry heuristic, which has no platform concept of
+// its own -- the same value is returned regardless of platform).
+export function resolveAgentForPlatform(
+  brandKey: string,
+  platform: Platform,
+  assignments: Map<string, string | null>,
+  agentIndex: Map<string, string>,
+): string | null {
+  const key = `${brandKey}::${platform}`;
+  if (assignments.has(key)) return assignments.get(key) ?? null;
+  return agentIndex.get(brandKey) ?? null;
+}
+
+// One representative agent per brand, for callers that show a single value
+// regardless of platform (Schedule Planner's row tooltip, Agent filter,
+// landing-preview cards) -- resolved as the first non-null
+// resolveAgentForPlatform result across `platforms`, in the order given
+// (callers pass getTabPlatforms(tab), that tab's own platform order).
+export function resolveAgentForBrand(
+  brandKey: string,
+  platforms: Platform[],
+  assignments: Map<string, string | null>,
+  agentIndex: Map<string, string>,
+): string | null {
+  for (const platform of platforms) {
+    const agent = resolveAgentForPlatform(brandKey, platform, assignments, agentIndex);
+    if (agent) return agent;
+  }
+  return null;
+}
+
+// Drop-in replacement for buildAgentIndex(entries) at every brand-level
+// display call site -- same Map<string, string> shape (never a null-valued
+// or empty-string entry, no key if unresolved), so existing consumers
+// (.get(brandKey), .values(), agentFilter.includes(...)) need no changes.
+// Internally merges brand_agent_assignments (via resolveAgentForBrand) over
+// buildAgentIndex's per-entry fallback -- callers that need real
+// platform-scoped accuracy (the PMS push) must call resolveAgentForPlatform
+// directly instead, since a single merged value can't represent a brand
+// whose platforms disagree (e.g. Silver Play: no TP agent, JEN on AG/CG).
+export function buildResolvedAgentIndex(
+  entries: Entry[],
+  assignmentRows: BrandAgentAssignmentRow[],
+  platforms: Platform[],
+): Map<string, string> {
+  const fallback = buildAgentIndex(entries);
+  const assignments = buildAgentAssignmentMap(assignmentRows);
+  const brandKeys = new Set<string>(fallback.keys());
+  for (const key of assignments.keys()) brandKeys.add(key.split('::')[0]);
+  const result = new Map<string, string>();
+  for (const brandKey of brandKeys) {
+    const agent = resolveAgentForBrand(brandKey, platforms, assignments, fallback);
+    if (agent) result.set(brandKey, agent);
+  }
+  return result;
+}
+
 // Brand Tab Completion Rule: scheduled = total non-null day-slots across this
 // week's platform-tagged rows (legacy platform:null rows are excluded —
 // they carry no meaningful per-platform scheduled/completed concept);

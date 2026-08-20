@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex } from './scheduleUtils';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
 
@@ -256,5 +256,120 @@ describe('buildAgentIndex', () => {
     const entries = [entry({ Brands: '  WinMega  ', Agent: 'Jen' }, '2026-08-01T00:00:00Z')];
     const index = buildAgentIndex(entries);
     expect(index.get('winmega')).toBe('Jen');
+  });
+});
+
+describe('buildAgentAssignmentMap', () => {
+  it('keys by brandKey::platform', () => {
+    const map = buildAgentAssignmentMap([
+      { tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp', agent: 'ANN' },
+    ]);
+    expect(map.get('zodiacbet.com::tp')).toBe('ANN');
+  });
+
+  it('preserves an explicit null agent as a present key, not a missing one', () => {
+    const map = buildAgentAssignmentMap([
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'tp', agent: null },
+    ]);
+    expect(map.has('silver play::tp')).toBe(true);
+    expect(map.get('silver play::tp')).toBeNull();
+  });
+
+  it('normalizes the brand key the same way the rest of this file does (trim + lowercase)', () => {
+    const map = buildAgentAssignmentMap([
+      { tab: 'Hanan', brand: '  ZodiacBet.com  ', platform: 'tp', agent: 'ANN' },
+    ]);
+    expect(map.get('zodiacbet.com::tp')).toBe('ANN');
+  });
+});
+
+describe('resolveAgentForPlatform', () => {
+  it('returns the assignment table value when a row exists', () => {
+    const assignments = buildAgentAssignmentMap([
+      { tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp', agent: 'ANN' },
+    ]);
+    const agentIndex = new Map([['zodiacbet.com', 'SomeoneElse']]);
+    expect(resolveAgentForPlatform('zodiacbet.com', 'tp', assignments, agentIndex)).toBe('ANN');
+  });
+
+  it('returns null (not the fallback) when the assignment row is an explicit N/A', () => {
+    const assignments = buildAgentAssignmentMap([
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'tp', agent: null },
+    ]);
+    const agentIndex = new Map([['silver play', 'SomeoneElse']]);
+    expect(resolveAgentForPlatform('silver play', 'tp', assignments, agentIndex)).toBeNull();
+  });
+
+  it('falls back to agentIndex when no assignment row exists for this brand+platform', () => {
+    const assignments = buildAgentAssignmentMap([]);
+    const agentIndex = new Map([['midasluck', 'Fallback']]);
+    expect(resolveAgentForPlatform('midasluck', 'tp', assignments, agentIndex)).toBe('Fallback');
+  });
+
+  it('is scoped per platform — a row for tp does not affect ag resolution for the same brand', () => {
+    const assignments = buildAgentAssignmentMap([
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'tp', agent: null },
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'ag', agent: 'JEN' },
+    ]);
+    const agentIndex = new Map<string, string>();
+    expect(resolveAgentForPlatform('silver play', 'tp', assignments, agentIndex)).toBeNull();
+    expect(resolveAgentForPlatform('silver play', 'ag', assignments, agentIndex)).toBe('JEN');
+  });
+});
+
+describe('resolveAgentForBrand', () => {
+  it('returns the first non-null platform-specific agent in platform order', () => {
+    const assignments = buildAgentAssignmentMap([
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'tp', agent: null },
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'ag', agent: 'JEN' },
+      { tab: 'SilverPlay', brand: 'Silver Play', platform: 'cg', agent: 'JEN' },
+    ]);
+    const agentIndex = new Map<string, string>();
+    expect(resolveAgentForBrand('silver play', ['tp', 'ag', 'cg'], assignments, agentIndex)).toBe('JEN');
+  });
+
+  it('returns null when every platform resolves to null', () => {
+    const assignments = buildAgentAssignmentMap([
+      { tab: 'Rooster Partners', brand: 'Novadreams2', platform: 'tp', agent: null },
+      { tab: 'Rooster Partners', brand: 'Novadreams2', platform: 'ag', agent: null },
+      { tab: 'Rooster Partners', brand: 'Novadreams2', platform: 'cg', agent: null },
+    ]);
+    const agentIndex = new Map<string, string>();
+    expect(resolveAgentForBrand('novadreams2', ['tp', 'ag', 'cg'], assignments, agentIndex)).toBeNull();
+  });
+});
+
+describe('buildResolvedAgentIndex', () => {
+  const entry = (data: Record<string, string | null>, updatedAt: string): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: updatedAt, last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('prefers the assignment table over the per-entry heuristic', () => {
+    const entries = [entry({ Brands: 'ZodiacBet.com', Agent: 'WrongAgent' }, '2026-08-01T00:00:00Z')];
+    const assignmentRows = [{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp' as const, agent: 'ANN' }];
+    const index = buildResolvedAgentIndex(entries, assignmentRows, ['tp', 'ag', 'cg']);
+    expect(index.get('zodiacbet.com')).toBe('ANN');
+  });
+
+  it('falls back to the per-entry heuristic for a brand with no assignment row', () => {
+    const entries = [entry({ Brands: 'Midasluck', Agent: 'Fallback' }, '2026-08-01T00:00:00Z')];
+    const index = buildResolvedAgentIndex(entries, [], ['tp', 'ag', 'cg']);
+    expect(index.get('midasluck')).toBe('Fallback');
+  });
+
+  it('resolves a brand that has an assignment row but no entries at all (no Agent column on this tab)', () => {
+    const assignmentRows = [{ tab: 'Hanan', brand: 'ZodiacBet.com', platform: 'tp' as const, agent: 'ANN' }];
+    const index = buildResolvedAgentIndex([], assignmentRows, ['tp', 'ag', 'cg']);
+    expect(index.get('zodiacbet.com')).toBe('ANN');
+  });
+
+  it('has no key for a brand whose every platform resolves to null', () => {
+    const assignmentRows = [
+      { tab: 'Rooster Partners', brand: 'Novadreams2', platform: 'tp' as const, agent: null },
+      { tab: 'Rooster Partners', brand: 'Novadreams2', platform: 'ag' as const, agent: null },
+      { tab: 'Rooster Partners', brand: 'Novadreams2', platform: 'cg' as const, agent: null },
+    ];
+    const index = buildResolvedAgentIndex([], assignmentRows, ['tp', 'ag', 'cg']);
+    expect(index.has('novadreams2')).toBe(false);
   });
 });
