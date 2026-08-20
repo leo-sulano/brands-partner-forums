@@ -10,15 +10,16 @@
 //     --config supabase/functions/generate-weekly-schedule/deno.json \
 //     supabase/functions/generate-weekly-schedule/index.ts
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { OPERATIONAL_TABS, tabDisplayName } from '../../../src/lib/tabs.ts';
+import { tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms, registerHiddenTabPlatforms, resetHiddenTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchBrandAgentAssignments, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms, fetchArchivedTabs } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchBrandAgentAssignments, invalidateTabCache, fetchCustomTabs, fetchHiddenTabPlatforms, fetchArchivedTabs, fetchPausedTabs } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 import { registerDynamicTabs, resetDynamicTabs } from '../../../src/lib/dynamicTabRegistry.ts';
 import { applyArchivedTabs, resetArchivedTabs } from '../../../src/lib/archivedTabRegistry.ts';
+import { applyPausedTabs, resetPausedTabs, getActiveOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../../../src/lib/scheduler/schedulerService.ts';
 import { pushScheduleToPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 import { buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform } from '../../../src/lib/scheduler/scheduleUtils.ts';
@@ -176,6 +177,17 @@ Deno.serve(async (_req: Request): Promise<Response> => {
   });
   resetArchivedTabs();
   applyArchivedTabs(archivedTabs);
+  // Same reset-then-apply shape as the archived-tab registry immediately
+  // above, same reason: this Edge isolate may be warm from a prior
+  // invocation, and applyPausedTabs only ever adds to pausedTabRegistry's
+  // in-memory set -- without the reset, a tab unpaused since the last
+  // invocation would incorrectly stay excluded forever in a reused isolate.
+  const pausedTabs = await fetchPausedTabs(client).catch((err) => {
+    console.error('[generate-weekly-schedule] failed to fetch paused tabs:', err);
+    return [];
+  });
+  resetPausedTabs();
+  applyPausedTabs(pausedTabs);
   // Computed in the runtime's local zone (UTC on Supabase Edge). This is
   // only correct because the migration's cron
   // (supabase/migrations/20260805100000_add_generate_weekly_schedule_cron.sql)
@@ -184,7 +196,7 @@ Deno.serve(async (_req: Request): Promise<Response> => {
   // function before 09:00 Manila on a Monday (00:00-08:00 Manila = 16:00-24:00
   // UTC Sunday), will silently compute the *previous* week instead.
   const weekStart = toISODate(mondayOf(new Date()));
-  const results = await generateAllTabs(OPERATIONAL_TABS, weekStart, client);
+  const results = await generateAllTabs(getActiveOperationalTabs(), weekStart, client);
   return new Response(JSON.stringify({ weekStart, results }), {
     headers: { 'Content-Type': 'application/json' },
   });
