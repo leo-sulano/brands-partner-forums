@@ -697,6 +697,9 @@ export const TOOL_DEFS = [
         'ungrouped plus the sum of every group\'s count, not just the returned page). ' +
         'Without group_by, returns matching rows (each with its full set of ' +
         'non-credential fields under `data`) and total count. ' +
+        'Rows belonging to a tab that has been archived or paused are silently excluded — if a ' +
+        'tab-scoped query returns nothing, say the tab may have been archived or paused rather ' +
+        'than concluding it doesn\'t exist. ' +
         'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
         'IMPORTANT: always pass month as "may 2026" style when user mentions a month.',
       parameters: {
@@ -744,7 +747,9 @@ export const TOOL_DEFS = [
         'platforms are passed, the response still includes combined live/removed/' +
         'successRate but zeroes out the star breakdown. All-time only — no date-range ' +
         'filtering yet. Brands whose page on the queried platform was flagged removed ' +
-        '(see get_removed_platform_flags) are excluded from these results entirely.',
+        '(see get_removed_platform_flags) are excluded from these results entirely. ' +
+        'A tab that has been archived or paused is excluded the same way — an empty or missing ' +
+        'result for that tab may mean it\'s archived or paused, not that it never existed.',
       parameters: {
         type: 'object',
         properties: {
@@ -787,6 +792,8 @@ export const TOOL_DEFS = [
         'neither live nor removed) — total may be lower than raw row count for that value. ' +
         'Brands whose page on the queried platform was flagged removed (see ' +
         'get_removed_platform_flags) are excluded from these results entirely. ' +
+        'A tab that has been archived or paused is excluded the same way — an empty result for ' +
+        'that tab may mean it\'s archived or paused, not that it never existed. ' +
         'The "agent" field is resolved per-brand the same way the dashboard\'s Schedule ' +
         'Planner does (an authoritative brand-agent mapping first, falling back to each ' +
         'account\'s own recorded Agent value only when that mapping has no answer for the ' +
@@ -824,7 +831,9 @@ export const TOOL_DEFS = [
         'get_removed_platform_flags) will never appear here, even in a week it would ' +
         'otherwise be scheduled. If a user asks about a combo missing from the results, ' +
         'say it may be hidden, platform-restricted, or removed rather than concluding ' +
-        'it was never scheduled or doesn\'t exist.',
+        'it was never scheduled or doesn\'t exist. A tab that has been archived or paused ' +
+        'returns no rows at all here, for the same reason — say it may have been archived ' +
+        'or paused rather than concluding it has no schedule or doesn\'t exist.',
       parameters: {
         type: 'object',
         properties: {
@@ -849,7 +858,9 @@ export const TOOL_DEFS = [
         'longer actually in effect — compare it against the current-date system message ' +
         'before asserting a combo is still paused. The same hidden/restricted/removed ' +
         'filtering as get_schedule applies here too — a combo missing from this list may ' +
-        'be excluded for one of those reasons rather than genuinely not paused.',
+        'be excluded for one of those reasons rather than genuinely not paused. A tab that ' +
+        'has been archived or paused is excluded entirely too — an empty result for that ' +
+        'tab may mean it\'s archived or paused, not that it was never tracked.',
       parameters: {
         type: 'object',
         properties: { tab: { type: 'string' } },
@@ -881,7 +892,9 @@ export const TOOL_DEFS = [
         'the match count within the rows scanned (up to 1000 per call, ordered by id — if a ' +
         'tab/platform/status combination has more than that, total may undercount the true ' +
         'dataset), before the limit cap; a capped result should be presented as "showing N of ' +
-        'total", not as exhaustive.',
+        'total", not as exhaustive. A tab that has been archived or paused returns no reviews ' +
+        'here either — say it may have been archived or paused rather than concluding it never ' +
+        'had review data.',
       parameters: {
         type: 'object',
         properties: {
