@@ -90,6 +90,10 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
         renameDynamicTab(tabName, trimmedName, platforms);
         currentTabName = trimmedName;
       }
+      if (isRename && initialPaused && currentTabName !== tabName) {
+        unpauseTabLocally(tabName);
+        pauseTabLocally(currentTabName);
+      }
       if (dynamic) {
         await updateCustomTabPlatforms(currentTabName, platforms);
         registerDynamicTabs([{ name: currentTabName, platforms }]);

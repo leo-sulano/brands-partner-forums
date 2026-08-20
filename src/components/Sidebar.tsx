@@ -186,7 +186,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               const platforms = getTabPlatforms(tab);
               return (
                 <div key={tab} className="group relative flex items-center">
-                  <Tooltip content={isCollapsed ? tabDisplayName(tab) : undefined} block className="flex-1 min-w-0">
+                  <Tooltip content={isCollapsed ? `${tabDisplayName(tab)}${isTabPaused(tab) ? ' (Paused)' : ''}` : undefined} block className="flex-1 min-w-0">
                     <NavLink
                       to={`/brands/${tabToSlug(tab)}`}
                       onClick={() => onClose?.()}

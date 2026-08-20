@@ -15,7 +15,14 @@ export default function ScoreSummary() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([fetchAllEntries(getActiveOperationalTabs()), fetchRemovedPlatformBrands()])
+    const activeTabs = getActiveOperationalTabs();
+    if (activeTabs.length === 0) {
+      setEntries([]);
+      setRemovedPlatformBrands(new Set());
+      setLoading(false);
+      return;
+    }
+    Promise.all([fetchAllEntries(activeTabs), fetchRemovedPlatformBrands()])
       .then(([entryRows, removedRows]) => {
         if (cancelled) return;
         setEntries(entryRows);

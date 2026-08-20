@@ -1718,6 +1718,11 @@ export async function pauseTab(tab: string): Promise<void> {
 }
 
 export async function unpauseTab(tab: string): Promise<void> {
+  // Deliberately no affected-row check here, unlike some other delete
+  // helpers in this file: an RLS-blocked delete and a legitimate no-op
+  // (the tab was already unpaused) both return zero affected rows with no
+  // error, and are indistinguishable at the API level -- the admin-only UI
+  // gate (EditBrandTabModal.tsx) is the actual defense against the former.
   const { error } = await supabase
     .from('paused_tabs')
     .delete()
