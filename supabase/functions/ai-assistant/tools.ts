@@ -370,6 +370,24 @@ async function fetchArchivedTabNameSet(supabase: any): Promise<Set<string>> {
   return buildArchivedTabNameSet(data ?? []);
 }
 
+// Paused-tab exclusion (Brand Tab Pause feature,
+// docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md). Applied
+// alongside archivedSet at the exact same 7 filter points archived-tab
+// exclusion already covers: list_tabs, query_entries, get_score_summary,
+// get_success_rate_by_field, get_schedule, get_paused_combos,
+// get_review_texts. paused_tabs is current-state-only (no restored_at
+// column) -- every row it returns is an active pause, unlike
+// tab_archive_log which mixes active and historical rows.
+export function buildPausedTabNameSet(rows: { tab: string }[]): Set<string> {
+  return new Set(rows.map((r) => r.tab));
+}
+
+async function fetchPausedTabNameSet(supabase: any): Promise<Set<string>> {
+  const { data, error } = await supabase.from('paused_tabs').select('tab');
+  if (error) throw error;
+  return buildPausedTabNameSet(data ?? []);
+}
+
 async function fetchScheduleHiddenSet(supabase: any): Promise<Set<string>> {
   const { data, error } = await supabase.from('schedule_hidden_brands').select('tab, brand');
   if (error) throw error;
@@ -650,9 +668,9 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'list_tabs',
-      description: 'List the distinct brand-group tabs available. An archived tab is silently ' +
-        'excluded — if a user asks about a tab not in this list, say it may have been archived ' +
-        'rather than concluding it never existed.',
+      description: 'List the distinct brand-group tabs available. An archived or paused tab is ' +
+        'silently excluded — if a user asks about a tab not in this list, say it may have been ' +
+        'archived or paused rather than concluding it never existed.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -882,9 +900,9 @@ export const TOOL_DEFS = [
 export async function runTool(supabase: any, name: string, args: any): Promise<unknown> {
   if (name === 'list_tabs') {
     const q = supabase.from('entries').select('tab');
-    const [{ data, error }, archivedSet] = await Promise.all([q, fetchArchivedTabNameSet(supabase)]);
+    const [{ data, error }, archivedSet, pausedSet] = await Promise.all([q, fetchArchivedTabNameSet(supabase), fetchPausedTabNameSet(supabase)]);
     if (error) throw error;
-    const tabs = [...new Set(((data ?? []) as any[]).map((r: any) => r.tab))].filter((t: string) => !archivedSet.has(t));
+    const tabs = [...new Set(((data ?? []) as any[]).map((r: any) => r.tab))].filter((t: string) => !archivedSet.has(t) && !pausedSet.has(t));
     return { tabs: tabs.sort() };
   }
   if (name === 'list_fields') {
@@ -915,13 +933,14 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     }
     let q = supabase.from('entries').select('id, tab, data, updated_at');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data, error }, archivedSet, assignmentRows] = await Promise.all([
+    const [{ data, error }, archivedSet, pausedSet, assignmentRows] = await Promise.all([
       q,
       fetchArchivedTabNameSet(supabase),
+      fetchPausedTabNameSet(supabase),
       fetchAgentAssignmentRows(supabase),
     ]);
     if (error) throw error;
-    let rows: EntryRow[] = (data ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab));
+    let rows: EntryRow[] = (data ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
     if (args?.status) rows = rows.filter((e) => matchesStatus(e, args.status));
     if (args?.month) rows = rows.filter((e) => matchesMonth(e, args.month));
     if (args?.contains) rows = rows.filter((e) => entryMatches(e, args.contains));
@@ -959,11 +978,11 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
   if (name === 'get_score_summary') {
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data: rawData, error }, removedSet, archivedSet] = await Promise.all([
-      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase),
+    const [{ data: rawData, error }, removedSet, archivedSet, pausedSet] = await Promise.all([
+      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase), fetchPausedTabNameSet(supabase),
     ]);
     if (error) throw error;
-    const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab));
+    const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
     const rawPlatform = args?.platform;
     const requestedPlatforms: string[] = Array.isArray(rawPlatform)
@@ -983,11 +1002,11 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
   if (name === 'get_success_rate_by_field') {
     let q = supabase.from('entries').select('id, tab, data, updated_at');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data: rawData, error }, removedSet, archivedSet, assignmentRows] = await Promise.all([
-      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase), fetchAgentAssignmentRows(supabase),
+    const [{ data: rawData, error }, removedSet, archivedSet, pausedSet, assignmentRows] = await Promise.all([
+      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase), fetchPausedTabNameSet(supabase), fetchAgentAssignmentRows(supabase),
     ]);
     if (error) throw error;
-    const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab));
+    const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
     const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
     const rawPlatform = args?.platform;
     const requestedPlatforms: string[] = Array.isArray(rawPlatform)
@@ -1009,15 +1028,16 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       .select('tab, brand, platform, week_start, monday, tuesday, wednesday, thursday, friday');
     if (args?.tab) q = q.eq('tab', args.tab);
     if (args?.week_start) q = q.eq('week_start', args.week_start);
-    const [{ data, error }, hiddenSet, restrictionMap, removedSet, archivedSet] = await Promise.all([
+    const [{ data, error }, hiddenSet, restrictionMap, removedSet, archivedSet, pausedSet] = await Promise.all([
       q,
       fetchScheduleHiddenSet(supabase),
       fetchScheduleRestrictionMap(supabase),
       fetchRemovedPlatformBrandSet(supabase),
       fetchArchivedTabNameSet(supabase),
+      fetchPausedTabNameSet(supabase),
     ]);
     if (error) throw error;
-    const rows = (data ?? []).filter((r: any) => !archivedSet.has(r.tab));
+    const rows = (data ?? []).filter((r: any) => !archivedSet.has(r.tab) && !pausedSet.has(r.tab));
     return { schedule: filterHiddenOrRestricted(rows, hiddenSet, restrictionMap, removedSet) };
   }
   if (name === 'get_paused_combos') {
@@ -1025,15 +1045,16 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       .from('brand_platform_pause')
       .select('tab, brand, platform, paused_week_start, reason');
     if (args?.tab) q = q.eq('tab', args.tab);
-    const [{ data, error }, hiddenSet, restrictionMap, removedSet, archivedSet] = await Promise.all([
+    const [{ data, error }, hiddenSet, restrictionMap, removedSet, archivedSet, pausedSet] = await Promise.all([
       q,
       fetchScheduleHiddenSet(supabase),
       fetchScheduleRestrictionMap(supabase),
       fetchRemovedPlatformBrandSet(supabase),
       fetchArchivedTabNameSet(supabase),
+      fetchPausedTabNameSet(supabase),
     ]);
     if (error) throw error;
-    const rows = (data ?? []).filter((r: any) => !archivedSet.has(r.tab));
+    const rows = (data ?? []).filter((r: any) => !archivedSet.has(r.tab) && !pausedSet.has(r.tab));
     return { paused: filterHiddenOrRestricted(rows, hiddenSet, restrictionMap, removedSet) };
   }
   if (name === 'get_review_texts') {
@@ -1047,11 +1068,11 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
     q = q.order('id').limit(1000);
-    const [{ data, error }, removedSet, archivedSet] = await Promise.all([
-      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase),
+    const [{ data, error }, removedSet, archivedSet, pausedSet] = await Promise.all([
+      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase), fetchPausedTabNameSet(supabase),
     ]);
     if (error) throw error;
-    const rows = (data ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab));
+    const rows = (data ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
     const { reviews, total } = reviewTextsByStatus(rows, args.platform, args.status, removedSet);
     const limit = Math.min(Number(args?.limit) || 20, 50);
     return { reviews: reviews.slice(0, limit), total };

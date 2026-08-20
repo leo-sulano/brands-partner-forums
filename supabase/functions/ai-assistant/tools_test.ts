@@ -15,6 +15,7 @@ import {
   platformRemovedKey,
   buildRemovedPlatformBrandSet,
   buildArchivedTabNameSet,
+  buildPausedTabNameSet,
   isSensitiveField,
   collectFieldNames,
   matchesFieldFilters,
@@ -571,6 +572,39 @@ Deno.test('query_entries excludes rows from an archived tab via runTool', async 
       { id: '2', tab: 'Hanan', data: { Brand: 'Beta' } },
     ],
     tab_archive_log: [{ tab: 'Hanan', restored_at: null }],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {});
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].tab, 'Rooster Partners');
+});
+
+Deno.test('buildPausedTabNameSet includes every row (current-state-only table)', () => {
+  const set = buildPausedTabNameSet([{ tab: 'Rooster Partners' }]);
+  assertEquals(set.has('Rooster Partners'), true);
+  assertEquals(set.has('Hanan'), false);
+});
+
+Deno.test('list_tabs excludes a paused tab via runTool', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Rooster Partners', data: {} },
+      { id: '2', tab: 'Hanan', data: {} },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [{ tab: 'Hanan' }],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'list_tabs', {});
+  assertEquals(result.tabs, ['Rooster Partners']);
+});
+
+Deno.test('query_entries excludes rows from a paused tab via runTool', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Rooster Partners', data: { Brand: 'Acme' } },
+      { id: '2', tab: 'Hanan', data: { Brand: 'Beta' } },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [{ tab: 'Hanan' }],
   };
   const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {});
   assertEquals(result.total, 1);
