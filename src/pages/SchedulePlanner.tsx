@@ -29,12 +29,6 @@ const DATE_FROM_STORAGE_KEY = 'schedulePlanner.dateFrom';
 const DATE_TO_STORAGE_KEY = 'schedulePlanner.dateTo';
 const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
 
-// Same idea for days: a wide From/To range (e.g. a full month) would make
-// every card's mini-table 20+ columns wide. Capped uniformly across all 11
-// cards (they all show the same date range), with one shared note in the
-// toolbar rather than repeating it on every card.
-const PREVIEW_DAY_LIMIT = 10;
-
 interface TabPreview {
   // Already filtered to brands with at least one schedulable, non-removed
   // platform (same rule TabScheduleSection's own filteredBrands applies) —
@@ -183,29 +177,20 @@ export default function SchedulePlanner() {
     return from > to ? [to, from] : [from, to];
   }, [hasDateFilter, dateFrom, dateTo]);
 
-  // Every weekday in the picked range (uncapped) vs. what actually renders in
-  // a landing-grid card — the difference drives that card's "+N more days"
-  // note. When no filter is set, this is the week the Prev/Next/Today nav
-  // currently has selected (weekStart) — the same nav-controlled week
-  // specific-tab mode's own grid shows, so Prev/Next behaves identically in
-  // both modes. Also the uncapped source the platform-count strip sums over,
-  // so a count can never undercount just because a preview table stopped
-  // rendering columns.
+  // Every weekday in the picked range — rendered in full by each landing-grid
+  // card (horizontally scrollable, same as a selected Brand Tab's own grid
+  // shows every day in the range uncapped) and the uncapped source the
+  // platform-count strip sums over. When no filter is set, this is the week
+  // the Prev/Next/Today nav currently has selected (weekStart) — the same
+  // nav-controlled week specific-tab mode's own grid shows, so Prev/Next
+  // behaves identically in both modes.
   const allRangeColumns: ScheduleColumn[] = useMemo(
     () => (hasDateFilter ? weekdayColumnsInRange(rangeFrom, rangeTo) : columnsForWeek(weekStart)),
     [hasDateFilter, rangeFrom, rangeTo, weekStart],
   );
-  const previewColumns = useMemo(
-    () => (hasDateFilter ? allRangeColumns.slice(0, PREVIEW_DAY_LIMIT) : allRangeColumns),
-    [hasDateFilter, allRangeColumns],
-  );
-  const hiddenDayCount = hasDateFilter ? allRangeColumns.length - previewColumns.length : 0;
   // The distinct weeks the picked range actually needs fetched — usually
   // one, but a multi-week range needs a fetchBrandSchedule call per week it
-  // touches. Deliberately derived from the uncapped allRangeColumns (not the
-  // display-capped previewColumns), since the platform-count strip must
-  // reflect the full range even for the weeks a preview card doesn't render.
-  // Joined to a stable string so the fetch effect below doesn't re-fire on
+  // touches. Joined to a stable string so the fetch effect below doesn't re-fire on
   // every render just because array identity changed.
   const previewWeekISOs = useMemo(
     () => [...new Set(allRangeColumns.map((c) => c.weekStartISO))],
@@ -349,10 +334,7 @@ export default function SchedulePlanner() {
   // tab's currently-visible (Agent-filtered) brands, using the same
   // countActivePlatformSlots helper specific-tab mode's TabScheduleSection
   // uses for its own count — one shared computation, two callers, so they
-  // can't independently drift on what "scheduled" means. Uses the uncapped
-  // allRangeColumns (not the display-capped previewColumns) so the count
-  // reflects the full picked range even where a card's own mini-table stops
-  // rendering columns.
+  // can't independently drift on what "scheduled" means.
   const overviewPlatformCounts = useMemo(() => {
     const totals: Partial<Record<Platform, number>> = {};
     for (const t of getActiveOperationalTabs()) {
@@ -439,11 +421,6 @@ export default function SchedulePlanner() {
             min={dateFrom || undefined}
             triggerTextClassName="text-sm"
           />
-          {showGrid && hiddenDayCount > 0 && (
-            <span className="text-xs text-slate-400 whitespace-nowrap">
-              showing first {previewColumns.length} of {allRangeColumns.length} weekdays
-            </span>
-          )}
         </div>
 
         {displayedPlatforms.length > 0 && (
@@ -460,7 +437,7 @@ export default function SchedulePlanner() {
                     className="size-3 rounded-[1px]"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                   />
-                  {PLATFORM_BADGE[p].label} {displayedPlatformCounts[p] ?? 0}
+                  {PLATFORM_BADGE[p].label} <span className="text-slate-900">{displayedPlatformCounts[p] ?? 0}</span>
                 </span>
               </Tooltip>
             ))}
@@ -541,7 +518,7 @@ export default function SchedulePlanner() {
                 </span>
 
                 <div className={`overflow-x-auto rounded border border-slate-100 transition-opacity ${previewLoading ? 'opacity-40' : ''}`}>
-                  {hasDateFilter && previewColumns.length === 0 ? (
+                  {hasDateFilter && allRangeColumns.length === 0 ? (
                     <div className="px-1.5 py-3 text-center text-[10px] text-slate-400">
                       No schedule tracked on weekends
                     </div>
@@ -550,7 +527,7 @@ export default function SchedulePlanner() {
                       <thead>
                         <tr className="bg-slate-50 text-slate-400">
                           <th className="px-1.5 py-1 text-left font-medium">Brand</th>
-                          {previewColumns.map((col) => (
+                          {allRangeColumns.map((col) => (
                             <th key={col.iso} className="px-1 py-1 text-center font-medium whitespace-nowrap">
                               {hasDateFilter
                                 ? `${WEEKDAY_LABELS[col.weekday]} ${formatWeekdayDate(new Date(`${col.iso}T00:00:00`), 0)}`
@@ -562,7 +539,7 @@ export default function SchedulePlanner() {
                       <tbody>
                         {previewBrands.length === 0 ? (
                           <tr>
-                            <td colSpan={previewColumns.length + 1} className="px-1.5 py-2 text-center text-slate-400">
+                            <td colSpan={allRangeColumns.length + 1} className="px-1.5 py-2 text-center text-slate-400">
                               No schedule yet
                             </td>
                           </tr>
@@ -578,7 +555,7 @@ export default function SchedulePlanner() {
                                     {brand}
                                   </Tooltip>
                                 </td>
-                                {previewColumns.map((col) => {
+                                {allRangeColumns.map((col) => {
                                   const activeToday = brandPlatforms.filter(
                                     (p) => scheduleFor(preview.scheduleRows, t, brand, col.weekStartISO, p)?.[col.weekday] === 'active',
                                   );
