@@ -5152,8 +5152,10 @@ one of `OPERATIONAL_TABS`'s ~12 readers — including the Sidebar, which is the 
 needs a paused tab to keep appearing. Instead it holds its own `pausedTabNames: Set<string>` and
 exposes `getActiveOperationalTabs()` (`OPERATIONAL_TABS.filter(t => !isTabPaused(t))`) as the one new
 export every aggregation surface switches to in place of reading `OPERATIONAL_TABS` directly.
-`pauseTabLocally`/`unpauseTabLocally` reuse the existing `tab-platforms-changed` window event
-(imported from `dynamicTabRegistry.ts`) rather than inventing a new one, so the Sidebar/Topbar
+`pauseTabLocally`/`unpauseTabLocally` reuse the existing `tab-platforms-changed` window event (same
+event name Sidebar/Topbar already listen for; `pausedTabRegistry.ts` dispatches it via its own
+private copy of the notify helper, same pattern as `dynamicTabRegistry.ts`/`archivedTabRegistry.ts`'s
+own copies, not an import from either) rather than inventing a new event, so the Sidebar/Topbar
 already-mounted listeners re-render immediately with zero new listener code — live-confirmed working
 below. `queries.ts` (`667b6b6`) gained `pauseTab`/`unpauseTab`/`fetchPausedTabs`; `pauseTab` is a
 plain `insert` (not upsert) catching a `23505` unique-violation as a silent no-op, deliberately not
@@ -5246,11 +5248,11 @@ function — code is shipped, only the deploy step remains):
    not deploy, consistent with every other change queued against this same still-undeployed
    function (see its own dedicated Known Issues bullet for the full outstanding checklist).
 
-Note: 5 unrelated commits from a concurrent no-worktree session (Schedule Planner PMS status sync
-UI work, and the separate Task 243/245 Pending/Done status overlay entries above) landed on this
-same branch while this plan's tasks ran. Untouched, unreviewed, and out of scope for this task —
-consistent with this project's documented practice when multiple sessions share one branch with no
-worktree isolation.
+Note: several unrelated commits from a concurrent no-worktree session (Schedule Planner PMS status
+sync UI work, and the separate Task 243/245 Pending/Done status overlay entries above) landed on
+this same branch while this plan's tasks ran, and continued landing after this task's own commit —
+not a fixed count. Untouched, unreviewed, and out of scope for this task — consistent with this
+project's documented practice when multiple sessions share one branch with no worktree isolation.
 
 Spec: `docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md`. Plan:
 `docs/superpowers/plans/2026-08-20-brand-tab-pause.md`. Task 246.
