@@ -5256,3 +5256,62 @@ project's documented practice when multiple sessions share one branch with no wo
 
 Spec: `docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md`. Plan:
 `docs/superpowers/plans/2026-08-20-brand-tab-pause.md`. Task 246.
+
+---
+
+## Task 247: Schedule Planner → PMS Status Sync
+
+Added a third, one-way PMS sync direction on top of the two Task 231 already shipped
+(push-on-activate creates a linked task; pull reconciles due-date/assignee drift): the calendar
+cell's own real status now moves its linked PMS task to the matching column, so someone working
+the PMS board can see Published/Removed/Pending/Done/Active without opening the dashboard. Dashboard
+→ PMS only — a human moving a card in PMS never writes back to `brand_schedule` or the calendar,
+deliberately asymmetric from the existing due-date/assignee pull.
+
+Column mapping (IDs confirmed live against the real "Forum Team" PMS project): Removed/Confirmed
+("Published" on-screen) → Review/QA; Pending/Done → In Progress; plan-only Active (no evidence yet)
+→ To Do; Paused is excluded entirely (never moves, stays wherever it currently sits) — same
+precedence order `ScheduleCell` already renders from (`Removed > Confirmed > Pending > Done >
+Paused > Active`), so PMS can never disagree with what the calendar shows. New pure
+`resolvePmsSyncStatus` (`src/lib/scheduler/scheduleUtils.ts`) resolves one link's target status from
+the existing `dateStatusIndex` plus pause state, returning `null` (skip, no sync) for a paused combo.
+New nullable-turned-`not null default 'active'` `synced_status` column on `schedule_pms_links`
+(migration `20260820130000_add_schedule_pms_links_synced_status.sql`) records what PMS was last
+successfully told, so the sync only calls the PMS move API for links whose resolved status actually
+changed since last time — without it, every tab visit would re-issue a move call for every linked
+task regardless of change. `insertSchedulePmsLink` sets it to `'active'` at creation (already
+matches To Do, no immediate move needed); existing pre-column rows default to `'active'`, an
+accurate record since nothing had ever moved them.
+
+Real sync logic lives in `syncScheduleStatusToPms()` (`src/lib/scheduler/pmsSync.ts`, the same shared
+module both `sync-schedule-pms` and `generate-weekly-schedule` already import), reached via a new
+`action: 'syncStatus'` branch in the `sync-schedule-pms` Edge Function — `PATCH
+/api/tasks/{pmsTaskId}/move`, service-role update of `synced_status` per item on success, one
+per-item try/catch so a single failed move never blocks the rest of the batch. A new
+`pushScheduleStatusSync()` browser wrapper (`src/lib/schedulePmsSync.ts`) mirrors
+`pushScheduleActivations`'s fire-and-forget/catch-and-toast shape exactly. Wired into
+`TabScheduleSection.tsx` as a new effect alongside the existing `pullScheduleDrift` call, keyed on
+`[tab, dateStatusIndex, pauses, isApproved]` rather than just `[tab]` so it reruns once this tab's
+real entry evidence has actually loaded, not on stale prior-tab data.
+
+A same-session final-review pass (`f22912c`) fixed 3 correctness gaps before this shipped: the effect
+now waits on `scheduleLoading` so pause state isn't read stale/empty on first render, pause matching
+is scoped to the link's own week via `paused_week_start` instead of matching across every week, and
+links whose platform is currently hidden/restricted/flagged-removed for that brand are skipped
+(consistent with how every other Schedule Planner surface already excludes those combos). Built via
+5 subagent-driven-development tasks matching the plan 1:1 (tracking column, `resolvePmsSyncStatus`,
+`syncScheduleStatusToPms`/edge function wiring, `pushScheduleStatusSync` wrapper, `TabScheduleSection`
+integration). Full suite (1309 tests) and build both pass.
+
+**Not yet deployed** — same manual-deploy pattern as every other change to this function:
+1. `supabase db push` (applies the `synced_status` migration).
+2. `supabase functions deploy sync-schedule-pms`.
+3. Confirm via `supabase functions list` (new version, `ACTIVE`).
+No new Vercel env var needed — reuses the existing `VITE_SYNC_SCHEDULE_PMS_URL`. Live verification
+(edit an entry to Published/Removed/Pending/Done, confirm the linked PMS card moves to the mapped
+column; confirm a paused link never moves; confirm a second tab visit with no further status change
+doesn't flap the task back) was not performed this session — deferred to whoever runs the deploy
+checklist above, per this project's established pattern for undeployed PMS-sync changes.
+
+Spec: `docs/superpowers/specs/2026-08-20-schedule-planner-pms-status-sync-design.md`. Plan:
+`docs/superpowers/plans/2026-08-20-schedule-planner-pms-status-sync.md`. Task 247.
