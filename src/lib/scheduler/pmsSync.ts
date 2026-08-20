@@ -5,7 +5,8 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, deleteSchedulePmsLink, type SchedulePmsLink } from '../queries.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, type SchedulePmsLink } from '../queries.ts';
+import type { PmsSyncStatus } from './scheduleUtils.ts';
 
 // Confirmed live against the real "Forum Team" PMS project while writing
 // this spec (a throwaway test label/task was created via these exact
@@ -14,6 +15,8 @@ import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate
 const PMS_BASE_URL = 'https://pms-nu-eight.vercel.app/api';
 const PMS_PROJECT_ID = 'cmsoh1uvs000004l4fbdvqmir';
 const PMS_TODO_COLUMN_ID = 'cmsoh1uxz000204l46gf88k3f';
+const PMS_IN_PROGRESS_COLUMN_ID = 'cmsoh1uxz000304l4zynwy7vw';
+const PMS_REVIEW_QA_COLUMN_ID = 'cmsoh1uxz000404l44x2m2b9a';
 const PMS_TEAM_ID = 'cmsd98mtx000204lgyb0abodx';
 const PMS_CLIENT_LABEL_NAME = 'Client';
 const PMS_PLATFORM_LABEL_NAMES: Record<Platform, string> = { tp: 'TP', ag: 'AG', cg: 'CG', wo: 'WO' };
@@ -209,6 +212,62 @@ export async function pushScheduleToPms(
     }
   }
   return { created, skipped, failed };
+}
+
+const PMS_STATUS_COLUMN_IDS: Record<PmsSyncStatus, string> = {
+  active: PMS_TODO_COLUMN_ID,
+  pending: PMS_IN_PROGRESS_COLUMN_ID,
+  done: PMS_IN_PROGRESS_COLUMN_ID,
+  published: PMS_REVIEW_QA_COLUMN_ID,
+  removed: PMS_REVIEW_QA_COLUMN_ID,
+};
+
+export interface PmsStatusSyncItem {
+  linkId: string;
+  pmsTaskId: string;
+  targetStatus: PmsSyncStatus;
+}
+
+export interface PmsStatusSyncResult {
+  synced: PmsStatusSyncItem[];
+  failed: { item: PmsStatusSyncItem; error: string }[];
+}
+
+async function movePmsTask(taskId: string, columnId: string, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
+  const res = await fetchFn(`${PMS_BASE_URL}/tasks/${taskId}/move`, {
+    method: 'PATCH',
+    headers: pmsHeaders(credentials),
+    body: JSON.stringify({ columnId, position: 0 }),
+  });
+  if (!res.ok) throw new Error(`PMS task move failed: ${res.status}`);
+}
+
+// Moves each linked task's PMS column to match its resolved dashboard status
+// (see resolvePmsSyncStatus in scheduleUtils.ts for how targetStatus is
+// derived client-side) -- one-way, dashboard -> PMS only, never the reverse.
+// Per-item try/catch mirrors pushScheduleToPms's existing batch resilience:
+// one failed move never blocks the rest. schedule_pms_links.synced_status is
+// only updated on a successful move, so a failed item is naturally retried on
+// the caller's next sync pass (its resolved status still won't match the
+// stale synced_status).
+export async function syncScheduleStatusToPms(
+  items: PmsStatusSyncItem[],
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsStatusSyncResult> {
+  const synced: PmsStatusSyncItem[] = [];
+  const failed: { item: PmsStatusSyncItem; error: string }[] = [];
+  for (const item of items) {
+    try {
+      await movePmsTask(item.pmsTaskId, PMS_STATUS_COLUMN_IDS[item.targetStatus], credentials, fetchFn);
+      await updateSchedulePmsLinkStatus(item.linkId, item.targetStatus, client);
+      synced.push(item);
+    } catch (err) {
+      failed.push({ item, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { synced, failed };
 }
 
 export interface PmsDriftedItem {

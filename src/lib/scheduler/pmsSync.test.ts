@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { pushScheduleToPms, type PmsSyncItem } from './pmsSync';
 import { pullScheduleFromPms } from './pmsSync';
+import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 
 const CREDENTIALS = { apiToken: 'test-token' };
 
@@ -319,5 +320,75 @@ describe('pullScheduleFromPms', () => {
     });
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
     expect(result.assignees).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Ann' }]);
+  });
+});
+
+function fakeSupabaseForStatusUpdate() {
+  const updated: unknown[] = [];
+  return {
+    client: {
+      from: (table: string) => {
+        if (table !== 'schedule_pms_links') throw new Error(`unexpected table ${table}`);
+        return {
+          update: (row: unknown) => ({
+            eq: (_col: string, id: string) => {
+              updated.push({ id, ...row as object });
+              return Promise.resolve({ error: null });
+            },
+          }),
+        };
+      },
+    } as any,
+    updated,
+  };
+}
+
+describe('syncScheduleStatusToPms', () => {
+  it('moves the task to the mapped column and records the new synced_status on success', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
+    ]);
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published' };
+    const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ synced: [item], failed: [] });
+    expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
+  });
+
+  it('records a per-item failure without aborting the rest of the batch, and never updates synced_status for the failed item', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
+    const badItem: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-bad', targetStatus: 'removed' };
+    const okItem: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-ok', targetStatus: 'active' };
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-bad\/move$/, method: 'PATCH', body: {}, status: 500 },
+      { url: /\/tasks\/task-ok\/move$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await syncScheduleStatusToPms([badItem, okItem], client, CREDENTIALS, fetchFn);
+    expect(result.synced).toEqual([okItem]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].item).toEqual(badItem);
+    expect(updated).toEqual([{ id: 'link-2', synced_status: 'active' }]);
+  });
+
+  it.each([
+    ['active', 'cmsoh1uxz000204l46gf88k3f'],
+    ['pending', 'cmsoh1uxz000304l4zynwy7vw'],
+    ['done', 'cmsoh1uxz000304l4zynwy7vw'],
+    ['published', 'cmsoh1uxz000404l44x2m2b9a'],
+    ['removed', 'cmsoh1uxz000404l44x2m2b9a'],
+  ])('maps target status "%s" to column %s', async (targetStatus, columnId) => {
+    const { client } = fakeSupabaseForStatusUpdate();
+    let movedBody: unknown;
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit) => {
+      movedBody = JSON.parse(init.body as string);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    await syncScheduleStatusToPms(
+      [{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: targetStatus as PmsStatusSyncItem['targetStatus'] }],
+      client,
+      CREDENTIALS,
+      fetchFn,
+    );
+    expect(movedBody).toEqual({ columnId, position: 0 });
   });
 });

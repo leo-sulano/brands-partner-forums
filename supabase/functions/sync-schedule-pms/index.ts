@@ -5,7 +5,7 @@
 // pull logic twice. Holds PMS_API_TOKEN as a Supabase secret -- the browser
 // never sees it.
 import { createClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, type PmsSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, syncScheduleStatusToPms, type PmsSyncItem, type PmsStatusSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -45,6 +45,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (body?.action === 'pull') {
       if (typeof body.tab !== 'string' || !body.tab) return jsonResponse({ error: 'Missing tab' }, 400);
       const result = await pullScheduleFromPms(body.tab, client, credentials);
+      return jsonResponse(result);
+    }
+    if (body?.action === 'syncStatus') {
+      if (!Array.isArray(body.items)) return jsonResponse({ error: 'items must be an array' }, 400);
+      const result = await syncScheduleStatusToPms(body.items as PmsStatusSyncItem[], client, credentials);
       return jsonResponse(result);
     }
     return jsonResponse({ error: 'Unknown action' }, 400);
