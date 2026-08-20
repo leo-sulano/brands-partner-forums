@@ -4941,3 +4941,91 @@ scoped follow-up closing a gap this same plan had already fully investigated and
 deferred, not new architectural work. **Pending manual deploy:** `supabase functions deploy
 ai-assistant` — until deployed, the live assistant still uses the pre-Task-242 raw-column behavior
 for agent queries; the fix is live in code only.
+
+---
+
+## Task 243: Schedule Planner Pending/Done Status Overlay
+
+**Date:** August 20, 2026
+
+Schedule Planner day cells already overlaid a green ✓ (Confirmed/Published) or red ✕ (Removed)
+corner badge on top of the auto-generated plan whenever a real entry's dated add-status matched
+that exact calendar day (`buildDateStatusIndex`, Tasks 165/168) — but two more real statuses that
+show up in the same TP/AG/CG/WO Review Status field, Pending and Done, rendered no differently
+from a plain unconfirmed "Scheduled" plan chip. A brand's account genuinely sitting in Pending or
+already marked Done gave no visual signal at all until it later resolved to Published or
+Removed/Refused. This task closes that gap with a new, independent overlay mirroring the existing
+one's shape but built for a fundamentally different kind of status.
+
+**Data model.** New `buildCurrentStatusIndex` (`src/lib/scheduler/scheduleUtils.ts`) resolves one
+current Pending/Done status per `(brand, platform)`, using the exact same most-recently-updated-
+entry resolution rule `buildAgentIndex`/`buildCountryIndex` already use for Agent/Country — but
+keyed per platform as well as per brand, since a brand's different platforms can each be at a
+different stage independently (unlike Agent/Country, which are brand-level). It reads brand names
+through `BRAND_COLS` (`tab-configs.ts`), the same brand-name vocabulary `buildDateStatusIndex`/
+`buildAgentIndex` already use in this file — deliberately not `scoreSummary.ts`'s separate
+`BRAND_KEYS` list, which would have silently resolved Pending/Done against a different set of
+brand-name columns than Confirmed/Removed/Agent/Country do. Unlike `buildDateStatusIndex`, which
+anchors a status to one exact calendar day via the entry's own recorded add-date,
+`buildCurrentStatusIndex` has no date to anchor to at all — Pending means "not yet decided," so
+this index answers "what's true right now" rather than "what happened on this day." New
+`isPendingStatus`/`isDoneStatus` in `src/lib/scoreSummary.ts` are character-for-character mirrors
+of the same-named functions already living in `src/lib/queries.ts`
+(`s.includes('pending') || s === 'not published'` and `s === 'done'` respectively), re-confirmed
+identical in this task's whole-branch review.
+
+**Current-week-only + already-scheduled-slot attachment rule.** `TabScheduleSection.tsx`'s new
+`computePendingByPlatform`/`computeDoneByPlatform` only populate the overlay when `isCurrentWeek`
+is true, and only for a `(brand, platform, day)` that already has an active/paused plan slot
+(`rowsByPlatform[platform]?.[day] != null`) — never creating a chip where none existed before. Both
+restrictions follow directly from Pending/Done having no date: Confirmed/Removed's exact-date match
+is safe to show on any past or future week because it's tied to a real historical add-date, but
+"Pending right now" or "Done right now" is only meaningful for the week actually in progress — a
+past week's cell would misrepresent history (the account could have been Pending back then and be
+Done now), and a future week has no real plan yet for the overlay to attach to. Both functions
+correctly return an empty object outside `isCurrentWeek`, and both are called exactly once each
+(the day loop's own `rowsByPlatform`, destructured per-brand from `computeCellData(brand)` — never
+a stale or differently-scoped variable), confirmed by grepping both call sites during this task's
+review.
+
+**Visual treatment.** `calendarRenderer.tsx`'s `ScheduleCell`/`PlatformChip` gained two new
+corner-badge states mirroring the existing ✓/✕ treatment: a small amber circle with "P" for
+Pending, a small blue circle with "D" for Done. Both are subordinate to the existing exact-date
+evidence — `isPending` is gated on `!hasDateEvidence` and `isDone` additionally on `!isPending`, so
+a cell can only ever show one of Removed/Confirmed/Pending/Done at a time, with real dated evidence
+always winning over the dateless Pending/Done overlay whenever both would technically apply.
+Pending/Done chips are also exempted from the existing past-day "ghosting" effect (Task 173) —
+moot in practice since the current-week gate already means they can never appear on a past day, but
+kept consistent with `hasEvidence`'s existing shape. Deliberately not wired into Schedule Planner's
+CSV/Excel export (`scheduleExport.ts`) or the tab-selector's landing-grid preview table — matching
+the precedent Confirmed/Removed already set (that export reads only the raw `brand_schedule` plan
+row, a known, already-documented Known Issues gap this task doesn't widen or narrow) — confirmed via
+this task's whole-branch review that the diff touches only the 6 expected files
+(`scoreSummary.ts`/`.test.ts`, `scheduleUtils.ts`/`.test.ts`, `calendarRenderer.tsx`,
+`TabScheduleSection.tsx`) and nothing in `scheduleExport.ts`, the landing-grid preview, or
+`AddPlatformModal.tsx`.
+
+Built across 4 tasks (Tasks 1-4), each independently reviewed clean, plus this Task 5's
+whole-branch review re-confirming all of the above with no findings. Full suite (1272 tests, 9 new:
+7 for `buildCurrentStatusIndex` covering independent-per-platform resolution, most-recent-wins
+tie-breaking, and blank-status skipping; 2 for `isPendingStatus`/`isDoneStatus`) and `npm run build`
+both pass.
+
+Live-verified end to end via Playwright against the real production Supabase instance, signed in as
+leo@optinetsolutions.com. On the BITP tab's real current week (Aug 17–21), Alf Casino's Thursday
+(today) TP chip started as a plain, unconfirmed "Scheduled" chip with no badge (account
+`461 | BI TP | Italy`, TP Added 20/08/2026, TP Status unset). Setting its TP Status to Pending via
+Edit Entry and reloading Schedule Planner showed the amber "P" badge, tooltip reading "Trustpilot:
+Pending / Agent: LAI / Country: Italy"; changing it to Done showed the blue "D" badge and
+"Trustpilot: Done" in the tooltip, confirming an *update* — not just an initial set — propagates
+correctly. Navigating to the previous week (Aug 10–14) showed that same brand's Wednesday cell with
+no Pending/Done badge at all despite the underlying entry's status still being Done, confirming the
+current-week gate holds. A cell with real dated Confirmed evidence (Alf Casino's Tuesday, tooltip
+"Trustpilot: Published") and a cell with real dated Removed evidence (Amonbet Casino's Monday,
+tooltip "Trustpilot: Removed") were both re-checked and remained unaffected, still showing ✓/✕
+rather than P/D. The test entry's TP Status was reverted back to unset (its original value)
+afterward — confirmed via the Brand Tabs table's TP Status column reading "—" again and Schedule
+Planner's chip reverting to its original plain "Scheduled" appearance — leaving no test data behind
+in the live database. Spec:
+`docs/superpowers/specs/2026-08-20-schedule-planner-pending-done-status-design.md`. Plan:
+`docs/superpowers/plans/2026-08-20-schedule-planner-pending-done-status.md`.

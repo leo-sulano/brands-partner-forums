@@ -61,7 +61,30 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-18 (newest):* Add Brand Tab modal (self-service Brand Tab creation, Task 232) no
+- *2026-08-20 (newest):* Schedule Planner day cells gained a second status overlay, Pending
+  (amber "P" badge) / Done (blue "D" badge), mirroring the existing Confirmed ✓ / Removed ✕
+  overlay but for two more real TP/AG/CG/WO Review Status values that previously showed no signal
+  at all. New `buildCurrentStatusIndex` (`src/lib/scheduler/scheduleUtils.ts`) resolves one
+  current Pending/Done status per (brand, platform) via the same most-recently-updated-entry rule
+  `buildAgentIndex`/`buildCountryIndex` use, keyed via `BRAND_COLS` like the rest of that file —
+  deliberately no date component, since Pending has no date to anchor to (unlike Confirmed/Removed,
+  which match an entry's real add-date to one exact calendar day). New `isPendingStatus`/
+  `isDoneStatus` in `src/lib/scoreSummary.ts` are character-for-character mirrors of the
+  same-named functions already in `src/lib/queries.ts`. The overlay only applies on the real
+  current week (never a past/future week — "Pending right now" isn't meaningful for history) and
+  only onto a day that already has an active/paused plan slot for that brand+platform — it never
+  creates a chip where none exists. Exact-date Confirmed/Removed evidence still wins when both
+  would apply (`isPending`/`isDone` gated on `!hasDateEvidence`), so a cell shows at most one
+  badge. Deliberately not wired into the CSV/Excel export or landing-grid preview, matching the
+  existing Confirmed/Removed precedent there. Built via 4 subagent-driven-development tasks plus a
+  final whole-branch review (no findings — re-confirmed the `BRAND_COLS` usage,
+  `queries.ts` parity, and single-badge gating). Full suite (1272 tests, 9 new) and build both
+  pass; live-verified via Playwright on BITP/Alf Casino — set Pending then Done via Edit Entry,
+  confirmed both badges/tooltips render on the current week and neither leaks into the previous
+  week, confirmed an existing ✓/✕ cell is unaffected, reverted the test entry afterward. Spec:
+  `docs/superpowers/specs/2026-08-20-schedule-planner-pending-done-status-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-20-schedule-planner-pending-done-status.md`. Task 243.
+- *2026-08-18 (prior):* Add Brand Tab modal (self-service Brand Tab creation, Task 232) no
   longer forces Trust Pilot on as a disabled "always tracked" checkbox — every platform, including
   TP, is now an ordinary unchecked-by-default checkbox, and Wizard of Odds is a new fourth option
   alongside TP/AG/CG. `buildDynamicTabColumns` (`src/lib/dynamicTabRegistry.ts`) now appends TP's
