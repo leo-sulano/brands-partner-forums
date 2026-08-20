@@ -31,6 +31,7 @@ import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
 import Tooltip from './Tooltip';
 import { buildScheduleExportRows, SCHEDULE_EXPORT_HEADERS } from '../lib/scheduler/scheduleExport';
+import { subscribeEntries } from '../lib/realtime';
 import type { Entry } from '../types/entry';
 
 // Same red-X-superscript treatment as Brand Tabs' PlatformRemovedBadge, but
@@ -105,6 +106,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; day: Weekday } | null>(null);
   const { isApproved } = useAuth();
+
+  // Bumped by the live-entries subscription below on an INSERT (or any
+  // unrecognized event) to force a full tabCtx refetch — same fallback
+  // BrandGroup.tsx's own subscribeEntries consumer uses, since a brand-new
+  // row can introduce a brand/platform combination a targeted UPDATE/DELETE
+  // merge can't safely represent.
+  const [reloadSeq, setReloadSeq] = useState(0);
 
   const toolbarRef = useRef<HTMLDivElement>(null);
   const [toolbarHeight, setToolbarHeight] = useState(0);
@@ -193,7 +201,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return () => {
       canceled = true;
     };
-  }, [tab]);
+  }, [tab, reloadSeq]);
 
   // Schedule rows depend on both tab and week — this is the only fetch that
   // should re-run on Prev/Next/Today navigation.
@@ -300,21 +308,67 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
-  // Built once per tab load (off tabCtx.entries), not per render — see
-  // buildDateStatusIndex's own doc comment for why brand-key resolution here
-  // must match BRAND_COLS, not scoreSummary.ts's separate BRAND_KEYS.
+  // A live-patched copy of tabCtx.entries, read only by the two evidence
+  // indexes below (dateStatusIndex/currentStatusIndex) — kept deliberately
+  // separate from tabCtx itself so a live status change never touches
+  // tabCtx's own object identity. tabCtx feeds the scheduler-invocation
+  // effect above (recalculatePauses/ensureWeekGenerated), which writes to
+  // the database and pushes to PMS; that effect is designed to run once per
+  // tab visit, not on every live edit, so it deliberately keeps reading
+  // tabCtx.entries as loaded at mount rather than this live-updated copy.
+  // Re-synced from tabCtx.entries whenever tabCtx itself changes (a real
+  // tab switch or reload), so this never drifts out of sync with a fresh
+  // load — only the interim live patches below are ever lost, and only in
+  // the same narrow race a full refetch already has (see the INSERT/DELETE
+  // handling below).
+  const [liveEntries, setLiveEntries] = useState<Entry[]>([]);
+  useEffect(() => {
+    setLiveEntries(tabCtx?.entries ?? []);
+  }, [tabCtx]);
+
+  // Keeps the Confirmed/Removed/Pending/Done overlay current without a
+  // manual reload: an entry's status change (e.g. Check Status finishing,
+  // or another user editing it) merges straight into liveEntries, which
+  // dateStatusIndex/currentStatusIndex below both derive from. Mirrors
+  // BrandGroup.tsx's own subscribeEntries consumer exactly — UPDATE/DELETE
+  // patch the local list directly; INSERT (or any other event this doesn't
+  // recognize) falls back to a full tabCtx refetch via reloadSeq, since a
+  // brand-new row can introduce a brand/platform combination a targeted
+  // patch can't safely represent.
+  useEffect(() => {
+    return subscribeEntries((payload) => {
+      const tabOfChange = (payload.new?.tab ?? payload.old?.tab) as string | undefined;
+      if (tabOfChange && tabOfChange !== tab) return;
+
+      if (payload.eventType === 'UPDATE' && payload.new) {
+        const updated = payload.new as Entry;
+        setLiveEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+        return;
+      }
+      if (payload.eventType === 'DELETE' && payload.old) {
+        const deletedId = (payload.old as { id?: string }).id;
+        if (deletedId) setLiveEntries((prev) => prev.filter((e) => e.id !== deletedId));
+        return;
+      }
+      setReloadSeq((s) => s + 1);
+    });
+  }, [tab]);
+
+  // Built off liveEntries (not tabCtx.entries directly), not per render —
+  // see buildDateStatusIndex's own doc comment for why brand-key resolution
+  // here must match BRAND_COLS, not scoreSummary.ts's separate BRAND_KEYS.
   const dateStatusIndex = useMemo(
-    () => buildDateStatusIndex(tabCtx?.entries ?? []),
-    [tabCtx],
+    () => buildDateStatusIndex(liveEntries),
+    [liveEntries],
   );
 
-  // Built once per tab load off the same tabCtx.entries as dateStatusIndex
-  // above, but keyed by brand+platform only (no date) — see
-  // buildCurrentStatusIndex's own doc comment for why Pending/Done can't use
-  // the same exact-date matching Confirmed/Removed use.
+  // Built off the same liveEntries as dateStatusIndex above, but keyed by
+  // brand+platform only (no date) — see buildCurrentStatusIndex's own doc
+  // comment for why Pending/Done can't use the same exact-date matching
+  // Confirmed/Removed use.
   const currentStatusIndex = useMemo(
-    () => buildCurrentStatusIndex(tabCtx?.entries ?? []),
-    [tabCtx],
+    () => buildCurrentStatusIndex(liveEntries),
+    [liveEntries],
   );
 
   // Brand -> Country, for the same tooltip that shows Agent below (see
