@@ -33,7 +33,7 @@ Checked automatically once per tab visit, alongside the existing `pullScheduleDr
 
 ### 3. Data model: tracking what's already synced
 
-New nullable `synced_status` column on `schedule_pms_links` (migration `20260820130000_add_schedule_pms_links_synced_status.sql`), one of `'active' | 'pending' | 'done' | 'published' | 'removed'` (no `'paused'` value — a paused link is simply skipped, its `synced_status` stays whatever it last was). Set to `'active'` at insert time in `insertSchedulePmsLink` (`src/lib/queries.ts`) — a newly-created task already sits in To Do, which already matches, so no immediate move call is needed for a brand-new link.
+New nullable `synced_status` column on `schedule_pms_links` (migration `20260820130000_add_schedule_pms_links_synced_status.sql`), one of `'active' | 'pending' | 'done' | 'published' | 'removed'` (no `'paused'` value — a paused link is simply skipped, its `synced_status` stays whatever it last was). Defaults to `'active'` at the column level (`not null default 'active'`), covering both a newly-created link and every pre-existing row — a newly-created task already sits in To Do, which already matches, so no immediate move call is needed for a brand-new link, and no app-code change to `insertSchedulePmsLink` was needed.
 
 Without this column, every tab visit would re-issue a `move` API call for every linked task regardless of whether its status actually changed — `synced_status` lets the sync diff against "what PMS was last told" and only call the API for links whose resolved status has actually changed since the last successful sync.
 
@@ -42,15 +42,17 @@ Without this column, every tab visit would re-issue a `move` API call for every 
 `schedule_pms_links` already has an "anyone can read" RLS policy (`20260817120000_add_schedule_pms_links.sql`), so the browser computes target statuses itself rather than duplicating entry-evidence logic into the Deno edge function. `TabScheduleSection.tsx` already builds, once per tab load:
 
 - `dateStatusIndex` (`buildDateStatusIndex(liveEntries)`) — the same Removed/Confirmed/Pending/Done evidence the calendar renders from, keyed `brandKey::platform::date`, valid for *any* date, not just the currently-displayed week.
-- `weekPausesByPlatform` / pause state — scoped to whichever week is currently loaded.
+- `pauses` (`BrandPlatformPause[]`, fetched tab-wide via `fetchActiveBrandPlatformPauses`) — every currently-active scheduler auto-pause, each carrying its own `paused_week_start`. This is **not** scoped to whichever week happens to be displayed (an earlier draft of this section incorrectly assumed pauses had no date component at all) — a link's own week is computed independently via `weekdayAndWeekStartFor(link.date)` and matched against `paused_week_start` directly, so pause exclusion works correctly regardless of which week the user is currently viewing.
 
-The new sync step, run in the same `[tab]`-keyed effect as `pullScheduleDrift`:
+The new sync step, run in its own effect keyed on `[tab, dateStatusIndex, pauses, isApproved, scheduleLoading]` (gated on `!scheduleLoading` so it never runs against a stale, not-yet-populated `pauses` array):
 
 1. Fetch this tab's links via the existing `fetchSchedulePmsLinks(tab, supabase)`.
-2. For each link, resolve its status: check `dateStatusIndex` for that exact `brandKey::platform::date` (Removed > Confirmed > Pending > Done, matching the precedence above); if the link's date falls within the currently-loaded week and no evidence matched, check pause state — if paused, skip this link entirely (no sync, `synced_status` untouched); otherwise resolve to `'active'`.
-3. A link whose date falls outside the currently-loaded week and has no evidence match also resolves to `'active'` (pause state isn't available for weeks that aren't loaded — an accepted, narrow scope limit, harmless since it only affects the rare case of an un-evidenced day in a different week, which is `'active'` either way if not paused).
+2. For each link, first skip it entirely if its platform isn't in that brand's currently-allowed platform list (`brandPlatforms(link.brand)`, the same hidden/restricted/removed-platform-brand exclusion the calendar itself applies) — a combo the dashboard doesn't display anywhere must never move a PMS card either.
+3. Resolve its status: check `dateStatusIndex` for that exact `brandKey::platform::date` (Removed > Confirmed > Pending > Done, matching the precedence above); if no evidence matched, check whether a `pauses` row matches both the combo and the link's own week — if paused, skip this link entirely (no sync, `synced_status` untouched); otherwise resolve to `'active'`.
 4. Filter to links where the resolved status differs from `synced_status`.
 5. Send the filtered list (`{ linkId, pmsTaskId, targetStatus }[]`) to a new `pushScheduleStatusSync()` wrapper in `src/lib/schedulePmsSync.ts`, mirroring `pushScheduleActivations`'s fire-and-forget/catch-and-toast pattern exactly.
+
+**Known limitation, accepted:** this resolver only recognizes a *scheduler* auto-pause (`brand_platform_pause`), not a brand_schedule day manually cycled to `'paused'`, nor a day with no schedule row and no evidence at all — both of those currently resolve to `'active'` rather than being excluded. See CLAUDE.md's Known Issues for the full writeup and why this was deliberately scoped out rather than fixed in this pass.
 
 ### 5. Edge function / shared logic
 

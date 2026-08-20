@@ -61,7 +61,43 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-20 (newest):* Two same-day follow-ups to the Task 243 entry directly below, both
+- *2026-08-20 (newest):* Added a third, one-way PMS sync direction on top of the two Task 231
+  already shipped (push-on-activate creates a linked task; pull reconciles due-date/assignee
+  drift): a Schedule Planner cell's own real status (Removed/Confirmed-"Published"/Pending/Done/
+  plan-only Active) now moves its linked PMS task to a matching board column, so someone working
+  the PMS board can see status without opening the dashboard. Dashboard → PMS only — a human
+  moving a card in PMS never writes back to `brand_schedule` or the calendar. Column mapping
+  (IDs confirmed live against the real "Forum Team" PMS project): Published/Removed → Review/QA;
+  Pending/Done → In Progress; Active → To Do; Paused is excluded entirely (never moves). New pure
+  `resolvePmsSyncStatus` (`src/lib/scheduler/scheduleUtils.ts`) mirrors `ScheduleCell`'s own render
+  precedence exactly (`Removed > Confirmed > Pending > Done > Paused > Active`) so PMS can never
+  disagree with what the calendar shows for evidenced cells. New `not null default 'active'`
+  `synced_status` column on `schedule_pms_links` (migration
+  `20260820130000_add_schedule_pms_links_synced_status.sql`) records what PMS was last
+  successfully told, so the sync only calls the PMS move API for links whose resolved status
+  actually changed. Real logic lives in `syncScheduleStatusToPms()` (`src/lib/scheduler/pmsSync.ts`,
+  the same shared module `sync-schedule-pms`/`generate-weekly-schedule` already import), reached via
+  a new `action: 'syncStatus'` branch; a new `pushScheduleStatusSync()` browser wrapper
+  (`src/lib/schedulePmsSync.ts`) mirrors `pushScheduleActivations`'s fire-and-forget shape exactly;
+  wired into `TabScheduleSection.tsx` as a new effect alongside the existing `pullScheduleDrift`
+  call. Built via 5 subagent-driven-development tasks plus a final whole-branch review that caught
+  3 real bugs before shipping — the effect now waits on `scheduleLoading` so pause state isn't read
+  stale/empty on first render (it previously always would have been, since `pauses` starts empty and
+  only populates after a slower async chain), pause matching is scoped to the link's own week via
+  `paused_week_start` instead of matching across every week regardless of date (a correction to this
+  feature's own design doc, which had incorrectly claimed pauses carry no date component at all —
+  they do, and the calendar's own pause logic already used it), and links whose platform is
+  currently hidden/restricted/flagged-removed for that brand are now skipped, consistent with every
+  other Schedule Planner surface's existing exclusion rules. One known, deliberately-accepted gap:
+  the resolver only recognizes a *scheduler* auto-pause, not a `brand_schedule` day manually cycled
+  to `'paused'` nor a day with no schedule row and no evidence at all — both currently resolve to
+  `'active'` rather than being excluded (see Known Issues). Full suite (1309 tests) and build both
+  pass. **Not yet deployed** (see Known Issues for the exact checklist and a real risk this review
+  surfaced: the widened `fetchSchedulePmsLinks` select will break the already-live push/pull PMS
+  sync the moment this code deploys, until the migration is applied — deploy the migration first).
+  Spec: `docs/superpowers/specs/2026-08-20-schedule-planner-pms-status-sync-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-20-schedule-planner-pms-status-sync.md`. Task 247.
+- *2026-08-20 (prior):* Two same-day follow-ups to the Task 243 entry directly below, both
   reported live by the user. **Task 244:** Schedule Planner's Confirmed/Removed/Pending/Done
   overlay now updates live via a `subscribeEntries` (`src/lib/realtime.ts`) subscription in
   `TabScheduleSection.tsx` — the same Supabase realtime helper `BrandGroup.tsx` already uses —
@@ -1001,6 +1037,40 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+- **Pending manual deploy (2026-08-20, Task 247) — deploy order matters this time.** The Schedule
+  Planner → PMS status sync feature needs:
+  1. `supabase db push` (applies the `synced_status` migration) — **must happen before or
+     immediately alongside pushing this branch's frontend code to `main`/production.** The
+     whole-branch review found that `fetchSchedulePmsLinks`'s widened `select` (now including
+     `synced_status`) will make PostgREST reject the query outright (`42703`, unknown column) if the
+     migration hasn't been applied yet — and that function is already used by the two *existing*,
+     already-live PMS sync directions (push-on-activate, pull due-date/assignee drift), not just the
+     new feature. Until the migration lands, deploying this branch's frontend would silently break
+     both of those working features: every Brand Tab schedule visit would throw a pull-drift error
+     toast, and push-on-activate would stop creating PMS tasks with no visible error at all (the
+     Edge Function catches the failure per-item and still returns 200).
+  2. `supabase functions deploy sync-schedule-pms` (ships the new `syncStatus` action).
+  3. Confirm via `supabase functions list` (new version, `ACTIVE`).
+  No new Vercel env var needed — reuses the existing `VITE_SYNC_SCHEDULE_PMS_URL`. Live verification
+  (edit an entry to Published/Removed/Pending/Done, confirm the linked PMS card moves to the mapped
+  column; confirm a paused link never moves; confirm a second tab visit with no further status
+  change doesn't flap the task back) was not performed this session — deferred to whoever runs this
+  checklist, per this project's established pattern for undeployed PMS-sync changes.
+- **Schedule Planner → PMS status sync only recognizes scheduler auto-pause, not manual per-day
+  pause or "no schedule at all" (2026-08-20, Task 247, accepted scope limitation).**
+  `resolvePmsSyncStatus` (`src/lib/scheduler/scheduleUtils.ts`) takes a single `isPaused` boolean
+  sourced from `brand_platform_pause` (the automatic, success-rate-triggered weekly pause) — it
+  never looks at the day's own `brand_schedule` status. A link whose calendar cell was manually
+  cycled to "Paused (manual)" after its earlier real-entry evidence stopped matching (or a day with
+  no schedule row and no evidence at all) resolves to `'active'` rather than being excluded, so its
+  PMS card can get moved to To Do while the cell itself shows a manual-pause or blank state. This
+  was found by the same whole-branch review that caught the two pause bugs actually fixed before
+  shipping (see the Task 247 Recent Changes entry) — deliberately left as a known gap rather than
+  risking an incomplete fix under this project's "no second fix wave" review-process rule. Impact is
+  self-limiting: the card corrects itself the next time real evidence (Published/Removed/Pending/
+  Done) or a fresh scheduler pause applies to that link. Fix direction if ever needed: thread the
+  day's actual `DayStatus` (`'active' | 'paused' | null`) into the resolver alongside the existing
+  evidence/scheduler-pause inputs.
 - **`Login.tsx` has a real Rules-of-Hooks violation (found 2026-08-18, Task 233's live-verification
   pass, not fixed — unrelated to that task's actual scope).** Line 12,
   `if (session) return <Navigate to="/" replace />;`, runs before 7 more `useState`/`useEffect`
