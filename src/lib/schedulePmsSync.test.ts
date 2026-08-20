@@ -9,7 +9,7 @@ vi.mock('./supabase', () => ({
   SYNC_SCHEDULE_PMS_URL: 'https://example.com/sync-schedule-pms',
 }));
 
-import { pushScheduleActivations, pullScheduleDrift } from './schedulePmsSync';
+import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync } from './schedulePmsSync';
 
 const ITEM = { tab: 'BITP', tabLabel: 'TP Brand Injection', brand: 'WinMega', platform: 'tp' as const, date: '2026-08-20' };
 
@@ -63,5 +63,37 @@ describe('pullScheduleDrift', () => {
   it('throws on a non-OK response', async () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, json: async () => ({}) });
     await expect(pullScheduleDrift('BITP')).rejects.toThrow('Failed to pull PMS schedule updates.');
+  });
+});
+
+describe('pushScheduleStatusSync', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+    mockGetSession.mockResolvedValue({ data: { session: null } });
+  });
+
+  const STATUS_ITEM = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published' as const };
+
+  it('does nothing for an empty item list', async () => {
+    await pushScheduleStatusSync([]);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('posts action:syncStatus with the items and an auth header', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: true, json: async () => ({ synced: [STATUS_ITEM], failed: [] }) });
+    await pushScheduleStatusSync([STATUS_ITEM]);
+    expect(fetch).toHaveBeenCalledWith(
+      'https://example.com/sync-schedule-pms',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ apikey: 'test-anon-key', Authorization: expect.stringMatching(/^Bearer /) }),
+        body: JSON.stringify({ action: 'syncStatus', items: [STATUS_ITEM] }),
+      }),
+    );
+  });
+
+  it('throws on a non-OK response', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, json: async () => ({}) });
+    await expect(pushScheduleStatusSync([STATUS_ITEM])).rejects.toThrow('Failed to sync schedule status to PMS.');
   });
 });
