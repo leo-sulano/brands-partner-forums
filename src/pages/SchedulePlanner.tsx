@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
+import { tabDisplayName } from '../lib/tabs';
+import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAYS, WEEKDAY_LABELS, type BrandScheduleRow, type Weekday } from '../lib/scheduleBrands';
@@ -107,12 +108,14 @@ export default function SchedulePlanner() {
   // dynamic tab is created/deleted mid-session (src/lib/dynamicTabRegistry.ts),
   // and this is a long-lived page — a module-scope or useMemo([]) snapshot
   // would leave a newly-created tab missing from this dropdown until reload.
-  const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
+  // getActiveOperationalTabs() additionally drops any currently-paused tab —
+  // a paused tab can't be selected to view or generate its schedule.
+  const TAB_OPTS = getActiveOperationalTabs().map((t) => ({ value: t, label: tabDisplayName(t) }));
   const [selectedTabs, setSelectedTabs] = useState<string[]>(() => {
     try {
       const raw = sessionStorage.getItem(TABS_STORAGE_KEY);
       if (!raw) return [];
-      return raw.split(',').filter((t) => (OPERATIONAL_TABS as string[]).includes(t));
+      return raw.split(',').filter((t) => getActiveOperationalTabs().includes(t));
     } catch {
       return [];
     }
@@ -150,7 +153,7 @@ export default function SchedulePlanner() {
     (async () => {
       const agents = new Set<string>();
       await Promise.all(
-        OPERATIONAL_TABS.map(async (t) => {
+        getActiveOperationalTabs().map(async (t) => {
           try {
             const [rawEntries, assignmentRows] = await Promise.all([
               fetchRawEntriesByTab(t),
@@ -310,7 +313,7 @@ export default function SchedulePlanner() {
       const removedSet = buildRemovedPlatformBrandSet(removedRows);
       const weeks = previewWeekKey ? previewWeekKey.split(',') : [];
       const entries = await Promise.all(
-        OPERATIONAL_TABS.map(async (t) => {
+        getActiveOperationalTabs().map(async (t) => {
           try {
             const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek, agentAssignmentRows] = await Promise.all([
               fetchRawEntriesByTab(t),
@@ -441,7 +444,7 @@ export default function SchedulePlanner() {
 
       {showGrid ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {OPERATIONAL_TABS.map((t) => {
+          {getActiveOperationalTabs().map((t) => {
             const Icon = TAB_ICONS[t] ?? DEFAULT_TAB_ICON;
             const preview = previewByTab[t] ?? EMPTY_PREVIEW;
             const previewBrands = agentFilter.length === 0
