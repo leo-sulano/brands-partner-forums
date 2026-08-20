@@ -1,7 +1,7 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, setTabPlatformHidden, renameCustomTab, setToolbarFilters } from '../lib/queries';
+import { updateCustomTabPlatforms, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
 import {
   PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
@@ -12,6 +12,8 @@ import {
   TOOLBAR_FILTER_LIST, type ToolbarFilterKey,
 } from '../lib/tab-configs';
 import { validateNewTabName } from '../lib/tabValidation';
+import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
+import { useAuth } from '../contexts/AuthContext';
 
 interface Props {
   tabName: string;
@@ -20,7 +22,13 @@ interface Props {
 }
 
 export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props) {
+  const { isAdmin } = useAuth();
   const dynamic = isDynamicTab(tabName);
+  // Captured once at modal-open time: what to diff the Status select against
+  // on submit. Only pauseTab/unpauseTab actually change this feature's real
+  // state, so re-reading isTabPaused(tabName) later in the same render cycle
+  // would be redundant, not more correct.
+  const initialPaused = isTabPaused(tabName);
   // Checkbox universe: a dynamic tab can gain a genuinely new platform, so it
   // always offers all 4. A hardcoded tab's schema is permanently fixed — it
   // can only ever hide/show what it already has real columns for.
@@ -34,6 +42,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
   const [filters, setFilters] = useState<ToolbarFilterKey[]>(
     () => getEnabledToolbarFilters(tabName),
   );
+  const [status, setStatus] = useState<'active' | 'paused'>(initialPaused ? 'paused' : 'active');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,6 +107,16 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
       }
       await setToolbarFilters(currentTabName, filters);
       registerToolbarFilters([{ tab: currentTabName, enabled_filters: filters }]);
+      if (isAdmin) {
+        const wantsPaused = status === 'paused';
+        if (wantsPaused && !initialPaused) {
+          await pauseTab(currentTabName);
+          pauseTabLocally(currentTabName);
+        } else if (!wantsPaused && initialPaused) {
+          await unpauseTab(currentTabName);
+          unpauseTabLocally(currentTabName);
+        }
+      }
       onUpdated(isRename ? currentTabName : undefined);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update tab');
@@ -155,6 +174,23 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
               Unchecking a platform hides its columns and data — nothing is deleted, and re-checking it brings everything back.
             </p>
           </div>
+
+          {isAdmin && (
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as 'active' | 'paused')}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="active">Active</option>
+                <option value="paused">Paused</option>
+              </select>
+              <p className="mt-1 text-xs text-slate-400">
+                Paused tabs stay visible and fully usable here, but are excluded from Overview, Score Summary, Schedule Planner, and Ask AI.
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Toolbar Filters</label>
