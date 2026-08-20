@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import ScoreSummaryPanel from '../components/ScoreSummaryPanel';
 import { fetchAllEntries, fetchRemovedPlatformBrands } from '../lib/queries';
 import { buildRemovedPlatformBrandSet } from '../lib/removedPlatformBrands';
-import { OPERATIONAL_TABS } from '../lib/tabs';
+import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import type { Entry } from '../types/entry';
 
 export default function ScoreSummary() {
@@ -15,7 +15,7 @@ export default function ScoreSummary() {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    Promise.all([fetchAllEntries(OPERATIONAL_TABS), fetchRemovedPlatformBrands()])
+    Promise.all([fetchAllEntries(getActiveOperationalTabs()), fetchRemovedPlatformBrands()])
       .then(([entryRows, removedRows]) => {
         if (cancelled) return;
         setEntries(entryRows);

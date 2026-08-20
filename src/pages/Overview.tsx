@@ -18,7 +18,8 @@ import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
 import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
-import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
+import { tabToSlug, tabDisplayName } from '../lib/tabs';
+import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
@@ -501,7 +502,7 @@ export default function Overview() {
         .then(buildRemovedPlatformBrandSet)
         .catch(() => new Set<string>());
       const tabResults = (await Promise.all(
-        OPERATIONAL_TABS.map((tab) =>
+        getActiveOperationalTabs().map((tab) =>
           fetchTabKpis(
             tab,
             dateFrom || undefined,
@@ -533,7 +534,7 @@ export default function Overview() {
         .then(buildRemovedPlatformBrandSet)
         .catch(() => new Set<string>());
       const groups = (await Promise.all(
-        OPERATIONAL_TABS.map((tab) =>
+        getActiveOperationalTabs().map((tab) =>
           fetchBrandKpis(
             tab,
             dateFrom || undefined,
