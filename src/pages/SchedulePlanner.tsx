@@ -7,7 +7,7 @@ import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, currentWeekColumns, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -185,13 +185,15 @@ export default function SchedulePlanner() {
 
   // Every weekday in the picked range (uncapped) vs. what actually renders in
   // a landing-grid card — the difference drives that card's "+N more days"
-  // note. When no filter is set, this is just the real current week's 5
-  // weekdays. Also the uncapped source the platform-count strip sums over,
+  // note. When no filter is set, this is the week the Prev/Next/Today nav
+  // currently has selected (weekStart) — the same nav-controlled week
+  // specific-tab mode's own grid shows, so Prev/Next behaves identically in
+  // both modes. Also the uncapped source the platform-count strip sums over,
   // so a count can never undercount just because a preview table stopped
   // rendering columns.
   const allRangeColumns: ScheduleColumn[] = useMemo(
-    () => (hasDateFilter ? weekdayColumnsInRange(rangeFrom, rangeTo) : currentWeekColumns()),
-    [hasDateFilter, rangeFrom, rangeTo],
+    () => (hasDateFilter ? weekdayColumnsInRange(rangeFrom, rangeTo) : columnsForWeek(weekStart)),
+    [hasDateFilter, rangeFrom, rangeTo, weekStart],
   );
   const previewColumns = useMemo(
     () => (hasDateFilter ? allRangeColumns.slice(0, PREVIEW_DAY_LIMIT) : allRangeColumns),
@@ -387,6 +389,12 @@ export default function SchedulePlanner() {
 
   const displayedPlatformCounts = showGrid ? overviewPlatformCounts : selectedPlatformCounts;
   const displayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in displayedPlatformCounts);
+  // The week nav always drives specific-tab mode's grid. In overview mode it
+  // drives the no-filter default week too (see allRangeColumns above) — but
+  // once a date range is picked there, the range is already what governs the
+  // cards/counts, so paging weekStart would silently do nothing visible;
+  // disabled only for that one combination rather than for showGrid outright.
+  const navDisabled = showGrid && hasDateFilter;
 
   return (
     <div className="space-y-4">
@@ -470,11 +478,11 @@ export default function SchedulePlanner() {
           />
         </div>
 
-        <div className={`ml-auto flex items-center gap-2 ${showGrid ? 'opacity-50' : ''}`}>
+        <div className={`ml-auto flex items-center gap-2 ${navDisabled ? 'opacity-50' : ''}`}>
           <button
             type="button"
             onClick={() => setWeekStart((d) => addDays(d, -7))}
-            disabled={showGrid}
+            disabled={navDisabled}
             className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             aria-label="Previous week"
           >
@@ -486,7 +494,7 @@ export default function SchedulePlanner() {
           <button
             type="button"
             onClick={() => setWeekStart((d) => addDays(d, 7))}
-            disabled={showGrid}
+            disabled={navDisabled}
             className="p-1.5 rounded-md text-slate-500 hover:bg-slate-100 disabled:cursor-not-allowed disabled:hover:bg-transparent"
             aria-label="Next week"
           >
@@ -495,7 +503,7 @@ export default function SchedulePlanner() {
           <button
             type="button"
             onClick={() => setWeekStart(mondayOf(new Date()))}
-            disabled={showGrid}
+            disabled={navDisabled}
             className="text-sm text-blue-600 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:text-slate-400"
           >
             Today
