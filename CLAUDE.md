@@ -1037,6 +1037,41 @@ Brands Partner Forum/
 - *2026-05-15:* Initial scaffold. Vite + React + TS + Tailwind v4 + React Router + Recharts. Supabase schema + Edge Function stubs. Pages and components stubbed.
 
 ### Known Issues / Backlog
+
+- **Correction (2026-08-20, verified live against the real Supabase project): most of this
+  section's scattered "Pending manual deploy" bullets for `ai-assistant`, `generate-weekly-schedule`,
+  `sync-schedule-pms`, and `review-removal-assessment` are stale — the actual functions were deployed
+  at some point without this doc being updated (the same concurrent-session/no-worktree drift Task 246's
+  own Recent Changes entry already flagged for this exact period).** Verified directly via
+  `supabase functions list` and `supabase db query "select * from cron.job"` (read-only) rather than
+  trusted from any doc:
+  - `ai-assistant` — **ACTIVE, version 39** (redeployed just now, 2026-08-20, to close the one real gap
+    found: v38, deployed earlier the same day, predated Task 246's paused-tab exclusion). Current
+    behavior: correctly excludes archived tabs (Task 240) and paused tabs (Task 246), and resolves
+    agent ownership from `brand_agent_assignments` (Task 242). No longer a pending item.
+  - `generate-weekly-schedule` — **ACTIVE, version 8, deployed 2026-08-18.** The `generate-weekly-schedule-monday`
+    `pg_cron` job (`0 1 * * 1`) is **active** in the live database — the weekly auto-generation cron
+    described as "never deployed since Task 178" throughout this doc has in fact been running since
+    2026-08-18. Real remaining gap: this deployed version predates Task 240's archived-tab and Task 246's
+    paused-tab exclusion (both landed after 2026-08-18), so the Monday cron can still auto-generate a
+    schedule for an archived or paused tab until it's redeployed — a real, narrow, low-frequency gap
+    (only matters on a Monday for a tab archived/paused since 08-18), not a "feature doesn't exist" gap.
+  - `sync-schedule-pms` — **ACTIVE, version 12, deployed 2026-08-20 23:35 local**, which already
+    includes Task 247's `syncStatus` action and its final-review fixes. Backend is fully live for all
+    three sync directions (push, pull, status).
+  - `review-removal-assessment` — **ACTIVE, version 3, deployed 2026-08-14**, migration
+    `20260814150000_add_ai_review_analysis.sql` applied (confirmed via `supabase migration list`,
+    local matches remote through today's `20260820130000`, no pending migrations at all).
+  - **What's still genuinely pending, confirmed absent from both local `.env` and (as best determined
+    without Vercel CLI access in this session) production:** `VITE_SYNC_SCHEDULE_PMS_URL` and
+    `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` in Vercel. These are the *only* remaining blockers for the
+    Schedule Planner PMS sync (all 3 directions) and the AI Review-Removal Assessment button,
+    respectively — both backends are fully deployed and tested, waiting purely on these two frontend
+    env vars + a Vercel redeploy. Values: `https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/sync-schedule-pms`
+    and `https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/review-removal-assessment`.
+  Treat every "Pending manual deploy" bullet appearing *below* this note as potentially stale for the
+  same reason — verify against `supabase functions list`/`supabase migration list` before re-doing or
+  reporting on any of them, rather than trusting the bullet text alone.
 - **Pending manual deploy (2026-08-20, Task 247) — deploy order matters this time.** The Schedule
   Planner → PMS status sync feature needs:
   1. `supabase db push` (applies the `synced_status` migration) — **must happen before or
