@@ -5116,3 +5116,141 @@ Tuesday Aug 18 now shows the tooltip "AskGamblers: Pending" (matching Brand Tabs
 "Done"), and a full-page screenshot of the Rooster Partners week confirmed every P/D/✕ badge on
 Monday/Tuesday (both already-elapsed relative to today, Thursday Aug 20) renders at full opacity,
 not ghosted. Task 245.
+
+---
+
+## Task 246: Brand Tab Pause (Lightweight, Reversible Aggregation Exclusion)
+
+**Date:** August 20, 2026
+
+Added a second, deliberately lighter-weight whole-tab exclusion mechanism alongside the existing
+Brand Tab Archive feature (Task 240, one day earlier): an admin-only "Status" select (Active /
+Paused) inside the existing `EditBrandTabModal.tsx`. Archive and Pause are two different tools, not
+one feature with two names — confirmed interactively before building — and differ on every axis
+that matters: Archive is `isApproved`-gated, requires a reason plus a type-`yes` confirmation, hides
+the tab from the Sidebar entirely, blocks its own page with an "archived" message, and keeps a full
+audit trail restorable from Activity Log. Pause is `isAdmin`-only, a single instant toggle with no
+reason or confirmation, keeps the tab fully visible in the Sidebar (with a small "Paused" pill) and
+its own page fully functional (view/add/edit entries exactly as before), and tracks current state
+only — no history, no Activity Log entry. Pause's actual reach is the four cross-tab aggregation
+surfaces: Overview, Score Summary, Schedule Planner (grid, weekly cron, PMS push), and Ask AI —
+deliberately *not* the tab's own page, its tab-switcher dropdown, or either entry modal's tab
+picker, since pausing only means "stop counting this tab everywhere it gets aggregated," not "stop
+being able to work in it."
+
+**Data model.** New `paused_tabs` table (migration `d13be2f`): `tab text primary key`,
+`paused_by_email`, `paused_at` — a row's mere presence means paused, no `restored_at`-style column
+since there's no history to preserve. RLS: `is_approved()` can `select` (every consuming surface —
+Sidebar badge, the three aggregation pages — is reached by any approved user, not just admins);
+only `is_admin()` can `insert`/`delete`; deliberately **no** `UPDATE` policy, since a status change
+is always an insert (pause) or delete (unpause), never an update to an existing row.
+
+**`src/lib/pausedTabRegistry.ts`** (`b6ed5be`) is the one real architectural difference from
+`archivedTabRegistry.ts`: it deliberately does **not** splice paused tab names out of
+`OPERATIONAL_TABS` in place, because that mutation is exactly what makes a tab disappear from every
+one of `OPERATIONAL_TABS`'s ~12 readers — including the Sidebar, which is the one place this feature
+needs a paused tab to keep appearing. Instead it holds its own `pausedTabNames: Set<string>` and
+exposes `getActiveOperationalTabs()` (`OPERATIONAL_TABS.filter(t => !isTabPaused(t))`) as the one new
+export every aggregation surface switches to in place of reading `OPERATIONAL_TABS` directly.
+`pauseTabLocally`/`unpauseTabLocally` reuse the existing `tab-platforms-changed` window event
+(imported from `dynamicTabRegistry.ts`) rather than inventing a new one, so the Sidebar/Topbar
+already-mounted listeners re-render immediately with zero new listener code — live-confirmed working
+below. `queries.ts` (`667b6b6`) gained `pauseTab`/`unpauseTab`/`fetchPausedTabs`; `pauseTab` is a
+plain `insert` (not upsert) catching a `23505` unique-violation as a silent no-op, deliberately not
+an upsert since `tab` is the primary key and an `ON CONFLICT DO UPDATE` path needs `UPDATE`
+privilege this table's RLS intentionally never grants. `AuthContext.tsx` (`25ab74f`) fetches and
+applies paused tabs at bootstrap via the same fail-open `.catch(() => [])` pattern the other four
+bootstrap fetches already use.
+
+**UI reach.** `EditBrandTabModal.tsx` (`ccc3159`) renders the Status select only when `isAdmin` is
+true — a non-admin approved user's modal is pixel-identical to before this feature, confirmed both
+by reading the render gate and live below. Sidebar (`83ea5e5`) and Topbar (`5f1bc3d`) each gained a
+small "Paused" pill next to a paused tab's name/heading, driven by `isTabPaused(tab)`, with the
+tab's link/click behavior untouched. `Overview.tsx`/`ScoreSummary.tsx` (`4d2dc44`) and
+`SchedulePlanner.tsx`'s five call sites — the tab dropdown, the `sessionStorage`-restored
+tab-selection filter, the agent-list fetch loop, the preview-entries fetch loop, and the
+landing-grid per-tab preview cards (`8049dc0`) — all switched from `OPERATIONAL_TABS` to
+`getActiveOperationalTabs()`. `generate-weekly-schedule` (`406b6e4`, Deno, already pending its own
+deploy since Task 178) now resets/applies the paused-tab set every invocation (mirroring its
+existing dynamic-tab and archived-tab reset/register dance) and generates only for
+`getActiveOperationalTabs()` — code shipped now, deploy stays pending per the project's established
+practice for this function.
+
+**Ask AI** (`24f35a5`, `ecf3352`) mirrors the Archive precedent exactly via a new
+`fetchPausedTabNameSet` helper, added to the same filter point (`!archivedSet.has(e.tab) &&
+!pausedSet.has(e.tab)`) across all 7 tools that already excluded archived tabs (`list_tabs`,
+`query_entries`, `get_score_summary`, `get_success_rate_by_field`, `get_schedule`,
+`get_paused_combos`, `get_review_texts`). A useful side effect surfaced during Task 11's own review:
+Task 240's original Archive rollout had only ever added "archived" disclosure wording to
+`list_tabs`'s own tool description, not the other 6 tools its spec claimed would get it — a
+pre-existing gap in that already-shipped feature, not introduced by this task. Rather than leave the
+new "may be paused" wording asymmetric with the old "may be archived" wording on the same filtered
+result sets, all 6 remaining tool descriptions were given a symmetric "archived or paused" clause in
+the same commit, closing both gaps at once. 110/110 Deno tests pass (3 new). `supabase functions
+deploy ai-assistant` stays a documented pending manual step.
+
+Built via 11 subagent-driven-development tasks (Tasks 1-11 of
+`docs/superpowers/plans/2026-08-20-brand-tab-pause.md`) plus this final verification task (Task 12),
+all reviewed clean — zero fix-round dispatches needed except Task 11's own wording expansion above.
+One Important finding was deliberately parked, not fixed: renaming a paused **dynamic** tab without
+also changing Status in the same Edit Brand Tab submit leaves `pausedTabRegistry`'s in-memory
+`Set` stale (still holding the pre-rename name) until the next reload/re-login re-runs
+`AuthContext`'s bootstrap fetch — the `paused_tabs` **database** row itself renames correctly
+(`rename_custom_tab`'s RPC sweeps every table with a `tab` column, `paused_tabs` included), so this
+is transient client-side staleness that self-heals on the next session bootstrap, not a permanent
+orphaned record or any data loss. Cost if hit: a paused-then-renamed dynamic tab can briefly (same
+browser session only, until reload) still appear as active in Overview/Score Summary/Schedule
+Planner. Fixing it properly would need rename-awareness added to `pausedTabRegistry.ts` or
+`renameDynamicTab`/`renameCustomTab` — out of this plan's declared file scope, no downstream task
+depended on it, left as a known limitation.
+
+**Verification (this task).** `npm run test`: 1290 tests pass, 89 files, 0 failures. `npm run
+build`: clean, no TypeScript errors. `cd supabase/functions/ai-assistant && deno test --allow-env
+--allow-net`: 110/110 pass. `deno check supabase/functions/generate-weekly-schedule/index.ts`: no
+type errors. Live-verified end to end against the real production Supabase instance via Playwright,
+using the already-running dev server and the admin session from `.env`'s `CAPTURE_EMAIL` (already
+signed in as leo@optinetsolutions.com, confirmed admin by the Status field itself rendering): paused
+"GRG - Gulf Recovery Group" (14 entries, real low-traffic tab, same tab Task 240's own live
+verification used) via Edit Brand Tab; the Sidebar and Topbar both showed a "Paused" pill
+immediately with no reload, and the sidebar link stayed fully clickable. Opened GRG's own page while
+paused: all 14 entries still listed and browsable, "Add Review Account" opened its full form
+(tab picker still correctly defaulted to the paused GRG tab, confirming decision 3's "still
+receives new entries" reach), and clicking an existing entry ("Bari") opened a fully editable Edit
+Entry modal — both closed without submitting, to avoid writing throwaway data into this tab's real
+production dataset beyond the pause toggle itself. Confirmed GRG absent from Overview's Brands
+Performance list, absent from Score Summary's brand list, and absent from Schedule Planner's
+landing-grid preview cards — all three checked live, all three correctly missing only GRG among the
+12 tabs otherwise present. Unpaused GRG via the same modal (confirmed the select correctly
+re-initialized to "Paused" on reopen first); the "Paused" pill disappeared from Sidebar/Topbar with
+no reload, and GRG reappeared in Overview (14 total / 4 live / 10 removed / 28%, matching its own
+page's KPIs exactly) and in Schedule Planner's grid, again with no reload. A final direct REST query
+against `paused_tabs` (anon key) confirmed the table is empty — no residual paused state anywhere,
+including at the database level. Step 4 of the spec's live-verification checklist (confirming a
+**non-admin** approved user's Edit Brand Tab modal shows no Status field) was **not** live-verified —
+only one credential set (`leo@optinetsolutions.com`, admin) is available via this project's
+`.env`/`CAPTURE_EMAIL` convention, and no second non-admin account exists in this session; verified
+instead by reading `EditBrandTabModal.tsx`'s `isAdmin`-only render gate, itself already
+independently reviewed clean in Task 5.
+
+**Deliberately out of scope**, matching the spec's own Non-goals: no reason field, no confirmation
+step, no Activity Log entry or history of past pause/unpause events (current state only — a real,
+intentional difference from Archive, not an oversight); no per-brand-within-a-tab pausing.
+
+**Pending manual deploys** (both required before the paused-tab exclusion is actually live in either
+function — code is shipped, only the deploy step remains):
+1. `supabase functions deploy ai-assistant` — carries this plan's Task 11 changes (paused-tab
+   exclusion across all 7 tools, plus the symmetric archived/paused disclosure fix across 6 tool
+   descriptions).
+2. `supabase functions deploy generate-weekly-schedule` — already pending since Task 178
+   (2026-08-06); this plan's Task 10 added the paused-tab reset/apply/exclusion code to it but did
+   not deploy, consistent with every other change queued against this same still-undeployed
+   function (see its own dedicated Known Issues bullet for the full outstanding checklist).
+
+Note: 5 unrelated commits from a concurrent no-worktree session (Schedule Planner PMS status sync
+UI work, and the separate Task 243/245 Pending/Done status overlay entries above) landed on this
+same branch while this plan's tasks ran. Untouched, unreviewed, and out of scope for this task —
+consistent with this project's documented practice when multiple sessions share one branch with no
+worktree isolation.
+
+Spec: `docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md`. Plan:
+`docs/superpowers/plans/2026-08-20-brand-tab-pause.md`. Task 246.
