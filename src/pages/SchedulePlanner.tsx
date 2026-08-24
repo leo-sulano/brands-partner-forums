@@ -593,12 +593,12 @@ export default function SchedulePlanner() {
                                         {executedEntries.map(({ platform: p, kind }) => (
                                           <span
                                             key={p}
-                                            className={`relative inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
+                                            className={`relative inline-flex items-center gap-px rounded-[2px] px-px text-[6px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
                                           >
                                             <img
                                               src={PLATFORM_FAVICON[p]}
                                               alt={PLATFORM_BADGE[p].label}
-                                              className="size-2 rounded-[1px]"
+                                              className="size-1.5 rounded-[1px]"
                                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                             />
                                             {PLATFORM_BADGE[p].label}
@@ -607,7 +607,7 @@ export default function SchedulePlanner() {
                                         ))}
                                         {missed.map((p) => (
                                           <Tooltip key={p} content="Planned — no confirmed activity found">
-                                            <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 px-0.5 text-[7px] font-bold leading-tight text-slate-400">
+                                            <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 px-px text-[6px] font-bold leading-tight text-slate-400">
                                               {PLATFORM_BADGE[p].label}
                                             </span>
                                           </Tooltip>
