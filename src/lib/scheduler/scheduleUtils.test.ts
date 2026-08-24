@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -260,6 +260,44 @@ describe('buildDateStatusIndex', () => {
     const { removed, pending } = buildDateStatusIndex(entries);
     expect(removed.has('winmega::tp::2026-07-28')).toBe(true);
     expect(pending.has('winmega::tp::2026-07-28')).toBe(true);
+  });
+});
+
+describe('hasDateEvidence', () => {
+  const index: DateStatusIndex = {
+    removed: new Set(['winmega::tp::2026-08-20']),
+    confirmed: new Set(['winmega::ag::2026-08-20']),
+    pending: new Set(['winmega::cg::2026-08-20']),
+    done: new Set(['winmega::wo::2026-08-20']),
+  };
+
+  it('returns true when the key is in removed', () => {
+    expect(hasDateEvidence(index, 'winmega', 'tp', '2026-08-20')).toBe(true);
+  });
+
+  it('returns true when the key is in confirmed', () => {
+    expect(hasDateEvidence(index, 'winmega', 'ag', '2026-08-20')).toBe(true);
+  });
+
+  it('returns true when the key is in pending', () => {
+    expect(hasDateEvidence(index, 'winmega', 'cg', '2026-08-20')).toBe(true);
+  });
+
+  it('returns true when the key is in done', () => {
+    expect(hasDateEvidence(index, 'winmega', 'wo', '2026-08-20')).toBe(true);
+  });
+
+  it('returns false when the key is in none of the four sets', () => {
+    expect(hasDateEvidence(index, 'winmega', 'tp', '2026-08-21')).toBe(false);
+  });
+
+  it('returns false for a different brand on the same platform+date', () => {
+    expect(hasDateEvidence(index, 'otherbrand', 'tp', '2026-08-20')).toBe(false);
+  });
+
+  it('returns false against a completely empty index', () => {
+    const empty: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set() };
+    expect(hasDateEvidence(empty, 'winmega', 'tp', '2026-08-20')).toBe(false);
   });
 });
 

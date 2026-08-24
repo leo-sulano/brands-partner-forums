@@ -142,6 +142,16 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   return { removed, confirmed, pending, done };
 }
 
+// True if a real entry's status gives brandKey+platform+iso evidence of
+// something actually happening on that exact day — any of
+// Removed/Confirmed(Published)/Pending/Done. Shared by the landing-grid
+// preview cards and countActivePlatformSlots below so "executed" can't mean
+// two different things in two places.
+export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platform: Platform, iso: string): boolean {
+  const key = `${brandKey}::${platform}::${iso}`;
+  return index.removed.has(key) || index.confirmed.has(key) || index.pending.has(key) || index.done.has(key);
+}
+
 export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed';
 
 // Resolves the status that should be reflected onto a linked PMS task for one
