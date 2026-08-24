@@ -22,6 +22,9 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
 import Tooltip from '../components/Tooltip';
+import { subscribeEntries } from '../lib/realtime';
+import type { Entry } from '../types/entry';
+import type { BrandAgentAssignmentRow } from '../lib/queries';
 
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
@@ -53,6 +56,17 @@ interface TabPreview {
   // actually happen" instead of only reading the plan. Same DateStatusIndex
   // shape/keying TabScheduleSection.tsx already builds for its own badges.
   dateStatusIndex: DateStatusIndex;
+  // Retained (not just consumed at fetch time) so the live-entries subscription
+  // below can patch a single changed row and recompute brands/agentIndex/
+  // dateStatusIndex without re-fetching the whole tab — same "patch locally,
+  // full refetch only on INSERT" shape TabScheduleSection.tsx's own
+  // subscribeEntries consumer already uses (Task 244), applied here so a
+  // same-session status change (Check Status finishing, another user editing
+  // an entry) shows up on the landing-grid preview live instead of only after
+  // the next visit to this page.
+  rawEntries: Entry[];
+  headers: string[];
+  agentAssignmentRows: BrandAgentAssignmentRow[];
 }
 
 const EMPTY_PREVIEW: TabPreview = {
@@ -64,7 +78,34 @@ const EMPTY_PREVIEW: TabPreview = {
   scheduleRows: [],
   agentIndex: new Map(),
   dateStatusIndex: buildDateStatusIndex([]),
+  rawEntries: [],
+  headers: [],
+  agentAssignmentRows: [],
 };
+
+// The subset of a TabPreview that depends only on that tab's raw entries (plus
+// its already-fetched, rarely-changing headers/agent-assignments/platform
+// context) — factored out so both the initial full fetch and the live
+// subscription's per-row patch below compute brands/agentIndex/dateStatusIndex
+// exactly the same way and can never drift from each other.
+function deriveEntryDependentPreview(
+  tab: string,
+  rawEntries: Entry[],
+  headers: string[],
+  agentAssignmentRows: BrandAgentAssignmentRow[],
+  activePlatforms: Platform[],
+  hiddenSet: Set<string>,
+  restrictionMap: Map<string, Platform>,
+  removedSet: Set<string>,
+): Pick<TabPreview, 'brands' | 'agentIndex' | 'dateStatusIndex'> {
+  return {
+    brands: deriveTabBrands(tab, rawEntries, headers).filter(
+      (b) => resolveBrandPlatforms(tab, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
+    ),
+    agentIndex: buildResolvedAgentIndex(rawEntries, agentAssignmentRows, activePlatforms),
+    dateStatusIndex: buildDateStatusIndex(rawEntries),
+  };
+}
 
 export default function SchedulePlanner() {
   // Recomputed on every render (deliberately not memoized, and deliberately
@@ -306,12 +347,18 @@ export default function SchedulePlanner() {
             const activePlatforms = getTabPlatforms(t);
             const hiddenSet = buildHiddenBrandSet(hiddenRows);
             const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
-            const agentIndex = buildResolvedAgentIndex(rawEntries, agentAssignmentRows, activePlatforms);
-            const dateStatusIndex = buildDateStatusIndex(rawEntries);
-            const brands = deriveTabBrands(t, rawEntries, headers).filter(
-              (b) => resolveBrandPlatforms(t, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
-            );
-            const preview: TabPreview = { brands, activePlatforms, hiddenSet, restrictionMap, removedSet, scheduleRows: scheduleRowsPerWeek.flat(), agentIndex, dateStatusIndex };
+            const derived = deriveEntryDependentPreview(t, rawEntries, headers, agentAssignmentRows, activePlatforms, hiddenSet, restrictionMap, removedSet);
+            const preview: TabPreview = {
+              ...derived,
+              activePlatforms,
+              hiddenSet,
+              restrictionMap,
+              removedSet,
+              scheduleRows: scheduleRowsPerWeek.flat(),
+              rawEntries,
+              headers,
+              agentAssignmentRows,
+            };
             return [t, preview] as const;
           } catch {
             return [t, EMPTY_PREVIEW] as const;
@@ -326,6 +373,79 @@ export default function SchedulePlanner() {
       canceled = true;
     };
   }, [showGrid, previewWeekKey]);
+
+  // Keeps the landing-grid cards' status badges current without a manual
+  // reload or re-visit — mirrors TabScheduleSection.tsx's own subscribeEntries
+  // consumer (Task 244) exactly, just fanned out across every tab shown here
+  // instead of one: an UPDATE/DELETE patches that tab's stored rawEntries and
+  // recomputes brands/agentIndex/dateStatusIndex via the same
+  // deriveEntryDependentPreview helper the initial fetch above uses, so the
+  // two can never compute a card's evidence badges differently; an INSERT (or
+  // any other event this doesn't recognize) re-fetches that one tab's raw
+  // entries/headers/agent-assignments, since a brand-new row can introduce a
+  // brand or Agent value a targeted patch can't safely represent. Only
+  // subscribed while the grid itself is visible — a selected tab's own
+  // TabScheduleSection already keeps itself live independently.
+  useEffect(() => {
+    if (!showGrid) return;
+    return subscribeEntries((payload) => {
+      const tab = (payload.new?.tab ?? payload.old?.tab) as string | undefined;
+      if (!tab) return;
+
+      if (payload.eventType === 'UPDATE' && payload.new) {
+        const updated = payload.new as Entry;
+        setPreviewByTab((prev) => {
+          const preview = prev[tab];
+          if (!preview) return prev;
+          const rawEntries = preview.rawEntries.map((e) => (e.id === updated.id ? updated : e));
+          const derived = deriveEntryDependentPreview(
+            tab, rawEntries, preview.headers, preview.agentAssignmentRows,
+            preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+          );
+          return { ...prev, [tab]: { ...preview, ...derived, rawEntries } };
+        });
+        return;
+      }
+      if (payload.eventType === 'DELETE' && payload.old) {
+        const deletedId = (payload.old as { id?: string }).id;
+        if (!deletedId) return;
+        setPreviewByTab((prev) => {
+          const preview = prev[tab];
+          if (!preview) return prev;
+          const rawEntries = preview.rawEntries.filter((e) => e.id !== deletedId);
+          const derived = deriveEntryDependentPreview(
+            tab, rawEntries, preview.headers, preview.agentAssignmentRows,
+            preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+          );
+          return { ...prev, [tab]: { ...preview, ...derived, rawEntries } };
+        });
+        return;
+      }
+
+      // INSERT or unrecognized — refetch just this tab's entry-dependent state.
+      (async () => {
+        try {
+          const [rawEntries, headers, agentAssignmentRows] = await Promise.all([
+            fetchRawEntriesByTab(tab),
+            fetchTabHeaders(tab),
+            fetchBrandAgentAssignments(tab).catch(() => []),
+          ]);
+          setPreviewByTab((prev) => {
+            const preview = prev[tab];
+            if (!preview) return prev;
+            const derived = deriveEntryDependentPreview(
+              tab, rawEntries, headers, agentAssignmentRows,
+              preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+            );
+            return { ...prev, [tab]: { ...preview, ...derived, rawEntries, headers, agentAssignmentRows } };
+          });
+        } catch {
+          // best-effort — a failed live refresh just leaves that tab's card
+          // showing its last-known state until the next full grid load
+        }
+      })();
+    });
+  }, [showGrid]);
 
   // A tab's preview brands narrowed to the Agent filter — shared by the
   // platform-count aggregation below and the landing-grid card render loop,
@@ -569,17 +689,29 @@ export default function SchedulePlanner() {
                                 </td>
                                 {allRangeColumns.map((col) => {
                                   const isPast = col.iso < todayISO;
+                                  const isToday = col.iso === todayISO;
                                   const planActive = (p: Platform) =>
                                     scheduleFor(preview.scheduleRows, t, brand, col.weekStartISO, p)?.[col.weekday] === 'active';
                                   // Past days require real evidence to show a normal chip at all
-                                  // (regardless of what the plan said); today/future days stay
-                                  // plan-only, since the day hasn't happened yet — so they carry no
-                                  // evidence kind, and therefore no status corner badge.
+                                  // (regardless of what the plan said). Today shows a chip for every
+                                  // platform that's either planned or already has real evidence —
+                                  // Published/Removed/Pending/Done can land same-day (Check Status or
+                                  // a manual Edit Entry save), and the detailed tab view's own
+                                  // ScheduleCell already layers evidence onto today's chip regardless
+                                  // of whether the day has fully elapsed; this preview previously only
+                                  // checked evidence once a day was strictly in the past, so a same-day
+                                  // status change showed in the tab view but not here until the next
+                                  // day. Future days stay plan-only, since nothing could have happened
+                                  // yet.
                                   const executedEntries: { platform: Platform; kind: DateEvidenceKind | null }[] = isPast
                                     ? brandPlatforms
                                         .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
                                         .filter((e): e is { platform: Platform; kind: DateEvidenceKind } => e.kind !== null)
-                                    : brandPlatforms.filter((p) => planActive(p)).map((p) => ({ platform: p, kind: null }));
+                                    : isToday
+                                      ? brandPlatforms
+                                          .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
+                                          .filter((e) => e.kind !== null || planActive(e.platform))
+                                      : brandPlatforms.filter((p) => planActive(p)).map((p) => ({ platform: p, kind: null }));
                                   // A past day the plan called active but no entry ever confirmed —
                                   // a real operational miss, shown distinctly rather than silently
                                   // dropped (a day with no plan and no evidence renders nothing, same
