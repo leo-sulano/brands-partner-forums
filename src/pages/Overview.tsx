@@ -549,6 +549,9 @@ export default function Overview() {
 
   const [view, setView] = useState<'tabs' | 'brands'>('tabs');
   const [brandState, setBrandState] = useState<BrandState>({ loading: false, error: null, groups: [] });
+  const [hoveredTabCard, setHoveredTabCard] = useState<string | null>(null);
+  const [hoveredBrandCard, setHoveredBrandCard] = useState<string | null>(null);
+  const [hoveredPlatformCard, setHoveredPlatformCard] = useState<string | null>(null);
 
   const loadBrandData = useCallback(async () => {
     setBrandState((s) => ({ ...s, loading: true, error: null }));
@@ -877,12 +880,22 @@ export default function Overview() {
             : visibleTabs.map(({ tab, kpis }) => {
                 const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
                 const tabHref = `/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`;
+                const isHovered = hoveredTabCard === tab;
+                const isDimmed = hoveredTabCard !== null && !isHovered;
 
                 return (
                   <div
                     key={tab}
                     style={{ minHeight: 132 }}
-                    className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg"
+                    onMouseEnter={() => setHoveredTabCard(tab)}
+                    onMouseLeave={() => setHoveredTabCard(null)}
+                    className={`relative flex flex-col justify-between gap-1.5 rounded-lg border bg-white px-4 py-3 shadow-sm transition-all duration-200 ${
+                      isHovered
+                        ? 'z-10 scale-110 border-blue-300 bg-[#eef1fa] shadow-lg'
+                        : isDimmed
+                          ? 'scale-95 border-slate-200 opacity-60'
+                          : 'border-slate-200'
+                    }`}
                   >
                     <Link to={tabHref} className="group flex items-center justify-between gap-2 rounded">
                       <div className="flex min-w-0 items-center gap-2">
@@ -968,8 +981,23 @@ export default function Overview() {
                       )}
                     </div>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-                      {brands.map(({ brand, kpis }) => (
-                        <div key={brand} className="flex flex-col justify-between gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg">
+                      {brands.map(({ brand, kpis }) => {
+                        const brandKey = `${tab}::${brand}`;
+                        const isHovered = hoveredBrandCard === brandKey;
+                        const isDimmed = hoveredBrandCard !== null && hoveredBrandCard.startsWith(`${tab}::`) && !isHovered;
+                        return (
+                        <div
+                          key={brand}
+                          onMouseEnter={() => setHoveredBrandCard(brandKey)}
+                          onMouseLeave={() => setHoveredBrandCard(null)}
+                          className={`relative flex flex-col justify-between gap-1.5 rounded-lg border bg-white px-4 py-3 shadow-sm transition-all duration-200 ${
+                            isHovered
+                              ? 'z-10 scale-110 border-blue-300 bg-[#eef1fa] shadow-lg'
+                              : isDimmed
+                                ? 'scale-95 border-slate-200 opacity-60'
+                                : 'border-slate-200'
+                          }`}
+                        >
                           <div className="flex items-center justify-between gap-2">
                             <Link to={brandRowHref(tab, brand)} className="truncate text-sm font-medium text-slate-800 hover:text-blue-600">
                               {brand}
@@ -990,7 +1018,8 @@ export default function Overview() {
                             ))}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -1032,6 +1061,10 @@ export default function Overview() {
                   live={p.Live}
                   removed={p.Removed}
                   onSliceClick={(kind) => openPlatformSlice(p.name, kind)}
+                  isHovered={hoveredPlatformCard === p.name}
+                  isDimmed={hoveredPlatformCard !== null && hoveredPlatformCard !== p.name}
+                  onHoverStart={() => setHoveredPlatformCard(p.name)}
+                  onHoverEnd={() => setHoveredPlatformCard(null)}
                 />
               ))}
             </div>

@@ -5318,6 +5318,8 @@ Spec: `docs/superpowers/specs/2026-08-20-schedule-planner-pms-status-sync-design
 
 ---
 
+## Task 248: Schedule Planner — Paused Week No Longer Blocks Per-Day Manual Scheduling
+
 *2026-08-21:* Fixed a Schedule Planner usability gap the user reported live: once the scheduler
 auto-pauses a brand+platform for the week (a `brand_platform_pause` row), every day cell for that
 platform rendered a dimmed, non-clickable "Paused (scheduler)" placeholder with no way to click
@@ -5341,6 +5343,8 @@ session. Task 248.
 
 ---
 
+## Task 249: Overview Breakdown Sort Toggle (Success Rate / Total)
+
 *2026-08-24:* Added a sort toggle ("Success Rate" / "Total") to Overview's Country Breakdown and
 Proxy Breakdown section headers, per a user request/mockup — both charts previously always sorted
 by published rate with no way to switch to sorting by volume. `topNWithOther` (`src/lib/
@@ -5360,6 +5364,8 @@ descending, and Proxy Breakdown's "No Proxy" card (highest total, 1,325) correct
 last under volume sort rather than jumping to the top. Task 249.
 
 ---
+
+## Task 250: Schedule Planner Landing Grid — Executed-Only Preview
 
 *2026-08-24 (later):* Schedule Planner's landing-grid preview (the multi-tab card view at
 `/schedule-planner` shown when no tab is selected) and its platform-count strip now gate PAST
@@ -5410,6 +5416,8 @@ worth a follow-up re-check mid-week. Spec:
 
 ---
 
+## Task 251: Schedule Planner Landing Grid — Evidence-Type Corner Badges
+
 *2026-08-24 (later still):* Follow-up to Task 250, same day, reported live via a screenshot: the
 executed chips Task 250 added to Schedule Planner's landing-grid preview all looked visually
 identical regardless of which of the four evidence types (Removed/Confirmed/Pending/Done) backed
@@ -5437,6 +5445,8 @@ extension of Task 250's already-shipped feature, implemented directly with TDD a
 pass. Task 251.
 
 ---
+
+## Task 252: Check Status Health Audit + On Pause/Not Done Message Fix
 
 *2026-08-24 (later still):* Full health audit of Check Status (TP/AG/CG/WO), requested directly by
 the user to confirm the feature still works correctly after the large Schedule Planner/PMS change
@@ -5483,6 +5493,8 @@ no spec/plan doc. Task 252.
 
 ---
 
+## Task 253: Check Status — Confirm Before Silently Widening to Unscoped Sweep
+
 *2026-08-24 (later still):* Follow-up to Task 252, same session: closed the "No Proxy" precedent's
 own caveat surfaced during the Check Status audit — selecting 2+ values for Status/Agent/Proxy/
 Country (or a lone "No Proxy") silently widened a Check Status run to an unscoped sweep with no
@@ -5505,6 +5517,8 @@ tests, unchanged) and build both pass. No spec/plan doc — a small, user-select
 options presented and picked directly), implemented with one self-review pass. Task 253.
 
 ---
+
+## Task 254: Check Status — Real Multi-Value Scoping for Status/Agent/Proxy/Country
 
 *2026-08-24 (later still):* Extended Check Status to support real multi-value scoping for Status/
 Agent/Proxy/Country — the user asked directly for this after Task 253's confirm-before-widening
@@ -5562,6 +5576,8 @@ dated correction note. Task 254.
 
 ---
 
+## Task 255: Schedule Planner → PMS Status Sync — Pending/Done Now Route to Review/QA
+
 *2026-08-24 (later still):* Changed the Schedule Planner → PMS status-sync column mapping
 (`src/lib/scheduler/pmsSync.ts`'s `PMS_STATUS_COLUMN_IDS`, feeding `syncScheduleStatusToPms`,
 Task 247) per a direct user request: Pending and Done now move a linked task to Review/QA instead
@@ -5580,3 +5596,77 @@ Deployed the same session (`supabase functions deploy sync-schedule-pms`, versio
 `ACTIVE` via `supabase functions list`) since this logic is the shared module the already-live
 Edge Function imports — the new mapping is live in production immediately, no further manual step
 needed. Task 255.
+
+---
+
+## Task 256: Schedule Planner Topbar Title + Landing-Grid Chip Sizing Fix
+
+*2026-08-24 (later still):* Two small live-reported fixes to Schedule Planner. Topbar fell through
+to the default "Brands Partner Forum" title on `/schedule-planner` since `Topbar.tsx` had no route
+case matching that path — added one. Also shrunk the platform badge chips (icon/text/padding) in the
+landing-grid preview cards (Task 228/250/251), since they'd grown too large for the mini per-day
+cells at that card size; the full per-tab detailed calendar view (`TabScheduleSection.tsx`) is
+unaffected. Tier 1 (fast path) — cosmetic, confined to `Topbar.tsx` and one card-preview component in
+`SchedulePlanner.tsx`. Build passes; no schema/logic change. Task 256.
+
+---
+
+## Task 257: Schedule Planner Landing Grid — Live Same-Day Status Detection
+
+*2026-08-24 (later still):* Fixed a gap in Task 250/251's executed-only preview: the landing-grid
+cards only checked real entry evidence (Published/Removed/Pending/Done) for days strictly before
+today, so a status change landing today (e.g. a Check Status run marking an entry Done, or an Edit
+Entry save) showed correctly in the detailed per-tab calendar view but never appeared on the
+landing-grid preview until the next day. Evidence is now also checked for today's date, and a new
+`subscribeEntries` live subscription — the same Supabase realtime helper `TabScheduleSection.tsx`
+already uses per Task 244 — keeps the grid's badges current without a page reload. Full suite
+(1330+ tests) and build both pass. Task 257.
+
+---
+
+## Task 258: Sidebar Route Prefetch on Hover/Focus
+
+*2026-08-24 (later still):* Performance fix: every route page is code-split via `React.lazy`, so the
+first visit to any page each session showed the app-level loading skeleton while its JS chunk
+downloaded — noticeable on a fresh session's first click into any page besides the initial route.
+Sidebar links now trigger the same dynamic `import()` on hover/focus (deduped by the browser's module
+loader, shared with `App.tsx`'s own `lazy()` calls via a new `src/lib/routeChunks.ts` module holding
+one import-function-per-route), so by the time a user actually clicks a sidebar link, its chunk has
+usually already finished loading in the background. No visible UI change; pure prefetch-timing
+improvement. Build passes. Task 258.
+
+---
+
+## Task 259: Remove Duplicate Page-Level Headings (Schedule Planner, Log, Ask AI)
+
+*2026-08-24 (later still):* Schedule Planner, Activity Log, and Ask AI each rendered their own `<h1>`
+page title in addition to the Topbar's title (Task 256, directly above, made Schedule Planner's
+Topbar title correct — this fix removes the now-redundant second heading it exposed), unlike
+Overview/Score Summary/Brand Tabs, which already rely on the Topbar alone for their page title. Tier
+1 (fast path) — cosmetic, three isolated `<h1>` removals, no shared logic touched. Build passes. Task
+259.
+
+---
+
+## Task 260: Overview Card Grids — Hover-to-Zoom with Sibling Shrink
+
+*2026-08-24 (later still):* Added a hover interaction to every card-grid section on Overview, per a
+live screenshot request: hovering one card now scales it up (scale-110, blue border, shadow, raised
+z-index) while every other card in that same grid simultaneously shrinks (scale-95) and dims
+(opacity-60), instead of each card only reacting independently to its own `:hover`. Covers Brands
+Performance (both the Brand Tabs grid and, scoped per-tab-group via a `${tab}::${brand}` key so
+hovering one tab's brands doesn't shrink another tab's, the Brands view), Platform Breakdown's 4
+donut cards, and Proxy Breakdown's stat-tile grid — all state lifted to plain `useState` (per grid,
+since only one grid renders at a time in each view) rather than a shared hook, kept simple since no
+other page needs this. Country Breakdown was deliberately left untouched — it renders as a stacked
+ranked list (`BreakdownRankedList`), not a grid of independent boxes, so a "zoom" effect doesn't fit
+that layout; its existing row-highlight hover is unchanged. `BreakdownDonutCard`/`BreakdownStatGrid`
+confirmed via grep to have no importers besides `Overview.tsx`, so extending their hover behavior
+carries no cross-page risk. `Tooltip.tsx` (used dashboard-wide) gained two new optional
+`onMouseEnter`/`onMouseLeave` props, fired alongside its own show/hide, purely additive with no
+existing call site passing them — needed so `BreakdownDonutCard`'s outer element (already a `Tooltip`
+trigger) could report hover to its parent without a second wrapping div duplicating its border/shadow.
+Tier 1 (fast path) — cosmetic/interaction-only, no data or shared business logic touched. Build passes;
+live-verified via Playwright against the local dev server across all three sections (hovered card
+enlarges, siblings shrink/dim, no clipping/overlap/layout shift, Recharts donut content scales
+cleanly). Task 260.

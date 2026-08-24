@@ -10,6 +10,13 @@ export interface BreakdownDonutCardProps {
   live: number;
   removed: number;
   onSliceClick?: (kind: 'live' | 'removed') => void;
+  // Optional sibling-shrink hover control, lifted to the parent grid so
+  // hovering one card can dim/shrink the others — omit to fall back to the
+  // card's own independent CSS :hover (no siblings affected).
+  isHovered?: boolean;
+  isDimmed?: boolean;
+  onHoverStart?: () => void;
+  onHoverEnd?: () => void;
 }
 
 export default function BreakdownDonutCard({
@@ -20,6 +27,10 @@ export default function BreakdownDonutCard({
   live,
   removed,
   onSliceClick,
+  isHovered,
+  isDimmed,
+  onHoverStart,
+  onHoverEnd,
 }: BreakdownDonutCardProps) {
   const total = live + removed;
   const slices = total > 0
@@ -35,7 +46,15 @@ export default function BreakdownDonutCard({
     <AppTooltip
       block
       content={onSliceClick ? undefined : 'Aggregate of remaining values — not individually broken out'}
-      className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg"
+      onMouseEnter={onHoverStart}
+      onMouseLeave={onHoverEnd}
+      className={`relative rounded-xl border bg-white px-5 py-4 shadow-sm transition-all duration-200 ${
+        isHovered
+          ? 'z-10 scale-110 border-blue-300 bg-[#eef1fa] shadow-lg'
+          : isDimmed
+            ? 'scale-95 border-slate-200 opacity-60'
+            : 'border-slate-200 hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg'
+      }`}
     >
       <div className="mb-4 flex items-center gap-2.5">
         <div

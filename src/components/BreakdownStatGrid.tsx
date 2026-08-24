@@ -1,4 +1,4 @@
-import type { ReactNode, KeyboardEvent, MouseEvent } from 'react';
+import { useState, type ReactNode, type KeyboardEvent, type MouseEvent } from 'react';
 import { successRateTier } from './SuccessRateBadge';
 import Tooltip, { useTooltip } from './Tooltip';
 
@@ -55,6 +55,7 @@ export interface BreakdownStatGridProps {
 // (proxy names) where a quick side-by-side percentage scan matters more
 // than precise ratio comparison across many rows.
 export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   return (
     <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
       {tiles.map((tile) => {
@@ -72,6 +73,8 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
         // the bar/legend's own explicit live-vs-removed choice — inner
         // interactive elements stop propagation so a legend/bar click
         // isn't immediately overridden by the tile's own default handler.
+        const isHovered = hoveredKey === tile.key;
+        const isDimmed = hoveredKey !== null && !isHovered;
         return (
           <div
             key={tile.key}
@@ -84,7 +87,15 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
                 tile.onTileClick('live');
               }
             }}
-            className={`flex flex-col items-center rounded-xl border border-slate-200 bg-white px-3 py-4 text-center shadow-sm transition-all duration-200 ${tile.muted ? 'bg-slate-50/60' : ''} ${tile.onTileClick ? 'cursor-pointer hover:-translate-y-0.5 hover:scale-[1.015] hover:border-blue-300 hover:bg-[#eef1fa] hover:shadow-lg' : ''}`}
+            onMouseEnter={() => setHoveredKey(tile.key)}
+            onMouseLeave={() => setHoveredKey(null)}
+            className={`relative flex flex-col items-center rounded-xl border bg-white px-3 py-4 text-center shadow-sm transition-all duration-200 ${tile.muted ? 'bg-slate-50/60' : ''} ${tile.onTileClick ? 'cursor-pointer' : ''} ${
+              isHovered
+                ? 'z-10 scale-110 border-blue-300 bg-[#eef1fa] shadow-lg'
+                : isDimmed
+                  ? 'scale-95 border-slate-200 opacity-60'
+                  : 'border-slate-200'
+            }`}
           >
             <div
               className="mb-2 flex size-8 shrink-0 items-center justify-center rounded-full"

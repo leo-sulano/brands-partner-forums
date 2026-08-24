@@ -11,6 +11,12 @@ interface Props {
   // themselves block-level — a whole card, a table cell — where the default
   // inline-flex would shrink them to content width and break the layout.
   block?: boolean;
+  // Fired alongside (not instead of) the tooltip's own show/hide — lets a
+  // caller whose trigger IS the styled card (e.g. BreakdownDonutCard) track
+  // hover for its own purposes, like a sibling-shrink effect, without a
+  // second wrapper element that would duplicate the card's border/shadow.
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
 }
 
 const VIEWPORT_MARGIN = 8;
@@ -84,7 +90,7 @@ export function useTooltip(content: ReactNode) {
 // overflow-hidden (e.g. KpiCard's rounded-corner clipping). Position is
 // measured and re-clamped to the viewport after mount so a badge near the
 // screen edge doesn't render its tooltip half off-screen.
-export default function Tooltip({ content, children, className = '', block = false }: Props) {
+export default function Tooltip({ content, children, className = '', block = false, onMouseEnter, onMouseLeave }: Props) {
   const { triggerRef, show, hide, portal } = useTooltipEngine(content);
 
   return (
@@ -92,8 +98,8 @@ export default function Tooltip({ content, children, className = '', block = fal
       <span
         ref={(el) => { triggerRef.current = el; }}
         tabIndex={content ? 0 : undefined}
-        onMouseEnter={show}
-        onMouseLeave={hide}
+        onMouseEnter={() => { show(); onMouseEnter?.(); }}
+        onMouseLeave={() => { hide(); onMouseLeave?.(); }}
         onFocus={show}
         onBlur={hide}
         className={`${block ? 'block w-full rounded' : 'inline-flex rounded-full'} outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-1 ${className}`}
