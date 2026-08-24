@@ -728,7 +728,7 @@ export default function SchedulePlanner() {
                                             <img
                                               src={PLATFORM_FAVICON[p]}
                                               alt={PLATFORM_BADGE[p].label}
-                                              className="size-1.5 rounded-[1px]"
+                                              className="size-2.5 rounded-[1px]"
                                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                             />
                                             {PLATFORM_BADGE[p].label}
