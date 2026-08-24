@@ -30,39 +30,55 @@ const VIEWPORT_MARGIN = 8;
 // {...triggerProps} onto its own element instead and renders {portal} beside
 // it — same visuals, same show/hide/reposition logic, no extra DOM wrapper.
 function useTooltipEngine(content: ReactNode) {
-  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [trigger, setTrigger] = useState<{ top: number; bottom: number; left: number; width: number } | null>(null);
   const [shiftX, setShiftX] = useState(0);
+  // Defaults above the trigger; flipped to below when there isn't enough
+  // room above (e.g. a trigger sitting right at the top of the viewport,
+  // like the Topbar's online-user avatars) so the tooltip never renders
+  // partly off-screen.
+  const [placement, setPlacement] = useState<'top' | 'bottom'>('top');
   const triggerRef = useRef<HTMLElement | null>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const show = () => {
     if (!content) return;
     const rect = triggerRef.current?.getBoundingClientRect();
-    if (rect) setAnchor({ top: rect.top - 8, left: rect.left + rect.width / 2 });
+    if (rect) setTrigger({ top: rect.top, bottom: rect.bottom, left: rect.left, width: rect.width });
     setShiftX(0);
+    setPlacement('top');
   };
-  const hide = () => setAnchor(null);
+  const hide = () => setTrigger(null);
 
   useLayoutEffect(() => {
-    if (!anchor || !tooltipRef.current) return;
+    if (!trigger || !tooltipRef.current) return;
     const rect = tooltipRef.current.getBoundingClientRect();
     if (rect.left < VIEWPORT_MARGIN) {
       setShiftX(VIEWPORT_MARGIN - rect.left);
     } else if (rect.right > window.innerWidth - VIEWPORT_MARGIN) {
       setShiftX(window.innerWidth - VIEWPORT_MARGIN - rect.right);
     }
-  }, [anchor]);
+    if (placement === 'top' && rect.top < VIEWPORT_MARGIN) {
+      setPlacement('bottom');
+    }
+  }, [trigger, placement]);
+
+  const anchor = trigger
+    ? {
+        top: placement === 'top' ? trigger.top - 8 : trigger.bottom + 8,
+        left: trigger.left + trigger.width / 2,
+      }
+    : null;
 
   const portal = anchor && content ? createPortal(
     <div
       ref={tooltipRef}
       role="tooltip"
       className="pointer-events-none fixed z-[9999] whitespace-nowrap rounded-md bg-[#17225a] px-2.5 py-1.5 text-[11px] font-medium text-white shadow-lg ring-1 ring-blue-400/40"
-      style={{ top: anchor.top, left: anchor.left, transform: `translate(calc(-50% + ${shiftX}px), -100%)` }}
+      style={{ top: anchor.top, left: anchor.left, transform: `translate(calc(-50% + ${shiftX}px), ${placement === 'top' ? '-100%' : '0%'})` }}
     >
       {content}
       <span
-        className="absolute top-full border-4 border-transparent border-t-[#17225a]"
+        className={`absolute border-4 border-transparent ${placement === 'top' ? 'top-full border-t-[#17225a]' : 'bottom-full border-b-[#17225a]'}`}
         style={{ left: `calc(50% - ${shiftX}px)`, transform: 'translateX(-50%)' }}
       />
     </div>,

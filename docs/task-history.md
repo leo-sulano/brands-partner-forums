@@ -5670,3 +5670,22 @@ Tier 1 (fast path) — cosmetic/interaction-only, no data or shared business log
 live-verified via Playwright against the local dev server across all three sections (hovered card
 enlarges, siblings shrink/dim, no clipping/overlap/layout shift, Recharts donut content scales
 cleanly). Task 260.
+
+---
+
+## Task 261: Tooltip Top-Edge Clipping Fix
+
+*2026-08-24 (later still):* Fixed a live-reported bug: the shared `Tooltip.tsx` (used dashboard-wide)
+always rendered above its trigger via a hardcoded `translateY(-100%)`, with no vertical viewport
+check — only horizontal clamping existed. For a trigger sitting close to the top of the viewport,
+e.g. the Topbar's online-user presence avatars next to Sign Out, the tooltip rendered mostly off the
+top of the screen, showing only a clipped sliver overlapping the header. `useTooltipEngine` now tracks
+a `placement` state (`'top' | 'bottom'`, defaulting to `'top'`) and its existing post-render
+`useLayoutEffect` measurement pass — which already re-clamped horizontally — now also flips to
+`'bottom'` (rendering below the trigger, arrow flipped) whenever the measured tooltip's top would land
+above the `VIEWPORT_MARGIN`. Purely additive to the existing engine; every other tooltip call site
+(Sidebar, Score Summary, Breakdown cards, etc.) keeps its unchanged default top placement, since none
+of them sit close enough to the top edge to trigger the flip. Tier 1 (fast path) — confined entirely to
+one shared component's positioning logic, no data or business logic touched. Build passes;
+live-verified via Playwright against the local dev server — hovering a Topbar presence avatar now
+shows the full tooltip flipped below the avatars instead of clipping at the top.
