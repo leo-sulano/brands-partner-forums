@@ -696,6 +696,11 @@ export default function BrandGroup() {
   const [checkedViewSnapshot, setCheckedViewSnapshot] = useState<{ ids: string[]; signature: string } | null>(null);
   const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
   const checkDropdownRef = useRef<HTMLDivElement>(null);
+  // Set when the current Status/Agent/Proxy/Country filter selection can't be sent to the
+  // check-status API as-is (2+ values selected, or a lone "No Proxy") and would otherwise
+  // silently widen to an unscoped sweep — see fieldsThatWillWiden() below. Holds the platforms
+  // the user actually clicked so Continue can resume with them once confirmed.
+  const [pendingScopeConfirm, setPendingScopeConfirm] = useState<{ platforms: ('tp' | 'ag' | 'cg' | 'wo')[]; fields: string[] } | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [lastChecked, setLastChecked] = useState<string | null>(
@@ -1670,7 +1675,38 @@ export default function BrandGroup() {
     setJumpInput('');
   }
 
-  async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
+  // The check-status API's status/agent/proxy/country scope fields are single-value only
+  // (unlike `brands`, already an array) — a 2+ selection, or a lone "No Proxy" (which has no
+  // backend equivalent either, see the Proxy branch below), can't be sent as-is and would
+  // otherwise silently widen the check to an unscoped sweep for that field. Returns the
+  // human-readable field names that would be affected, so the caller can confirm first instead.
+  function fieldsThatWillWiden(): string[] {
+    const fields: string[] = [];
+    if (statusFilter.length >= 2) fields.push('Status');
+    if (agentFilter.length >= 2) fields.push('Agent');
+    if (proxyFilter.length >= 2 || (proxyFilter.length === 1 && proxyFilter[0] === NO_PROXY_LABEL)) fields.push('Proxy');
+    if (countryFilter.length >= 2) fields.push('Country');
+    return fields;
+  }
+
+  function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
+    setCheckDropdownOpen(false);
+    const fields = fieldsThatWillWiden();
+    if (fields.length > 0) {
+      setPendingScopeConfirm({ platforms, fields });
+      return;
+    }
+    void runCheckStatus(platforms);
+  }
+
+  function confirmPendingCheckStatus() {
+    if (!pendingScopeConfirm) return;
+    const { platforms } = pendingScopeConfirm;
+    setPendingScopeConfirm(null);
+    void runCheckStatus(platforms);
+  }
+
+  async function runCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
     // Freeze exactly what's on screen right now so status updates from this check
@@ -3086,6 +3122,43 @@ export default function BrandGroup() {
               >
                 {deleting && <Loader2 className="size-4 animate-spin" />}
                 {deleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingScopeConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+          onClick={() => setPendingScopeConfirm(null)}
+        >
+          <div
+            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-semibold text-slate-900 mb-2">
+              Check ALL {pendingScopeConfirm.fields.join('/')} values?
+            </h2>
+            <p className="text-sm text-slate-500 mb-4">
+              Check Status can only be scoped to one selected value per field. With multiple{' '}
+              {pendingScopeConfirm.fields.join('/')} values selected (or "No Proxy", which has no
+              equivalent on the live check), it will run against every value for{' '}
+              {pendingScopeConfirm.fields.length === 1 ? 'that field' : 'those fields'} instead of
+              just what's filtered on screen — which may check far more entries than expected.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setPendingScopeConfirm(null)}
+                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmPendingCheckStatus}
+                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                Continue anyway
               </button>
             </div>
           </div>

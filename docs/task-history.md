@@ -5480,3 +5480,26 @@ no dedicated unit coverage for this page-level logic, verified via build per thi
 established convention for that file) and build both pass. Tier 2 (light path) — a single-message,
 single-file fix with a clear, contained root cause — implemented directly with one self-review pass,
 no spec/plan doc. Task 252.
+
+---
+
+*2026-08-24 (later still):* Follow-up to Task 252, same session: closed the "No Proxy" precedent's
+own caveat surfaced during the Check Status audit — selecting 2+ values for Status/Agent/Proxy/
+Country (or a lone "No Proxy") silently widened a Check Status run to an unscoped sweep with no
+warning, so a user narrowing to e.g. 2 agents could unknowingly trigger a much larger check than
+intended. `BrandGroup.tsx`'s `handleCheckStatus` was split into a new gating `handleCheckStatus`
+(computes which fields would widen via a new `fieldsThatWillWiden()` helper) and the original body,
+renamed `runCheckStatus`. If any field would widen, a new confirmation modal ("Check ALL Agent
+values?" etc., styled to match the existing delete-confirmation modal) shows first, naming the
+affected field(s) and explaining the consequence; "Continue anyway" proceeds to the real check,
+"Cancel" aborts with no request ever sent. No scoping/backend logic changed — purely a
+confirm-before-acting gate on the same request shape as before. Live-verified via Playwright against
+the real dev server and real Supabase data on Rooster Partners: selecting 2 agents (Ann + Jen) and
+clicking Check Status correctly showed the new modal with accurate copy; Cancel closed it with no
+"Checking…" state and no toast (confirmed nothing was sent); the filter was then cleared and the
+Success Rate cards reverted to their true unfiltered totals. Deliberately did not trigger "Continue
+anyway" during verification, since a real click fires an actual production Selenium check against
+live TP/AG/CG/WO — that side effect was judged unnecessary to prove the UI gate itself works, and
+avoiding it matches this project's standing caution around real external actions. Full suite (1330
+tests, unchanged) and build both pass. No spec/plan doc — a small, user-selected UX fix (one of 4
+options presented and picked directly), implemented with one self-review pass. Task 253.
