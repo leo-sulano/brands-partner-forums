@@ -379,29 +379,42 @@ export function currentWeekColumns(): ScheduleColumn[] {
   return columnsForWeek(mondayOf(new Date()));
 }
 
-// Counts, per platform, how many (brand, day) cells across `columns` are
-// scheduled 'active' -- the shared computation behind the Schedule Planner
+// Counts, per platform, how many (brand, day) cells across `columns` count
+// as "scheduled" -- the shared computation behind the Schedule Planner
 // toolbar's platform-count strip in both overview mode (landing-grid cards,
 // summed across tabs) and specific-tab mode (one TabScheduleSection's own
 // count, reported up to the shared toolbar). `brandPlatformsFn` is whatever
 // per-brand active-platform resolution the caller already has (it already
 // accounts for hidden/restricted/removed-platform exclusion), so this
 // function never needs its own copy of that logic.
+//
+// A day strictly before `todayISO` only counts with real evidence
+// (hasDateEvidence against `dateStatusIndex`) -- the plan is ignored
+// entirely for a past day, in either direction: a planned-but-unconfirmed
+// past day doesn't count, and a real post on a day the plan didn't cover
+// still does. A day on or after `todayISO` counts purely on the plan
+// (`status === 'active'`), unchanged from before this evidence gating was
+// added -- the day hasn't happened yet, so there's nothing to have executed.
 export function countActivePlatformSlots(
   rows: BrandScheduleRow[],
   tab: string,
   brands: string[],
   brandPlatformsFn: (brand: string) => Platform[],
   columns: ScheduleColumn[],
+  dateStatusIndex: DateStatusIndex,
+  todayISO: string,
 ): Partial<Record<Platform, number>> {
   const counts: Partial<Record<Platform, number>> = {};
   for (const brand of brands) {
+    const brandKey = normalizeBrandKey(brand);
     const platforms = brandPlatformsFn(brand);
     for (const platform of platforms) {
       counts[platform] = counts[platform] ?? 0;
       for (const col of columns) {
-        const row = scheduleFor(rows, tab, brand, col.weekStartISO, platform);
-        if (row?.[col.weekday] === 'active') counts[platform] = (counts[platform] ?? 0) + 1;
+        const counted = col.iso < todayISO
+          ? hasDateEvidence(dateStatusIndex, brandKey, platform, col.iso)
+          : scheduleFor(rows, tab, brand, col.weekStartISO, platform)?.[col.weekday] === 'active';
+        if (counted) counts[platform] = (counts[platform] ?? 0) + 1;
       }
     }
   }

@@ -545,6 +545,11 @@ describe('countActivePlatformSlots', () => {
     thursday: days.thursday ?? null, friday: days.friday ?? null,
   });
   const allPlatforms = () => ['tp', 'ag'] as const;
+  const emptyIndex: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set() };
+  // Before every date used in the plan-only tests below, so those columns
+  // are always "today or future" and behave exactly as they did before the
+  // evidence-gating change.
+  const FUTURE_TODAY = '2026-01-01';
 
   it('counts one per active (brand, day) cell, per platform', () => {
     const rows = [
@@ -552,27 +557,27 @@ describe('countActivePlatformSlots', () => {
       row('b', 'ag', '2026-08-17', { tuesday: 'active' }),
     ];
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
-    const counts = countActivePlatformSlots(rows, 'BITP', ['a', 'b'], () => [...allPlatforms()], cols);
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a', 'b'], () => [...allPlatforms()], cols, emptyIndex, FUTURE_TODAY);
     expect(counts).toEqual({ tp: 2, ag: 1 });
   });
 
   it('does not count paused or null days', () => {
     const rows = [row('a', 'tp', '2026-08-17', { monday: 'paused' })];
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
-    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols);
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, emptyIndex, FUTURE_TODAY);
     expect(counts).toEqual({ tp: 0 });
   });
 
   it('reports 0 (not omitted) for a platform with no active cells, as long as brandPlatformsFn returns it', () => {
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
-    const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp', 'ag'], cols);
+    const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp', 'ag'], cols, emptyIndex, FUTURE_TODAY);
     expect(counts).toEqual({ tp: 0, ag: 0 });
   });
 
   it('only counts platforms brandPlatformsFn actually returns for that brand (respects exclusion)', () => {
     const rows = [row('a', 'tp', '2026-08-17', { monday: 'active' })];
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
-    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['ag'], cols);
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['ag'], cols, emptyIndex, FUTURE_TODAY);
     expect(counts).toEqual({ ag: 0 });
   });
 
@@ -582,7 +587,45 @@ describe('countActivePlatformSlots', () => {
       row('a', 'tp', '2026-08-24', { monday: 'active' }),
     ];
     const cols = weekdayColumnsInRange('2026-08-21', '2026-08-24');
-    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols);
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, emptyIndex, FUTURE_TODAY);
     expect(counts).toEqual({ tp: 2 });
+  });
+
+  it('for a past day, counts only when real evidence exists, ignoring the plan entirely', () => {
+    const rows = [row('a', 'tp', '2026-08-17', { monday: 'active' })]; // planned, but no evidence
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00')); // Mon 2026-08-17 .. Fri 2026-08-21
+    const todayISO = '2026-08-24'; // the whole displayed week is now in the past
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, emptyIndex, todayISO);
+    expect(counts).toEqual({ tp: 0 });
+  });
+
+  it('for a past day, counts a brand+platform+day with evidence even when the plan has no row for it at all', () => {
+    const index: DateStatusIndex = { removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set() };
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const todayISO = '2026-08-24';
+    const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
+    expect(counts).toEqual({ tp: 1 });
+  });
+
+  it('for a past day, counts each of the four evidence types (removed/confirmed/pending/done) equally', () => {
+    const index: DateStatusIndex = {
+      removed: new Set(['a::tp::2026-08-17']),
+      confirmed: new Set(['a::tp::2026-08-18']),
+      pending: new Set(['a::tp::2026-08-19']),
+      done: new Set(['a::tp::2026-08-20']),
+    };
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const todayISO = '2026-08-24';
+    const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
+    expect(counts).toEqual({ tp: 4 });
+  });
+
+  it('treats today/future days as plan-only even when unrelated evidence exists for them', () => {
+    const rows = [row('a', 'tp', '2026-08-17', {})]; // no plan for Monday
+    const index: DateStatusIndex = { removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set() };
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const todayISO = '2026-08-17'; // Monday itself is "today"
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
+    expect(counts).toEqual({ tp: 0 }); // evidence present but ignored -- no plan, and not past yet
   });
 });
