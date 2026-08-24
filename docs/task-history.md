@@ -5358,3 +5358,52 @@ build both pass; live-verified via Playwright against real Supabase data — Cou
 default view matched the user's screenshot exactly, clicking "Total" re-sorted it 908→7 total
 descending, and Proxy Breakdown's "No Proxy" card (highest total, 1,325) correctly stayed pinned
 last under volume sort rather than jumping to the top. Task 249.
+
+---
+
+*2026-08-24 (later):* Schedule Planner's landing-grid preview (the multi-tab card view at
+`/schedule-planner` shown when no tab is selected) and its platform-count strip now gate PAST
+calendar days on real logged evidence (Removed/Published/Pending/Done) instead of the raw
+scheduling plan — reported live: the user asked whether the dashboard reviews what the team
+*actually* executed versus what was merely planned, since operational issues sometimes mean a
+planned post never happens. For a past day, a platform chip now only renders in its normal
+colored style if a real entry confirms it happened; if the plan said `active` but nothing
+confirms it, a distinct greyed/dashed "missed" chip renders instead (tooltip: "Planned — no
+confirmed activity found"); a day with no plan and no evidence still renders nothing. Today/future
+days are completely unchanged (plan-only — the day hasn't happened yet, so there's nothing to
+evidence). New pure `hasDateEvidence` (`src/lib/scheduler/scheduleUtils.ts`) checks a
+`brandKey::platform::date` key against all four `DateStatusIndex` sets at once, reusing the exact
+same evidence index `TabScheduleSection.tsx` already builds for its own Confirmed/Removed/Pending/
+Done badges (Tasks 165/168/243/245) — so the new preview state can never define "executed"
+differently from the existing detailed calendar. The already-shared `countActivePlatformSlots`
+(used by both the landing-grid preview's count AND `TabScheduleSection`'s own count strip) gained
+two required params (`dateStatusIndex`, `todayISO`) and branches per column: past days count only
+with real evidence via `hasDateEvidence` (regardless of what the plan said — a real post on an
+unplanned day still counts); today/future days count purely on the plan, unchanged. Both of the
+function's two real call sites (verified via a repo-wide grep — no third caller exists) were
+updated identically, so overview mode and specific-tab mode can't drift on what "scheduled" means.
+Deliberately NOT touched, per the design spec: `TabScheduleSection`'s own per-cell rendering
+(`ScheduleCell`/`calendarRenderer.tsx` — its existing ghosting/badge overlay is unchanged), CSV/
+Excel export, and the PMS sync pipeline. Built via 4 subagent-driven-development tasks plus a
+final whole-branch review that caught 2 real gaps a per-task review couldn't see — the count
+strip's own tooltip still read "TP scheduled this week" after the number's meaning changed from
+"planned" to "planned-or-confirmed" (now reads "scheduled or confirmed"), and a doc comment on
+`TabScheduleSection.tsx`'s count-strip `useMemo` claimed "the strip and the grid can never
+disagree," which this change makes false for past days by design (comment corrected; the resulting
+strip-vs-grid asymmetry is now also documented in Known Issues below, since it's spec-sanctioned
+but wasn't called out as a visible consequence in the spec itself). Also reframed the landing-grid
+JSX's `missed` computation to derive from `executed` (`!executed.includes(p)`) rather than
+re-deriving the same `hasDateEvidence` check a second time — makes the two chip lists structurally
+disjoint instead of only coincidentally so. Full suite (1324+ tests) and build both pass;
+live-verified via Playwright against real Supabase data — a past 3-week range (Aug 3–21) showed
+the count strip dropping to real-evidence-only totals (TP 74/AG 132/CG 34/WO 16) while displaying
+113 correctly-tooltipped "missed" chips across multiple tabs' cards, the default current-week view
+showed zero missed chips, and Rooster Partners' own detailed calendar was visually unaffected. Two
+deliberately-deferred minors, not fixed: `todayISO` (`SchedulePlanner.tsx`) is still frozen at
+mount via `useMemo(() => ..., [])` (pre-existing, from the original ghosting feature — this change
+only widens its blast radius to the new count/missed logic; a session left open across midnight
+keeps treating yesterday as "today" in both); and live verification happened to run on a Monday, so
+the default "this week" view's "zero missed chips" result didn't actually exercise any past day —
+worth a follow-up re-check mid-week. Spec:
+`docs/superpowers/specs/2026-08-24-schedule-planner-executed-only-preview-design.md`. Plan:
+`docs/superpowers/plans/2026-08-24-schedule-planner-executed-only-preview.md`. Task 250.

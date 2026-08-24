@@ -1288,9 +1288,28 @@ Brands Partner Forum/
   same class of plan-vs-evidence divergence Task 173 fixed on the calendar itself. Task 243's
   Pending/Done overlay (amber "P"/blue "D" badges) has the same gap — the export has no equivalent
   column for either, so a cell showing a Pending or Done badge on screen exports with no visual
-  distinction at all; not a new gap, just two more states joining this one. Fix direction: add
+  distinction at all; not a new gap, just two more states joining this one. Task 250's landing-grid
+  "missed" marker (a distinct greyed chip for a past day whose plan wasn't confirmed) is a fourth
+  state with no export equivalent, for the same reason — it's a preview/summary-only computation, not
+  part of this export's own `rowsByPlatform` lookup at all. Fix direction: add
   two more export columns (`Confirmed Days`, `Removed Days`) built from the `dateStatusIndex`
   `SchedulePlanner.tsx` already computes via `computeConfirmedByPlatform`/`computeRemovedByPlatform`.
+- **Schedule Planner's per-tab platform-count strip can now disagree with its own grid for past days
+  (2026-08-24, Task 250).** `countActivePlatformSlots` (`src/lib/scheduler/scheduleUtils.ts`) now
+  gates a past day's count on real evidence (`hasDateEvidence`) rather than the raw plan, and this
+  same shared function feeds both the landing-grid preview's count AND `TabScheduleSection`'s own
+  count strip — but `TabScheduleSection`'s grid cells below that strip (`ScheduleCell`/
+  `calendarRenderer.tsx`) were deliberately left unchanged (still plan-based, with the existing
+  past-day ghosting from Task 173). A past week can therefore show, say, "TP 3" in the strip while
+  the grid below still renders 5 TP chips (ghosted/faded) for that same week — the strip counts only
+  the 3 with real evidence, the grid still shows all 5 planned slots at reduced opacity. This is
+  spec-sanctioned (`docs/superpowers/specs/2026-08-24-schedule-planner-executed-only-preview-design.md`
+  explicitly scoped `ScheduleCell` itself out of this change) but was not called out as a visible
+  consequence in that spec, and is the same class of plan-vs-evidence divergence Task 173 addressed
+  on the grid alone. Fix direction, if ever needed: either evidence-gate `ScheduleCell`'s past-day
+  rendering to match (a bigger, deliberately-deferred change), or add a distinct "confirmed"
+  sub-count to the strip so the two numbers are legibly different metrics rather than looking like
+  the same one.
 - The `xlsx` dependency (Data Export feature) is pinned at `0.18.5` — the last version SheetJS
   published to npm; known npm-audit advisories against it (prototype pollution, ReDoS) have no patched
   version available on npm (fixes exist only via SheetJS's own CDN), so `npm audit`/Dependabot will

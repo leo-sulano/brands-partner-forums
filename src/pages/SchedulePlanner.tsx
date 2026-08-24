@@ -438,7 +438,7 @@ export default function SchedulePlanner() {
             {displayedPlatforms.map((p) => (
               <Tooltip
                 key={p}
-                content={`${PLATFORM_BADGE[p].label} scheduled ${hasDateFilter ? 'in the selected date range' : 'this week'}`}
+                content={`${PLATFORM_BADGE[p].label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'}`}
               >
                 <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold ${PLATFORM_BADGE[p].className}`}>
                   <img
@@ -581,7 +581,7 @@ export default function SchedulePlanner() {
                                   // dropped (a day with no plan and no evidence renders nothing, same
                                   // as it always has).
                                   const missed = isPast
-                                    ? brandPlatforms.filter((p) => planActive(p) && !hasDateEvidence(preview.dateStatusIndex, brandKey, p, col.iso))
+                                    ? brandPlatforms.filter((p) => planActive(p) && !executed.includes(p))
                                     : [];
                                   return (
                                     <td key={col.iso} className="px-0.5 py-1 text-center">

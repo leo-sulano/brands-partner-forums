@@ -624,9 +624,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }, [tabCtx, search, agentFilter, agentIndex]);
 
   // Platform-count strip reported up to the shared Schedule Planner toolbar
-  // (see onPlatformCounts) — sums active slots across exactly the same
-  // `columns`/`scheduleRows` the grid itself renders below, so the strip and
-  // the grid can never disagree about what's scheduled.
+  // (see onPlatformCounts) — sums slots across exactly the same
+  // `columns`/`scheduleRows` the grid itself renders below, but as of the
+  // executed-only preview change (Task 250) a past day only counts here with
+  // real evidence (dateStatusIndex), while the grid cell below still renders
+  // its own plan-based ghosted chip for that same day — the strip and the
+  // grid can disagree on a past day by design; see CLAUDE.md's Known Issues
+  // entry for this task.
   const platformCounts = useMemo(
     () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, brandPlatforms, columns, dateStatusIndex, todayISO),
     // brandPlatforms is a plain function closing over tabCtx/activePlatforms
