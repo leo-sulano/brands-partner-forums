@@ -5407,3 +5407,31 @@ the default "this week" view's "zero missed chips" result didn't actually exerci
 worth a follow-up re-check mid-week. Spec:
 `docs/superpowers/specs/2026-08-24-schedule-planner-executed-only-preview-design.md`. Plan:
 `docs/superpowers/plans/2026-08-24-schedule-planner-executed-only-preview.md`. Task 250.
+
+---
+
+*2026-08-24 (later still):* Follow-up to Task 250, same day, reported live via a screenshot: the
+executed chips Task 250 added to Schedule Planner's landing-grid preview all looked visually
+identical regardless of which of the four evidence types (Removed/Confirmed/Pending/Done) backed
+them — the user asked for the platform chips to "also have status badges." Extracted the detailed
+per-tab calendar's existing ✓/✕/P/D corner-badge visuals (`ScheduleCell`'s `PlatformChip`, previously
+four inline `<span>` blocks) into a new shared `EvidenceCornerBadge({ kind })` component in
+`src/lib/scheduler/calendarRenderer.tsx`, so the two surfaces render a given evidence kind
+identically by construction rather than by convention. New `resolveDateEvidenceKind` in
+`src/lib/scheduler/scheduleUtils.ts` returns which single evidence type (if any) matches a
+brand+platform+date, using the same removed > confirmed > pending > done precedence
+`resolvePmsSyncStatus`/`ScheduleCell` already use; `hasDateEvidence` (Task 250) is now a one-line
+wrapper around it (`!== null`), a behavior-preserving refactor — its existing test suite passed
+unchanged against the new implementation. The landing-grid preview's per-cell chip computation
+(`SchedulePlanner.tsx`) now resolves each past day's executed platforms as `{platform, kind}` pairs
+instead of a bare platform list, and renders `EvidenceCornerBadge` on top of the existing colored
+chip when `kind` is non-null; today/future chips and "missed" chips are unchanged (no badge — evidence
+isn't checked for those). TDD'd: `resolveDateEvidenceKind` has 6 new unit tests (one per evidence
+type, a no-match case, and a same-key-in-multiple-sets precedence case) added and verified RED before
+GREEN. Full suite (1330 tests) and build both pass; live-verified via Playwright against real
+Supabase data on a past 3-week range (Aug 3–21) — Rooster Partners' and other cards' chips now show
+the correct green ✓ / red ✕ corner badges matching each entry's real status, and the detailed
+per-tab calendar (spot-checked on Rooster Partners) renders identically to before this change,
+confirming the extraction didn't alter its existing look. No spec/plan doc — a small, bounded
+extension of Task 250's already-shipped feature, implemented directly with TDD and one self-review
+pass. Task 251.
