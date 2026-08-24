@@ -512,8 +512,6 @@ export default function SchedulePlanner() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold text-slate-900">Schedule Planner</h1>
-
       <div className="flex flex-nowrap items-center gap-4 overflow-x-auto rounded-lg border border-solid border-slate-200 bg-white px-3 py-2 shadow-sm">
         <div className="flex shrink-0 items-center gap-2">
           <MultiSelectDropdown

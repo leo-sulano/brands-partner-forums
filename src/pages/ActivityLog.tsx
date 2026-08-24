@@ -586,8 +586,6 @@ export default function ActivityLog() {
 
   return (
     <div>
-      <h1 className="mb-4 text-xl font-semibold text-slate-900">Log</h1>
-
       <div className="mb-6 flex gap-1 border-b border-slate-200">
         {visibleTabs.map((t) => (
           <button

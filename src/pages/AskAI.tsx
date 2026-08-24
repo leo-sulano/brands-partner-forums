@@ -100,8 +100,6 @@ export default function AskAI() {
         <Toast message={toastMsg} kind="error" onClose={() => setToastMsg(null)} />
       )}
       <div className="flex h-full flex-col">
-        <h1 className="mb-4 text-xl font-semibold text-slate-800">Ask AI</h1>
-
         <div ref={listRef} className="flex-1 overflow-y-auto pb-4">
           <div className="mx-auto w-full max-w-2xl space-y-3">
             {messages.length === 0 ? (
