@@ -108,10 +108,10 @@ def check_status():
     include_published: bool = bool(body.get('include_published', False))
     platform: str = (body.get('platform') or 'tp').lower()
     brands: list[str] | None = body.get('brands') or None
-    status_filter: str | None = body.get('status_filter') or None
-    agent: str | None = body.get('agent') or None
-    proxy: str | None = body.get('proxy') or None
-    country: str | None = body.get('country') or None
+    status_filters: list[str] | None = body.get('status_filters') or None
+    agents: list[str] | None = body.get('agents') or None
+    proxies: list[str] | None = body.get('proxies') or None
+    countries: list[str] | None = body.get('countries') or None
 
     # Platform-namespaced lock so TP/AG/CG/WO can run concurrently on the same tab.
     # TP keeps its legacy key format for backwards compat with any running checks.
@@ -132,30 +132,30 @@ def check_status():
         if platform == 'ag':
             print(f'\n[server] AG check started ({scope})')
             result = check_ag_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['ag'],
-                                       status_filter=status_filter, brands=brands, agent=agent,
-                                       proxy=proxy, country=country)
+                                       status_filters=status_filters, brands=brands, agents=agents,
+                                       proxies=proxies, countries=countries)
             print(f'[server] AG done. {result}')
             return jsonify(result)
 
         if platform == 'cg':
             print(f'\n[server] CG check started ({scope})')
             result = check_cg_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['cg'],
-                                       status_filter=status_filter, brands=brands, agent=agent,
-                                       proxy=proxy, country=country)
+                                       status_filters=status_filters, brands=brands, agents=agents,
+                                       proxies=proxies, countries=countries)
             print(f'[server] CG done. {result}')
             return jsonify(result)
 
         if platform == 'wo':
             print(f'\n[server] WO check started ({scope})')
             result = check_wo_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['wo'],
-                                       status_filter=status_filter, brands=brands, agent=agent,
-                                       proxy=proxy, country=country)
+                                       status_filters=status_filters, brands=brands, agents=agents,
+                                       proxies=proxies, countries=countries)
             print(f'[server] WO done. {result}')
             return jsonify(result)
 
         # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published, brands=brands,
-                                status_filter=status_filter, agent=agent, proxy=proxy, country=country)
+                                status_filters=status_filters, agents=agents, proxies=proxies, countries=countries)
         entries, skipped_group = filter_by_active_group(entries)
         total = len(entries)
         print(f'\n[server] TP check started — {total} entries ({scope}, {skipped_group} skipped — not in this run\'s schedule group)')
@@ -247,11 +247,11 @@ def check_ag_status_route():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
-    status_filter: str | None = body.get('status_filter') or None
+    status_filters: list[str] | None = body.get('status_filters') or None
     brands: list[str] | None = body.get('brands') or None
-    agent: str | None = body.get('agent') or None
-    proxy: str | None = body.get('proxy') or None
-    country: str | None = body.get('country') or None
+    agents: list[str] | None = body.get('agents') or None
+    proxies: list[str] | None = body.get('proxies') or None
+    countries: list[str] | None = body.get('countries') or None
     tab_key = f'ag__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -267,8 +267,8 @@ def check_ag_status_route():
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] AG check started ({scope})')
         result = check_ag_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['ag'],
-                                   status_filter=status_filter, brands=brands, agent=agent,
-                                   proxy=proxy, country=country)
+                                   status_filters=status_filters, brands=brands, agents=agents,
+                                   proxies=proxies, countries=countries)
         print(f'[server] AG done. {result}')
         return jsonify(result)
     finally:
@@ -288,11 +288,11 @@ def check_cg_status_route():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
-    status_filter: str | None = body.get('status_filter') or None
+    status_filters: list[str] | None = body.get('status_filters') or None
     brands: list[str] | None = body.get('brands') or None
-    agent: str | None = body.get('agent') or None
-    proxy: str | None = body.get('proxy') or None
-    country: str | None = body.get('country') or None
+    agents: list[str] | None = body.get('agents') or None
+    proxies: list[str] | None = body.get('proxies') or None
+    countries: list[str] | None = body.get('countries') or None
     tab_key = f'cg__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -308,8 +308,8 @@ def check_cg_status_route():
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] CG check started ({scope})')
         result = check_cg_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['cg'],
-                                   status_filter=status_filter, brands=brands, agent=agent,
-                                   proxy=proxy, country=country)
+                                   status_filters=status_filters, brands=brands, agents=agents,
+                                   proxies=proxies, countries=countries)
         print(f'[server] CG done. {result}')
         return jsonify(result)
     finally:
@@ -329,11 +329,11 @@ def check_wo_status_route():
     body = request.get_json(silent=True) or {}
     tab: str | None = body.get('tab')
     include_published: bool = bool(body.get('include_published', False))
-    status_filter: str | None = body.get('status_filter') or None
+    status_filters: list[str] | None = body.get('status_filters') or None
     brands: list[str] | None = body.get('brands') or None
-    agent: str | None = body.get('agent') or None
-    proxy: str | None = body.get('proxy') or None
-    country: str | None = body.get('country') or None
+    agents: list[str] | None = body.get('agents') or None
+    proxies: list[str] | None = body.get('proxies') or None
+    countries: list[str] | None = body.get('countries') or None
     tab_key = f'wo__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -349,8 +349,8 @@ def check_wo_status_route():
         scope = f'tab: {tab}' if tab else 'all tabs'
         print(f'\n[server] WO check started ({scope})')
         result = check_wo_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['wo'],
-                                   status_filter=status_filter, brands=brands, agent=agent,
-                                   proxy=proxy, country=country)
+                                   status_filters=status_filters, brands=brands, agents=agents,
+                                   proxies=proxies, countries=countries)
         print(f'[server] WO done. {result}')
         return jsonify(result)
     finally:

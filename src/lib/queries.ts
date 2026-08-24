@@ -1181,29 +1181,32 @@ export async function deleteSchedulePmsLink(id: string, client: SupabaseClient =
 // TP/AG/CG/WO review status check triggers
 // ---------------------------------------------------------------------------
 
-// Every field mirrors one of the dashboard's own filter dropdowns — set to opt
-// into re-checking entries a platform normally skips (e.g. statusFilter:'live'
-// re-checks Published entries for a Published -> Removed transition) or to
-// scope a check to exactly what's currently filtered in the table. Omit a
-// field (or the whole object) for the platform's normal default sweep.
+// Every field mirrors one of the dashboard's own multi-select filter dropdowns
+// — set to opt into re-checking entries a platform normally skips (e.g.
+// statusFilters:['live'] re-checks Published entries for a Published ->
+// Removed transition) or to scope a check to exactly what's currently
+// filtered in the table. Each field matches an entry if it hits ANY of the
+// given values (OR within a field, AND across fields) — same semantics as the
+// dashboard's own filter chain. Omit a field (or the whole object) for the
+// platform's normal default sweep.
 export interface StatusCheckScope {
   includePublished?: boolean;
-  statusFilter?: string;
+  statusFilters?: string[];
   brands?: string[];
-  agent?: string;
-  proxy?: string;
-  country?: string;
+  agents?: string[];
+  proxies?: string[];
+  countries?: string[];
 }
 
 function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<string, unknown>) {
   return {
     tab,
     include_published: scope.includePublished ?? false,
-    status_filter: scope.statusFilter,
+    status_filters: scope.statusFilters,
     brands: scope.brands,
-    agent: scope.agent,
-    proxy: scope.proxy,
-    country: scope.country,
+    agents: scope.agents,
+    proxies: scope.proxies,
+    countries: scope.countries,
     ...extra,
   };
 }

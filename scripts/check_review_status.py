@@ -518,6 +518,34 @@ STATUS_FILTER_MAP: dict[str, set[str]] = {
     "removed":  {"refused", "removed"},
 }
 
+# "On Pause"/"Not Done" have no single fixed spelling like the 4 real review
+# states above do, so they're matched by substring rather than exact-set
+# membership -- mirrors BrandGroup.tsx's isOnPause (`v.includes('pause')`) and
+# isNotDone (`v.includes('not done')`) exactly. Keep both in sync; that file
+# cross-references this one in turn.
+STATUS_FILTER_SUBSTRINGS: dict[str, str] = {
+    "on-pause": "pause",
+    "not-done": "not done",
+}
+
+
+def status_filter_matches(current_lower: str, filters: Optional[list[str]], default: set[str]) -> bool:
+    """True if `current_lower` (an entry's own status column value, already
+    stripped+lowered) satisfies ANY of the requested `filters` (OR across
+    every requested filter key) -- the opt-in path for scoping a Check Status
+    run to specific status(es). With no filters active, falls back to
+    `default` (each platform's normal checkable-statuses sweep)."""
+    if not filters:
+        return current_lower in default
+    for f in filters:
+        substr = STATUS_FILTER_SUBSTRINGS.get(f)
+        if substr is not None:
+            if substr in current_lower:
+                return True
+        elif current_lower in STATUS_FILTER_MAP.get(f, set()):
+            return True
+    return False
+
 
 TP_STATUS_COLS = [
     "TP Review Status",
@@ -807,34 +835,55 @@ def filter_by_active_group(entries: list[dict]) -> tuple[list[dict], int]:
     return kept, skipped
 
 
+# Mirrors src/lib/proxyAliases.ts's resolveProxyLabel/isRedactedProxyValue: a raw
+# Proxy Used value is folded into "No Proxy" if blank or an all-asterisk redacted
+# placeholder (e.g. "***"). Keep in sync -- that file cross-references this one.
+def _is_no_proxy_value(raw_proxy: str) -> bool:
+    trimmed = raw_proxy.strip()
+    return not trimmed or re.fullmatch(r"\*+", trimmed) is not None
+
+
 # Mirrors the dashboard's own Brand/Agent/Proxy/Country filter dropdowns so a
 # "Check Status" run can be scoped to exactly what's currently filtered in the
 # table for any of TP/AG/CG/WO, the same way status_filter scopes to a status.
 def matches_scope_filters(
     data: dict,
     brands: Optional[set[str]] = None,
-    agent: Optional[str] = None,
-    proxy: Optional[str] = None,
-    country: Optional[str] = None,
+    agents: Optional[list[str]] = None,
+    proxies: Optional[list[str]] = None,
+    countries: Optional[list[str]] = None,
 ) -> bool:
-    """Return True if `data` matches every provided scope filter (all filters
-    that are set must match — same AND semantics as the dashboard's own filter
-    chain). Country compares resolved ISO codes (via country_code_for_entry)
-    rather than raw strings, so "Germany" and "DE" behave identically — same
-    convention AG/CG's --country CLI flag already uses. Agent/Proxy are a
-    case-insensitive, trimmed equality check against the raw column value; a
-    blank column value never matches a non-blank filter."""
+    """Return True if `data` matches every provided scope filter (AND across
+    fields — same semantics as the dashboard's own filter chain), where each
+    field matches if the entry hits ANY of that field's requested values (OR
+    within a field — same as the dashboard's own multi-select filters and how
+    `brands` here has always worked). Country compares resolved ISO codes (via
+    country_code_for_entry) rather than raw strings, so "Germany" and "DE"
+    behave identically — same convention AG/CG's --country CLI flag already
+    uses. Agent/Proxy are case-insensitive, trimmed equality checks against the
+    raw column value; a blank column value never matches a non-blank filter,
+    except a "No Proxy" request, which matches a blank/redacted Proxy Used
+    value specifically (see `_is_no_proxy_value`)."""
     if brands is not None:
         brand_col = find_brand_col(data)
         brand_val = (data.get(brand_col) or "").strip() if brand_col else ""
         if not brand_col or brand_val not in brands:
             return False
-    if agent and (data.get("Agent") or "").strip().lower() != agent.strip().lower():
-        return False
-    if proxy and (data.get("Proxy Used") or "").strip().lower() != proxy.strip().lower():
-        return False
-    if country and country_code_for_entry(data) != country_code_for_entry({"Country": country}):
-        return False
+    if agents:
+        agent_val = (data.get("Agent") or "").strip().lower()
+        if agent_val not in {a.strip().lower() for a in agents}:
+            return False
+    if proxies:
+        raw_proxy = (data.get("Proxy Used") or "").strip()
+        wants_no_proxy = any(p.strip().lower() == "no proxy" for p in proxies)
+        real_wanted = {p.strip().lower() for p in proxies if p.strip().lower() != "no proxy"}
+        if not ((wants_no_proxy and _is_no_proxy_value(raw_proxy)) or raw_proxy.lower() in real_wanted):
+            return False
+    if countries:
+        entry_cc = country_code_for_entry(data)
+        wanted_ccs = {country_code_for_entry({"Country": c}) for c in countries}
+        if entry_cc not in wanted_ccs:
+            return False
     return True
 
 
@@ -867,21 +916,19 @@ def _fetch_all(params: dict) -> list:
 
 
 def load_entries(tab: Optional[str] = None, include_published: bool = True,
-                  brands: Optional[list[str]] = None, status_filter: Optional[str] = None,
-                  agent: Optional[str] = None, proxy: Optional[str] = None,
-                  country: Optional[str] = None) -> list[dict]:
+                  brands: Optional[list[str]] = None, status_filters: Optional[list[str]] = None,
+                  agents: Optional[list[str]] = None, proxies: Optional[list[str]] = None,
+                  countries: Optional[list[str]] = None) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
     rows: list[dict] = _fetch_all(params)
 
-    # status_filter (driven by the dashboard's status-filter dropdown) narrows to
-    # exactly that status — the opt-in path for re-checking Published/Removed,
-    # which CHECKABLE_STATUSES/include_published never cover on their own.
-    if status_filter:
-        statuses = STATUS_FILTER_MAP.get(status_filter, set())
-    else:
-        statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    # status_filters (driven by the dashboard's status-filter dropdown) narrows to
+    # exactly those status(es) — the opt-in path for re-checking Published/Removed
+    # (and now On Pause/Not Done), which CHECKABLE_STATUSES/include_published
+    # never cover on their own.
+    default_statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
     brand_set = set(brands) if brands else None
 
     out = []
@@ -894,9 +941,9 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True,
         if not status_col:
             continue
         current = (data.get(status_col) or "").strip().lower()
-        if current not in statuses:
+        if not status_filter_matches(current, status_filters, default_statuses):
             continue
-        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
+        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries):
             continue
         out.append(row)
     return out

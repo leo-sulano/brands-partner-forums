@@ -49,7 +49,7 @@ from check_review_status import (
     page_blocked,
     resolve_status,
     normalize_review_list_url,
-    STATUS_FILTER_MAP,
+    status_filter_matches,
     matches_scope_filters,
     filter_by_active_group,
     extract_review_card_text,
@@ -95,11 +95,11 @@ def _val(data: dict, candidates: list) -> Optional[str]:
 def load_cg_entries(
     tab: Optional[str] = None,
     include_published: bool = True,
-    country: Optional[str] = None,
-    status_filter: Optional[str] = None,
+    countries: Optional[list[str]] = None,
+    status_filters: Optional[list[str]] = None,
     brands: Optional[list] = None,
-    agent: Optional[str] = None,
-    proxy: Optional[str] = None,
+    agents: Optional[list[str]] = None,
+    proxies: Optional[list[str]] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -108,9 +108,9 @@ def load_cg_entries(
 
     # include_published is now a no-op here since CHECKABLE_STATUSES never
     # contains "published" — kept for signature compatibility with status_server.py.
-    # status_filter (driven by the dashboard's status-filter dropdown) narrows to
-    # exactly that status instead — the opt-in path for re-checking Published/Removed.
-    statuses = STATUS_FILTER_MAP.get(status_filter, set()) if status_filter else CHECKABLE_STATUSES
+    # status_filters (driven by the dashboard's status-filter dropdown) narrows to
+    # exactly those status(es) instead — the opt-in path for re-checking
+    # Published/Removed/On Pause/Not Done.
     brand_set = set(brands) if brands else None
     out = []
     for row in rows:
@@ -121,11 +121,11 @@ def load_cg_entries(
         if not status_col:
             continue
         current = (data.get(status_col) or "").strip().lower()
-        if current not in statuses:
+        if not status_filter_matches(current, status_filters, CHECKABLE_STATUSES):
             continue
         # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
         # a Check Status run can be scoped to exactly what's currently filtered.
-        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
+        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries):
             continue
         out.append(row)
     out.sort(key=lambda r: geo_proxy_for_entry(r.get("data") or {}))
@@ -302,17 +302,17 @@ def check_cg_for_tab(
     tab: Optional[str] = None,
     include_published: bool = True,
     headless: bool = True,
-    country: Optional[str] = None,
-    status_filter: Optional[str] = None,
+    countries: Optional[list[str]] = None,
+    status_filters: Optional[list[str]] = None,
     brands: Optional[list] = None,
-    agent: Optional[str] = None,
-    proxy: Optional[str] = None,
+    agents: Optional[list[str]] = None,
+    proxies: Optional[list[str]] = None,
     dry_run: bool = False,
 ) -> dict:
     ensure_bridges()
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
-    entries = load_cg_entries(tab, include_published, country, status_filter, brands, agent, proxy)
+    entries = load_cg_entries(tab, include_published, countries, status_filters, brands, agents, proxies)
     entries, skipped_group = filter_by_active_group(entries)
     total = len(entries)
     if not total:
@@ -430,7 +430,7 @@ def main() -> None:
         scope += f", country: {args.country}"
     print(f"Loading CG entries ({scope})...")
     result = check_cg_for_tab(args.tab, include_published=True, headless=args.headless,
-                               country=args.country, dry_run=args.dry_run)
+                               countries=[args.country] if args.country else None, dry_run=args.dry_run)
     print(f"\nDone. checked={result['checked']} updated={result['updated']} errors={result['errors']} skipped_group={result.get('skipped_group', 0)}")
     if args.dry_run:
         print("(dry-run — no writes made)")

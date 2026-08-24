@@ -1338,14 +1338,19 @@ Brands Partner Forum/
   or tab name containing a literal comma would round-trip incorrectly through
   `?country=`/`?brand=`/`?tab=`. No known real value currently contains one, but this hasn't been
   exhaustively verified against live country/brand data.
-- Check Status silently widens to an unscoped sweep when 2+ values are selected for
-  Agent/Proxy/Country/Status on Brand Tabs (`BrandGroup.tsx`'s Check Status scope-building logic)
-  — the live `StatusCheckScope` API only accepts one value per field, so selecting e.g. 2 proxies
-  and clicking Check Status runs an unscoped (all-proxies) sweep for that field rather than
-  guessing which of the 2 to send, which can be a much longer-running check than the user expects
-  from the visible filter. No UI hint currently surfaces this. A lone "No Proxy" proxy-filter
-  selection triggers the same unscoped-sweep fallback for the identical reason — the live API has
-  no concept of "No Proxy" either, so there's nothing real to send it as the single scoped value.
+- **Resolved (2026-08-24, Task 254):** Check Status used to silently widen to an unscoped sweep
+  when 2+ values were selected for Agent/Proxy/Country/Status (and for a lone "No Proxy"). The
+  live `StatusCheckScope` API (`BrandGroup.tsx` → `queries.ts` → `proxy-check-status` → EC2
+  `status_server.py` → `matches_scope_filters`/`status_filter_matches` in `check_review_status.py`,
+  shared by all 4 platform checkers) now accepts a real array per field with OR-within-field/
+  AND-across-fields matching, same semantics as `brands` already had — selecting 2 proxies now
+  genuinely checks only those 2, not everything. "No Proxy" is now a real backend value too
+  (matches a blank/redacted `Proxy Used` field, mirroring `resolveProxyLabel`/`isRedactedProxyValue`
+  in `src/lib/proxyAliases.ts`), and On Pause/Not Done are now real checkable statuses (substring-matched,
+  mirroring `BrandGroup.tsx`'s own `isOnPause`/`isNotDone`) rather than silently matching zero rows.
+  This directly superseded Task 253's confirm-before-widening modal (removed, since the thing it
+  warned about no longer happens) and Task 252's on-pause/not-done toast workaround (removed, since
+  a zero-result toast is accurate again now that these are real filters).
 - On a multi-platform brand tab (Rooster Partners, Revolution Casino, SilverPlay, Hanan) with
   `platformFilter === 'all'` and a date range set, `BrandGroup.tsx`'s visible **table rows**
   (`applyDateFilter`, around the `platformFilter === 'all'` branch) still use the old

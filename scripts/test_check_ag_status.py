@@ -34,7 +34,7 @@ def test_load_ag_entries_status_filter_live_scopes_to_published(monkeypatch):
     rows = [_row('Done'), _row('Pending'), _row('Refused'), _row('Published')]
     monkeypatch.setattr(ags, '_fetch_all', lambda params: rows)
 
-    result = ags.load_ag_entries('Rooster Partners', status_filter='live')
+    result = ags.load_ag_entries('Rooster Partners', status_filters=['live'])
 
     assert len(result) == 1
     assert result[0]['data']['AG Review Status'] == 'Published'
@@ -44,22 +44,24 @@ def test_load_ag_entries_status_filter_removed_scopes_to_refused_and_removed(mon
     rows = [_row('Done'), _row('Refused'), _row('Removed'), _row('Published')]
     monkeypatch.setattr(ags, '_fetch_all', lambda params: rows)
 
-    result = ags.load_ag_entries('Rooster Partners', status_filter='removed')
+    result = ags.load_ag_entries('Rooster Partners', status_filters=['removed'])
 
     statuses = {r['data']['AG Review Status'] for r in result}
     assert statuses == {'Refused', 'Removed'}
 
 
-def test_load_ag_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch):
-    # 'on-pause' / 'not-done' aren't checkable AG states — an explicit filter
-    # scope with no mapping should check nothing rather than silently falling
-    # back to the full default sweep.
-    rows = [_row('Done'), _row('Pending'), _row('Refused'), _row('Published')]
+def test_load_ag_entries_status_filter_on_pause_matches_substring(monkeypatch):
+    # 'On Pause' isn't in AG's own CHECKABLE_STATUSES, so it's never picked up
+    # by the default sweep — an explicit on-pause filter is the only way to
+    # scope a check to these entries, matched by substring like the dashboard's
+    # own isOnPause (`v.includes('pause')`).
+    rows = [_row('Done'), _row('On Pause'), _row('Refused'), _row('Published')]
     monkeypatch.setattr(ags, '_fetch_all', lambda params: rows)
 
-    result = ags.load_ag_entries('Rooster Partners', status_filter='on-pause')
+    result = ags.load_ag_entries('Rooster Partners', status_filters=['on-pause'])
 
-    assert result == []
+    assert len(result) == 1
+    assert result[0]['data']['AG Review Status'] == 'On Pause'
 
 
 def test_load_ag_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
@@ -71,7 +73,21 @@ def test_load_ag_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
     ]
     monkeypatch.setattr(ags, '_fetch_all', lambda params: rows)
 
-    result = ags.load_ag_entries('Rooster Partners', brands=['Rollero'], agent='Levi', proxy='Enigma', country='Germany')
+    result = ags.load_ag_entries('Rooster Partners', brands=['Rollero'], agents=['Levi'], proxies=['Enigma'], countries=['Germany'])
 
     assert len(result) == 1
     assert result[0]['data']['AG User'] == 'NiklasWeber'
+
+
+def test_load_ag_entries_scopes_by_multiple_agents(monkeypatch):
+    rows = [
+        _row('Done', ag_user='Kauri80', Agent='Lai'),
+        _row('Done', ag_user='NiklasWeber', Agent='Levi'),
+        _row('Done', ag_user='ThirdUser', Agent='Ann'),
+    ]
+    monkeypatch.setattr(ags, '_fetch_all', lambda params: rows)
+
+    result = ags.load_ag_entries('Rooster Partners', agents=['Lai', 'Levi'])
+
+    users = {r['data']['AG User'] for r in result}
+    assert users == {'Kauri80', 'NiklasWeber'}

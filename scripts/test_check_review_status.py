@@ -70,7 +70,7 @@ def test_load_entries_status_filter_live_scopes_to_published(monkeypatch):
     ]
     monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
 
-    result = crs.load_entries('TP Brand Injection', status_filter='live')
+    result = crs.load_entries('TP Brand Injection', status_filters=['live'])
 
     assert len(result) == 1
     assert result[0]['data']['Review Status'] == 'Published'
@@ -87,22 +87,44 @@ def test_load_entries_status_filter_removed_scopes_to_refused_and_removed(monkey
     ]
     monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
 
-    result = crs.load_entries('TP Brand Injection', status_filter='removed')
+    result = crs.load_entries('TP Brand Injection', status_filters=['removed'])
 
     statuses = {r['data']['Review Status'] for r in result}
     assert statuses == {'Refused', 'Removed'}
 
 
-def test_load_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch):
+def test_load_entries_status_filter_multiple_values_is_union(monkeypatch):
     rows = [
-        _row('Brand / TP URL PAGE', 'A', status='Done'),
-        _row('Brand / TP URL PAGE', 'B', status='Published'),
+        _row('Brand / TP URL PAGE', 'A', status='Published'),
+        _row('Brand / TP URL PAGE', 'B', status='Refused'),
+        _row('Brand / TP URL PAGE', 'C', status='Done'),
     ]
     monkeypatch.setattr(crs, '_fetch_all', lambda params: rows)
 
-    result = crs.load_entries('TP Brand Injection', status_filter='on-pause')
+    result = crs.load_entries('TP Brand Injection', status_filters=['live', 'removed'])
 
-    assert result == []
+    statuses = {r['data']['Review Status'] for r in result}
+    assert statuses == {'Published', 'Refused'}
+
+
+def test_load_entries_status_filter_on_pause_matches_substring():
+    # "On Pause"/"Not Done" have no fixed exact spelling like the 4 real review
+    # states do, so matching is substring-based (mirrors BrandGroup.tsx's
+    # isOnPause: `v.includes('pause')`), not exact-set membership.
+    assert crs.status_filter_matches('on pause', ['on-pause'], set()) is True
+    assert crs.status_filter_matches('paused (manual)', ['on-pause'], set()) is True
+    assert crs.status_filter_matches('done', ['on-pause'], set()) is False
+
+
+def test_load_entries_status_filter_not_done_matches_substring():
+    assert crs.status_filter_matches('not done', ['not-done'], set()) is True
+    assert crs.status_filter_matches('done', ['not-done'], set()) is False
+
+
+def test_status_filter_matches_falls_back_to_default_when_no_filters():
+    assert crs.status_filter_matches('done', None, {'done', 'pending'}) is True
+    assert crs.status_filter_matches('published', None, {'done', 'pending'}) is False
+    assert crs.status_filter_matches('done', [], {'done', 'pending'}) is True
 
 
 def test_filter_by_active_group_splits_kept_and_skipped(monkeypatch):
@@ -142,30 +164,57 @@ def test_matches_scope_filters_brands_matches_via_find_brand_col():
     assert crs.matches_scope_filters({}, brands={'Rollero'}) is False
 
 
-def test_matches_scope_filters_agent_case_insensitive_and_trimmed():
-    assert crs.matches_scope_filters({'Agent': ' Lai '}, agent='lai') is True
-    assert crs.matches_scope_filters({'Agent': 'Lai'}, agent='Levi') is False
-    assert crs.matches_scope_filters({}, agent='Lai') is False
+def test_matches_scope_filters_agents_case_insensitive_and_trimmed():
+    assert crs.matches_scope_filters({'Agent': ' Lai '}, agents=['lai']) is True
+    assert crs.matches_scope_filters({'Agent': 'Lai'}, agents=['Levi']) is False
+    assert crs.matches_scope_filters({}, agents=['Lai']) is False
 
 
-def test_matches_scope_filters_proxy_case_insensitive_and_trimmed():
-    assert crs.matches_scope_filters({'Proxy Used': ' Enigma '}, proxy='enigma') is True
-    assert crs.matches_scope_filters({'Proxy Used': 'SpyderProxy'}, proxy='Enigma') is False
+def test_matches_scope_filters_agents_multi_value_matches_any():
+    # OR within a field: matches if the entry's Agent is ANY of the requested values.
+    assert crs.matches_scope_filters({'Agent': 'Jen'}, agents=['Ann', 'Jen']) is True
+    assert crs.matches_scope_filters({'Agent': 'Lai'}, agents=['Ann', 'Jen']) is False
 
 
-def test_matches_scope_filters_country_matches_via_resolved_code():
+def test_matches_scope_filters_proxies_case_insensitive_and_trimmed():
+    assert crs.matches_scope_filters({'Proxy Used': ' Enigma '}, proxies=['enigma']) is True
+    assert crs.matches_scope_filters({'Proxy Used': 'SpyderProxy'}, proxies=['Enigma']) is False
+
+
+def test_matches_scope_filters_proxies_multi_value_matches_any():
+    assert crs.matches_scope_filters({'Proxy Used': 'Enigma'}, proxies=['Datarama', 'Enigma']) is True
+    assert crs.matches_scope_filters({'Proxy Used': 'Proxio'}, proxies=['Datarama', 'Enigma']) is False
+
+
+def test_matches_scope_filters_proxies_no_proxy_matches_blank_or_redacted():
+    # "No Proxy" has no literal value in the data -- mirrors resolveProxyLabel's
+    # blank-or-all-asterisk-redacted bucketing (src/lib/proxyAliases.ts).
+    assert crs.matches_scope_filters({'Proxy Used': ''}, proxies=['No Proxy']) is True
+    assert crs.matches_scope_filters({}, proxies=['No Proxy']) is True
+    assert crs.matches_scope_filters({'Proxy Used': '***'}, proxies=['No Proxy']) is True
+    assert crs.matches_scope_filters({'Proxy Used': 'Enigma'}, proxies=['No Proxy']) is False
+    # A real proxy request must not accidentally match a blank entry.
+    assert crs.matches_scope_filters({'Proxy Used': ''}, proxies=['Enigma']) is False
+
+
+def test_matches_scope_filters_countries_matches_via_resolved_code():
     # Same convention AG/CG's --country CLI flag already uses: compare resolved
     # ISO codes so "Germany" and "DE" behave identically, not raw string equality.
-    assert crs.matches_scope_filters({'Country': 'Germany'}, country='Germany') is True
-    assert crs.matches_scope_filters({'Country': 'DE'}, country='Germany') is True
-    assert crs.matches_scope_filters({'Country': 'Germany'}, country='Norway') is False
+    assert crs.matches_scope_filters({'Country': 'Germany'}, countries=['Germany']) is True
+    assert crs.matches_scope_filters({'Country': 'DE'}, countries=['Germany']) is True
+    assert crs.matches_scope_filters({'Country': 'Germany'}, countries=['Norway']) is False
+
+
+def test_matches_scope_filters_countries_multi_value_matches_any():
+    assert crs.matches_scope_filters({'Country': 'Norway'}, countries=['Germany', 'Norway']) is True
+    assert crs.matches_scope_filters({'Country': 'Sweden'}, countries=['Germany', 'Norway']) is False
 
 
 def test_matches_scope_filters_combines_all_filters_with_and():
     data = {'Brands': 'Rollero', 'Agent': 'Lai', 'Proxy Used': 'Enigma', 'Country': 'Germany'}
-    assert crs.matches_scope_filters(data, brands={'Rollero'}, agent='Lai', proxy='Enigma', country='Germany') is True
+    assert crs.matches_scope_filters(data, brands={'Rollero'}, agents=['Lai'], proxies=['Enigma'], countries=['Germany']) is True
     # Any single mismatched filter fails the whole check.
-    assert crs.matches_scope_filters(data, brands={'Rollero'}, agent='Levi', proxy='Enigma', country='Germany') is False
+    assert crs.matches_scope_filters(data, brands={'Rollero'}, agents=['Levi'], proxies=['Enigma'], countries=['Germany']) is False
 
 
 def test_load_entries_filters_by_brands_ignores_whitespace(monkeypatch):

@@ -29,7 +29,7 @@ def test_load_cg_entries_status_filter_live_scopes_to_published(monkeypatch):
     rows = [_row('Done'), _row('Pending'), _row('Refused'), _row('Published')]
     monkeypatch.setattr(cgs, '_fetch_all', lambda params: rows)
 
-    result = cgs.load_cg_entries('Rooster Partners', status_filter='live')
+    result = cgs.load_cg_entries('Rooster Partners', status_filters=['live'])
 
     assert len(result) == 1
     assert result[0]['data']['CG Review Status'] == 'Published'
@@ -39,19 +39,20 @@ def test_load_cg_entries_status_filter_removed_scopes_to_refused_and_removed(mon
     rows = [_row('Done'), _row('Refused'), _row('Removed'), _row('Published')]
     monkeypatch.setattr(cgs, '_fetch_all', lambda params: rows)
 
-    result = cgs.load_cg_entries('Rooster Partners', status_filter='removed')
+    result = cgs.load_cg_entries('Rooster Partners', status_filters=['removed'])
 
     statuses = {r['data']['CG Review Status'] for r in result}
     assert statuses == {'Refused', 'Removed'}
 
 
-def test_load_cg_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch):
-    rows = [_row('Done'), _row('Pending'), _row('Refused'), _row('Published')]
+def test_load_cg_entries_status_filter_on_pause_matches_substring(monkeypatch):
+    rows = [_row('Done'), _row('On Pause'), _row('Refused'), _row('Published')]
     monkeypatch.setattr(cgs, '_fetch_all', lambda params: rows)
 
-    result = cgs.load_cg_entries('Rooster Partners', status_filter='on-pause')
+    result = cgs.load_cg_entries('Rooster Partners', status_filters=['on-pause'])
 
-    assert result == []
+    assert len(result) == 1
+    assert result[0]['data']['CG Review Status'] == 'On Pause'
 
 
 def test_load_cg_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
@@ -61,7 +62,21 @@ def test_load_cg_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
     ]
     monkeypatch.setattr(cgs, '_fetch_all', lambda params: rows)
 
-    result = cgs.load_cg_entries('Rooster Partners', brands=['Rollero'], agent='Levi', proxy='Enigma', country='Germany')
+    result = cgs.load_cg_entries('Rooster Partners', brands=['Rollero'], agents=['Levi'], proxies=['Enigma'], countries=['Germany'])
 
     assert len(result) == 1
     assert result[0]['data']['CG User'] == 'NiklasWeber'
+
+
+def test_load_cg_entries_scopes_by_multiple_countries(monkeypatch):
+    rows = [
+        _row('Done', cg_user='Kauri80', Country='Germany'),
+        _row('Done', cg_user='NiklasWeber', Country='Norway'),
+        _row('Done', cg_user='ThirdUser', Country='Sweden'),
+    ]
+    monkeypatch.setattr(cgs, '_fetch_all', lambda params: rows)
+
+    result = cgs.load_cg_entries('Rooster Partners', countries=['Germany', 'Norway'])
+
+    users = {r['data']['CG User'] for r in result}
+    assert users == {'Kauri80', 'NiklasWeber'}

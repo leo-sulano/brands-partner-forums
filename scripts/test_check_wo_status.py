@@ -49,19 +49,20 @@ def test_load_wo_entries_status_filter_removed_scopes_to_refused_and_removed(mon
     rows = [_row('Done'), _row('Refused'), _row('Removed'), _row('Published')]
     monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
 
-    result = wos.load_wo_entries('Wizard of Odds', status_filter='removed')
+    result = wos.load_wo_entries('Wizard of Odds', status_filters=['removed'])
 
     statuses = {r['data']['WoO Review Status'] for r in result}
     assert statuses == {'Refused', 'Removed'}
 
 
-def test_load_wo_entries_status_filter_unmapped_value_yields_no_entries(monkeypatch):
-    rows = [_row('Done'), _row('Pending'), _row('Published')]
+def test_load_wo_entries_status_filter_not_done_matches_substring(monkeypatch):
+    rows = [_row('Done'), _row('Not done'), _row('Pending'), _row('Published')]
     monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
 
-    result = wos.load_wo_entries('Wizard of Odds', status_filter='on-pause')
+    result = wos.load_wo_entries('Wizard of Odds', status_filters=['not-done'])
 
-    assert result == []
+    assert len(result) == 1
+    assert result[0]['data']['WoO Review Status'] == 'Not done'
 
 
 def test_load_wo_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
@@ -71,10 +72,23 @@ def test_load_wo_entries_scopes_by_brand_agent_proxy_country(monkeypatch):
     ]
     monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
 
-    result = wos.load_wo_entries('Wizard of Odds', brands=['Rollero'], agent='Levi', proxy='Enigma', country='Germany')
+    result = wos.load_wo_entries('Wizard of Odds', brands=['Rollero'], agents=['Levi'], proxies=['Enigma'], countries=['Germany'])
 
     assert len(result) == 1
     assert result[0]['data']['WoO User'] == 'NiklasWeber'
+
+
+def test_load_wo_entries_scopes_by_no_proxy(monkeypatch):
+    rows = [
+        _row('Done', user='Kauri80', **{'Proxy Used': ''}),
+        _row('Done', user='NiklasWeber', **{'Proxy Used': 'Enigma'}),
+    ]
+    monkeypatch.setattr(wos, '_fetch_all', lambda params: rows)
+
+    result = wos.load_wo_entries('Wizard of Odds', proxies=['No Proxy'])
+
+    assert len(result) == 1
+    assert result[0]['data']['WoO User'] == 'Kauri80'
 
 
 class _FakeDriver:

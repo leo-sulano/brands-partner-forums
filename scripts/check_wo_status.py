@@ -35,7 +35,7 @@ from check_review_status import (
     BATCH_SIZE,
     DELAY_BETWEEN_BATCHES,
     log_check_error,
-    STATUS_FILTER_MAP,
+    status_filter_matches,
     matches_scope_filters,
     filter_by_active_group,
     extract_review_card_text,
@@ -89,11 +89,11 @@ def _older_than(date_str: str, days: int) -> bool:
 def load_wo_entries(
     tab: Optional[str] = None,
     include_published: bool = True,
-    status_filter: Optional[str] = None,
+    status_filters: Optional[list[str]] = None,
     brands: Optional[list] = None,
-    agent: Optional[str] = None,
-    proxy: Optional[str] = None,
-    country: Optional[str] = None,
+    agents: Optional[list[str]] = None,
+    proxies: Optional[list[str]] = None,
+    countries: Optional[list[str]] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -103,13 +103,11 @@ def load_wo_entries(
     # tab with more entries (same class of bug fixed for TP/AG/CG's loaders).
     rows: list = _fetch_all(params)
 
-    # status_filter (driven by the dashboard's status-filter dropdown) narrows to
-    # exactly that status — the opt-in path for re-checking Published/Removed,
-    # which CHECKABLE_STATUSES/include_published never cover on their own.
-    if status_filter:
-        statuses = STATUS_FILTER_MAP.get(status_filter, set())
-    else:
-        statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
+    # status_filters (driven by the dashboard's status-filter dropdown) narrows to
+    # exactly those status(es) — the opt-in path for re-checking Published/Removed/
+    # On Pause/Not Done, which CHECKABLE_STATUSES/include_published never cover
+    # on their own.
+    default_statuses = CHECKABLE_STATUSES if include_published else {"done", "pending"}
     brand_set = set(brands) if brands else None
     out = []
     for row in rows:
@@ -120,11 +118,11 @@ def load_wo_entries(
         if not status_col:
             continue
         current = (data.get(status_col) or "").strip().lower()
-        if current not in statuses:
+        if not status_filter_matches(current, status_filters, default_statuses):
             continue
         # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
         # a Check Status run can be scoped to exactly what's currently filtered.
-        if not matches_scope_filters(data, brands=brand_set, agent=agent, proxy=proxy, country=country):
+        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries):
             continue
         out.append(row)
     return out
@@ -244,14 +242,14 @@ def check_wo_for_tab(
     tab: Optional[str] = None,
     include_published: bool = True,
     headless: bool = True,
-    status_filter: Optional[str] = None,
+    status_filters: Optional[list[str]] = None,
     brands: Optional[list] = None,
-    agent: Optional[str] = None,
-    proxy: Optional[str] = None,
-    country: Optional[str] = None,
+    agents: Optional[list[str]] = None,
+    proxies: Optional[list[str]] = None,
+    countries: Optional[list[str]] = None,
     dry_run: bool = False,
 ) -> dict:
-    entries = load_wo_entries(tab, include_published, status_filter, brands, agent, proxy, country)
+    entries = load_wo_entries(tab, include_published, status_filters, brands, agents, proxies, countries)
     entries, skipped_group = filter_by_active_group(entries)
     total = len(entries)
     if not total:

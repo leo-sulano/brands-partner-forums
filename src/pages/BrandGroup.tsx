@@ -29,7 +29,7 @@ import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, c
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
 import { SITE_URL } from '../lib/supabase';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
-import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel, NO_PROXY_LABEL } from '../lib/proxyAliases';
+import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
@@ -696,11 +696,6 @@ export default function BrandGroup() {
   const [checkedViewSnapshot, setCheckedViewSnapshot] = useState<{ ids: string[]; signature: string } | null>(null);
   const [checkDropdownOpen, setCheckDropdownOpen] = useState(false);
   const checkDropdownRef = useRef<HTMLDivElement>(null);
-  // Set when the current Status/Agent/Proxy/Country filter selection can't be sent to the
-  // check-status API as-is (2+ values selected, or a lone "No Proxy") and would otherwise
-  // silently widen to an unscoped sweep — see fieldsThatWillWiden() below. Holds the platforms
-  // the user actually clicked so Continue can resume with them once confirmed.
-  const [pendingScopeConfirm, setPendingScopeConfirm] = useState<{ platforms: ('tp' | 'ag' | 'cg' | 'wo')[]; fields: string[] } | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const closeToast = useCallback(() => setToast(null), []);
   const [lastChecked, setLastChecked] = useState<string | null>(
@@ -1675,38 +1670,7 @@ export default function BrandGroup() {
     setJumpInput('');
   }
 
-  // The check-status API's status/agent/proxy/country scope fields are single-value only
-  // (unlike `brands`, already an array) — a 2+ selection, or a lone "No Proxy" (which has no
-  // backend equivalent either, see the Proxy branch below), can't be sent as-is and would
-  // otherwise silently widen the check to an unscoped sweep for that field. Returns the
-  // human-readable field names that would be affected, so the caller can confirm first instead.
-  function fieldsThatWillWiden(): string[] {
-    const fields: string[] = [];
-    if (statusFilter.length >= 2) fields.push('Status');
-    if (agentFilter.length >= 2) fields.push('Agent');
-    if (proxyFilter.length >= 2 || (proxyFilter.length === 1 && proxyFilter[0] === NO_PROXY_LABEL)) fields.push('Proxy');
-    if (countryFilter.length >= 2) fields.push('Country');
-    return fields;
-  }
-
-  function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
-    setCheckDropdownOpen(false);
-    const fields = fieldsThatWillWiden();
-    if (fields.length > 0) {
-      setPendingScopeConfirm({ platforms, fields });
-      return;
-    }
-    void runCheckStatus(platforms);
-  }
-
-  function confirmPendingCheckStatus() {
-    if (!pendingScopeConfirm) return;
-    const { platforms } = pendingScopeConfirm;
-    setPendingScopeConfirm(null);
-    void runCheckStatus(platforms);
-  }
-
-  async function runCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
+  async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
     setCheckingStatus(true);
     setCheckDropdownOpen(false);
     // Freeze exactly what's on screen right now so status updates from this check
@@ -1716,22 +1680,23 @@ export default function BrandGroup() {
     // every already-resolved account on every run. Filtering the table — by status,
     // brand, agent, proxy, or country — and then clicking Check Status scopes that
     // run to exactly what's currently filtered, for whichever platform(s) it covers.
-    // The check-status API's status/agent/proxy/country fields are still single-value
-    // (unlike `brands`, already an array) — scoping by one of those only applies when
-    // exactly one value is selected here, the same "single-value only" rule already
-    // used for the rating filter above; 2+ selected silently widens the check back to
-    // its normal unscoped sweep for that one field, rather than guessing which value
-    // to send.
-    const activeStatusFilter = statusFilter.length === 1 ? statusFilter[0] : undefined;
-    const filterLabel = activeStatusFilter ? STATUS_MULTI_OPTS.find((o) => o.value === activeStatusFilter)?.label : undefined;
+    // Every field (including Status/Agent/Proxy/Country, not just Brand) supports any
+    // number of selected values — the check-status API matches an entry if it hits ANY
+    // of the selected values for a given field (OR within a field, AND across fields),
+    // same as the dashboard's own multi-select filters. "No Proxy" is a real backend
+    // value too (matches a blank/redacted Proxy Used field), so it's sent through like
+    // any other selection with no special-casing needed here.
+    const filterLabel = statusFilter.length > 0
+      ? statusFilter.map((sf) => STATUS_MULTI_OPTS.find((o) => o.value === sf)?.label ?? sf).join('/')
+      : undefined;
     const scope: StatusCheckScope = {
-      statusFilter: activeStatusFilter,
+      statusFilters: statusFilter.length > 0 ? statusFilter : undefined,
       brands: brandFilter.length > 0
         ? [...new Set(brandFilter.flatMap((bf) => getBrandGroup(decodedTab, bf) ?? [bf]))]
         : undefined,
-      agent: agentFilter.length === 1 ? agentFilter[0] : undefined,
-      proxy: proxyFilter.length === 1 && proxyFilter[0] !== NO_PROXY_LABEL ? proxyFilter[0] : undefined,
-      country: countryFilter.length === 1 ? countryFilter[0] : undefined,
+      agents: agentFilter.length > 0 ? agentFilter : undefined,
+      proxies: proxyFilter.length > 0 ? proxyFilter : undefined,
+      countries: countryFilter.length > 0 ? countryFilter : undefined,
     };
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }[] = [];
@@ -1791,13 +1756,6 @@ export default function BrandGroup() {
         kind = 'success';
       } else if (totalChecked > 0) {
         msg = `Checked ${totalChecked} ${filterLabel ? `${filterLabel} ` : ''}entr${totalChecked !== 1 ? 'ies' : 'y'} — no status changes`;
-        kind = 'success';
-      } else if (activeStatusFilter === 'on-pause' || activeStatusFilter === 'not-done') {
-        // Neither status has a backend equivalent (STATUS_FILTER_MAP only knows
-        // done/pending/live/removed) — the request always matches zero rows, since
-        // nothing's been posted yet for these entries, not because none exist.
-        // "No entries found" would misleadingly imply the opposite.
-        msg = `${filterLabel} entries haven't been posted yet — nothing to check`;
         kind = 'success';
       } else {
         msg = filterLabel ? `No ${filterLabel} entries found to check` : 'No entries found to check';
@@ -3122,43 +3080,6 @@ export default function BrandGroup() {
               >
                 {deleting && <Loader2 className="size-4 animate-spin" />}
                 {deleting ? 'Deleting…' : 'Delete'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {pendingScopeConfirm && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          onClick={() => setPendingScopeConfirm(null)}
-        >
-          <div
-            className="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm mx-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h2 className="text-base font-semibold text-slate-900 mb-2">
-              Check ALL {pendingScopeConfirm.fields.join('/')} values?
-            </h2>
-            <p className="text-sm text-slate-500 mb-4">
-              Check Status can only be scoped to one selected value per field. With multiple{' '}
-              {pendingScopeConfirm.fields.join('/')} values selected (or "No Proxy", which has no
-              equivalent on the live check), it will run against every value for{' '}
-              {pendingScopeConfirm.fields.length === 1 ? 'that field' : 'those fields'} instead of
-              just what's filtered on screen — which may check far more entries than expected.
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setPendingScopeConfirm(null)}
-                className="rounded-md px-4 py-2 text-sm font-medium text-slate-600 hover:bg-blue-50 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPendingCheckStatus}
-                className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 transition-colors"
-              >
-                Continue anyway
               </button>
             </div>
           </div>

@@ -5503,3 +5503,59 @@ live TP/AG/CG/WO — that side effect was judged unnecessary to prove the UI gat
 avoiding it matches this project's standing caution around real external actions. Full suite (1330
 tests, unchanged) and build both pass. No spec/plan doc — a small, user-selected UX fix (one of 4
 options presented and picked directly), implemented with one self-review pass. Task 253.
+
+---
+
+*2026-08-24 (later still):* Extended Check Status to support real multi-value scoping for Status/
+Agent/Proxy/Country — the user asked directly for this after Task 253's confirm-before-widening
+modal made the single-value-only limitation visible. Classified Bounded (brainstorming skill) since
+it extends an already-working flow (`brands` already scoped by array) rather than building a new
+one; approved in chat after 3 clarifying questions (OR-within-field semantics; whether to also give
+real backend meaning to "No Proxy" and On Pause/Not Done, not just fix the multi-value case; deploy
+to EC2 myself vs. hand off). All three: yes.
+
+`StatusCheckScope` (`src/lib/queries.ts`) and its 4 trigger functions now send `statusFilters`/
+`agents`/`proxies`/`countries` as arrays instead of single strings, matching how `brands` already
+worked. The shared Python matching logic in `check_review_status.py` — imported by all 4 platform
+checkers (`check_ag_status.py`/`check_cg_status.py`/`check_wo_status.py`), this project's historically
+most incident-prone code path (see the 2026-07-09 and 2026-07-10 entries) — now does OR-within-field/
+AND-across-fields set matching instead of single-value exact-equality: `matches_scope_filters` takes
+`agents`/`proxies`/`countries` lists, and a new `status_filter_matches()` (with `STATUS_FILTER_MAP`
+unioned across every requested filter key) replaces each platform's ad hoc single-filter lookup,
+now shared by all 4 rather than duplicated. Two backend gaps closed as part of the same change, per
+the user's explicit yes to including them: a new `_is_no_proxy_value()` ports `src/lib/proxyAliases.ts`'s
+blank/all-asterisk-redacted check to Python (cross-referenced in both directions) so "No Proxy" in a
+`proxies` request matches a genuinely blank/redacted `Proxy Used` field instead of never matching
+anything; and a new `STATUS_FILTER_SUBSTRINGS` map gives On Pause/Not Done real substring-based
+matching (mirroring `BrandGroup.tsx`'s own `isOnPause`/`isNotDone` exactly, `v.includes('pause')`/
+`v.includes('not done')`) instead of the exact-set-membership approach the other 4 statuses use,
+since these two have no single fixed spelling. `status_server.py`'s `/check-status` route and all 3
+legacy per-platform routes (`/check-ag-status`/`/check-cg-status`/`/check-wo-status` — unreachable
+from the dashboard today, but still live Flask routes that would have 500'd against the renamed
+`check_*_for_tab` signatures if left untouched) were updated symmetrically.
+
+This change directly supersedes and removes two of this session's own just-shipped fixes, since the
+thing each was working around no longer exists: Task 253's confirm-before-widening modal
+(`pendingScopeConfirm`/`fieldsThatWillWiden`) is deleted outright — multi-value selections are now
+correctly scoped, not silently widened, so there's nothing left to warn about; Task 252's special
+"On Pause entries haven't been posted yet" toast message is deleted too, since a zero-result toast
+is accurate again now that On Pause/Not Done are real, checkable filters rather than guaranteed-empty
+ones.
+
+TDD throughout on the Python side: rewrote the existing `matches_scope_filters`/`load_entries`/
+`load_ag_entries`/`load_cg_entries`/`load_wo_entries` test suites to the new plural-array signatures
+first (confirmed RED — `TypeError`/`AttributeError` for the missing feature, not typos, 14+18 failures
+across the two waves), then implemented until green. Added new coverage per platform for multi-value
+OR-matching, "No Proxy" blank/redacted matching, and On Pause/Not Done substring matching — including
+replacing each platform's old "unmapped value yields no entries" test (asserting the exact behavior
+this task intentionally reverses) with a real substring-match assertion. Full Python suite: 132 passed
+(up from 118 before this task). Frontend: `npm run build` and the full Vitest suite (1330 tests,
+unchanged — `BrandGroup.tsx`'s wiring has no dedicated coverage, verified via build per this project's
+established convention for that file) both pass.
+
+Live production risk: this design was scoped explicitly to require deployment before taking effect,
+following this project's established EC2 deploy-parity discipline (md5sum verification, `/health`
+check, then a real production-scoped run) rather than assuming the change is live once merged — see
+the follow-up deploy entry. `CLAUDE.md`'s Known Issues bullet documenting the old silent-widening
+behavior was corrected in place rather than deleted, per this project's convention of leaving a
+dated correction note. Task 254.
