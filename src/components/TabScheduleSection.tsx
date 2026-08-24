@@ -628,13 +628,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // `columns`/`scheduleRows` the grid itself renders below, so the strip and
   // the grid can never disagree about what's scheduled.
   const platformCounts = useMemo(
-    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, brandPlatforms, columns),
+    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, brandPlatforms, columns, dateStatusIndex, todayISO),
     // brandPlatforms is a plain function closing over tabCtx/activePlatforms
     // (both re-derived fresh every render) rather than a memoized value —
     // included here via tabCtx itself so this recomputes whenever the
-    // exclusion sets it reads from actually change.
+    // exclusion sets it reads from actually change. Past days now only count
+    // with real evidence (dateStatusIndex) rather than the plan alone — see
+    // countActivePlatformSlots' own doc comment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scheduleRows, tab, filteredBrands, columns, tabCtx],
+    [scheduleRows, tab, filteredBrands, columns, tabCtx, dateStatusIndex, todayISO],
   );
 
   useEffect(() => {
