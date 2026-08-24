@@ -5338,3 +5338,23 @@ platform already has its own always-rendered placeholder chip as the click targe
 date/status/platform filtering touched — implemented directly with one self-review pass. Full suite
 (1309 tests) and build both pass; no schema change, no live-browser verification performed this
 session. Task 248.
+
+---
+
+*2026-08-24:* Added a sort toggle ("Success Rate" / "Total") to Overview's Country Breakdown and
+Proxy Breakdown section headers, per a user request/mockup — both charts previously always sorted
+by published rate with no way to switch to sorting by volume. `topNWithOther` (`src/lib/
+overviewBreakdown.ts`) gained an optional `sortMode: 'rate' | 'volume'` param (defaults to `'rate'`,
+so omitting it — the only pre-existing call shape — is unchanged); top-N/"Other" fold-in membership
+is still always decided by volume regardless of mode, only the final display order changes, and the
+pinned-last card (Proxy's "No Proxy") still always renders last in either mode. `Overview.tsx` holds
+two independent `useState<BreakdownSortMode>` (one per chart, both defaulting to `'rate'` to match
+prior behavior) feeding a new small `SortModeToggle` two-pill component, so switching one chart's
+sort never affects the other. Bounded/Tier 2 task confined to `overviewBreakdown.ts`'s only caller
+— implemented directly with one self-review pass, no spec/plan doc. 4 new unit tests
+(`overviewBreakdown.test.ts`) cover the volume sort, its rate-tiebreak, the pinned-key interaction
+under volume sort, and default-mode parity with the old no-param call. Full suite (1313 tests) and
+build both pass; live-verified via Playwright against real Supabase data — Country Breakdown's
+default view matched the user's screenshot exactly, clicking "Total" re-sorted it 908→7 total
+descending, and Proxy Breakdown's "No Proxy" card (highest total, 1,325) correctly stayed pinned
+last under volume sort rather than jumping to the top. Task 249.

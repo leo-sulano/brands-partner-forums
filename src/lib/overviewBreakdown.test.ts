@@ -138,6 +138,45 @@ describe('topNWithOther', () => {
     expect(cards).toHaveLength(3);
     expect(cards.every((c) => !c.isOther)).toBe(true);
   });
+
+  it('sortMode "volume" sorts by total descending instead of rate, independent of rate', () => {
+    const merged: Record<string, CountBreakdown> = {
+      lowRateHighVolume: { label: 'Low Rate High Volume', live: 10, removed: 20 }, // 33.3%, volume 30
+      highRateLowVolume: { label: 'High Rate Low Volume', live: 3, removed: 0 }, // 100%, volume 3
+    };
+    const cards = topNWithOther(merged, 8, undefined, 'volume');
+    expect(cards.map((c) => c.key)).toEqual(['lowRateHighVolume', 'highRateLowVolume']);
+  });
+
+  it('sortMode "volume" ties on total fall back to rate descending', () => {
+    const merged: Record<string, CountBreakdown> = {
+      a: { label: 'A', live: 5, removed: 5 }, // 50%, volume 10
+      b: { label: 'B', live: 10, removed: 0 }, // 100%, volume 10
+    };
+    const cards = topNWithOther(merged, 8, undefined, 'volume');
+    expect(cards.map((c) => c.key)).toEqual(['b', 'a']);
+  });
+
+  it('sortMode "volume" still keeps a pinned key trailing last, and top-N/"Other" membership unaffected', () => {
+    const merged: Record<string, CountBreakdown> = {
+      noproxy: { label: 'No Proxy', live: 5, removed: 20 }, // volume 25, would otherwise lead by volume
+      a: { label: 'A', live: 3, removed: 0 },
+      b: { label: 'B', live: 2, removed: 0 },
+      c: { label: 'C', live: 1, removed: 0 },
+    };
+    const cards = topNWithOther(merged, 2, 'noproxy', 'volume');
+    expect(cards.map((c) => c.key)).toEqual(['a', 'b', '__other__', 'noproxy']);
+  });
+
+  it('omitting sortMode defaults to "rate", matching prior behavior', () => {
+    const merged: Record<string, CountBreakdown> = {
+      lowRateHighVolume: { label: 'Low Rate High Volume', live: 10, removed: 20 },
+      highRateLowVolume: { label: 'High Rate Low Volume', live: 3, removed: 0 },
+    };
+    expect(topNWithOther(merged, 8).map((c) => c.key)).toEqual(
+      topNWithOther(merged, 8, undefined, 'rate').map((c) => c.key),
+    );
+  });
 });
 
 describe('mergeDistinctValues', () => {

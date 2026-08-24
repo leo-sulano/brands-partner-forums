@@ -38,11 +38,27 @@ function byRateThenVolume(a: BreakdownCard, b: BreakdownCard): number {
   return (b.live + b.removed) - (a.live + a.removed);
 }
 
+// Highest total volume first; ties fall back to published rate descending for stability.
+function byVolumeThenRate(a: BreakdownCard, b: BreakdownCard): number {
+  const volumeDiff = (b.live + b.removed) - (a.live + a.removed);
+  if (volumeDiff !== 0) return volumeDiff;
+  return rateForSort(b) - rateForSort(a);
+}
+
+export type BreakdownSortMode = 'rate' | 'volume';
+
 // pinnedLastKey (e.g. Proxy Breakdown's "no proxy" key) is excluded from ranking/topN/"Other"
-// entirely and appended as its own trailing card, so it always renders last regardless of rate
+// entirely and appended as its own trailing card, so it always renders last regardless of sortMode
 // instead of competing for a top-N slot or a sorted position like a real value. Omit it (Country
-// Breakdown does) to let it take part in the rate sort like everything else.
-export function topNWithOther(merged: Record<string, CountBreakdown>, topN: number, pinnedLastKey?: string): BreakdownCard[] {
+// Breakdown does) to let it take part in the sort like everything else. sortMode only changes the
+// final display order — which values get their own card vs. fold into "Other" is always decided
+// by volume, regardless of sortMode.
+export function topNWithOther(
+  merged: Record<string, CountBreakdown>,
+  topN: number,
+  pinnedLastKey?: string,
+  sortMode: BreakdownSortMode = 'rate',
+): BreakdownCard[] {
   const entries = Object.entries(merged);
   const pinnedEntry = pinnedLastKey ? entries.find(([key]) => key === pinnedLastKey) : undefined;
   const rankable = pinnedEntry ? entries.filter(([key]) => key !== pinnedLastKey) : entries;
@@ -66,7 +82,7 @@ export function topNWithOther(merged: Record<string, CountBreakdown>, topN: numb
       members: rest,
     });
   }
-  cards.sort(byRateThenVolume);
+  cards.sort(sortMode === 'volume' ? byVolumeThenRate : byRateThenVolume);
   if (pinnedEntry) {
     const [key, v] = pinnedEntry;
     cards.push({ key, label: v.label, live: v.live, removed: v.removed, isOther: false });

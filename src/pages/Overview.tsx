@@ -12,7 +12,7 @@ import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
 import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGrid';
-import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownCard } from '../lib/overviewBreakdown';
+import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownCard, type BreakdownSortMode } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
@@ -124,6 +124,27 @@ interface KpiModalState {
 }
 
 type PlatformKey = 'tp' | 'ag' | 'cg' | 'wo';
+
+// Two-pill sort toggle shared by Country and Proxy Breakdown's section headers —
+// each keeps its own independent sort mode, so switching one never affects the other.
+function SortModeToggle({ value, onChange }: { value: BreakdownSortMode; onChange: (mode: BreakdownSortMode) => void }) {
+  return (
+    <div className="inline-flex shrink-0 rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs font-medium">
+      {(['rate', 'volume'] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          onClick={() => onChange(mode)}
+          className={`rounded-md px-2.5 py-1 transition-colors ${
+            value === mode ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          {mode === 'rate' ? 'Success Rate' : 'Total'}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // One platform row — colored accent, live/removed counts, success rate —
 // shared by the tab-card grid and the per-brand "Brands" view so the two
@@ -478,6 +499,8 @@ export default function Overview() {
   const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
   const [sliceModal, setSliceModal] = useState<SliceModalState | null>(null);
   const [otherModal, setOtherModal] = useState<OtherModalState | null>(null);
+  const [countrySortMode, setCountrySortMode] = useState<BreakdownSortMode>('rate');
+  const [proxySortMode, setProxySortMode] = useState<BreakdownSortMode>('rate');
   const [searchParams, setSearchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
@@ -600,8 +623,8 @@ export default function Overview() {
   // folded-together bucket. Proxy Breakdown keeps the top-8-plus-Other cap.
   const countryMerged = mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byCountry));
   const proxyMerged = mergeBreakdownMaps(state.tabs.map((t) => t.kpis.byProxy));
-  const countryCards = topNWithOther(countryMerged, Infinity);
-  const proxyCards   = topNWithOther(proxyMerged,   BREAKDOWN_TOP_N, canonicalProxyKey(NO_PROXY_LABEL));
+  const countryCards = topNWithOther(countryMerged, Infinity, undefined, countrySortMode);
+  const proxyCards   = topNWithOther(proxyMerged,   BREAKDOWN_TOP_N, canonicalProxyKey(NO_PROXY_LABEL), proxySortMode);
   const countryCoverage = Object.entries(countryMerged)
     .filter(([key]) => key !== 'unknown')
     .reduce((s, [, v]) => s + v.live + v.removed, 0);
@@ -1018,12 +1041,17 @@ export default function Overview() {
 
       {/* Country breakdown */}
       <section>
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-800">Country Breakdown</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Published vs. removed by country
-            {!state.loading && countryCards.length > 0 && ` — ${countryCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a country recorded`}
-          </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Country Breakdown</h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Published vs. removed by country
+              {!state.loading && countryCards.length > 0 && ` — ${countryCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a country recorded`}
+            </p>
+          </div>
+          {!state.loading && countryCards.length > 0 && (
+            <SortModeToggle value={countrySortMode} onChange={setCountrySortMode} />
+          )}
         </div>
         {state.loading ? (
           <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
@@ -1060,12 +1088,17 @@ export default function Overview() {
 
       {/* Proxy breakdown */}
       <section>
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-slate-800">Proxy Breakdown</h2>
-          <p className="mt-0.5 text-xs text-slate-400">
-            Published vs. removed by proxy
-            {!state.loading && proxyCards.length > 0 && ` — ${proxyCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a proxy recorded`}
-          </p>
+        <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-800">Proxy Breakdown</h2>
+            <p className="mt-0.5 text-xs text-slate-400">
+              Published vs. removed by proxy
+              {!state.loading && proxyCards.length > 0 && ` — ${proxyCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a proxy recorded`}
+            </p>
+          </div>
+          {!state.loading && proxyCards.length > 0 && (
+            <SortModeToggle value={proxySortMode} onChange={setProxySortMode} />
+          )}
         </div>
         {state.loading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
