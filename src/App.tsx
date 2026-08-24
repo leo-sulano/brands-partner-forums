@@ -4,20 +4,25 @@ import { AuthProvider } from './contexts/AuthContext';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ProtectedRoute from './components/ProtectedRoute';
+import {
+  importOverview, importMentionDetail, importBrandGroup, importAdminUsers,
+  importActivityLog, importScoreSummary, importSchedulePlanner, importAskAI,
+  importHowItWorks,
+} from './lib/routeChunks';
 
 const Login         = lazy(() => import('./pages/Login'));
 const Signup        = lazy(() => import('./pages/Signup'));
 const ResetPassword = lazy(() => import('./pages/ResetPassword'));
 const PortalCallback = lazy(() => import('./pages/PortalCallback'));
-const Overview    = lazy(() => import('./pages/Overview'));
-const MentionDetail = lazy(() => import('./pages/MentionDetail'));
-const BrandGroup  = lazy(() => import('./pages/BrandGroup'));
-const AdminUsers  = lazy(() => import('./pages/AdminUsers'));
-const ActivityLog = lazy(() => import('./pages/ActivityLog'));
-const ScoreSummary = lazy(() => import('./pages/ScoreSummary'));
-const SchedulePlanner = lazy(() => import('./pages/SchedulePlanner'));
-const AskAI        = lazy(() => import('./pages/AskAI'));
-const HowItWorks    = lazy(() => import('./pages/HowItWorks'));
+const Overview    = lazy(importOverview);
+const MentionDetail = lazy(importMentionDetail);
+const BrandGroup  = lazy(importBrandGroup);
+const AdminUsers  = lazy(importAdminUsers);
+const ActivityLog = lazy(importActivityLog);
+const ScoreSummary = lazy(importScoreSummary);
+const SchedulePlanner = lazy(importSchedulePlanner);
+const AskAI        = lazy(importAskAI);
+const HowItWorks    = lazy(importHowItWorks);
 
 function PageFallback() {
   return (

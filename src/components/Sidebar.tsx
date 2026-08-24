@@ -10,6 +10,7 @@ import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
 import { isTabPaused } from '../lib/pausedTabRegistry';
 import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
+import { prefetchRoute } from '../lib/routeChunks';
 import { useAuth } from '../contexts/AuthContext';
 import AddBrandTabModal from './AddBrandTabModal';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
@@ -117,6 +118,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               to={to}
               end={end}
               onClick={() => onClose?.()}
+              onMouseEnter={() => prefetchRoute(to)}
+              onFocus={() => prefetchRoute(to)}
               className={({ isActive }) => linkClass(isActive, isCollapsed)}
             >
               <Icon className="size-4 shrink-0" />
@@ -131,6 +134,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               <NavLink
                 to="/score-summary"
                 onClick={() => onClose?.()}
+                onMouseEnter={() => prefetchRoute('/score-summary')}
+                onFocus={() => prefetchRoute('/score-summary')}
                 className={({ isActive }) => linkClass(isActive, isCollapsed)}
               >
                 <BarChart3 className="size-4 shrink-0" />
@@ -141,6 +146,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               <NavLink
                 to="/schedule-planner"
                 onClick={() => onClose?.()}
+                onMouseEnter={() => prefetchRoute('/schedule-planner')}
+                onFocus={() => prefetchRoute('/schedule-planner')}
                 className={({ isActive }) => linkClass(isActive, isCollapsed)}
               >
                 <CalendarDays className="size-4 shrink-0" />
@@ -156,6 +163,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
               to={to}
               end={end}
               onClick={() => onClose?.()}
+              onMouseEnter={() => prefetchRoute(to)}
+              onFocus={() => prefetchRoute(to)}
               className={({ isActive }) => linkClass(isActive, isCollapsed)}
             >
               <Icon className="size-4 shrink-0" />
@@ -190,6 +199,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     <NavLink
                       to={`/brands/${tabToSlug(tab)}`}
                       onClick={() => onClose?.()}
+                      onMouseEnter={() => prefetchRoute('/brands/')}
+                      onFocus={() => prefetchRoute('/brands/')}
                       className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
                     >
                       <Icon className="size-4 shrink-0" />
@@ -254,6 +265,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                   <NavLink
                     to="/log"
                     onClick={() => onClose?.()}
+                    onMouseEnter={() => prefetchRoute('/log')}
+                    onFocus={() => prefetchRoute('/log')}
                     className={({ isActive }) => linkClass(isActive, isCollapsed)}
                   >
                     <ScrollText className="size-4" />
@@ -265,6 +278,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                     <NavLink
                       to="/admin/users"
                       onClick={() => onClose?.()}
+                      onMouseEnter={() => prefetchRoute('/admin/users')}
+                      onFocus={() => prefetchRoute('/admin/users')}
                       className={({ isActive }) => linkClass(isActive, isCollapsed)}
                     >
                       <Users className="size-4" />
