@@ -7,7 +7,7 @@ import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, hasDateEvidence, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -46,6 +46,12 @@ interface TabPreview {
   // otherwise) — built here too so the landing-grid cards can filter by Agent
   // without a second fetch of the same raw entries.
   agentIndex: Map<string, string>;
+  // Real Removed/Confirmed(Published)/Pending/Done evidence for this tab's
+  // entries, built once alongside the other per-tab derived state above —
+  // lets a past day's chip and the platform-count strip both check "did this
+  // actually happen" instead of only reading the plan. Same DateStatusIndex
+  // shape/keying TabScheduleSection.tsx already builds for its own badges.
+  dateStatusIndex: DateStatusIndex;
 }
 
 const EMPTY_PREVIEW: TabPreview = {
@@ -56,6 +62,7 @@ const EMPTY_PREVIEW: TabPreview = {
   removedSet: new Set(),
   scheduleRows: [],
   agentIndex: new Map(),
+  dateStatusIndex: buildDateStatusIndex([]),
 };
 
 export default function SchedulePlanner() {
@@ -299,10 +306,11 @@ export default function SchedulePlanner() {
             const hiddenSet = buildHiddenBrandSet(hiddenRows);
             const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
             const agentIndex = buildResolvedAgentIndex(rawEntries, agentAssignmentRows, activePlatforms);
+            const dateStatusIndex = buildDateStatusIndex(rawEntries);
             const brands = deriveTabBrands(t, rawEntries, headers).filter(
               (b) => resolveBrandPlatforms(t, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
             );
-            const preview: TabPreview = { brands, activePlatforms, hiddenSet, restrictionMap, removedSet, scheduleRows: scheduleRowsPerWeek.flat(), agentIndex };
+            const preview: TabPreview = { brands, activePlatforms, hiddenSet, restrictionMap, removedSet, scheduleRows: scheduleRowsPerWeek.flat(), agentIndex, dateStatusIndex };
             return [t, preview] as const;
           } catch {
             return [t, EMPTY_PREVIEW] as const;
@@ -346,6 +354,8 @@ export default function SchedulePlanner() {
         brands,
         (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
         allRangeColumns,
+        preview.dateStatusIndex,
+        todayISO,
       );
       for (const platform of Object.keys(tabCounts) as Platform[]) {
         totals[platform] = (totals[platform] ?? 0) + (tabCounts[platform] ?? 0);
@@ -353,7 +363,7 @@ export default function SchedulePlanner() {
     }
     return totals;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewByTab, agentFilter, allRangeColumns]);
+  }, [previewByTab, agentFilter, allRangeColumns, todayISO]);
 
   // Specific-tab-mode platform counts: summed across every currently
   // selected tab's own reported counts (see handlePlatformCounts above).
@@ -548,6 +558,7 @@ export default function SchedulePlanner() {
                             const brandPlatforms = resolveBrandPlatforms(
                               t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
                             );
+                            const brandKey = normalizeBrandKey(brand);
                             return (
                               <tr key={brand} className="border-t border-slate-100">
                                 <td className="max-w-[90px] truncate px-1.5 py-1 text-[12px] text-slate-600">
@@ -556,13 +567,26 @@ export default function SchedulePlanner() {
                                   </Tooltip>
                                 </td>
                                 {allRangeColumns.map((col) => {
-                                  const activeToday = brandPlatforms.filter(
-                                    (p) => scheduleFor(preview.scheduleRows, t, brand, col.weekStartISO, p)?.[col.weekday] === 'active',
+                                  const isPast = col.iso < todayISO;
+                                  const planActive = (p: Platform) =>
+                                    scheduleFor(preview.scheduleRows, t, brand, col.weekStartISO, p)?.[col.weekday] === 'active';
+                                  // Past days require real evidence to show a normal chip at all
+                                  // (regardless of what the plan said); today/future days stay
+                                  // plan-only, since the day hasn't happened yet.
+                                  const executed = brandPlatforms.filter((p) =>
+                                    isPast ? hasDateEvidence(preview.dateStatusIndex, brandKey, p, col.iso) : planActive(p),
                                   );
+                                  // A past day the plan called active but no entry ever confirmed —
+                                  // a real operational miss, shown distinctly rather than silently
+                                  // dropped (a day with no plan and no evidence renders nothing, same
+                                  // as it always has).
+                                  const missed = isPast
+                                    ? brandPlatforms.filter((p) => planActive(p) && !hasDateEvidence(preview.dateStatusIndex, brandKey, p, col.iso))
+                                    : [];
                                   return (
                                     <td key={col.iso} className="px-0.5 py-1 text-center">
                                       <span className="flex flex-wrap items-center justify-center gap-0.5">
-                                        {activeToday.map((p) => (
+                                        {executed.map((p) => (
                                           <span
                                             key={p}
                                             className={`inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
@@ -575,6 +599,13 @@ export default function SchedulePlanner() {
                                             />
                                             {PLATFORM_BADGE[p].label}
                                           </span>
+                                        ))}
+                                        {missed.map((p) => (
+                                          <Tooltip key={p} content="Planned — no confirmed activity found">
+                                            <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 px-0.5 text-[7px] font-bold leading-tight text-slate-400">
+                                              {PLATFORM_BADGE[p].label}
+                                            </span>
+                                          </Tooltip>
                                         ))}
                                       </span>
                                     </td>
