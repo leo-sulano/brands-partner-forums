@@ -97,7 +97,7 @@ export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
   return (
     <span
       aria-hidden="true"
-      className={`absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full ${bg} text-[8px] font-bold leading-none ${text}`}
+      className={`absolute -right-0.5 -top-0.5 flex size-2 items-center justify-center rounded-full ${bg} text-[6px] font-bold leading-none ${text}`}
     >
       {label}
     </span>
