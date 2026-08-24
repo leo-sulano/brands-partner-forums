@@ -5559,3 +5559,24 @@ check, then a real production-scoped run) rather than assuming the change is liv
 the follow-up deploy entry. `CLAUDE.md`'s Known Issues bullet documenting the old silent-widening
 behavior was corrected in place rather than deleted, per this project's convention of leaving a
 dated correction note. Task 254.
+
+---
+
+*2026-08-24 (later still):* Changed the Schedule Planner → PMS status-sync column mapping
+(`src/lib/scheduler/pmsSync.ts`'s `PMS_STATUS_COLUMN_IDS`, feeding `syncScheduleStatusToPms`,
+Task 247) per a direct user request: Pending and Done now move a linked task to Review/QA instead
+of In Progress. Only `active` still lands in To Do; every resolved outcome (Pending, Done,
+Published, Removed) now converges on Review/QA, matching the user's framing that a card should sit
+in To Do until an assignee manually works it, and once the scheduled slot resolves to any real
+outcome it should land in Review/QA for a human to check — not pause in an intermediate column.
+`resolvePmsSyncStatus`'s own precedence (`scheduleUtils.ts`, Removed > Confirmed/Published > Pending
+> Done > Paused > Active) is unchanged; only the column each resolved status maps to changed. The
+now-unused `PMS_IN_PROGRESS_COLUMN_ID` constant was deleted (`noUnusedLocals` would otherwise fail
+the build). Updated `pmsSync.test.ts`'s `it.each` column-mapping table to match. Bounded, Tier 2
+(light path) per CLAUDE.md's tiering rule — a contained change to one PMS-specific mapping table,
+not `queries.ts`/`scoreSummary.ts`/date-status-platform filtering — implemented directly with one
+self-review pass rather than the full pipeline. Full suite (1330 tests) and build both pass.
+Deployed the same session (`supabase functions deploy sync-schedule-pms`, version 13, confirmed
+`ACTIVE` via `supabase functions list`) since this logic is the shared module the already-live
+Edge Function imports — the new mapping is live in production immediately, no further manual step
+needed. Task 255.

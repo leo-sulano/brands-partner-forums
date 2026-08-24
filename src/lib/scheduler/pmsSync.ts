@@ -15,7 +15,6 @@ import type { PmsSyncStatus } from './scheduleUtils.ts';
 const PMS_BASE_URL = 'https://pms-nu-eight.vercel.app/api';
 const PMS_PROJECT_ID = 'cmsoh1uvs000004l4fbdvqmir';
 const PMS_TODO_COLUMN_ID = 'cmsoh1uxz000204l46gf88k3f';
-const PMS_IN_PROGRESS_COLUMN_ID = 'cmsoh1uxz000304l4zynwy7vw';
 const PMS_REVIEW_QA_COLUMN_ID = 'cmsoh1uxz000404l44x2m2b9a';
 const PMS_TEAM_ID = 'cmsd98mtx000204lgyb0abodx';
 const PMS_CLIENT_LABEL_NAME = 'Client';
@@ -214,10 +213,16 @@ export async function pushScheduleToPms(
   return { created, skipped, failed };
 }
 
+// Only 'active' stays in To Do -- once a scheduled slot resolves to any real
+// outcome (Pending, Done, Published, or Removed), its task moves straight to
+// Review/QA so a human can review the actual result, rather than sitting in
+// an intermediate In Progress column. Moving a task from To Do into Review/QA
+// as work actually gets done is otherwise a manual PMS action (e.g. an
+// assignee dragging a card once they start it) -- this sync never does that.
 const PMS_STATUS_COLUMN_IDS: Record<PmsSyncStatus, string> = {
   active: PMS_TODO_COLUMN_ID,
-  pending: PMS_IN_PROGRESS_COLUMN_ID,
-  done: PMS_IN_PROGRESS_COLUMN_ID,
+  pending: PMS_REVIEW_QA_COLUMN_ID,
+  done: PMS_REVIEW_QA_COLUMN_ID,
   published: PMS_REVIEW_QA_COLUMN_ID,
   removed: PMS_REVIEW_QA_COLUMN_ID,
 };
