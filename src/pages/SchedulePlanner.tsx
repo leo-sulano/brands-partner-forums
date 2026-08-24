@@ -7,7 +7,8 @@ import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, hasDateEvidence, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, resolveDateEvidenceKind, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -572,24 +573,27 @@ export default function SchedulePlanner() {
                                     scheduleFor(preview.scheduleRows, t, brand, col.weekStartISO, p)?.[col.weekday] === 'active';
                                   // Past days require real evidence to show a normal chip at all
                                   // (regardless of what the plan said); today/future days stay
-                                  // plan-only, since the day hasn't happened yet.
-                                  const executed = brandPlatforms.filter((p) =>
-                                    isPast ? hasDateEvidence(preview.dateStatusIndex, brandKey, p, col.iso) : planActive(p),
-                                  );
+                                  // plan-only, since the day hasn't happened yet — so they carry no
+                                  // evidence kind, and therefore no status corner badge.
+                                  const executedEntries: { platform: Platform; kind: DateEvidenceKind | null }[] = isPast
+                                    ? brandPlatforms
+                                        .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
+                                        .filter((e): e is { platform: Platform; kind: DateEvidenceKind } => e.kind !== null)
+                                    : brandPlatforms.filter((p) => planActive(p)).map((p) => ({ platform: p, kind: null }));
                                   // A past day the plan called active but no entry ever confirmed —
                                   // a real operational miss, shown distinctly rather than silently
                                   // dropped (a day with no plan and no evidence renders nothing, same
                                   // as it always has).
                                   const missed = isPast
-                                    ? brandPlatforms.filter((p) => planActive(p) && !executed.includes(p))
+                                    ? brandPlatforms.filter((p) => planActive(p) && !executedEntries.some((e) => e.platform === p))
                                     : [];
                                   return (
                                     <td key={col.iso} className="px-0.5 py-1 text-center">
                                       <span className="flex flex-wrap items-center justify-center gap-0.5">
-                                        {executed.map((p) => (
+                                        {executedEntries.map(({ platform: p, kind }) => (
                                           <span
                                             key={p}
-                                            className={`inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
+                                            className={`relative inline-flex items-center gap-0.5 rounded-[2px] px-0.5 text-[7px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
                                           >
                                             <img
                                               src={PLATFORM_FAVICON[p]}
@@ -598,6 +602,7 @@ export default function SchedulePlanner() {
                                               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                             />
                                             {PLATFORM_BADGE[p].label}
+                                            {kind && <EvidenceCornerBadge kind={kind} />}
                                           </span>
                                         ))}
                                         {missed.map((p) => (

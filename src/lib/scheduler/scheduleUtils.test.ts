@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -298,6 +298,45 @@ describe('hasDateEvidence', () => {
   it('returns false against a completely empty index', () => {
     const empty: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set() };
     expect(hasDateEvidence(empty, 'winmega', 'tp', '2026-08-20')).toBe(false);
+  });
+});
+
+describe('resolveDateEvidenceKind', () => {
+  const index: DateStatusIndex = {
+    removed: new Set(['winmega::tp::2026-08-20']),
+    confirmed: new Set(['winmega::ag::2026-08-20']),
+    pending: new Set(['winmega::cg::2026-08-20']),
+    done: new Set(['winmega::wo::2026-08-20']),
+  };
+
+  it('returns "removed" when the key is in the removed set', () => {
+    expect(resolveDateEvidenceKind(index, 'winmega', 'tp', '2026-08-20')).toBe('removed');
+  });
+
+  it('returns "confirmed" when the key is in the confirmed set', () => {
+    expect(resolveDateEvidenceKind(index, 'winmega', 'ag', '2026-08-20')).toBe('confirmed');
+  });
+
+  it('returns "pending" when the key is in the pending set', () => {
+    expect(resolveDateEvidenceKind(index, 'winmega', 'cg', '2026-08-20')).toBe('pending');
+  });
+
+  it('returns "done" when the key is in the done set', () => {
+    expect(resolveDateEvidenceKind(index, 'winmega', 'wo', '2026-08-20')).toBe('done');
+  });
+
+  it('returns null when the key is in none of the four sets', () => {
+    expect(resolveDateEvidenceKind(index, 'winmega', 'tp', '2026-08-21')).toBeNull();
+  });
+
+  it('follows removed > confirmed > pending > done precedence when a key somehow lands in more than one set', () => {
+    const collision: DateStatusIndex = {
+      removed: new Set(['winmega::tp::2026-08-20']),
+      confirmed: new Set(['winmega::tp::2026-08-20']),
+      pending: new Set(['winmega::tp::2026-08-20']),
+      done: new Set(['winmega::tp::2026-08-20']),
+    };
+    expect(resolveDateEvidenceKind(collision, 'winmega', 'tp', '2026-08-20')).toBe('removed');
   });
 });
 

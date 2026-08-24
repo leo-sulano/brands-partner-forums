@@ -2,7 +2,7 @@ import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
 import { WEEKDAY_LABELS } from '../scheduleBrands';
 import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
-import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms } from './scheduleUtils';
+import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
 import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
 import Tooltip, { useTooltip } from '../../components/Tooltip';
 
@@ -79,6 +79,31 @@ interface PlatformChipProps {
   onClick: () => void;
 }
 
+// Small color-coded corner badge (✓ Confirmed/Published, ✕ Removed, P
+// Pending, D Done) — extracted from PlatformChip's four inline badge blocks
+// so it can also be rendered by the Schedule Planner landing-grid preview's
+// own chips (SchedulePlanner.tsx), which resolve the same DateEvidenceKind
+// via resolveDateEvidenceKind. Kept here (not scheduleUtils.ts) since it's a
+// visual component, not scheduling logic — a given evidence kind can't look
+// different in the two surfaces because they both render this same function.
+export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
+  const style: Record<DateEvidenceKind, { bg: string; text: string; label: string }> = {
+    removed: { bg: 'bg-rose-600', text: 'text-white', label: '✕' },
+    confirmed: { bg: 'bg-emerald-600', text: 'text-white', label: '✓' },
+    pending: { bg: 'bg-amber-400', text: 'text-slate-900', label: 'P' },
+    done: { bg: 'bg-blue-500', text: 'text-white', label: 'D' },
+  };
+  const { bg, text, label } = style[kind];
+  return (
+    <span
+      aria-hidden="true"
+      className={`absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full ${bg} text-[8px] font-bold leading-none ${text}`}
+    >
+      {label}
+    </span>
+  );
+}
+
 // Own component (not inlined in ScheduleCell's platforms.map) because it
 // calls useTooltip — a hook can't be called a variable number of times
 // inside a callback passed to .map(), but a fixed one-per-instance call
@@ -112,38 +137,10 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
         {badge.label}
-        {isRemoved && (
-          <span
-            aria-hidden="true"
-            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-rose-600 text-[8px] font-bold leading-none text-white"
-          >
-            ✕
-          </span>
-        )}
-        {isConfirmed && (
-          <span
-            aria-hidden="true"
-            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-emerald-600 text-[8px] font-bold leading-none text-white"
-          >
-            ✓
-          </span>
-        )}
-        {isPending && (
-          <span
-            aria-hidden="true"
-            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-amber-400 text-[8px] font-bold leading-none text-slate-900"
-          >
-            P
-          </span>
-        )}
-        {isDone && (
-          <span
-            aria-hidden="true"
-            className="absolute -right-1 -top-1 flex size-3 items-center justify-center rounded-full bg-blue-500 text-[8px] font-bold leading-none text-white"
-          >
-            D
-          </span>
-        )}
+        {isRemoved && <EvidenceCornerBadge kind="removed" />}
+        {isConfirmed && <EvidenceCornerBadge kind="confirmed" />}
+        {isPending && <EvidenceCornerBadge kind="pending" />}
+        {isDone && <EvidenceCornerBadge kind="done" />}
       </span>
       {portal}
     </>

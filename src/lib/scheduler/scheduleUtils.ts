@@ -142,14 +142,30 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   return { removed, confirmed, pending, done };
 }
 
+export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';
+
+// Resolves which single evidence type (if any) backs a brand+platform+date —
+// same removed > confirmed > pending > done precedence ScheduleCell's own
+// render order and resolvePmsSyncStatus already use, so a landing-grid badge
+// can never pick a different "winning" status than the detailed calendar
+// would for the same real data. Returns null when no evidence exists for
+// that exact key.
+export function resolveDateEvidenceKind(index: DateStatusIndex, brandKey: string, platform: Platform, iso: string): DateEvidenceKind | null {
+  const key = `${brandKey}::${platform}::${iso}`;
+  if (index.removed.has(key)) return 'removed';
+  if (index.confirmed.has(key)) return 'confirmed';
+  if (index.pending.has(key)) return 'pending';
+  if (index.done.has(key)) return 'done';
+  return null;
+}
+
 // True if a real entry's status gives brandKey+platform+iso evidence of
 // something actually happening on that exact day — any of
 // Removed/Confirmed(Published)/Pending/Done. Shared by the landing-grid
 // preview cards and countActivePlatformSlots below so "executed" can't mean
 // two different things in two places.
 export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platform: Platform, iso: string): boolean {
-  const key = `${brandKey}::${platform}::${iso}`;
-  return index.removed.has(key) || index.confirmed.has(key) || index.pending.has(key) || index.done.has(key);
+  return resolveDateEvidenceKind(index, brandKey, platform, iso) !== null;
 }
 
 export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed';
