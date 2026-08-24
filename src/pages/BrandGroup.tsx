@@ -1756,6 +1756,13 @@ export default function BrandGroup() {
       } else if (totalChecked > 0) {
         msg = `Checked ${totalChecked} ${filterLabel ? `${filterLabel} ` : ''}entr${totalChecked !== 1 ? 'ies' : 'y'} — no status changes`;
         kind = 'success';
+      } else if (activeStatusFilter === 'on-pause' || activeStatusFilter === 'not-done') {
+        // Neither status has a backend equivalent (STATUS_FILTER_MAP only knows
+        // done/pending/live/removed) — the request always matches zero rows, since
+        // nothing's been posted yet for these entries, not because none exist.
+        // "No entries found" would misleadingly imply the opposite.
+        msg = `${filterLabel} entries haven't been posted yet — nothing to check`;
+        kind = 'success';
       } else {
         msg = filterLabel ? `No ${filterLabel} entries found to check` : 'No entries found to check';
         kind = 'success';

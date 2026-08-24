@@ -5435,3 +5435,48 @@ per-tab calendar (spot-checked on Rooster Partners) renders identically to befor
 confirming the extraction didn't alter its existing look. No spec/plan doc — a small, bounded
 extension of Task 250's already-shipped feature, implemented directly with TDD and one self-review
 pass. Task 251.
+
+---
+
+*2026-08-24 (later still):* Full health audit of Check Status (TP/AG/CG/WO), requested directly by
+the user to confirm the feature still works correctly after the large Schedule Planner/PMS change
+wave (Tasks 231-251) and won't give a false status. Verified live against production rather than
+just reading code: EC2's `status-server.service` is healthy, and the entire check-status import
+chain (`status_server.py`, `check_review_status.py`, `check_ag_status.py`, `check_cg_status.py`,
+`check_wo_status.py`, `check_brand_page_removed.py`, `geo_proxy.py`, `schedule_groups.py`,
+`geo_bridge.py`) is byte-identical between EC2 and the repo — a `geo_proxy.py`/`geo_bridge.py`
+md5sum mismatch turned out to be a CRLF-only artifact from the local Windows checkout, confirmed via
+a re-hash after stripping `\r`, not real drift. This is the exact failure class (EC2 running stale
+code invisibly) that caused the 2026-07-09 and 2026-07-10 incidents, and it's clean now. Real,
+recent production runs confirm all 4 platforms work end to end with zero errors: TP the same day
+(`checked=134 updated=6 errors=0`), AG/CG on 2026-08-18 (8 runs, hundreds checked, 0 errors), WO on
+2026-08-20 (0 errors). `git log` confirmed the Schedule Planner/PMS wave never touched any
+check-status script, `queries.ts`'s trigger functions, or `BrandGroup.tsx`'s `handleCheckStatus` —
+that work lives entirely in separate tables (`brand_schedule`, `schedule_pms_links`,
+`brand_platform_pause`) and never writes to `entries.data`, so it had no path to affect review
+status. Archived tabs are confirmed hard-gated (an early-return placeholder renders before the
+Check Status button ever exists) so an archived tab can't trigger a check; paused tabs are not
+gated (Check Status still runs normally there), which is current, unchanged, undocumented-as-a-gap
+behavior, not something this audit changed.
+
+One real, pre-existing gap found and fixed the same session, at the user's explicit choice among 4
+options presented: selecting Status = "On Pause" or "Not Done" alone (the only two of the 6
+`STATUS_MULTI_OPTS` values with no entry in the Python backend's `STATUS_FILTER_MAP`, which only
+knows `done`/`pending`/`live`/`removed`) and clicking Check Status always reported "No On Pause
+entries found to check" — even when the table visibly showed matching rows — because the backend
+request always matches zero rows for these two values, not because none exist. No wrong status
+data was ever written (nothing gets checked either way), but the message falsely implied a search
+that came up empty rather than "this status isn't checkable in the first place, since nothing's
+been posted yet for these entries." Fixed in `BrandGroup.tsx`'s `handleCheckStatus` by special-casing
+these two status values to show "On Pause entries haven't been posted yet — nothing to check" /
+"Not Done entries haven't been posted yet — nothing to check" instead of the generic empty-search
+message — message-only, no scoping/backend behavior changed (the alternative of falling back to an
+unscoped sweep, matching the existing "No Proxy" precedent, was explicitly declined in favor of
+the lower-risk message fix). A related, pre-existing "No Proxy" scoping quirk (a lone "No Proxy"
+proxy-filter selection has no backend equivalent either, so it silently falls back to an *unscoped*
+sweep instead of an empty one) was confirmed still accurate and already documented in this file's
+Known Issues — left as-is, no action taken. Full suite (1330 tests, unchanged — `BrandGroup.tsx` has
+no dedicated unit coverage for this page-level logic, verified via build per this project's
+established convention for that file) and build both pass. Tier 2 (light path) — a single-message,
+single-file fix with a clear, contained root cause — implemented directly with one self-review pass,
+no spec/plan doc. Task 252.
