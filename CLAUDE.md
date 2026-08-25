@@ -61,7 +61,35 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-20 (newest):* Added a third, one-way PMS sync direction on top of the two Task 231
+- *2026-08-25 (newest):* Overhauled the AI Review Removal Assessment (Task 225) for accuracy,
+  reliability, and actionability, per an explicit request that agents/management get a concrete
+  reason for a removal/refusal instead of a vague hedge. New `src/lib/reviewRemovalEvidence.ts`
+  computes a deterministic `RemovalEvidence` bundle from a tab's already-loaded entries (no new
+  queries): cross-entry proxy/country pattern matching, this brand's historical live/removed
+  outcomes on the platform, cross-platform corroboration on the 4 multi-platform tabs, and two
+  hard signals (duplicate review text; proxy already tied to another removal) — rendered directly
+  in the UI as raw numbers, never AI-paraphrased. `reviewRemovalAssessment.ts`'s schema dropped the
+  old free-text `likely_reason` for a named `root_cause` (+ ranked alternatives),
+  `evidence_for_removal`/`evidence_against_removal` (forces weighing both sides), and a
+  UI-prominent `agent_recommendation` ("For Next Time" block with concrete behavioral actions) —
+  the cache hash now covers the evidence bundle too, and an old cached blob simply fails the
+  updated validator (no migration needed). The edge function now receives the evidence bundle as
+  ground truth, must top-rank a hard signal as root cause unless explicitly argued against, and
+  sets `temperature: 0` for consistency. Built via 5 SDD tasks + 1 verification task, all clean,
+  plus a final whole-branch review (opus) that caught and fixed 4 Important cross-task issues:
+  missing `.ts` extensions on a now-deployment-reachable file (this project's own repeatedly-hit
+  deploy-bundler landmine), the new Evidence row wrongly gated behind an existing AI result
+  (contradicting the spec), `why_it_may_have_been_removed` orphaned from rendering entirely, and
+  cross-entry country matching bypassing the canonical `getEntryCountry` resolver. Deliberately
+  deferred: agent/brand-level aggregation of root causes across many entries for management
+  visibility — a separate follow-up project once this per-entry output shape is proven. Full suite
+  and build both pass. **Pending manual deploy:** the live function (ACTIVE v3, deployed
+  2026-08-14) predates this overhaul — needs `supabase functions deploy review-removal-assessment`
+  again; `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` was already unset before this task and still is,
+  unrelated pre-existing gap. Spec:
+  `docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
+  `docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`. Task 262.
+- *2026-08-20 (prior):* Added a third, one-way PMS sync direction on top of the two Task 231
   already shipped (push-on-activate creates a linked task; pull reconciles due-date/assignee
   drift): a Schedule Planner cell's own real status (Removed/Confirmed-"Published"/Pending/Done/
   plan-only Active) now moves its linked PMS task to a matching board column, so someone working

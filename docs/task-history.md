@@ -5689,3 +5689,79 @@ of them sit close enough to the top edge to trigger the flip. Tier 1 (fast path)
 one shared component's positioning logic, no data or business logic touched. Build passes;
 live-verified via Playwright against the local dev server — hovering a Topbar presence avatar now
 shows the full tooltip flipped below the avatars instead of clipping at the top.
+
+---
+
+## Task 262: AI Review Removal Assessment — Accuracy, Reliability, and Actionability Overhaul
+
+**Date:** August 25, 2026
+
+Overhauled the existing AI Review Removal Assessment (Task 225) so agents and management get a
+concrete, evidence-backed reason a review was removed/refused instead of a vague hedge like
+"Uncertain / Insufficient Evidence — possible coordinated review activity." New pure module
+`src/lib/reviewRemovalEvidence.ts` computes a deterministic `RemovalEvidence` bundle from a tab's
+already-loaded entries — no new Supabase queries — covering: cross-entry proxy/country pattern
+matching (via `canonicalProxyKey`/`resolveProxyLabel`, excluding blank/redacted proxies), this
+brand's historical live/removed outcomes on the same platform (via `isLiveStatus`/`isRemovedStatus`/
+`rateFromCounts`/`successRatePct`, same formula Score Summary already uses), cross-platform
+corroboration for the 4 multi-platform tabs (reads the same entry row's other platform statuses;
+correctly reports "not applicable" on single-platform tabs), and two deterministic "hard signals"
+(byte-identical review text found elsewhere in the tab; this proxy already tied to another removed
+entry). This bundle renders directly in the UI as raw numbers — never AI-paraphrased — so the
+"reliable basis" is code-computed fact, not model narrative.
+
+`src/lib/reviewRemovalAssessment.ts`'s output schema dropped the old free-text `likely_reason`
+entirely in favor of `root_cause` (a named, concrete trigger plus ranked `alternative_causes`),
+`evidence_for_removal`/`evidence_against_removal` (forcing the model to weigh both sides before
+concluding), and `agent_recommendation` (a distinct, UI-prominent "For Next Time" block with
+concrete behavioral actions — the actionable output this whole overhaul exists to produce). The
+cache-staleness hash now also covers the evidence bundle (with canonicalized key/array ordering so
+hashing is deterministic), so a cached assessment correctly goes stale when a *different* entry's
+status change alters this entry's evidence, not just when this entry's own text/fields change. An
+old, pre-overhaul cached blob simply fails the updated validator and is treated as "not yet
+analyzed" — no migration needed, consistent with this column's existing disposable-derived-artifact
+design.
+
+The Deno Edge Function (`supabase/functions/review-removal-assessment/index.ts`) now receives the
+evidence bundle in the request body and is told to treat it as ground truth (never re-derive it),
+must top-rank either hard signal as the lead root-cause candidate unless explicitly argued against
+(with a fix-round addition disclosing that `proxyTiedToOtherRemoval` can be cross-platform, not
+necessarily on the platform under review), and the OpenAI call now sets `temperature: 0` (previously
+unset, i.e. non-deterministic) so near-identical cases get near-identical verdicts.
+
+Built via Subagent-Driven Development (5 implementation tasks + 1 verification-only task, all
+task-reviewed clean, one same-task fix round in Task 3 for a plan-omitted leftover `likely_reason`
+prompt reference) plus a final whole-branch review (opus) that caught 4 Important cross-task issues
+no per-task review could see: `reviewRemovalEvidence.ts`'s 5 relative imports lacked `.ts`
+extensions — a real landmine, since this file is now reachable from deployed Edge Functions via
+`queries.ts` → `reviewRemovalAssessment.ts`, and this project has repeatedly hit real deploy
+failures from exactly this pattern passing local `deno check` but breaking the live bundler; the new
+Evidence row was wrongly gated behind `{result && ...}`, contradicting the spec's explicit "always
+visible, independent of whether an AI assessment has run" requirement; `why_it_may_have_been_removed`
+was still generated/typed/validated but never rendered anywhere, orphaned by the Likely-Reason-to-
+Root-Cause swap; and cross-entry country matching read `entry.data.Country` directly instead of the
+dashboard's canonical `getEntryCountry(data, tab)` resolver, silently under-matching on rows whose
+country is only derivable from the `Account` label (a real, already-tested fallback pattern
+elsewhere in this codebase) — feeding an inaccurate "fact" to the model as ground truth on a feature
+whose entire premise is fact accuracy. All 4 fixed in one fix-wave dispatch alongside 3 cheap
+parked minors (excluding a blank-brand row's `Account Name` from being mislabeled as a "brand" sent
+to OpenAI; disclosing the cross-platform scope of the proxy hard signal in the prompt; a stable
+empty-array constant in `EditEntryModal.tsx` to avoid defeating `ReviewRemovalAssessment`'s
+`useMemo`), verified clean by one scoped re-review — zero new breakage, all 7 findings addressed.
+
+Deliberately deferred to a separate follow-up project (per an explicit scope split during
+brainstorming): agent/brand-level aggregation of recurring root causes for management visibility
+across many entries, not just one at a time — that surface can only be well-designed once this
+per-entry `root_cause`/`agent_recommendation` shape is proven in practice. Full suite (669 tests on
+the branch; 2731 on `main`, inflated by this repo's known stray-worktree double-scan issue — zero
+failures either way) and build both pass. **Pending manual deploy:** the live `review-removal-
+assessment` function (confirmed ACTIVE, version 3, deployed 2026-08-14 per this doc's own
+2026-08-20 correction note) predates this overhaul entirely — `supabase functions deploy
+review-removal-assessment` needs to run again to ship the new schema/prompt; no new
+migration/secret/env var required for that step. Separately, and unrelated to this task,
+`VITE_REVIEW_REMOVAL_ASSESSMENT_URL` was already unset in Vercel before this overhaul and still
+is — the "🤖 Analyze Review" button has never worked live regardless of this change, so this
+overhaul introduces no new regression, it just means the redeploy alone won't make the button
+work until that env var is also set. Spec:
+`docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
+`docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`.
