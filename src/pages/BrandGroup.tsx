@@ -806,7 +806,7 @@ export default function BrandGroup() {
         const [rawEntries, tabHeaders, analysisRows] = await Promise.all([
           fetchRawEntriesByTab(decodedTab),
           fetchTabHeaders(decodedTab),
-          fetchEntryReviewAnalyses(decodedTab),
+          fetchEntryReviewAnalyses(decodedTab).catch(() => [] as EntryReviewAnalysisRow[]),
         ]);
         if (canceled) return;
         const configCols = getTabColumns(decodedTab);

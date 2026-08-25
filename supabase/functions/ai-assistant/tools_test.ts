@@ -1425,3 +1425,43 @@ Deno.test('get_review_analyses group_by="brand" trims a leading/trailing-space b
   assertEquals(result.groups[0].value, 'Acme');
   assertEquals(result.groups[0].count, 2);
 });
+
+Deno.test('get_review_analyses excludes rows from an archived tab', async () => {
+  const tables = {
+    entry_review_analyses: [
+      { entry_id: 'e1', tab: 'Rooster Partners', platform: 'tp', analysis: { overall_result: 'likely_removal_risk' }, analyzed_at: '2026-08-25T00:00:00Z' },
+    ],
+    entries: [
+      { id: 'e1', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+    ],
+    tab_archive_log: [{ tab: 'Rooster Partners', restored_at: null }],
+    paused_tabs: [],
+    removed_platform_brands: [],
+    brand_agent_assignments: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', {});
+  assertEquals(result.total, 0);
+});
+
+Deno.test('get_review_analyses excludes rows from a paused tab', async () => {
+  const tables = {
+    entry_review_analyses: [
+      { entry_id: 'e1', tab: 'Rooster Partners', platform: 'tp', analysis: { overall_result: 'likely_removal_risk' }, analyzed_at: '2026-08-25T00:00:00Z' },
+    ],
+    entries: [
+      { id: 'e1', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [{ tab: 'Rooster Partners' }],
+    removed_platform_brands: [],
+    brand_agent_assignments: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', {});
+  assertEquals(result.total, 0);
+});
+
+Deno.test('get_review_analyses rejects an invalid platform value', async () => {
+  const tables = { entry_review_analyses: [], entries: [], tab_archive_log: [], paused_tabs: [], removed_platform_brands: [], brand_agent_assignments: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', { platform: 'nonsense' });
+  assertEquals(typeof result.error, 'string');
+});
