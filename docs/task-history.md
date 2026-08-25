@@ -5760,6 +5760,17 @@ review-removal-assessment` shipped the new schema/prompt (now ACTIVE, version 4)
 `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` directly via the Vercel CLI before assuming this doc's earlier
 "unset" claim was still true — it was in fact already set in Production since 2026-08-14 (the
 original Task 225 deploy), so that claim was stale, not current; no env var change was actually
-needed, only the redeploy. The "🤖 Analyze Review" button is fully live end to end. Spec:
+needed, only the redeploy. The "🤖 Analyze Review" button is fully live end to end — live-verified
+via Playwright against a real Rooster Partners entry (Luckyvibe, TP, Removed, a positive-toned
+review): the Evidence row ("Same proxy: 3 other entries (1 removed) · Brand history: 36/120 live
+(30%)") rendered correctly *before* clicking Analyze, confirming the Evidence-row-visibility fix;
+after analysis, Root Cause read "Review posted using a proxy tied to a removal on another
+platform" — correctly disclosing the cross-platform scope per the AI_RULES fix, not implying the
+removal was on TP itself; Evidence For/Against were both populated (proxy + low brand success rate
+for; genuine compliant content against); the previously-orphaned "Why" field rendered in the
+expanded panel; "For Next Time" showed 2 concrete behavioral actions; zero console errors, no
+truncation. Clicking "↻ Re-analyze" on the same entry produced the same risk level/assessment/
+confidence/root-cause conclusion (minor wording variance only), confirming `temperature: 0`
+consistency in practice. Spec:
 `docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
 `docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`.

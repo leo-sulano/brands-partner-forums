@@ -87,7 +87,13 @@ Brands Partner Forum/
   (now ACTIVE v4), `git push origin main`, and a fresh Vercel Production deploy confirmed Ready —
   `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` turned out to already be set in Vercel (a stale doc claim,
   corrected in Known Issues), so no env var change was actually needed, just the push+redeploy. The
-  "🤖 Analyze Review" button is fully live end to end. Spec:
+  "🤖 Analyze Review" button is fully live end to end — live-verified via Playwright against a real
+  Rooster Partners entry (Luckyvibe, TP, Removed): the Evidence row rendered before the AI result
+  existed (confirming that spec requirement), Root Cause correctly disclosed a hard signal's
+  cross-platform scope ("tied to a removal on another platform," not implying same-platform),
+  Evidence For/Against both populated, the previously-orphaned Why field rendered, "For Next Time"
+  showed concrete actions, and a Re-analyze produced the same verdict (temperature-0 consistency).
+  Zero console errors. Spec:
   `docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
   `docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`. Task 262.
 - *2026-08-20 (prior):* Added a third, one-way PMS sync direction on top of the two Task 231
