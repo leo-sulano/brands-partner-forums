@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Users, ChevronDown, ChevronsLeft, ChevronUp, BarChart3, Bot, X,
-  CalendarDays, CirclePause,
+  CalendarDays,
 } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
@@ -16,6 +16,16 @@ import AddBrandTabModal from './AddBrandTabModal';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import Tooltip from './Tooltip';
+
+function PausedBadgeIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="10" fill="#E5E7EB" stroke="#F59E0B" strokeWidth="3" />
+      <rect x="8.5" y="7.5" width="2.8" height="9" rx="1" fill="#1F2937" />
+      <rect x="12.7" y="7.5" width="2.8" height="9" rx="1" fill="#1F2937" />
+    </svg>
+  );
+}
 
 const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   tp: 'https://www.google.com/s2/favicons?domain=trustpilot.com&sz=16',
@@ -206,7 +216,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                       <span className="relative shrink-0">
                         <Icon className="size-4" />
                         {isTabPaused(tab) && (
-                          <CirclePause className="absolute -bottom-1 -right-1 size-2.5 rounded-full bg-white text-amber-600" strokeWidth={2.5} />
+                          <PausedBadgeIcon className="absolute -bottom-1.5 -right-1.5 size-3.5" />
                         )}
                       </span>
                       {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
