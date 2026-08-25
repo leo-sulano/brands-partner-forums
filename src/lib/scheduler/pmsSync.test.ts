@@ -372,10 +372,11 @@ describe('syncScheduleStatusToPms', () => {
 
   it.each([
     ['active', 'cmsoh1uxz000204l46gf88k3f'],
-    ['pending', 'cmsoh1uxz000404l44x2m2b9a'],
-    ['done', 'cmsoh1uxz000404l44x2m2b9a'],
-    ['published', 'cmsoh1uxz000404l44x2m2b9a'],
-    ['removed', 'cmsoh1uxz000404l44x2m2b9a'],
+    ['pending', 'cmsoh1uxz000604l4j5loen7g'],
+    ['done', 'cmsoh1uxz000604l4j5loen7g'],
+    ['published', 'cmsoh1uxz000604l4j5loen7g'],
+    ['removed', 'cmsoh1uxz000604l4j5loen7g'],
+    ['paused', 'cmt8eih3x000004lazna3tbmz'],
   ])('maps target status "%s" to column %s', async (targetStatus, columnId) => {
     const { client } = fakeSupabaseForStatusUpdate();
     let movedBody: unknown;

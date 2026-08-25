@@ -433,19 +433,26 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   );
 
   // Reflects each linked task's current calendar-cell status (Removed >
-  // Confirmed/Published > Pending > Done > Active) onto its PMS task's
-  // column, so someone working the PMS board can see status without opening
-  // the dashboard. One-way (dashboard -> PMS only; a manual PMS column move
-  // never writes back here) and best-effort, same fire-and-forget/toast-on-
-  // failure shape as pushScheduleActivations/pullScheduleDrift above. Keyed
-  // on dateStatusIndex (not just `tab`) so it reruns once this tab's real
-  // entry evidence has actually loaded/changed, not on a stale prior tab's
-  // data — see the tabCtx.tab === tab guard below, same pattern the
-  // pull-drift effect uses. A currently-paused (brand, platform) combo is
-  // skipped entirely (resolvePmsSyncStatus returns null) — Paused
-  // deliberately never syncs to PMS.
+  // Confirmed/Published > Pending > Done > Paused > Active) onto its PMS
+  // task's column, so someone working the PMS board can see status without
+  // opening the dashboard. One-way (dashboard -> PMS only; a manual PMS
+  // column move never writes back here) and best-effort, same fire-and-
+  // forget/toast-on-failure shape as pushScheduleActivations/pullScheduleDrift
+  // above. Keyed on dateStatusIndex (not just `tab`) so it reruns once this
+  // tab's real entry evidence has actually loaded/changed, not on a stale
+  // prior tab's data — see the tabCtx.tab === tab guard below, same pattern
+  // the pull-drift effect uses. A currently-paused (brand, platform, date)
+  // combo now moves its task to the real "Project Paused" PMS column
+  // (resolvePmsSyncStatus returns 'paused') rather than being left untouched
+  // — isPaused below folds together every way a combo can be paused: a
+  // scheduler auto-pause or brand+platform override (both already reflected
+  // in `pauses`, week-scoped) OR that exact day cell having been manually
+  // cycled to Paused in brand_schedule (closing the gap the original v1
+  // design deliberately left open — see the "only recognizes scheduler
+  // auto-pause" Known Issue this fixes).
   //
-  // Three correctness guards, added in a final whole-branch review:
+  // Four correctness guards, added across this feature's original review and
+  // this fix:
   // - Also waits on `!scheduleLoading`: `pauses` is reset to [] at the start
   //   of every tab load and only populated once the slower
   //   recalculatePauses -> ensureWeekGenerated -> fetch chain above finishes
@@ -464,6 +471,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   //   flagged-removed-platform filter the calendar itself renders through)
   //   so a combo the dashboard deliberately shows nothing for never has its
   //   linked PMS card moved.
+  // - The manual per-day check reads brand_schedule directly for each link's
+  //   own week (via fetchBrandSchedule, not the `scheduleRows` state, which
+  //   only ever holds the currently-displayed date range's weeks) — a link
+  //   can point at a week far outside what's on screen right now, and this
+  //   effect must still see that week's real day status to detect a manual
+  //   pause on it.
   useEffect(() => {
     if (!isApproved || !tabCtx || tabCtx.tab !== tab || scheduleLoading) return;
     let canceled = false;
@@ -471,13 +484,20 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       try {
         const links = await fetchSchedulePmsLinks(tab);
         if (canceled || links.length === 0) return;
+
+        const distinctWeeks = [...new Set(links.map((l) => weekdayAndWeekStartFor(l.date)?.weekStart).filter((w): w is string => w != null))];
+        const rowsPerWeek = await Promise.all(distinctWeeks.map((w) => fetchBrandSchedule(tab, w).catch(() => [] as BrandScheduleRow[])));
+        const manualPauseRows = rowsPerWeek.flat();
+
         const items: PmsStatusSyncItem[] = [];
         for (const link of links) {
           if (!brandPlatforms(link.brand).includes(link.platform)) continue;
-          const linkWeekStart = weekdayAndWeekStartFor(link.date)?.weekStart;
-          const isPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === linkWeekStart);
+          const loc = weekdayAndWeekStartFor(link.date);
+          const autoPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === loc?.weekStart);
+          const manuallyPaused = loc != null && scheduleFor(manualPauseRows, tab, link.brand, loc.weekStart, link.platform)?.[loc.day] === 'paused';
+          const isPaused = autoPaused || manuallyPaused;
           const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
-          if (targetStatus !== null && targetStatus !== link.synced_status) {
+          if (targetStatus !== link.synced_status) {
             items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus });
           }
         }

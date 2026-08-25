@@ -6015,3 +6015,45 @@ Not yet independently live-verified against a real dashboard click in this sessi
 triggering a real Selenium check) — still worth doing per the two checks named above: an unfiltered
 click on a tab with 20+ eligible entries capping at 20, and a previously-rotation-skipped
 brand-group now getting checked instead of skipped.
+
+---
+
+## Task 267: Schedule Planner → PMS Sync — Done Column + Real Paused Column
+
+**Date:** August 26, 2026
+
+Requested directly by the user: the Schedule Planner → PMS status sync (Task 247) previously moved
+a settled slot (Pending/Done/Published/Removed) to Review/QA and left a paused combo's task
+untouched in To Do. Two changes: (1) Pending/Done/Published/Removed now all move to the real
+**Done** column instead of Review/QA — a settled slot is done, not awaiting review; (2) a paused
+combo now moves its task to the real **Project Paused** column (confirmed live via the PMS API's
+own project-columns response — both `Done` and `Project Paused` already exist as columns on the
+"Forum Team" project, just never wired into this sync) instead of being left in place.
+
+`resolvePmsSyncStatus` (`src/lib/scheduler/scheduleUtils.ts`) now returns `'paused'` — a new member
+of `PmsSyncStatus` — instead of `null` for a paused combo with no real evidence; its return type is
+no longer nullable. `PMS_STATUS_COLUMN_IDS` (`src/lib/scheduler/pmsSync.ts`) maps
+pending/done/published/removed to the live Done column ID (`cmsoh1uxz000604l4j5loen7g`) and the new
+`paused` status to the live Project Paused column ID (`cmt8eih3x000004lazna3tbmz`); the
+now-unused `PMS_REVIEW_QA_COLUMN_ID` constant was removed.
+
+This also closes a real, previously-documented gap: the sync's `isPaused` input used to come only
+from `pauses` (`brand_platform_pause` — a scheduler auto-pause or a `brand_platform_override` force,
+both already week-scoped) and never looked at a single day cell manually cycled to Paused in
+`brand_schedule` itself, so a manually-paused day silently kept resolving to `'active'`. The status-
+sync effect in `TabScheduleSection.tsx` now also fetches `brand_schedule` rows for every distinct
+week its `schedule_pms_links` point at (not just the currently-displayed date range, which is all
+the existing `scheduleRows` state covers) and folds a manual per-day 'paused' status into the same
+`isPaused` boolean passed to `resolvePmsSyncStatus`, so "forced paused" (override), "auto-paused"
+(success-rate trigger), and "manually paused" (one day cell cycled to Paused) all now route to the
+same Project Paused column.
+
+Full suite (2079 tests) and build both pass; `deno check` clean on both `sync-schedule-pms` and
+`generate-weekly-schedule` (the two Deno consumers of `pmsSync.ts`/`scheduleUtils.ts`), and
+`generate-weekly-schedule`'s own Deno test suite (7 tests, unaffected — it only pushes activations,
+never status syncs) still passes. **Pending manual deploy:** `supabase functions deploy
+sync-schedule-pms` — until redeployed, the live function still runs the old Review/QA-only mapping
+and never moves a paused task at all. No migration/schema change, no new Vercel env var. Not yet
+live-verified against a real PMS card move in this session (no live browser/PMS credentials
+available) — worth confirming once deployed: settle a slot (e.g. mark an entry Done) and watch its
+linked task land in Done, then manually pause a day cell and watch its task land in Project Paused.

@@ -168,29 +168,30 @@ export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platfo
   return resolveDateEvidenceKind(index, brandKey, platform, iso) !== null;
 }
 
-export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed';
+export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed' | 'paused';
 
 // Resolves the status that should be reflected onto a linked PMS task for one
 // exact (brand, platform, date) cell -- mirrors ScheduleCell's own render
 // precedence (Removed > Confirmed/Published > Pending > Done > Paused >
 // Active, calendarRenderer.tsx) exactly, so a PMS card can never disagree
-// with what the calendar itself shows. Returns null for a currently-paused
-// (brand, platform) combo with no evidence -- Paused is deliberately excluded
-// from PMS sync entirely; the caller must leave that link's synced_status
-// untouched rather than moving its task.
+// with what the calendar itself shows. `isPaused` covers both a scheduler
+// auto-pause and a manual per-day pause -- the caller is responsible for
+// combining both signals into one boolean, since either kind means the same
+// thing here: this combo has no real evidence yet and is currently paused,
+// not actively scheduled.
 export function resolvePmsSyncStatus(
   brandKey: string,
   platform: Platform,
   dateISO: string,
   index: DateStatusIndex,
   isPaused: boolean,
-): PmsSyncStatus | null {
+): PmsSyncStatus {
   const key = `${brandKey}::${platform}::${dateISO}`;
   if (index.removed.has(key)) return 'removed';
   if (index.confirmed.has(key)) return 'published';
   if (index.pending.has(key)) return 'pending';
   if (index.done.has(key)) return 'done';
-  if (isPaused) return null;
+  if (isPaused) return 'paused';
   return 'active';
 }
 

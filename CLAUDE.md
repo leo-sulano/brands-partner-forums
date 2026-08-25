@@ -61,7 +61,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-25 (newest):* Fixed a real pre-existing bug: `entries.ai_review_analysis` was a single
+- *2026-08-26 (newest):* Schedule Planner → PMS status sync (Task 247) now maps to two different
+  real PMS columns per direct user request. Pending/Done/Published/Removed now move to the real
+  **Done** column instead of Review/QA — a settled slot is done, not awaiting review. A paused combo
+  now moves its task to the real **Project Paused** column (confirmed live via the PMS API's own
+  project-columns response — both columns already existed on the "Forum Team" project, just never
+  wired into this sync) instead of being left untouched. `resolvePmsSyncStatus`
+  (`src/lib/scheduler/scheduleUtils.ts`) now returns a real `'paused'` `PmsSyncStatus` (no longer
+  nullable) instead of `null`; `PMS_STATUS_COLUMN_IDS` (`src/lib/scheduler/pmsSync.ts`) was
+  repointed accordingly and the now-unused `PMS_REVIEW_QA_COLUMN_ID` removed. Also closed the
+  Task 247 "only recognizes scheduler auto-pause, not manual per-day pause" known gap: the status-
+  sync effect (`TabScheduleSection.tsx`) now also fetches `brand_schedule` rows for every distinct
+  week its `schedule_pms_links` point at (not just the currently-displayed date range) and folds a
+  manually-paused day cell into the same `isPaused` signal already covering scheduler auto-pause and
+  the `brand_platform_override` force-pause. Full suite (2079 tests) and build both pass; `deno
+  check` clean on both Deno consumers of the shared module (`sync-schedule-pms`,
+  `generate-weekly-schedule`). **Pending manual deploy:** `supabase functions deploy
+  sync-schedule-pms` — until redeployed, the live function still runs the old Review/QA-only mapping
+  and never moves a paused task. No schema change, no new Vercel env var. Task 267.
+- *2026-08-25 (prior):* Fixed a real pre-existing bug: `entries.ai_review_analysis` was a single
   shared slot per entry, not one per platform, so on a multi-platform tab analyzing one platform's
   review silently overwrote another's cached analysis on the same entry. New `entry_review_analyses`
   table keyed by `(entry_id, platform)` (same 4-policy RLS as `brand_platform_pause`), migrating the
@@ -1149,6 +1167,10 @@ Brands Partner Forum/
   Treat every "Pending manual deploy" bullet appearing *below* this note as potentially stale for the
   same reason — verify against `supabase functions list`/`supabase migration list` before re-doing or
   reporting on any of them, rather than trusting the bullet text alone.
+- **Pending manual deploy (2026-08-26, Task 267).** `supabase functions deploy sync-schedule-pms` —
+  ships the Done-column/Project-Paused-column remap and the manual-per-day-pause fix described in
+  the Recent Changes entry above. No migration, no Vercel env var. Until deployed, the live function
+  still moves settled slots to Review/QA and still leaves a paused combo's task untouched in To Do.
 - **Pending manual deploy (2026-08-25, Task 264) — deploy order matters.** The per-platform review
   analysis storage fix + `get_review_analyses` Ask AI tool need:
   1. `supabase db push` (applies the `entry_review_analyses` migration) — should run before or
@@ -1183,21 +1205,21 @@ Brands Partner Forum/
   column; confirm a paused link never moves; confirm a second tab visit with no further status
   change doesn't flap the task back) was not performed this session — deferred to whoever runs this
   checklist, per this project's established pattern for undeployed PMS-sync changes.
-- **Schedule Planner → PMS status sync only recognizes scheduler auto-pause, not manual per-day
-  pause or "no schedule at all" (2026-08-20, Task 247, accepted scope limitation).**
-  `resolvePmsSyncStatus` (`src/lib/scheduler/scheduleUtils.ts`) takes a single `isPaused` boolean
-  sourced from `brand_platform_pause` (the automatic, success-rate-triggered weekly pause) — it
-  never looks at the day's own `brand_schedule` status. A link whose calendar cell was manually
-  cycled to "Paused (manual)" after its earlier real-entry evidence stopped matching (or a day with
-  no schedule row and no evidence at all) resolves to `'active'` rather than being excluded, so its
-  PMS card can get moved to To Do while the cell itself shows a manual-pause or blank state. This
-  was found by the same whole-branch review that caught the two pause bugs actually fixed before
-  shipping (see the Task 247 Recent Changes entry) — deliberately left as a known gap rather than
-  risking an incomplete fix under this project's "no second fix wave" review-process rule. Impact is
-  self-limiting: the card corrects itself the next time real evidence (Published/Removed/Pending/
-  Done) or a fresh scheduler pause applies to that link. Fix direction if ever needed: thread the
-  day's actual `DayStatus` (`'active' | 'paused' | null`) into the resolver alongside the existing
-  evidence/scheduler-pause inputs.
+- **Resolved for the manual-pause half (2026-08-26, Task 267) — Schedule Planner → PMS status sync
+  still doesn't recognize a day cycled all the way back to blank ("no schedule at all").** Originally
+  filed 2026-08-20 (Task 247) as: `resolvePmsSyncStatus` only looked at `brand_platform_pause` (the
+  automatic, success-rate-triggered weekly pause), never the day's own `brand_schedule` status, so a
+  calendar cell manually cycled to "Paused (manual)" resolved to `'active'` instead of being excluded.
+  Task 267 fixed exactly that case, per the fix direction this bullet used to name: the status-sync
+  effect (`TabScheduleSection.tsx`) now fetches `brand_schedule` rows for every distinct week its
+  links point at and folds a manual per-day `'paused'` status into the same `isPaused` boolean passed
+  to `resolvePmsSyncStatus`, which now returns a real `'paused'` target status (routed to the PMS
+  "Project Paused" column) instead of `null`. Still open: a day cycled a *third* time back to blank
+  (`nextStatus` cycles `active → paused → null`) has no `brand_schedule` row and no real entry
+  evidence either, so it still resolves to `'active'` rather than being excluded — deliberately left
+  alone since the user's Task 267 request only covered "manually paused"/"forced paused", not the
+  blank state. Fix direction if ever needed: treat a link whose day resolves to `null` (no row, or a
+  row with that weekday `null`) the same as `'paused'` in the resolver.
 - **`Login.tsx` has a real Rules-of-Hooks violation (found 2026-08-18, Task 233's live-verification
   pass, not fixed — unrelated to that task's actual scope).** Line 12,
   `if (session) return <Navigate to="/" replace />;`, runs before 7 more `useState`/`useEffect`

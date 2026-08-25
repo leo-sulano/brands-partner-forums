@@ -363,8 +363,8 @@ describe('resolvePmsSyncStatus', () => {
     expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('done');
   });
 
-  it('returns null when paused and no evidence matches', () => {
-    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', emptyIndex, true)).toBeNull();
+  it('returns "paused" when paused and no evidence matches', () => {
+    expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', emptyIndex, true)).toBe('paused');
   });
 
   it('returns "active" when not paused and no evidence matches', () => {

@@ -15,7 +15,8 @@ import type { PmsSyncStatus } from './scheduleUtils.ts';
 const PMS_BASE_URL = 'https://pms-nu-eight.vercel.app/api';
 const PMS_PROJECT_ID = 'cmsoh1uvs000004l4fbdvqmir';
 const PMS_TODO_COLUMN_ID = 'cmsoh1uxz000204l46gf88k3f';
-const PMS_REVIEW_QA_COLUMN_ID = 'cmsoh1uxz000404l44x2m2b9a';
+const PMS_DONE_COLUMN_ID = 'cmsoh1uxz000604l4j5loen7g';
+const PMS_PAUSED_COLUMN_ID = 'cmt8eih3x000004lazna3tbmz';
 const PMS_TEAM_ID = 'cmsd98mtx000204lgyb0abodx';
 const PMS_CLIENT_LABEL_NAME = 'Client';
 const PMS_PLATFORM_LABEL_NAMES: Record<Platform, string> = { tp: 'TP', ag: 'AG', cg: 'CG', wo: 'WO' };
@@ -213,18 +214,21 @@ export async function pushScheduleToPms(
   return { created, skipped, failed };
 }
 
-// Only 'active' stays in To Do -- once a scheduled slot resolves to any real
-// outcome (Pending, Done, Published, or Removed), its task moves straight to
-// Review/QA so a human can review the actual result, rather than sitting in
-// an intermediate In Progress column. Moving a task from To Do into Review/QA
-// as work actually gets done is otherwise a manual PMS action (e.g. an
-// assignee dragging a card once they start it) -- this sync never does that.
+// Only 'active' stays in To Do. Once a scheduled slot resolves to any real
+// outcome -- Pending, Done, Published, or Removed -- its task moves straight
+// to Done, so a human can see at a glance that the slot is settled without
+// opening the dashboard. 'paused' (a scheduler auto-pause, a manual
+// brand+platform override, or a single day cell manually cycled to Paused --
+// resolvePmsSyncStatus's caller combines all three into one boolean) moves
+// the task to the real "Project Paused" column instead, superseding the
+// earlier design where a paused combo's task was simply left untouched.
 const PMS_STATUS_COLUMN_IDS: Record<PmsSyncStatus, string> = {
   active: PMS_TODO_COLUMN_ID,
-  pending: PMS_REVIEW_QA_COLUMN_ID,
-  done: PMS_REVIEW_QA_COLUMN_ID,
-  published: PMS_REVIEW_QA_COLUMN_ID,
-  removed: PMS_REVIEW_QA_COLUMN_ID,
+  pending: PMS_DONE_COLUMN_ID,
+  done: PMS_DONE_COLUMN_ID,
+  published: PMS_DONE_COLUMN_ID,
+  removed: PMS_DONE_COLUMN_ID,
+  paused: PMS_PAUSED_COLUMN_ID,
 };
 
 export interface PmsStatusSyncItem {
