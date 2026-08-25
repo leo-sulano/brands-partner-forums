@@ -167,6 +167,34 @@ def test_filter_by_active_group_bypass_keeps_everything(monkeypatch):
     assert skipped == 0
 
 
+def test_cap_unscoped_batch_truncates_when_no_scope_filter():
+    rows = [_row('Brand / TP URL PAGE', f'Brand {i}') for i in range(5)]
+
+    result = crs.cap_unscoped_batch(rows, has_scope_filter=False, max_batch=3)
+
+    assert len(result) == 3
+    assert result == rows[:3]
+
+
+def test_cap_unscoped_batch_leaves_scoped_run_uncapped():
+    # An explicit status/brand/agent/proxy/country filter means the caller asked
+    # to check exactly these entries -- the batch cap must not silently drop any.
+    rows = [_row('Brand / TP URL PAGE', f'Brand {i}') for i in range(5)]
+
+    result = crs.cap_unscoped_batch(rows, has_scope_filter=True, max_batch=3)
+
+    assert result == rows
+
+
+def test_cap_unscoped_batch_uses_module_default_when_under_it():
+    rows = [_row('Brand / TP URL PAGE', f'Brand {i}') for i in range(3)]
+
+    result = crs.cap_unscoped_batch(rows, has_scope_filter=False)
+
+    assert result == rows
+    assert len(rows) <= crs.MAX_UNSCOPED_BATCH
+
+
 def test_matches_scope_filters_no_filters_matches_everything():
     assert crs.matches_scope_filters({'Agent': 'Lai', 'Proxy Used': 'Enigma', 'Country': 'Germany'}) is True
     assert crs.matches_scope_filters({}) is True

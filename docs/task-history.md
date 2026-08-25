@@ -5945,3 +5945,62 @@ in fact restarted successfully anyway, `/health` returning `{"ok":true}` against
 PID). Not independently live-verified against a real Trustpilot check run in this session (would
 require triggering a real Selenium check from the dashboard) — the user can confirm by retrying
 the exact BITP/Done-filtered scenario from the original report.
+
+---
+
+## Task 266: Check Status — Remove Rotation Entirely, Cap Unscoped Runs Instead
+
+**Date:** August 25, 2026
+
+Follow-up to Task 265 (directly above, same day): the 3-week brand-group rotation
+(`schedule_groups.py` / `filter_by_active_group`) is now removed entirely from the dashboard's
+Check Status button — every brand is eligible to be checked every day, not just once every 3
+weeks. Requested directly by the user after confirming Task 265's fix worked, on the reasoning
+that rotation's whole purpose (spreading EC2/Selenium load) is better served by capping how many
+entries one click processes than by making brands wait weeks between checks.
+
+New `cap_unscoped_batch()` (`scripts/check_review_status.py`, same file/pattern as
+`filter_by_active_group`, which it replaces for this one feature) caps an *unscoped* Check Status
+click (no status/brand/agent/proxy/country filter active) to `MAX_UNSCOPED_BATCH = 20` entries per
+platform per tab. A request already narrowed by an explicit filter is returned unchanged/uncapped —
+the same "explicit filter means check exactly this" precedent Task 265 established for the gate
+this replaces. Wired into the same 4 dashboard-facing call sites Task 265 touched
+(`status_server.py`'s TP branch, `check_ag_for_tab`/`check_cg_for_tab`/`check_wo_for_tab`), each
+now calling `cap_unscoped_batch(entries, has_scope_filter)` instead of
+`filter_by_active_group(entries, bypass=has_scope_filter)`. `filter_by_active_group` itself and
+`schedule_groups.py` are untouched and still live — `check_review_status.py`'s own CLI `main()`
+(a separate, dashboard-button-unrelated entry point for manual/backfill runs) still calls it and is
+still rotation-gated, deliberately out of scope for this change. `skipped_group` stays in every
+platform's returned dict (always `0` now) for response-shape stability; the frontend's now-dead
+"— N skipped (not scheduled this week)" toast branch and its `totalSkippedGroup` accumulator were
+removed from `BrandGroup.tsx` since they could never fire again.
+
+Confirmed the exact design with the user via `AskUserQuestion` before implementing, across 3
+rounds: (1) manual-button-only, no new automated cron (the old daily/weekly cron stays deleted per
+the 2026-08-17 OOM incident — this only changes what a *manual* click is allowed to check); (2) the
+cap applies per-tab-per-platform-per-click, matching how the button already works, not as one
+shared pool across every tab; (3) the existing default *status* scope (Done + Pending, never
+Published/Removed automatically) is unchanged — only named "Done" in the original report, but
+narrowing to Done-only would have stopped anyone from automatically catching TP's actual
+moderation decision on a Pending entry.
+
+New tests in `scripts/test_check_review_status.py`: `test_cap_unscoped_batch_truncates_when_no_scope_filter`,
+`test_cap_unscoped_batch_leaves_scoped_run_uncapped`, `test_cap_unscoped_batch_uses_module_default_when_under_it`.
+Full scripts suite (136 tests) passes; all 4 modified modules (`status_server.py`,
+`check_ag_status.py`, `check_cg_status.py`, `check_wo_status.py`) import cleanly. Frontend build and
+full suite (2078 tests) both pass.
+
+**Not yet deployed** — this session has no SSH access to the EC2 box (`scraper-leo`,
+54.179.186.205), unlike the session that deployed Task 265 directly above. `git push origin main`
+alone does not make this live, since `scripts/` runs on EC2, not Vercel. To deploy: `scp` the 4
+modified files (`check_review_status.py`, `status_server.py`, `check_ag_status.py`,
+`check_cg_status.py`, `check_wo_status.py` — 5 total; `schedule_groups.py` is untouched, don't
+re-upload it) to the box, confirm local/remote `md5sum` parity, then restart `status_server.py`
+(watch for the "pkill -f self-matches the SSH command string" gotcha Task 265 hit — verify the
+restart via `/health` afterward rather than trusting the pkill output). Until deployed, Check
+Status still respects the old 3-week rotation live in production; the frontend's removed toast
+message is harmless either way (it just never fires once the backend catches up, and doesn't
+reference the old-vs-new behavior either way). Live-verify once deployed: click Check Status
+unfiltered on a tab with more than 20 eligible entries and confirm it checks at most 20; click it
+again on a brand-group that was NOT in this week's rotation (previously would have shown "N
+skipped — not scheduled this week") and confirm it's now checked instead of skipped.

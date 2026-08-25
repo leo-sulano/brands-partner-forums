@@ -30,7 +30,7 @@ from check_review_status import (
     load_entries, build_driver, fetch_status,
     find_status_col, find_score_col, update_entry,
     BATCH_SIZE, DELAY_BETWEEN_BATCHES, CHROME_RESTART_EVERY,
-    REVIEW_TEXT_KEYS, filter_by_active_group,
+    REVIEW_TEXT_KEYS, cap_unscoped_batch,
 )
 from check_ag_status import check_ag_for_tab
 from check_cg_status import check_cg_for_tab
@@ -156,13 +156,16 @@ def check_status():
         # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published, brands=brands,
                                 status_filters=status_filters, agents=agents, proxies=proxies, countries=countries)
-        # An explicit status/brand/agent/proxy/country filter means the caller
-        # asked to check exactly these entries -- bypass this week's rotation
-        # gate for them. A fully unscoped run (no filters) still respects it.
+        # Rotation removed (2026-08-25) -- every brand is eligible every day now.
+        # An explicit status/brand/agent/proxy/country filter still means "check
+        # exactly these entries," uncapped; an unscoped run is instead capped to
+        # a small batch (MAX_UNSCOPED_BATCH) so a click can't balloon into a bulk
+        # run across a large tab.
         has_scope_filter = bool(status_filters or brands or agents or proxies or countries)
-        entries, skipped_group = filter_by_active_group(entries, bypass=has_scope_filter)
+        skipped_group = 0
+        entries = cap_unscoped_batch(entries, has_scope_filter)
         total = len(entries)
-        print(f'\n[server] TP check started — {total} entries ({scope}, {skipped_group} skipped — not in this run\'s schedule group)')
+        print(f'\n[server] TP check started — {total} entries ({scope})')
 
         if not total:
             return jsonify({'checked': 0, 'updated': 0, 'errors': 0, 'total': 0, 'skipped_group': skipped_group})
