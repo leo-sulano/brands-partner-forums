@@ -182,8 +182,8 @@ const ASSESSMENT_NOTE_BY_PLATFORM: Record<Platform, string> = {
 function buildSystemPrompt(platform: Platform, status: string): string {
   const removedLike = /remov|refus|reject/i.test(status);
   const framing = removedLike
-    ? `This review's current recorded status is "${status || 'unknown'}" (a removed/refused-type status). Frame "likely_reason" and "why_it_may_have_been_removed" as explaining why the review may have been removed — or state plainly that no clear reason is evident.`
-    : `This review's current recorded status is "${status || 'unknown'}" (not a removed/refused-type status). Frame "likely_reason" and "why_it_may_have_been_removed" as a forward-looking risk read — what WOULD put this review at risk if it were reviewed today — or state that no meaningful risk is evident. Do not claim the review was actually removed.`;
+    ? `This review's current recorded status is "${status || 'unknown'}" (a removed/refused-type status). Frame "root_cause" and "why_it_may_have_been_removed" as explaining why the review may have been removed — or state plainly that no clear reason is evident.`
+    : `This review's current recorded status is "${status || 'unknown'}" (not a removed/refused-type status). Frame "root_cause" and "why_it_may_have_been_removed" as a forward-looking risk read — what WOULD put this review at risk if it were reviewed today — or state that no meaningful risk is evident. Do not claim the review was actually removed.`;
 
   const platformLabel = PLATFORM_LABEL[platform];
 
