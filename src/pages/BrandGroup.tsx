@@ -18,7 +18,8 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, type StatusCheckScope } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, type StatusCheckScope, type EntryReviewAnalysisRow } from '../lib/queries';
+import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
@@ -565,6 +566,7 @@ export default function BrandGroup() {
   const decodedTab = slugToTab(tab ?? '') ?? archivedTabForSlug(tab ?? '') ?? decodeURIComponent(tab ?? '');
 
   const [entries, setEntries] = useState<Entry[]>([]);
+  const [entryReviewAnalyses, setEntryReviewAnalyses] = useState<Map<string, EntryReviewAnalysisRow>>(new Map());
   const [headers, setHeaders] = useState<string[]>([]);
   const [fullHeaders, setFullHeaders] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -801,9 +803,10 @@ export default function BrandGroup() {
 
     (async () => {
       try {
-        const [rawEntries, tabHeaders] = await Promise.all([
+        const [rawEntries, tabHeaders, analysisRows] = await Promise.all([
           fetchRawEntriesByTab(decodedTab),
           fetchTabHeaders(decodedTab),
+          fetchEntryReviewAnalyses(decodedTab),
         ]);
         if (canceled) return;
         const configCols = getTabColumns(decodedTab);
@@ -845,6 +848,7 @@ export default function BrandGroup() {
           Object.values(e.data).some((v) => v != null && v.trim() !== ''),
         );
         setEntries(realEntries);
+        setEntryReviewAnalyses(new Map(analysisRows.map((r) => [entryReviewAnalysisKey(r.entry_id, r.platform), r])));
         setHeaders(populated);
         setFullHeaders(tabHeaders);
         setError(null);
@@ -2811,6 +2815,7 @@ export default function BrandGroup() {
           brandCol={brandCol}
           brandProfiles={brandProfiles}
           tabEntries={entries}
+          entryReviewAnalyses={entryReviewAnalyses}
           initialRemovedPlatforms={initialRemovedPlatformsForEditEntry}
           initialRemovedPlatformDates={initialRemovedPlatformDatesForEditEntry}
           initialOverrides={initialOverridesForEditEntry}
