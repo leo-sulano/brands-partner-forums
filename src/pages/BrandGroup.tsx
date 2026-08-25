@@ -18,7 +18,7 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, type StatusCheckScope, type EntryReviewAnalysisRow } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow } from '../lib/queries';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
@@ -1754,6 +1754,13 @@ export default function BrandGroup() {
       // running on the server) rather than individual entries erroring during
       // the scrape — surfaced directly instead of the generic fallback below.
       const requestErrors: string[] = [];
+      // A gateway timeout (504) only means the proxy in front of status_server.py
+      // gave up waiting — the check runs synchronously there and keeps going
+      // until it truly finishes, so this says nothing about success or failure.
+      // Counted separately so it can't masquerade as a real error/zero-results
+      // outcome below, while the busy spinner (driven by the /active-checks poll)
+      // keeps correctly reflecting that the check is still running server-side.
+      let timedOutCount = 0;
       for (const p of platforms) {
         try {
           let r: { checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number };
@@ -1763,6 +1770,10 @@ export default function BrandGroup() {
           else r = await triggerWoStatusCheck(decodedTab, scope);
           results.push(r);
         } catch (err) {
+          if (err instanceof StatusCheckTimeoutError) {
+            timedOutCount += 1;
+            continue;
+          }
           requestErrors.push(err instanceof Error ? err.message : String(err));
           results.push({ updated: 0, errors: 1 });
         }
@@ -1772,18 +1783,21 @@ export default function BrandGroup() {
       let totalUpdated = 0;
       let totalErrors = 0;
       let totalSheetErrors = 0;
-      let totalSkippedGroup = 0;
       for (const r of results) {
         totalChecked      += r.checked ?? 0;
         totalUpdated      += r.updated ?? 0;
         totalErrors       += r.errors  ?? 0;
         totalSheetErrors  += r.sheet_errors ?? 0;
-        totalSkippedGroup += r.skipped_group ?? 0;
       }
 
       const now = new Date().toLocaleString();
       localStorage.setItem(`lastStatusCheck_${decodedTab}`, now);
       setLastChecked(now);
+
+      // Every platform either timed out or had nothing else to report — don't
+      // claim "no entries found", since the check may genuinely still be
+      // running server-side.
+      const allTimedOut = timedOutCount > 0 && totalChecked === 0 && totalUpdated === 0 && totalErrors === 0;
 
       let msg: string;
       let kind: ToastKind;
@@ -1807,12 +1821,18 @@ export default function BrandGroup() {
       } else if (totalChecked > 0) {
         msg = `Checked ${totalChecked} ${filterLabel ? `${filterLabel} ` : ''}entr${totalChecked !== 1 ? 'ies' : 'y'} — no status changes`;
         kind = 'success';
+      } else if (allTimedOut) {
+        msg = 'No response yet from the server — the check may still be running in the background (this tab will keep showing "Checking…" until it finishes)';
+        kind = 'info';
       } else {
         msg = filterLabel ? `No ${filterLabel} entries found to check` : 'No entries found to check';
         kind = 'success';
       }
-      if (totalSkippedGroup > 0) {
-        msg += ` — ${totalSkippedGroup} skipped (not scheduled this week)`;
+      if (timedOutCount > 0 && !allTimedOut) {
+        // A timeout co-occurred with a real outcome from another platform (e.g.
+        // TP succeeded, AG timed out) — note it without overriding that outcome.
+        msg += ` — ${timedOutCount} platform check${timedOutCount !== 1 ? 's' : ''} timed out waiting for a response but may still be running`;
+        if (kind === 'success') kind = 'info';
       }
       setToast({ message: msg, kind });
       setRefreshingAfterCheck(true);

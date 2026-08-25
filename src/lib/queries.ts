@@ -1232,6 +1232,17 @@ function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<st
   };
 }
 
+// A 504 here means whatever fronts status_server.py (ngrok/load balancer) gave
+// up waiting for a response — it says nothing about the check itself. The
+// check runs synchronously and only releases _global_run_lock when the scrape
+// truly finishes, so a large/unscoped run can easily outlast the proxy's
+// timeout while still succeeding server-side. Callers should treat this
+// distinctly from a real app-level failure (409 already-running, 500, etc.),
+// since /active-checks will correctly keep reporting it as running.
+export class StatusCheckTimeoutError extends Error {}
+const STATUS_CHECK_TIMEOUT_MESSAGE =
+  'No response — the request timed out waiting for the server, but the check may still be running in the background.';
+
 export async function triggerStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
@@ -1252,6 +1263,7 @@ export async function triggerStatusCheck(
     body: JSON.stringify(statusCheckBody(tab, scope)),
   });
   if (!res.ok) {
+    if (res.status === 504) throw new StatusCheckTimeoutError(STATUS_CHECK_TIMEOUT_MESSAGE);
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `Status check failed: HTTP ${res.status}`);
   }
@@ -1274,6 +1286,7 @@ export async function triggerAgStatusCheck(
     body: JSON.stringify(statusCheckBody(tab, scope, { platform: 'ag' })),
   });
   if (!res.ok) {
+    if (res.status === 504) throw new StatusCheckTimeoutError(STATUS_CHECK_TIMEOUT_MESSAGE);
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
@@ -1296,6 +1309,7 @@ export async function triggerCgStatusCheck(
     body: JSON.stringify(statusCheckBody(tab, scope, { platform: 'cg' })),
   });
   if (!res.ok) {
+    if (res.status === 504) throw new StatusCheckTimeoutError(STATUS_CHECK_TIMEOUT_MESSAGE);
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
@@ -1318,6 +1332,7 @@ export async function triggerWoStatusCheck(
     body: JSON.stringify(statusCheckBody(tab, scope, { platform: 'wo' })),
   });
   if (!res.ok) {
+    if (res.status === 504) throw new StatusCheckTimeoutError(STATUS_CHECK_TIMEOUT_MESSAGE);
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
   }
