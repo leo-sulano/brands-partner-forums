@@ -688,15 +688,23 @@ export default function BrandGroup() {
     }
   }
 
-  const [checkingStatus, setCheckingStatus] = useState(false);
-  // The server (scripts/status_server.py) keeps running a check to completion even
-  // if the client that triggered it navigates away or reloads — `checkingStatus`
-  // alone only reflects *this* mount's own in-flight request, so a refresh or a
-  // check started by another session both left the icon idle while a check was
-  // still really running server-side (reported live, spin icon stuck off while
-  // "already running" kept firing on click). Polling the server's own active-check
-  // list keeps the icon (and disabled state) truthful regardless of how it got
-  // into that state — it clears itself once the poll after completion runs.
+  // Which tab's own click this browser tab is waiting on. Used only for instant
+  // feedback the moment you click, before the first `/active-checks` poll below
+  // has a chance to land — `decodedTab` at the time of the click, captured so a
+  // client-side navigation to a different tab afterward (the `/brands/:tab`
+  // route has no `key` prop, so React Router reuses this component instance
+  // rather than remounting it) doesn't misattribute it to the newly-viewed tab.
+  const [checkingStatusTab, setCheckingStatusTab] = useState<string | null>(null);
+  // status_server.py only allows one check to run at a time across the *entire*
+  // server, for any tab or platform (`_global_run_lock` — a t2.small memory
+  // constraint, see its own comment) — so every tab's button should show
+  // busy/disabled while any check is running anywhere, not just its own tab, so
+  // nobody clicks into a guaranteed "already running" error (reported live
+  // 2026-08-25: a user checking one tab, then switching to another, expected —
+  // and wants — that other tab to also show busy). Polling the server's own
+  // active-check list keeps this truthful across refresh/navigation/other
+  // sessions, regardless of who or what started the check — it clears itself
+  // once the poll after completion runs.
   const [activeCheckKeys, setActiveCheckKeys] = useState<string[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -711,8 +719,17 @@ export default function BrandGroup() {
       clearInterval(interval);
     };
   }, []);
-  const isCheckRunning = checkingStatus || statusCheckTabKeys(decodedTab, getTabPlatforms(decodedTab))
+  // True when *this* tab specifically is the one being checked (vs. some other
+  // tab holding the global lock) — used only to word the disabled state's
+  // tooltip accurately, not to decide whether the button is disabled.
+  const isThisTabChecking = checkingStatusTab === decodedTab || statusCheckTabKeys(decodedTab, getTabPlatforms(decodedTab))
     .some((k) => activeCheckKeys.includes(k));
+  const isCheckRunning = isThisTabChecking || activeCheckKeys.length > 0;
+  const checkStatusTooltip = !isCheckRunning
+    ? undefined
+    : isThisTabChecking
+      ? 'A status check is running for this tab'
+      : 'A status check is running on another tab — only one can run at a time, please wait';
   const [refreshingAfterCheck, setRefreshingAfterCheck] = useState(false);
   // Snapshot of the row ids visible on screen when a check was last kicked off, plus the
   // filter/sort/page signature at that moment. While the signature still matches the current
@@ -1699,7 +1716,12 @@ export default function BrandGroup() {
   }
 
   async function handleCheckStatus(platforms: ('tp' | 'ag' | 'cg' | 'wo')[]) {
-    setCheckingStatus(true);
+    // Captured once, up front — `decodedTab` can change out from under this closure if
+    // the user navigates to a different tab while this request is still in flight (the
+    // route reuses this component instance rather than remounting it), and the clear in
+    // `finally` below must only affect the tab this particular call was actually for.
+    const clickedTab = decodedTab;
+    setCheckingStatusTab(clickedTab);
     setCheckDropdownOpen(false);
     // Freeze exactly what's on screen right now so status updates from this check
     // update in place instead of dropping rows out of the current filtered view.
@@ -1800,7 +1822,11 @@ export default function BrandGroup() {
       setToast({ message: `Check failed: ${detail}`, kind: 'error' });
       console.error(err);
     } finally {
-      setCheckingStatus(false);
+      // Only clear if this call's tab is still the one flagged busy — a second,
+      // later handleCheckStatus call for a different tab may already have
+      // overwritten it, and clearing unconditionally here would wrongly mark
+      // that other tab's still-in-flight check as done.
+      setCheckingStatusTab((cur) => (cur === clickedTab ? null : cur));
     }
   }
 
@@ -2270,6 +2296,7 @@ export default function BrandGroup() {
                       type="button"
                       onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                       disabled={isCheckRunning}
+                      title={checkStatusTooltip}
                       className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
                       <RefreshCw className={`size-3.5 ${isCheckRunning ? 'animate-spin' : ''}`} />
@@ -2305,6 +2332,7 @@ export default function BrandGroup() {
                   type="button"
                   onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
                   disabled={isCheckRunning}
+                  title={checkStatusTooltip}
                   className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   <RefreshCw className={`size-3.5 ${isCheckRunning ? 'animate-spin' : ''}`} />
