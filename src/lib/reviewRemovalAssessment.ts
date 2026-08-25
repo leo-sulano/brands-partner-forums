@@ -61,9 +61,10 @@ export const ASSESSMENT_FAILURE_MESSAGE = 'Unable to generate an AI assessment r
 // Real account-recovery secrets (confirmed `sensitive: true` in
 // AddReviewAccountModal.tsx) — these carry zero analytical value for a
 // review-removal assessment and must never be sent to an external AI
-// provider or persisted into `entries.ai_review_analysis`, a column on a
-// table this repo's own CLAUDE.md documents as fully public-readable via
-// the anon key.
+// provider or persisted into `entry_review_analyses.analysis`/`.evidence`
+// — that table's own RLS ("anyone can read", matching this repo's other
+// flag/side tables) makes it just as publicly readable via the anon key
+// as `entries` itself, which this repo's own CLAUDE.md already documents.
 export const CREDENTIAL_FIELD_NAMES = new Set(['Backup Codes', 'Authenticator Backup']);
 
 export function collectBehavioralFields(headers: string[], fields: Record<string, string>): Record<string, string | null> {
