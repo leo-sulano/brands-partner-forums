@@ -133,6 +133,10 @@ function mockSupabase(rows: EntryRow[]) {
           );
           return builder;
         },
+        in(key: string, values: string[]) {
+          filtered = filtered.filter((r: any) => values.includes(r[key]));
+          return builder;
+        },
         order(_col: string) {
           return builder;
         },
@@ -164,6 +168,10 @@ function mockSupabaseTables(tables: Record<string, any[]>) {
         },
         eq(key: string, value: string) {
           filtered = filtered.filter((r: any) => r[key] === value);
+          return builder;
+        },
+        in(key: string, values: string[]) {
+          filtered = filtered.filter((r: any) => values.includes(r[key]));
           return builder;
         },
         order(_col: string) {
@@ -1325,5 +1333,73 @@ Deno.test('reviewTextsByStatus stops adding reviews once the character budget is
 Deno.test('get_review_texts rejects a whitespace-only status', async () => {
   const tables = { entries: [] };
   const result: any = await runTool(mockSupabaseTables(tables), 'get_review_texts', { platform: 'tp', status: '   ' });
+  assertEquals(typeof result.error, 'string');
+});
+
+// --- get_review_analyses (Task 7) ---
+
+Deno.test('get_review_analyses returns raw rows with resolved brand and agent', async () => {
+  const tables = {
+    entry_review_analyses: [
+      { entry_id: 'e1', tab: 'Rooster Partners', platform: 'tp', analysis: { overall_result: 'likely_removal_risk', risk_score: 80, confidence: 'high', root_cause: { label: 'proxy pattern' } }, analyzed_at: '2026-08-25T00:00:00Z' },
+    ],
+    entries: [
+      { id: 'e1', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [],
+    removed_platform_brands: [],
+    brand_agent_assignments: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', {});
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].brand, 'Acme');
+  assertEquals(result.rows[0].agent, 'Lai');
+  assertEquals(result.rows[0].overall_result, 'likely_removal_risk');
+  assertEquals(result.rows[0].root_cause, 'proxy pattern');
+});
+
+Deno.test('get_review_analyses group_by="agent" produces exact counts including likely_removal_risk_count', async () => {
+  const tables = {
+    entry_review_analyses: [
+      { entry_id: 'e1', tab: 'Rooster Partners', platform: 'tp', analysis: { overall_result: 'likely_removal_risk' }, analyzed_at: '2026-08-25T00:00:00Z' },
+      { entry_id: 'e2', tab: 'Rooster Partners', platform: 'ag', analysis: { overall_result: 'no_clear_removal_reason' }, analyzed_at: '2026-08-25T00:00:00Z' },
+    ],
+    entries: [
+      { id: 'e1', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+      { id: 'e2', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [],
+    removed_platform_brands: [],
+    brand_agent_assignments: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', { group_by: 'agent' });
+  assertEquals(result.total, 2);
+  assertEquals(result.groups[0].value, 'Lai');
+  assertEquals(result.groups[0].count, 2);
+  assertEquals(result.groups[0].likely_removal_risk_count, 1);
+});
+
+Deno.test('get_review_analyses excludes a brand flagged removed on the queried platform', async () => {
+  const tables = {
+    entry_review_analyses: [
+      { entry_id: 'e1', tab: 'Rooster Partners', platform: 'tp', analysis: { overall_result: 'likely_removal_risk' }, analyzed_at: '2026-08-25T00:00:00Z' },
+    ],
+    entries: [
+      { id: 'e1', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [],
+    removed_platform_brands: [{ tab: 'Rooster Partners', brand: 'Acme', platform: 'tp' }],
+    brand_agent_assignments: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', {});
+  assertEquals(result.total, 0);
+});
+
+Deno.test('get_review_analyses rejects an invalid group_by value', async () => {
+  const tables = { entry_review_analyses: [], entries: [], tab_archive_log: [], paused_tabs: [], removed_platform_brands: [], brand_agent_assignments: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', { group_by: 'nonsense' });
   assertEquals(typeof result.error, 'string');
 });

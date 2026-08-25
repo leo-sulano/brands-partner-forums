@@ -346,10 +346,10 @@ async function fetchAgentAssignmentRows(supabase: any): Promise<AgentAssignmentR
   return (data ?? []) as AgentAssignmentRow[];
 }
 
-// Archived-tab exclusion (Brand Tab archive feature). Applied to the 7 tools
+// Archived-tab exclusion (Brand Tab archive feature). Applied to the 8 tools
 // that return review data or tab names: list_tabs, query_entries,
 // get_score_summary, get_success_rate_by_field, get_schedule,
-// get_paused_combos, get_review_texts.
+// get_paused_combos, get_review_texts, get_review_analyses.
 // Deliberately NOT applied to three tools:
 //   - get_removed_platform_flags: lists removed_platform_brands rows, not
 //     review data — a stale flag on an archived tab is low-impact trivia.
@@ -372,10 +372,10 @@ async function fetchArchivedTabNameSet(supabase: any): Promise<Set<string>> {
 
 // Paused-tab exclusion (Brand Tab Pause feature,
 // docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md). Applied
-// alongside archivedSet at the exact same 7 filter points archived-tab
+// alongside archivedSet at the exact same 8 filter points archived-tab
 // exclusion already covers: list_tabs, query_entries, get_score_summary,
 // get_success_rate_by_field, get_schedule, get_paused_combos,
-// get_review_texts. paused_tabs is current-state-only (no restored_at
+// get_review_texts, get_review_analyses. paused_tabs is current-state-only (no restored_at
 // column) -- every row it returns is an active pause, unlike
 // tab_archive_log which mixes active and historical rows.
 export function buildPausedTabNameSet(rows: { tab: string }[]): Set<string> {
@@ -907,6 +907,38 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_review_analyses',
+      description:
+        'Returns AI-generated review-removal-risk assessments from the dashboard\'s per-entry ' +
+        '"🤖 Analyze Review" feature. Coverage is SPARSE and OPPORTUNISTIC: only entries someone ' +
+        'has manually clicked "Analyze Review" on exist here — this is not run automatically or ' +
+        'on every removed/refused review. An empty or small result means "not yet analyzed", ' +
+        'never "no removal-risk issues found" — do not imply broader coverage than what is ' +
+        'actually returned. Without group_by, returns individual analyzed entries (tab, brand, ' +
+        'agent, platform, overall_result, risk_score, confidence, root_cause, analyzed_at). With ' +
+        'group_by ("agent", "brand", "platform", or "overall_result"), returns exact counts per ' +
+        'group plus how many were "likely_removal_risk", sorted most-common-first — prefer this ' +
+        'over manually counting rows yourself for "which X has the most" questions. The "agent" ' +
+        'field/group is resolved per-brand the same way get_success_rate_by_field and Schedule ' +
+        'Planner do (an authoritative brand-agent mapping first, falling back to each entry\'s own ' +
+        'recorded Agent value). Brands flagged removed on the queried platform (see ' +
+        'get_removed_platform_flags) are excluded, as are archived/paused tabs — same exclusions ' +
+        'as every other tool here.',
+      parameters: {
+        type: 'object',
+        properties: {
+          tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
+          platform: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] },
+          agent: { type: 'string', description: 'optional: restrict to one resolved agent name' },
+          group_by: { type: 'string', enum: ['agent', 'brand', 'platform', 'overall_result'] },
+          limit: { type: 'number', description: 'max rows or groups to return, default 25, max 50' },
+        },
+      },
+    },
+  },
 ];
 
 // --- tool dispatch (impure: needs a supabase client) ---
@@ -1089,6 +1121,91 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const { reviews, total } = reviewTextsByStatus(rows, args.platform, args.status, removedSet);
     const limit = Math.min(Number(args?.limit) || 20, 50);
     return { reviews: reviews.slice(0, limit), total };
+  }
+  if (name === 'get_review_analyses') {
+    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+    if (args?.platform && !validPlatforms.includes(args.platform)) {
+      return { error: `platform must be one of: ${validPlatforms.join(', ')}` };
+    }
+    const validGroupBy = ['agent', 'brand', 'platform', 'overall_result'];
+    if (args?.group_by && !validGroupBy.includes(args.group_by)) {
+      return { error: `group_by must be one of: ${validGroupBy.join(', ')}` };
+    }
+
+    let q = supabase.from('entry_review_analyses').select('entry_id, tab, platform, analysis, analyzed_at');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    if (args?.platform) q = q.eq('platform', args.platform);
+
+    const [{ data: analysisRows, error }, removedSet, archivedSet, pausedSet, assignmentRows] = await Promise.all([
+      q,
+      fetchRemovedPlatformBrandSet(supabase),
+      fetchArchivedTabNameSet(supabase),
+      fetchPausedTabNameSet(supabase),
+      fetchAgentAssignmentRows(supabase),
+    ]);
+    if (error) throw error;
+
+    const filteredAnalysisRows = (analysisRows ?? []).filter((r: any) => !archivedSet.has(r.tab) && !pausedSet.has(r.tab));
+    if (filteredAnalysisRows.length === 0) return { total: 0, rows: [] };
+
+    const entryIds = [...new Set(filteredAnalysisRows.map((r: any) => r.entry_id))];
+    const { data: entryRows, error: entryError } = await supabase
+      .from('entries')
+      .select('id, tab, data, updated_at')
+      .in('id', entryIds);
+    if (entryError) throw entryError;
+
+    const entryById = new Map<string, any>((entryRows ?? []).map((e: any) => [e.id, e]));
+    const agentLabels = resolveAgentLabels(entryRows ?? [], assignmentRows);
+
+    let combined = filteredAnalysisRows
+      .map((r: any) => {
+        const entry = entryById.get(r.entry_id);
+        const brand = (entry ? pick(entry.data, BRAND_KEYS) : null) ?? '';
+        const agent = agentLabels.get(r.entry_id) ?? '';
+        return {
+          id: r.entry_id,
+          tab: r.tab,
+          platform: r.platform,
+          brand,
+          agent,
+          overall_result: r.analysis?.overall_result ?? null,
+          risk_score: r.analysis?.risk_score ?? null,
+          confidence: r.analysis?.confidence ?? null,
+          root_cause: r.analysis?.root_cause?.label ?? null,
+          analyzed_at: r.analyzed_at,
+        };
+      })
+      .filter((row: any) => !(row.brand && removedSet.has(platformRemovedKey(row.tab, row.brand, row.platform as Platform))));
+
+    if (args?.agent) {
+      const wantAgent = String(args.agent).trim().toLowerCase();
+      combined = combined.filter((row: any) => row.agent.toLowerCase() === wantAgent);
+    }
+
+    const limit = Math.min(Number(args?.limit) || 25, 50);
+
+    if (args?.group_by) {
+      const buckets = new Map<string, { value: string; count: number; likely_removal_risk_count: number }>();
+      for (const row of combined) {
+        const key = args.group_by === 'agent' ? (row.agent || '(unassigned)')
+          : args.group_by === 'brand' ? (row.brand || '(unknown)')
+          : args.group_by === 'platform' ? row.platform
+          : (row.overall_result ?? '(unknown)');
+        const isRisk = row.overall_result === 'likely_removal_risk';
+        const existing = buckets.get(key);
+        if (existing) {
+          existing.count++;
+          if (isRisk) existing.likely_removal_risk_count++;
+        } else {
+          buckets.set(key, { value: key, count: 1, likely_removal_risk_count: isRisk ? 1 : 0 });
+        }
+      }
+      const groups = [...buckets.values()].sort((a, b) => b.count - a.count);
+      return { total: combined.length, groups: groups.slice(0, limit) };
+    }
+
+    return { total: combined.length, rows: combined.slice(0, limit) };
   }
   return { error: `unknown tool: ${name}` };
 }
