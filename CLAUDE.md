@@ -61,7 +61,17 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-25 (newest):* Overhauled the AI Review Removal Assessment (Task 225) for accuracy,
+- *2026-08-25 (newest):* Same-day follow-up (Task 263) to the overhaul directly below: closed 3 of
+  the 4 remaining parked Minor findings — same-row/different-platform duplicate review text is now
+  detected (previously only checked other entries), the edge function rejects a non-object/array
+  `evidence` payload and caps its stringified size at 5000 chars, and the stale-assessment banner
+  now says "review or related dashboard data changed" since the hash covers cross-entry evidence
+  too. Deliberately did NOT add `.ts` extensions to `ReviewRemovalAssessment.tsx`'s imports (the
+  4th parked item) — every other component in this codebase uses extensionless imports and this
+  file is never in a deployed Edge Function's import graph, so the fix would have added
+  inconsistency for no real risk reduction. Deployed the same session (function v5, fresh Vercel
+  Production deploy). Task 263.
+- *2026-08-25 (prior):* Overhauled the AI Review Removal Assessment (Task 225) for accuracy,
   reliability, and actionability, per an explicit request that agents/management get a concrete
   reason for a removal/refusal instead of a vague hedge. New `src/lib/reviewRemovalEvidence.ts`
   computes a deterministic `RemovalEvidence` bundle from a tab's already-loaded entries (no new

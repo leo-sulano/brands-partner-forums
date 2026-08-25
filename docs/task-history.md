@@ -5774,3 +5774,35 @@ confidence/root-cause conclusion (minor wording variance only), confirming `temp
 consistency in practice. Spec:
 `docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
 `docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`.
+
+---
+
+## Task 263: Review Removal Assessment — Remaining Parked Minors
+
+**Date:** August 25, 2026
+
+*Same-day follow-up to Task 262:* closed 3 of the whole-branch review's remaining parked Minor
+findings (the 4th, 3 extensionless imports in `ReviewRemovalAssessment.tsx`, was reconsidered and
+deliberately left as-is — see below). `computeRemovalEvidence` (`src/lib/reviewRemovalEvidence.ts`)
+now also flags `hardSignals.duplicateReviewTextFound` when the *same* multi-platform entry has
+identical text copy-pasted into two of its own platform review fields (e.g. TP and AG) — the
+previous check only compared against other entries, since its `others` list excludes the current
+entry entirely. `supabase/functions/review-removal-assessment/index.ts` now rejects a non-object or
+array `evidence` payload and caps its stringified size at 5000 chars (the bundle is a small,
+bounded, code-computed object — this is a defensive cap against a malformed/oversized payload
+inflating the prompt or the OpenAI bill, not a real-world limit). The stale-assessment banner in
+`ReviewRemovalAssessment.tsx` now reads "review or related dashboard data changed" instead of just
+"review data changed," since the cache hash covers cross-entry evidence too and an unrelated
+entry's status change can now be what makes a cached result stale.
+
+Deliberately NOT fixed: adding `.ts` extensions to `ReviewRemovalAssessment.tsx`'s 3 relative
+imports, despite that being one of the 4 parked items. On inspection, every other component in this
+codebase (`TabScheduleSection.tsx`, `EditEntryModal.tsx`, `ScoreSummaryPanel.tsx`, etc.) uses
+extensionless relative imports as the established convention, and this component is never reachable
+from a deployed Edge Function's import graph — the `.ts`-extension rule exists specifically for
+files a Deno bundler must resolve, which doesn't apply here. Adding it would have introduced
+inconsistency with the rest of the codebase for zero actual risk reduction; a first attempt at this
+fix was made and then reverted for that reason. New regression test in
+`reviewRemovalEvidence.test.ts` for the same-row duplicate-text case. Full suite and build both
+pass. Deployed the same session: `supabase functions deploy review-removal-assessment` (now ACTIVE
+v5) and a fresh Vercel Production deploy (confirmed Ready) via the same `git push origin main`.
