@@ -5754,14 +5754,12 @@ brainstorming): agent/brand-level aggregation of recurring root causes for manag
 across many entries, not just one at a time — that surface can only be well-designed once this
 per-entry `root_cause`/`agent_recommendation` shape is proven in practice. Full suite (669 tests on
 the branch; 2731 on `main`, inflated by this repo's known stray-worktree double-scan issue — zero
-failures either way) and build both pass. **Pending manual deploy:** the live `review-removal-
-assessment` function (confirmed ACTIVE, version 3, deployed 2026-08-14 per this doc's own
-2026-08-20 correction note) predates this overhaul entirely — `supabase functions deploy
-review-removal-assessment` needs to run again to ship the new schema/prompt; no new
-migration/secret/env var required for that step. Separately, and unrelated to this task,
-`VITE_REVIEW_REMOVAL_ASSESSMENT_URL` was already unset in Vercel before this overhaul and still
-is — the "🤖 Analyze Review" button has never worked live regardless of this change, so this
-overhaul introduces no new regression, it just means the redeploy alone won't make the button
-work until that env var is also set. Spec:
+failures either way) and build both pass. Deployed the same day: `supabase functions deploy
+review-removal-assessment` shipped the new schema/prompt (now ACTIVE, version 4), and
+`git push origin main` triggered a fresh Vercel Production deploy (confirmed Ready). Checked
+`VITE_REVIEW_REMOVAL_ASSESSMENT_URL` directly via the Vercel CLI before assuming this doc's earlier
+"unset" claim was still true — it was in fact already set in Production since 2026-08-14 (the
+original Task 225 deploy), so that claim was stale, not current; no env var change was actually
+needed, only the redeploy. The "🤖 Analyze Review" button is fully live end to end. Spec:
 `docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
 `docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`.

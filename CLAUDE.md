@@ -83,10 +83,11 @@ Brands Partner Forum/
   cross-entry country matching bypassing the canonical `getEntryCountry` resolver. Deliberately
   deferred: agent/brand-level aggregation of root causes across many entries for management
   visibility — a separate follow-up project once this per-entry output shape is proven. Full suite
-  and build both pass. **Pending manual deploy:** the live function (ACTIVE v3, deployed
-  2026-08-14) predates this overhaul — needs `supabase functions deploy review-removal-assessment`
-  again; `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` was already unset before this task and still is,
-  unrelated pre-existing gap. Spec:
+  and build both pass. Deployed the same day: `supabase functions deploy review-removal-assessment`
+  (now ACTIVE v4), `git push origin main`, and a fresh Vercel Production deploy confirmed Ready —
+  `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` turned out to already be set in Vercel (a stale doc claim,
+  corrected in Known Issues), so no env var change was actually needed, just the push+redeploy. The
+  "🤖 Analyze Review" button is fully live end to end. Spec:
   `docs/superpowers/specs/2026-08-25-review-removal-assessment-accuracy-design.md`. Plan:
   `docs/superpowers/plans/2026-08-25-review-removal-assessment-accuracy.md`. Task 262.
 - *2026-08-20 (prior):* Added a third, one-way PMS sync direction on top of the two Task 231
@@ -1087,16 +1088,22 @@ Brands Partner Forum/
   - `sync-schedule-pms` — **ACTIVE, version 12, deployed 2026-08-20 23:35 local**, which already
     includes Task 247's `syncStatus` action and its final-review fixes. Backend is fully live for all
     three sync directions (push, pull, status).
-  - `review-removal-assessment` — **ACTIVE, version 3, deployed 2026-08-14**, migration
-    `20260814150000_add_ai_review_analysis.sql` applied (confirmed via `supabase migration list`,
-    local matches remote through today's `20260820130000`, no pending migrations at all).
+  - `review-removal-assessment` — **ACTIVE, version 4, deployed 2026-08-25** (redeployed same-day
+    to ship the Task 262 accuracy overhaul; migration `20260814150000_add_ai_review_analysis.sql`
+    from the original feature is unaffected, still applied, still confirmed via `supabase migration
+    list`, no pending migrations at all).
+  - **Correction (2026-08-25, verified directly via Vercel CLI, not assumed): `VITE_REVIEW_REMOVAL_
+    ASSESSMENT_URL` was NOT actually unset — it was already present in Vercel Production (set
+    2026-08-14, the original feature's own deploy day).** The line below claiming it was still
+    pending was itself stale, the same class of doc drift this whole note exists to flag. The
+    frontend has since been pushed to `origin/main` and redeployed on Vercel (Production, confirmed
+    Ready) with the Task 262 overhaul, so the "🤖 Analyze Review" button is now fully live end to
+    end — no longer a pending item at all.
   - **What's still genuinely pending, confirmed absent from both local `.env` and (as best determined
-    without Vercel CLI access in this session) production:** `VITE_SYNC_SCHEDULE_PMS_URL` and
-    `VITE_REVIEW_REMOVAL_ASSESSMENT_URL` in Vercel. These are the *only* remaining blockers for the
-    Schedule Planner PMS sync (all 3 directions) and the AI Review-Removal Assessment button,
-    respectively — both backends are fully deployed and tested, waiting purely on these two frontend
-    env vars + a Vercel redeploy. Values: `https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/sync-schedule-pms`
-    and `https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/review-removal-assessment`.
+    without Vercel CLI access in that session) production:** `VITE_SYNC_SCHEDULE_PMS_URL` in Vercel —
+    the only remaining blocker for the Schedule Planner PMS sync (all 3 directions), whose backend is
+    fully deployed and tested, waiting purely on this one frontend env var + a Vercel redeploy. Value:
+    `https://krxnupmhfiduduvvlumc.supabase.co/functions/v1/sync-schedule-pms`.
   Treat every "Pending manual deploy" bullet appearing *below* this note as potentially stale for the
   same reason — verify against `supabase functions list`/`supabase migration list` before re-doing or
   reporting on any of them, rather than trusting the bullet text alone.
@@ -1417,18 +1424,13 @@ Brands Partner Forum/
   wiring does anything — it silently no-ops without it, so this isn't a new blocker on top of the
   above, just one more secret to set at the same time; see the Schedule Planner → PMS task sync
   pending-deploy bullet above for the rest of that feature's own checklist.
-- **Pending manual deploy (2026-08-14):** the AI Review Removal Assessment feature's migration
-  (`supabase/migrations/20260814150000_add_ai_review_analysis.sql`) has not been applied to the live
-  database, and the `review-removal-assessment` Edge Function has not been deployed. The Vercel env
-  var it depends on (`VITE_REVIEW_REMOVAL_ASSESSMENT_URL`) has also not been set. **Setup required
-  before it works** (same pattern as `ai-assistant`/`translate-review`):
-  1. `supabase db push` (applies the new `ai_review_analysis`/`ai_review_analysis_hash`/
-     `ai_review_analysis_model`/`ai_review_analysis_at` columns on `entries`).
-  2. `supabase functions deploy review-removal-assessment` (`OPENAI_API_KEY` is already set —
-     shared with `ai-assistant`/`translate-review`).
-  3. Add `VITE_REVIEW_REMOVAL_ASSESSMENT_URL=<deployed function URL>` to Vercel env, then redeploy.
-  Until all 3 are done, the "🤖 Analyze Review" button in Edit Entry always fails with the standard
-  "Unable to generate an AI assessment right now. Please try again later." error message. Task 225.
+- **Resolved (2026-08-25, verified live, not assumed):** this bullet's original "not deployed /
+  env var not set" claim (2026-08-14) was already stale by the time Task 262 checked it — the
+  migration, function, and Vercel env var were all already live, and only the frontend code itself
+  needed a fresh deploy, which Task 262 shipped. The AI Review Removal Assessment feature (now
+  including Task 262's accuracy overhaul) is fully live end to end; the "🤖 Analyze Review" button
+  in Edit Entry works. See the correction note near the top of this section for the exact
+  verification. Task 225 / Task 262.
 - `entries` is fully public-readable via the `anon` key across **all** tabs, not just TP Brand
   Injection, and its `data` jsonb contains credential fields (`Password`, `Backup Codes`,
   `Authenticator Backup` — see `AddReviewAccountModal.tsx`). This is a pre-existing condition,
