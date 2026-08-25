@@ -12,6 +12,8 @@ import ReviewRemovalAssessment from './ReviewRemovalAssessment';
 import { PLATFORM_LABEL, PLATFORM_SHORT_LABEL, PLATFORM_REVIEW_TEXT_KEYS, PLATFORM_STATUS_KEYS, pick, type Platform } from '../lib/scoreSummary';
 import { isYesNoCol, sectionOf } from '../lib/entryFieldSections';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
+import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
+import type { EntryReviewAnalysisRow } from '../lib/queries';
 
 const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
@@ -73,6 +75,7 @@ interface Props {
   brandCol?: string | null;
   brandProfiles?: Record<string, Record<string, string>>;
   tabEntries?: Entry[];
+  entryReviewAnalyses?: Map<string, EntryReviewAnalysisRow>;
   initialRemovedPlatforms?: Platform[];
   initialRemovedPlatformDates?: Partial<Record<Platform, string>>;
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
@@ -95,7 +98,7 @@ const PLATFORM_ADDED_HEADER: Record<Platform, string> = {
   wo: 'Wizard of Odds',
 };
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, entryReviewAnalyses, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
   // Recomputed on every render (deliberately not memoized, and deliberately
   // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
   // dynamic tab is created/deleted mid-session
@@ -120,6 +123,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     return init;
   });
   const brand = brandCol ? (fields[brandCol] || entry.data[brandCol] || '') : '';
+  const cachedFor = (platform: Platform) => entryReviewAnalyses?.get(entryReviewAnalysisKey(entry.id, platform));
   const [selectedTab, setSelectedTab] = useState(currentTab ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -473,6 +477,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                       fields={fields}
                       tabEntries={tabEntries ?? EMPTY_ENTRIES}
                       brand={brand}
+                      cachedAnalysis={cachedFor(activePlatform)?.analysis ?? null}
+                      cachedHash={cachedFor(activePlatform)?.hash ?? null}
                       disabled={saving}
                     />
                   </div>
@@ -505,6 +511,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     fields={fields}
                     tabEntries={tabEntries ?? EMPTY_ENTRIES}
                     brand={brand}
+                    cachedAnalysis={cachedFor('ag')?.analysis ?? null}
+                    cachedHash={cachedFor('ag')?.hash ?? null}
                     disabled={saving}
                   />
                 </div>
@@ -536,6 +544,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     fields={fields}
                     tabEntries={tabEntries ?? EMPTY_ENTRIES}
                     brand={brand}
+                    cachedAnalysis={cachedFor('cg')?.analysis ?? null}
+                    cachedHash={cachedFor('cg')?.hash ?? null}
                     disabled={saving}
                   />
                 </div>
