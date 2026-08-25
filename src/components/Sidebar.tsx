@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
-  Users, ChevronDown, ChevronLeft, ChevronUp, BarChart3, Bot, X,
+  Users, ChevronDown, ChevronsLeft, ChevronUp, BarChart3, Bot, X,
   CalendarDays,
 } from 'lucide-react';
 import { Plus } from 'lucide-react';
@@ -97,8 +97,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
   }
 
   const header = (isCollapsed: boolean) => (
-    <div className={`py-5 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
-      <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+    <div className={`h-14 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
+      <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[35px] shrink-0" />
       {!isCollapsed && (
         <span className="font-semibold tracking-tight whitespace-nowrap">
           <span className="text-white">Brands </span>
@@ -292,17 +292,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </>
         )}
       </nav>
-      <div className={`flex items-center border-t border-slate-800 ${isCollapsed ? 'justify-center px-3 py-3' : 'justify-between px-4 py-3'}`}>
-        {!isCollapsed && <span className="text-xs text-slate-500">Internal · v0.1</span>}
-        <button
-          type="button"
-          onClick={onToggleCollapsed}
-          className="p-1.5 rounded-md text-slate-400 hover:bg-blue-500/20 hover:text-blue-100 transition-colors"
-          aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          <ChevronLeft className={`size-4 transition-transform duration-200 ${isCollapsed ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
     </>
   );
 
@@ -320,6 +309,15 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           {header(collapsed)}
           {navContent(collapsed)}
         </aside>
+
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className={`absolute z-50 top-7 -translate-y-1/2 translate-x-1/2 flex items-center justify-center size-5 rounded-full bg-white border border-slate-200 text-blue-600 shadow-sm hover:bg-slate-50 transition-[right] duration-200 ${collapsed && hoverExpanded ? 'right-[-176px]' : 'right-0'}`}
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        >
+          <ChevronsLeft className={`size-3.5 transition-transform duration-200 ${collapsed ? 'rotate-180' : ''}`} />
+        </button>
 
         {collapsed && (
           <aside
@@ -346,7 +344,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           <aside className="relative z-50 flex flex-col w-60 bg-[#17225a] text-slate-100 h-full shadow-xl">
             <div className="px-5 py-5 flex items-center justify-between border-b border-slate-800">
               <div className="flex items-center gap-2">
-                <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[30px] shrink-0" />
+                <img src="/Brand-Partners-Forums.webp" alt="logo" className="size-[35px] shrink-0" />
                 <span className="font-semibold tracking-tight">
                   <span className="text-white">Brands </span>
                   <span className="text-blue-400">Partner</span>
