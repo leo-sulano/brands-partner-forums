@@ -61,7 +61,33 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-25 (newest):* Same-day follow-up (Task 263) to the overhaul directly below: closed 3 of
+- *2026-08-25 (newest):* Fixed a real pre-existing bug: `entries.ai_review_analysis` was a single
+  shared slot per entry, not one per platform, so on a multi-platform tab analyzing one platform's
+  review silently overwrote another's cached analysis on the same entry. New `entry_review_analyses`
+  table keyed by `(entry_id, platform)` (same 4-policy RLS as `brand_platform_pause`), migrating the
+  9 unambiguous existing analyses and dropping the 2 ambiguous ones (live-verified counts). `queries.ts`
+  /`ReviewRemovalAssessment.tsx`/`EditEntryModal.tsx`/`BrandGroup.tsx` all re-wired to read/write
+  per-platform — the map-building line in `BrandGroup.tsx` is keyed by `entryReviewAnalysisKey(entry_id,
+  platform)`, the single safety-critical line that prevents the bug reappearing one layer up (verified
+  independently by 2 reviewers). Also added a new Ask AI tool, `get_review_analyses` — replaces an
+  earlier, larger "dedicated aggregation page" idea rejected during brainstorming in favor of reusing
+  Ask AI's existing tool-calling infrastructure — so management can ask conversational questions
+  ("which agent has the most removal-risk flags") over whatever's been analyzed so far. Coverage is
+  deliberately sparse/organic (only manually-analyzed entries), explicitly disclosed in the tool's own
+  description; reuses existing helpers throughout (`resolveAgentLabels`, `fetchRemovedPlatformBrandSet`,
+  etc.) rather than duplicating logic. Built via 8 SDD tasks + 1 same-task fix round (an untrimmed
+  brand value would have silently split one real brand into two `group_by: 'brand'` buckets — this
+  project has a documented live case of exactly that trailing-space class of bug) + a final
+  whole-branch review (opus) that found and fixed 1 more real issue: the new cached-analysis fetch in
+  `BrandGroup.tsx`'s load `Promise.all` had no `.catch()`, so its failure would take down the entire
+  Brand Tab page instead of just showing "not yet analyzed" — fixed to fail open, matching this
+  project's own `fetchCustomTabs` precedent. Full suite (674 tests) and build pass; Deno suite (118
+  tests) and `deno check` clean. **Not yet deployed** — deploy order matters: `supabase db push`
+  (migration) before `git push origin main` (frontend), then `supabase functions deploy ai-assistant`.
+  Spec: `docs/superpowers/specs/2026-08-25-review-analysis-per-platform-storage-and-ask-ai-design.md`.
+  Plan: `docs/superpowers/plans/2026-08-25-review-analysis-per-platform-storage-and-ask-ai.md`.
+  Task 264.
+- *2026-08-25 (prior):* Same-day follow-up (Task 263) to the overhaul directly below: closed 3 of
   the 4 remaining parked Minor findings — same-row/different-platform duplicate review text is now
   detected (previously only checked other entries), the edge function rejects a non-object/array
   `evidence` payload and caps its stringified size at 5000 chars, and the stale-assessment banner
@@ -1123,6 +1149,21 @@ Brands Partner Forum/
   Treat every "Pending manual deploy" bullet appearing *below* this note as potentially stale for the
   same reason — verify against `supabase functions list`/`supabase migration list` before re-doing or
   reporting on any of them, rather than trusting the bullet text alone.
+- **Pending manual deploy (2026-08-25, Task 264) — deploy order matters.** The per-platform review
+  analysis storage fix + `get_review_analyses` Ask AI tool need:
+  1. `supabase db push` (applies the `entry_review_analyses` migration) — should run before or
+     alongside the frontend push. Unlike the Schedule Planner PMS precedent below, a missing table at
+     this point degrades gracefully rather than breaking the page: `BrandGroup.tsx`'s cached-analysis
+     fetch fails open (`.catch(() => [])`), so the tab's real data still loads and the "Analyze Review"
+     section just shows no cached result until the migration lands.
+  2. `supabase functions deploy ai-assistant` (ships `get_review_analyses`).
+  3. `git push origin main` (frontend — the per-platform storage read/write and the `Entry` type
+     cleanup).
+  Live-verify once deployed: analyze TP on a multi-platform entry, then also analyze AG on the same
+  entry, then reopen the TP section and confirm it still shows its own correct cached result (the
+  exact regression this task fixes, not the wrong platform's result mislabeled "Outdated"); and ask
+  Ask AI a real `get_review_analyses`-shaped question (e.g. "which agent has the most removal-risk
+  flags") to confirm the tool round-trips against live data.
 - **Pending manual deploy (2026-08-20, Task 247) — deploy order matters this time.** The Schedule
   Planner → PMS status sync feature needs:
   1. `supabase db push` (applies the `synced_status` migration) — **must happen before or

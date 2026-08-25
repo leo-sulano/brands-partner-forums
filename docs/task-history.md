@@ -5806,3 +5806,96 @@ fix was made and then reverted for that reason. New regression test in
 `reviewRemovalEvidence.test.ts` for the same-row duplicate-text case. Full suite and build both
 pass. Deployed the same session: `supabase functions deploy review-removal-assessment` (now ACTIVE
 v5) and a fresh Vercel Production deploy (confirmed Ready) via the same `git push origin main`.
+
+---
+
+## Task 264: Per-Platform Review Analysis Storage + Ask AI Aggregation Tool
+
+**Date:** August 25, 2026
+
+Fixed a real, pre-existing bug in the AI Review Removal Assessment feature (Task 225/262/263) that
+brainstorming a management-facing aggregation view surfaced: `entries.ai_review_analysis` (and its
+3 sibling columns) was a single shared slot per entry row, not one per platform. On a multi-platform
+tab (Rooster Partners, Revolution Casino, SilverPlay, Hanan), analyzing one platform's review
+overwrote any other platform's cached analysis for that same entry, and the un-overwritten
+platform's section in Edit Entry showed the wrong cached result mislabeled "Outdated" (a hash
+mismatch) instead of "not yet analyzed." New `entry_review_analyses` table, keyed by
+`(entry_id, platform)`, mirrors this codebase's existing per-platform side-table pattern
+(`brand_platform_pause`'s exact 4-policy RLS shape) — stores both the AI's structured `analysis`
+output and the full `RemovalEvidence` bundle it was given (`evidence jsonb`, not just the two hard
+signals, for future-proofing). Migration preserves the 9 existing cached analyses on tabs where the
+platform is unambiguous (TP Brand Injection ×7, TP Affiliate ×2 — verified live against the real
+database before writing the migration, and again during final review) as `platform = 'tp'`; the 2 on
+multi-platform tabs (Hanan, Rooster Partners — genuinely unknown which platform) are deliberately
+dropped, freely re-analyzable via the existing button. `saveReviewAnalysis` (`src/lib/queries.ts`)
+gained a `platform` and an `evidence` parameter and now upserts into the new table instead of
+updating `entries`; `fetchEntryReviewAnalyses` is new. `Entry` (`src/types/entry.ts`) dropped the 4
+obsolete fields. `ReviewRemovalAssessment.tsx` now receives the cached analysis via two new required
+props (`cachedAnalysis`/`cachedHash`) instead of reading them off `entry`; `EditEntryModal.tsx`
+resolves each of its 3 platform sections' own cached row via a new `cachedFor(platform)` helper built
+on `entryReviewAnalysisKey(entryId, platform)`; `BrandGroup.tsx` fetches the tab's
+`entry_review_analyses` rows alongside entries/headers and builds the lookup map, keyed by the
+combined entry+platform key — the single most safety-critical line in the whole plan, since a map
+keyed by entry_id alone would have silently reintroduced the exact bug this work exists to fix, one
+layer up (independently re-verified correct by both the task reviewer and the final whole-branch
+reviewer).
+
+Also added a new Ask AI tool, `get_review_analyses` (`supabase/functions/ai-assistant/tools.ts`),
+replacing an earlier, larger idea (a dedicated aggregation page) that was deliberately rejected
+during brainstorming in favor of reusing Ask AI's existing tool-calling infrastructure instead of
+building new frontend UI. Lets users ask conversational questions ("which agent has the most
+removal-risk flags", "what's driving removals on Rooster Partners") over whatever's been analyzed so
+far — coverage is deliberately sparse and organic (only entries someone manually clicked "Analyze
+Review" on), and the tool's own description explicitly discloses this so the model never implies
+broader coverage than it actually has. Reuses this file's existing helpers throughout rather than
+duplicating logic (`fetchRemovedPlatformBrandSet`, `fetchArchivedTabNameSet`, `fetchPausedTabNameSet`,
+`resolveAgentLabels`, `platformRemovedKey`, `pick`, `BRAND_KEYS`) — in particular, "agent" resolution
+goes through the same authoritative-brand-mapping-then-fallback rule `get_success_rate_by_field`
+already uses, not an independently-computed lookup, per this project's standing cross-dashboard-
+consistency rule. Supports an optional `group_by` (agent/brand/platform/overall_result) returning
+exact server-side counts (including a `likely_removal_risk_count` per group) rather than relying on
+the model's own arithmetic over a raw row list.
+
+Built via 8 subagent-driven-development tasks (schema migration, `queries.ts`, type cleanup + key
+helper, component, modal, page wiring, Ask AI tool, final verification) with per-task review — one
+same-task fix round in Task 7 caught a real bug: the picked brand value wasn't trimmed before being
+used as a `group_by: 'brand'` bucket key, and this project has a real documented production case of a
+trailing-space brand value, so without the fix a real brand would have silently split into two
+buckets. A final whole-branch review (opus) then independently re-verified every safety-critical line
+from scratch — the per-platform map key, all 3 `EditEntryModal` call sites' platform values, RLS
+parity, the live 9/2 migration split, end-to-end evidence threading, `resolveAgentLabels` reuse — and
+additionally checked 2 other Edge Functions (`generate-weekly-schedule`, `sync-schedule-pms`) that
+import the same `queries.ts` this branch modified, confirming no `.ts`-extension deploy landmine was
+introduced. It found 1 real Important bug per-task review couldn't have seen: `BrandGroup.tsx`'s
+tab-load `Promise.all` had no `.catch()` on the new cached-analysis fetch, so a failure of that purely
+decorative lookup (a transient network blip, or simply the migration not being applied to production
+yet) would reject the whole `Promise.all` and take down the entire Brand Tab page — fixed to fail open
+(`.catch(() => [])`), matching this project's own documented `fetchCustomTabs` precedent (Task 232).
+It also found the plan under-delivered 2 of the spec's 4 mandated `get_review_analyses` tests
+(archived/paused-tab exclusion, invalid-platform rejection) — added, along with a third (paused
+excluded independently of archived, since they're two separate mechanisms in this file). Both fixed
+in one fix-wave commit, verified clean by one scoped re-review. Full suite (674 tests) and build both
+pass; Deno suite (118 tests, 8 new since this task started) and both `deno check`s clean.
+
+Several Minor findings were deliberately parked, not fixed: `invalidateTabCache(tab)` inside the new
+`saveReviewAnalysis` is now vestigial (clears the entries cache, but nothing about an entry's own row
+changes when an analysis is saved — forces a needless re-fetch without refreshing what actually
+changed); the frontend's `fetchEntryReviewAnalyses` select includes the (currently unread) `evidence`
+column on every Brand Tab load; `EntryReviewAnalysisRow.analysis`'s TS type asserts a validity the
+fetch itself never checks (safe today only because the one consumer separately applies
+`isValidAssessmentResult`); `get_review_analyses`'s two Supabase queries are unbounded (fine at
+today's ~11 rows, would need a cap like `get_review_texts`'s `.limit(1000)` at real scale). None
+affect correctness at current data volumes.
+
+**Not yet deployed** (all three steps deliberately pending, per this session's "local first"
+instruction — deploy order matters): 1. `supabase db push` (applies the `entry_review_analyses`
+migration) **must run before** step 3, since the frontend's new `fetchEntryReviewAnalyses`/
+`saveReviewAnalysis` calls would otherwise fail against a table that doesn't exist yet — though
+thanks to this task's own fail-open fix, that failure now degrades gracefully (no cached-analysis
+section) rather than breaking the whole Brand Tab page. 2. `supabase functions deploy ai-assistant`
+ships `get_review_analyses`. 3. `git push origin main` deploys the frontend. Live-verify once
+deployed: open a multi-platform entry, analyze TP, then also analyze AG on the *same* entry, then
+reopen the TP section and confirm it still shows its own correct cached result (the exact regression
+this task fixes); and exercise `get_review_analyses` via a real Ask AI chat query. Spec:
+`docs/superpowers/specs/2026-08-25-review-analysis-per-platform-storage-and-ask-ai-design.md`. Plan:
+`docs/superpowers/plans/2026-08-25-review-analysis-per-platform-storage-and-ask-ai.md`.
