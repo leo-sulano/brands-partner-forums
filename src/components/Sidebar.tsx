@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Users, ChevronDown, ChevronsLeft, ChevronUp, BarChart3, Bot, X,
-  CalendarDays,
+  CalendarDays, CirclePause,
 } from 'lucide-react';
 import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
@@ -203,13 +203,13 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                       onFocus={() => prefetchRoute('/brands/')}
                       className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
                     >
-                      <Icon className="size-4 shrink-0" />
+                      <span className="relative shrink-0">
+                        <Icon className="size-4" />
+                        {isTabPaused(tab) && (
+                          <CirclePause className="absolute -bottom-1 -right-1 size-2.5 rounded-full bg-white text-amber-600" strokeWidth={2.5} />
+                        )}
+                      </span>
                       {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
-                      {!isCollapsed && isTabPaused(tab) && (
-                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide bg-amber-400/20 text-amber-300">
-                          Paused
-                        </span>
-                      )}
                       {!isCollapsed && (
                         <span className="flex items-center gap-0.5 shrink-0">
                           {platforms.map((p) => (
