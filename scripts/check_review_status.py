@@ -817,11 +817,21 @@ def find_brand_col(data: dict) -> Optional[str]:
     return None
 
 
-def filter_by_active_group(entries: list[dict]) -> tuple[list[dict], int]:
+def filter_by_active_group(entries: list[dict], bypass: bool = False) -> tuple[list[dict], int]:
     """Keep only entries whose (tab, brand) hashes into this run's active
     schedule group (see schedule_groups.py). Entries that are skipped here
     are left completely untouched -- this only decides whether they're
-    visited this run, never anything about their stored status/data."""
+    visited this run, never anything about their stored status/data.
+
+    `bypass=True` skips the rotation gate entirely (every entry is kept,
+    skipped count is 0). Callers pass this when the run was already scoped
+    down to specific entries via an explicit status/brand/agent/proxy/country
+    filter -- an operator who filtered the dashboard to one entry and clicked
+    Check Status is asking for exactly that entry, not "whatever this week's
+    rotation allows." A fully unscoped run (the weekly cron, or a manual click
+    with no filters active) still respects rotation."""
+    if bypass:
+        return entries, 0
     kept: list[dict] = []
     skipped = 0
     for entry in entries:

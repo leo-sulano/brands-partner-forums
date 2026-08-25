@@ -5899,3 +5899,49 @@ reopen the TP section and confirm it still shows its own correct cached result (
 this task fixes); and exercise `get_review_analyses` via a real Ask AI chat query. Spec:
 `docs/superpowers/specs/2026-08-25-review-analysis-per-platform-storage-and-ask-ai-design.md`. Plan:
 `docs/superpowers/plans/2026-08-25-review-analysis-per-platform-storage-and-ask-ai.md`.
+
+---
+
+## Task 265: Check Status — Bypass Group Rotation When Explicitly Filtered
+
+**Date:** August 25, 2026
+
+Fixed a real bug reported live: filtering BITP's table to Status=Done (1 matching entry) and
+clicking Check Status returned "No Done entries found to check — 1 skipped (not scheduled this
+week)," even though the one Done entry was clearly visible in the table. Root cause:
+`filter_by_active_group()` (`scripts/check_review_status.py`), the 3-week brand-rotation gate
+added by the 2026-08-11 alternating-schedules design, runs unconditionally after every
+status/brand/agent/proxy/country scope filter is applied — so an entry whose (tab, brand) hash
+isn't in this week's active rotation group gets silently skipped even when a user has explicitly
+filtered the dashboard down to exactly that entry and clicked Check Status. That design was
+originally a deliberate, confirmed-with-user "no override, ever" decision (to spread EC2/Selenium
+load and reduce detection risk), but it doesn't distinguish an explicit, narrow request ("check
+this one Done entry") from an unscoped bulk run (the weekly cron, or a manual click with no
+filters) — the exact distinction this task's fix draws.
+
+`filter_by_active_group()` gained a `bypass: bool = False` parameter — when `True`, every entry is
+kept and the rotation gate is skipped entirely (0 skipped). All 4 call sites that already receive
+scope-filter parameters (`status_server.py`'s TP branch, and `check_ag_status.py`/
+`check_cg_status.py`/`check_wo_status.py`'s `check_*_for_tab()` functions) now compute
+`has_scope_filter = bool(status_filters or brands or agents or proxies or countries)` and pass it
+through as `bypass`. `check_review_status.py`'s own CLI `main()` (the weekly cron's entry point)
+takes no such filter arguments, so it's untouched and still always rotation-gated, matching this
+task's own scope: only a request already narrowed by an explicit filter bypasses the gate — a
+fully unscoped run (cron, or a filter-free manual click) still respects the 3-week rotation exactly
+as before. Confirmed the intended scope directly with the user (AskUserQuestion) before
+implementing, given the prior design had explicitly rejected any override.
+
+Bounded fix (Tier 2 — confined to `scripts/`, no dashboard/`queries.ts`/cross-surface logic
+touched), implemented directly with one self-review pass, no formal spec/plan doc. New regression
+test `test_filter_by_active_group_bypass_keeps_everything` in
+`scripts/test_check_review_status.py`; full scripts suite (133 tests) passes. Deployed and
+live-verified the same session: uploaded the 5 modified files
+(`schedule_groups.py` untouched, not re-uploaded) to the EC2 box (`scraper-leo`,
+54.179.186.205) via `scp`, confirmed local/remote md5sum parity on all 5 files, restarted
+`status_server.py` (`pkill -f status_server` inside a single combined SSH command self-matched
+and killed the parent shell before the `nohup` line ran — the same "pkill -f self-matches SSH
+command string" gotcha this project has hit before; a follow-up SSH check confirmed the server had
+in fact restarted successfully anyway, `/health` returning `{"ok":true}` against a freshly-started
+PID). Not independently live-verified against a real Trustpilot check run in this session (would
+require triggering a real Selenium check from the dashboard) — the user can confirm by retrying
+the exact BITP/Done-filtered scenario from the original report.

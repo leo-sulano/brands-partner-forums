@@ -151,6 +151,22 @@ def test_filter_by_active_group_treats_missing_brand_col_as_blank_brand(monkeypa
     assert skipped == 0
 
 
+def test_filter_by_active_group_bypass_keeps_everything(monkeypatch):
+    # A caller that already scoped the run to specific entries (e.g. a Status
+    # filter narrowed to one brand) is asking to check exactly those entries --
+    # the rotation gate must not silently drop them.
+    monkeypatch.setattr(crs, 'in_active_group', lambda tab, brand, today=None: False)
+    rows = [
+        _row('Brand / TP URL PAGE', 'Boho Casino'),
+        _row('Brand / TP URL PAGE', '7Bit Casino crypto'),
+    ]
+
+    kept, skipped = crs.filter_by_active_group(rows, bypass=True)
+
+    assert len(kept) == 2
+    assert skipped == 0
+
+
 def test_matches_scope_filters_no_filters_matches_everything():
     assert crs.matches_scope_filters({'Agent': 'Lai', 'Proxy Used': 'Enigma', 'Country': 'Germany'}) is True
     assert crs.matches_scope_filters({}) is True

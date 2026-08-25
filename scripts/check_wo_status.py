@@ -250,7 +250,10 @@ def check_wo_for_tab(
     dry_run: bool = False,
 ) -> dict:
     entries = load_wo_entries(tab, include_published, status_filters, brands, agents, proxies, countries)
-    entries, skipped_group = filter_by_active_group(entries)
+    # An explicit status/brand/agent/proxy/country filter means the caller asked
+    # to check exactly these entries -- bypass this week's rotation gate for them.
+    has_scope_filter = bool(status_filters or brands or agents or proxies or countries)
+    entries, skipped_group = filter_by_active_group(entries, bypass=has_scope_filter)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0, "skipped_group": skipped_group}

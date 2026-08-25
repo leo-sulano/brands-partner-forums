@@ -156,7 +156,11 @@ def check_status():
         # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published, brands=brands,
                                 status_filters=status_filters, agents=agents, proxies=proxies, countries=countries)
-        entries, skipped_group = filter_by_active_group(entries)
+        # An explicit status/brand/agent/proxy/country filter means the caller
+        # asked to check exactly these entries -- bypass this week's rotation
+        # gate for them. A fully unscoped run (no filters) still respects it.
+        has_scope_filter = bool(status_filters or brands or agents or proxies or countries)
+        entries, skipped_group = filter_by_active_group(entries, bypass=has_scope_filter)
         total = len(entries)
         print(f'\n[server] TP check started — {total} entries ({scope}, {skipped_group} skipped — not in this run\'s schedule group)')
 
