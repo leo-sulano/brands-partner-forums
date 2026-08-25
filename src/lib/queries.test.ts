@@ -56,6 +56,7 @@ import {
   setTabPlatformHidden,
   fetchRecentTabCreations,
   restoreDeletedEntity,
+  statusCheckTabKeys,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -1248,5 +1249,24 @@ describe('pauseTab / unpauseTab / fetchPausedTabs', () => {
     const rows = await fetchPausedTabs();
     expect(select).toHaveBeenCalledWith('tab');
     expect(rows).toEqual([{ tab: 'Rooster Partners' }]);
+  });
+});
+
+describe('statusCheckTabKeys', () => {
+  it('mirrors status_server.py: TP uses the bare tab name, others are platform-namespaced', () => {
+    expect(statusCheckTabKeys('Rooster Partners', ['tp', 'ag', 'cg', 'wo'])).toEqual([
+      'Rooster Partners',
+      'ag__Rooster Partners',
+      'cg__Rooster Partners',
+      'wo__Rooster Partners',
+    ]);
+  });
+
+  it('falls back to __all__ for a blank tab, matching the server default', () => {
+    expect(statusCheckTabKeys('', ['tp', 'ag'])).toEqual(['__all__', 'ag____all__']);
+  });
+
+  it('returns one key per requested platform only', () => {
+    expect(statusCheckTabKeys('Hanan', ['cg'])).toEqual(['cg__Hanan']);
   });
 });

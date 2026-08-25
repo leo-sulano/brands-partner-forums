@@ -1350,6 +1350,16 @@ export async function getActiveChecks(): Promise<string[]> {
   return [...new Set([...tp, ...ag])];
 }
 
+// Mirrors status_server.py's `tab_key` construction exactly (see check_status()/
+// check_ag_status()/check_cg_status()/check_wo_status()) — TP keeps its legacy
+// bare-tab key, AG/CG/WO are namespaced by platform. Used to match this tab's own
+// entries in getActiveChecks()'s result so the UI can tell whether a check it (or
+// another session) started is still running server-side, independent of whether
+// the client that triggered it is still around to see its own request resolve.
+export function statusCheckTabKeys(tab: string, platforms: ('tp' | 'ag' | 'cg' | 'wo')[]): string[] {
+  return platforms.map((p) => (p === 'tp' ? tab || '__all__' : `${p}__${tab || '__all__'}`));
+}
+
 // ---------------------------------------------------------------------------
 // Admin — profile management
 // ---------------------------------------------------------------------------
