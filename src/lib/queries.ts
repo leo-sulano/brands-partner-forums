@@ -14,6 +14,7 @@ import type { Profile } from '../types/profile.ts';
 import type { BrandEntry, TabKpis, BrandKpis, CountBreakdown } from '../types/brand-entry.ts';
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
+import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -857,28 +858,48 @@ export async function updateEntryData(
   invalidateTabCache(tab);
 }
 
-// Caches a generated AI Review Removal Assessment on the entry. Deliberately
-// not routed through logChange/edit_log — this is a derived/cached artifact
-// regenerated from the entry's own existing fields, not a user edit to
-// business data (see design spec's "Storage" section).
+export interface EntryReviewAnalysisRow {
+  entry_id: string;
+  platform: Platform;
+  analysis: ReviewRemovalAssessmentResult;
+  evidence: RemovalEvidence;
+  hash: string;
+  model: string;
+  analyzed_at: string;
+}
+
+// Caches a generated AI Review Removal Assessment, one row per (entry, platform) — a
+// multi-platform entry (Rooster Partners, Revolution Casino, SilverPlay, Hanan) can have
+// independent cached analyses for TP/AG/CG without one overwriting another. Deliberately
+// not routed through logChange/edit_log — this is a derived/cached artifact regenerated
+// from the entry's own existing fields, not a user edit to business data.
 export async function saveReviewAnalysis(
-  id: string,
+  entryId: string,
   tab: string,
+  platform: Platform,
   analysis: ReviewRemovalAssessmentResult,
+  evidence: RemovalEvidence,
   hash: string,
   model: string,
+  client: SupabaseClient = supabase,
 ): Promise<void> {
-  const { error } = await supabase
-    .from('entries')
-    .update({
-      ai_review_analysis: analysis,
-      ai_review_analysis_hash: hash,
-      ai_review_analysis_model: model,
-      ai_review_analysis_at: new Date().toISOString(),
-    })
-    .eq('id', id);
+  const { error } = await client
+    .from('entry_review_analyses')
+    .upsert(
+      { entry_id: entryId, tab, platform, analysis, evidence, hash, model, analyzed_at: new Date().toISOString() },
+      { onConflict: 'entry_id,platform' },
+    );
   if (error) throw error;
   invalidateTabCache(tab);
+}
+
+export async function fetchEntryReviewAnalyses(tab: string, client: SupabaseClient = supabase): Promise<EntryReviewAnalysisRow[]> {
+  const { data, error } = await client
+    .from('entry_review_analyses')
+    .select('entry_id, platform, analysis, evidence, hash, model, analyzed_at')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as EntryReviewAnalysisRow[];
 }
 
 export async function updateMentionStatus(id: string, status: MentionStatus): Promise<void> {

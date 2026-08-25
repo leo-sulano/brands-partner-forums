@@ -33,6 +33,7 @@ import {
   setBrandPlatformOverride,
   clearBrandPlatformOverride,
   saveReviewAnalysis,
+  fetchEntryReviewAnalyses,
   fetchSchedulePmsLinks,
   insertSchedulePmsLink,
   updateSchedulePmsLinkDate,
@@ -61,6 +62,7 @@ import { platformRemovedKey } from './removedPlatformBrands.ts';
 import { registerHiddenTabPlatforms, resetHiddenTabPlatforms } from './tab-configs';
 import type { Entry } from '../types/entry.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
+import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 
 // Minimal fake of Supabase's thenable PostgrestFilterBuilder: every filter
 // method returns the same builder, and awaiting it anywhere in the chain
@@ -854,31 +856,70 @@ describe('computeBrandKpisFromEntries', () => {
 });
 
 const SAMPLE_ANALYSIS = { overall_result: 'no_clear_removal_reason' } as unknown as ReviewRemovalAssessmentResult;
+const SAMPLE_EVIDENCE = {
+  crossEntry: { sameProxyCount: 0, sameProxyRemovedCount: 0, sameProxySameCountryCount: 0, exampleBrands: [] },
+  brandHistory: { totalReviews: 0, liveCount: 0, removedCount: 0, successRatePct: null },
+  crossPlatform: { applicable: false },
+  hardSignals: { duplicateReviewTextFound: false, proxyTiedToOtherRemoval: false },
+} as unknown as RemovalEvidence;
 
 describe('saveReviewAnalysis', () => {
-  it('updates the 4 analysis columns for the given entry id', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: null });
-    const update = vi.fn().mockReturnValue({ eq });
-    singletonFrom.mockReturnValue({ update });
+  it('upserts into entry_review_analyses keyed by entry_id and platform', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const fakeFrom = vi.fn().mockReturnValue({ upsert });
 
-    await saveReviewAnalysis('entry-1', 'Rooster Partners', SAMPLE_ANALYSIS, 'hash-abc', 'gpt-4o');
+    await saveReviewAnalysis('entry-1', 'Rooster Partners', 'tp', SAMPLE_ANALYSIS, SAMPLE_EVIDENCE, 'hash-abc', 'gpt-4o', { from: fakeFrom } as any);
 
-    expect(singletonFrom).toHaveBeenCalledWith('entries');
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      ai_review_analysis: SAMPLE_ANALYSIS,
-      ai_review_analysis_hash: 'hash-abc',
-      ai_review_analysis_model: 'gpt-4o',
-    }));
-    expect(eq).toHaveBeenCalledWith('id', 'entry-1');
+    expect(fakeFrom).toHaveBeenCalledWith('entry_review_analyses');
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        entry_id: 'entry-1',
+        tab: 'Rooster Partners',
+        platform: 'tp',
+        analysis: SAMPLE_ANALYSIS,
+        evidence: SAMPLE_EVIDENCE,
+        hash: 'hash-abc',
+        model: 'gpt-4o',
+      }),
+      { onConflict: 'entry_id,platform' },
+    );
   });
 
-  it('throws if the update fails', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
-    const update = vi.fn().mockReturnValue({ eq });
-    singletonFrom.mockReturnValue({ update });
+  it('throws if the upsert fails', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    const fakeFrom = vi.fn().mockReturnValue({ upsert });
 
-    await expect(saveReviewAnalysis('entry-1', 'Rooster Partners', SAMPLE_ANALYSIS, 'hash-abc', 'gpt-4o'))
-      .rejects.toThrow('db down');
+    await expect(
+      saveReviewAnalysis('entry-1', 'Rooster Partners', 'tp', SAMPLE_ANALYSIS, SAMPLE_EVIDENCE, 'hash-abc', 'gpt-4o', { from: fakeFrom } as any),
+    ).rejects.toThrow('db down');
+  });
+
+  it('falls back to the singleton client when none is passed', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+
+    await saveReviewAnalysis('entry-1', 'Rooster Partners', 'ag', SAMPLE_ANALYSIS, SAMPLE_EVIDENCE, 'hash-abc', 'gpt-4o');
+
+    expect(singletonFrom).toHaveBeenCalledWith('entry_review_analyses');
+  });
+});
+
+describe('fetchEntryReviewAnalyses', () => {
+  it('uses the passed-in client and selects the expected columns, scoped to the tab', async () => {
+    const selectSpy = vi.fn().mockReturnValue({
+      eq: (key: string, value: string) => ({
+        then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
+          resolve({ data: key === 'tab' && value === 'Rooster Partners' ? [{ entry_id: 'e1', platform: 'tp', analysis: SAMPLE_ANALYSIS, evidence: SAMPLE_EVIDENCE, hash: 'h', model: 'gpt-4o', analyzed_at: '2026-08-25T00:00:00Z' }] : [], error: null }),
+      }),
+    });
+    const fakeFrom = vi.fn().mockReturnValue({ select: selectSpy });
+
+    const rows = await fetchEntryReviewAnalyses('Rooster Partners', { from: fakeFrom } as any);
+
+    expect(fakeFrom).toHaveBeenCalledWith('entry_review_analyses');
+    expect(selectSpy).toHaveBeenCalledWith('entry_id, platform, analysis, evidence, hash, model, analyzed_at');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].entry_id).toBe('e1');
   });
 });
 
