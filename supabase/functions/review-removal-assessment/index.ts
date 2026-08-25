@@ -232,7 +232,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const status = typeof body?.status === 'string' ? body.status : '';
   const reviewText = typeof body?.reviewText === 'string' ? body.reviewText : '';
   const behavioralFields = body?.behavioralFields && typeof body.behavioralFields === 'object' ? body.behavioralFields : {};
-  const evidence = body?.evidence && typeof body.evidence === 'object' ? body.evidence : {};
+  const rawEvidence = body?.evidence;
+  const evidence = rawEvidence && typeof rawEvidence === 'object' && !Array.isArray(rawEvidence) ? rawEvidence : {};
 
   // Defense-in-depth: never trust the client alone to have excluded these.
   // Backup Codes / Authenticator Backup are real account-recovery secrets
@@ -250,6 +251,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (reviewText.length > 10000) {
     return jsonResponse({ error: 'Review text is too long to analyze' }, 400);
+  }
+
+  // The evidence bundle is a small, code-computed object (counts, a handful of
+  // strings, an example-brands list capped at 5) — this is not a real-world
+  // limit, just a defensive cap so a malformed/oversized payload can't inflate
+  // the prompt or the OpenAI bill the way an unbounded `reviewText` could.
+  const evidenceJson = JSON.stringify(evidence);
+  if (evidenceJson.length > 5000) {
+    return jsonResponse({ error: 'Evidence payload is too large to analyze' }, 400);
   }
 
   const userPayload = JSON.stringify({ reviewText, behavioralFields, evidence }, null, 2);

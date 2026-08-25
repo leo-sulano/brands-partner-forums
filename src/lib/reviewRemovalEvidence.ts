@@ -131,16 +131,15 @@ export function computeRemovalEvidence(
   // Hard signals.
   const currentReviewText = getReviewText(currentEntry.data, platform) ?? '';
   const normalizedCurrent = normalizeReviewText(currentReviewText);
+  const matchesCurrentText = (text: string | null) => text != null && normalizeReviewText(text) === normalizedCurrent;
   let duplicateReviewTextFound = false;
   if (normalizedCurrent) {
-    outer: for (const other of others) {
-      for (const p of tabPlatforms) {
-        const otherText = getReviewText(other.data, p);
-        if (otherText && normalizeReviewText(otherText) === normalizedCurrent) {
-          duplicateReviewTextFound = true;
-          break outer;
-        }
-      }
+    // Same row, a different platform this tab tracks (e.g. identical text copy-pasted
+    // into both the TP and AG review fields of one multi-platform entry) — `others`
+    // excludes the current entry entirely, so this case needs its own check.
+    duplicateReviewTextFound = tabPlatforms.some((p) => p !== platform && matchesCurrentText(getReviewText(currentEntry.data, p)));
+    if (!duplicateReviewTextFound) {
+      duplicateReviewTextFound = others.some((other) => tabPlatforms.some((p) => matchesCurrentText(getReviewText(other.data, p))));
     }
   }
 

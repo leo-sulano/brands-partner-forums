@@ -192,6 +192,18 @@ describe('computeRemovalEvidence — hard signals', () => {
     expect(evidence.hardSignals.duplicateReviewTextFound).toBe(false);
   });
 
+  it('flags duplicateReviewTextFound when the same row has identical text on a different platform', () => {
+    const current = makeEntry({
+      Brands: 'BrandA',
+      'TP Review Text': 'Great platform, super fast!',
+      'AG Review Text': '  Great platform, super fast!  ',
+    });
+
+    const evidence = computeRemovalEvidence([current], current, 'tp', 'BrandA', 'Rooster Partners');
+
+    expect(evidence.hardSignals.duplicateReviewTextFound).toBe(true);
+  });
+
   it('sets proxyTiedToOtherRemoval true exactly when sameProxyRemovedCount > 0', () => {
     const current = makeEntry({ Brands: 'BrandA', 'Proxy Used': 'SmartProxy', 'TP Review Status': 'Removed' });
     const otherRemoved = makeEntry({ Brands: 'BrandB', 'Proxy Used': 'SmartProxy', 'TP Review Status': 'Removed' });

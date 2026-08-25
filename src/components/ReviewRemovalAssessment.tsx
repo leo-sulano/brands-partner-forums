@@ -174,7 +174,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
         <div className="mt-3 space-y-2">
           {isStale && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
-              Outdated — review data changed since this assessment was generated.
+              Outdated — review or related dashboard data changed since this assessment was generated.
             </div>
           )}
 
