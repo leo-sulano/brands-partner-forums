@@ -1403,3 +1403,25 @@ Deno.test('get_review_analyses rejects an invalid group_by value', async () => {
   const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', { group_by: 'nonsense' });
   assertEquals(typeof result.error, 'string');
 });
+
+Deno.test('get_review_analyses group_by="brand" trims a leading/trailing-space brand variant into the same bucket', async () => {
+  const tables = {
+    entry_review_analyses: [
+      { entry_id: 'e1', tab: 'Rooster Partners', platform: 'tp', analysis: { overall_result: 'likely_removal_risk' }, analyzed_at: '2026-08-25T00:00:00Z' },
+      { entry_id: 'e2', tab: 'Rooster Partners', platform: 'ag', analysis: { overall_result: 'no_clear_removal_reason' }, analyzed_at: '2026-08-25T00:00:00Z' },
+    ],
+    entries: [
+      { id: 'e1', tab: 'Rooster Partners', data: { Brands: 'Acme', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+      { id: 'e2', tab: 'Rooster Partners', data: { Brands: ' Acme ', Agent: 'Lai' }, updated_at: '2026-08-25T00:00:00Z' },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [],
+    removed_platform_brands: [],
+    brand_agent_assignments: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', { group_by: 'brand' });
+  assertEquals(result.total, 2);
+  assertEquals(result.groups.length, 1);
+  assertEquals(result.groups[0].value, 'Acme');
+  assertEquals(result.groups[0].count, 2);
+});

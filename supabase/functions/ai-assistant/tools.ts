@@ -1161,7 +1161,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     let combined = filteredAnalysisRows
       .map((r: any) => {
         const entry = entryById.get(r.entry_id);
-        const brand = (entry ? pick(entry.data, BRAND_KEYS) : null) ?? '';
+        const brand = (entry ? (pick(entry.data, BRAND_KEYS) ?? '').trim() : '');
         const agent = agentLabels.get(r.entry_id) ?? '';
         return {
           id: r.entry_id,
