@@ -2810,6 +2810,7 @@ export default function BrandGroup() {
           availableBrands={uniqueBrands}
           brandCol={brandCol}
           brandProfiles={brandProfiles}
+          tabEntries={entries}
           initialRemovedPlatforms={initialRemovedPlatformsForEditEntry}
           initialRemovedPlatformDates={initialRemovedPlatformDatesForEditEntry}
           initialOverrides={initialOverridesForEditEntry}

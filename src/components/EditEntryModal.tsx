@@ -66,6 +66,7 @@ interface Props {
   availableBrands?: string[];
   brandCol?: string | null;
   brandProfiles?: Record<string, Record<string, string>>;
+  tabEntries?: Entry[];
   initialRemovedPlatforms?: Platform[];
   initialRemovedPlatformDates?: Partial<Record<Platform, string>>;
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
@@ -88,7 +89,7 @@ const PLATFORM_ADDED_HEADER: Record<Platform, string> = {
   wo: 'Wizard of Odds',
 };
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
   // Recomputed on every render (deliberately not memoized, and deliberately
   // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
   // dynamic tab is created/deleted mid-session
@@ -112,6 +113,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     }
     return init;
   });
+  const brand = brandCol ? (fields[brandCol] || entry.data[brandCol] || '') : '';
   const [selectedTab, setSelectedTab] = useState(currentTab ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -463,6 +465,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                       reviewText={fields[reviewTextKey] ?? ''}
                       headers={headers}
                       fields={fields}
+                      tabEntries={tabEntries ?? []}
+                      brand={brand}
                       disabled={saving}
                     />
                   </div>
@@ -493,6 +497,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     reviewText={fields['AG Review Text'] ?? ''}
                     headers={headers}
                     fields={fields}
+                    tabEntries={tabEntries ?? []}
+                    brand={brand}
                     disabled={saving}
                   />
                 </div>
@@ -522,6 +528,8 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     reviewText={fields['CG Review Text'] ?? ''}
                     headers={headers}
                     fields={fields}
+                    tabEntries={tabEntries ?? []}
+                    brand={brand}
                     disabled={saving}
                   />
                 </div>
