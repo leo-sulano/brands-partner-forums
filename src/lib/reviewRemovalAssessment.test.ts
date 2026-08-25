@@ -11,6 +11,7 @@ vi.mock('./supabase', () => ({
 
 import {
   collectBehavioralFields,
+  entryReviewAnalysisKey,
   hashAssessmentInput,
   isValidAssessmentResult,
   requestReviewRemovalAssessment,
@@ -271,5 +272,17 @@ describe('requestReviewRemovalAssessment', () => {
 
     await expect(requestReviewRemovalAssessment({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE }))
       .rejects.toThrow('Unable to generate an AI assessment right now. Please try again later.');
+  });
+});
+
+describe('entryReviewAnalysisKey', () => {
+  it('combines entryId and platform with a stable separator', () => {
+    expect(entryReviewAnalysisKey('entry-1', 'tp')).toBe('entry-1::tp');
+  });
+
+  it('produces distinct keys for the same entry across different platforms', () => {
+    const tp = entryReviewAnalysisKey('entry-1', 'tp');
+    const ag = entryReviewAnalysisKey('entry-1', 'ag');
+    expect(tp).not.toBe(ag);
   });
 });

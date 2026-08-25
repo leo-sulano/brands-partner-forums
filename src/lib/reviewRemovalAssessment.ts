@@ -81,6 +81,10 @@ async function sha256Hex(text: string): Promise<string> {
   return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+export function entryReviewAnalysisKey(entryId: string, platform: Platform): string {
+  return `${entryId}::${platform}`;
+}
+
 function canonicalCrossPlatform(cp: RemovalEvidence['crossPlatform']): unknown {
   if (!cp.applicable) return { applicable: false };
   const other: Record<string, { status: string | null }> = {};
