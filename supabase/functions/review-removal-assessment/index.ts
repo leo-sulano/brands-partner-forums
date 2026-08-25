@@ -33,12 +33,22 @@ const OUTPUT_SCHEMA = `{
     "summary": "<1-3 sentences>",
     "signals": [{ "name": "<short label>", "severity": "low | medium | high", "evidence": "<which field/value supports this>" }]
   },
-  "likely_reason": "<short phrase>",
+  "root_cause": {
+    "label": "<one concrete, specific sentence naming the single most likely trigger — never a vague category alone>",
+    "confidence": "low | medium | high",
+    "alternative_causes": [{ "label": "<specific alternative>", "likelihood": "low | medium | high" }]
+  },
+  "evidence_for_removal": ["<concrete point>"],
+  "evidence_against_removal": ["<concrete point>"],
   "policy_category": "<one category from the list provided above, or the WO caveat text, or empty string if none applies>",
   "why_it_may_have_been_removed": "<1-3 sentences>",
   "evidence_summary": "<1-3 sentences summarizing all evidence considered, including what was NOT available>",
   "alternative_explanation": "<1-2 sentences on a non-policy explanation, e.g. platform moderation error>",
   "recommendation": "<1-2 sentences, actionable>",
+  "agent_recommendation": {
+    "summary": "<1-2 sentences, addressed directly to the agent/writer, on what to do differently next time>",
+    "specific_actions": ["<concrete, behavioral action an agent can change>"]
+  },
   "assessment_note": "<leave this field's exact wording to the system — you do not need to fill this in accurately>"
 }`;
 
@@ -132,6 +142,25 @@ Rules you MUST follow:
   are indicators only, weigh them alongside the content.
 - Give every signal an explicit severity (low/medium/high) and evidence.
 - Always state an overall confidence level (low/medium/high).
+- You MUST populate both "evidence_for_removal" and "evidence_against_removal" — a
+  real assessment always has something on both sides, even if one side is thin
+  (e.g. "no positive evidence beyond the review's polite tone").
+- "root_cause.label" must name a specific, concrete trigger, not a bare category —
+  "possible coordinated review activity" alone is not acceptable; name what
+  specifically suggests it (e.g. "posted 4 minutes after a welcome-email redirect,
+  from a proxy already tied to 2 other removed reviews for different brands").
+- The request body's "evidence" object contains deterministic, code-computed facts
+  (cross-entry proxy/country matches, this brand's historical outcomes on this
+  platform, this entry's status on other platforms if applicable, and hard
+  signals). Treat every value in "evidence" as ground truth — never contradict,
+  adjust, or re-derive these numbers; reason from them, don't reinterpret them.
+- If evidence.hardSignals.duplicateReviewTextFound or
+  evidence.hardSignals.proxyTiedToOtherRemoval is true, that signal MUST appear as
+  your top-ranked "root_cause" candidate unless you explicitly explain in
+  "evidence_against_removal" why it does not apply to this specific case.
+- "agent_recommendation.specific_actions" must be concrete and behavioral (things a
+  human agent can change about how or when they act) — never a restatement of
+  platform policy.
 `;
 
 type Platform = 'tp' | 'ag' | 'cg' | 'wo';
@@ -199,6 +228,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const status = typeof body?.status === 'string' ? body.status : '';
   const reviewText = typeof body?.reviewText === 'string' ? body.reviewText : '';
   const behavioralFields = body?.behavioralFields && typeof body.behavioralFields === 'object' ? body.behavioralFields : {};
+  const evidence = body?.evidence && typeof body.evidence === 'object' ? body.evidence : {};
 
   // Defense-in-depth: never trust the client alone to have excluded these.
   // Backup Codes / Authenticator Backup are real account-recovery secrets
@@ -218,7 +248,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: 'Review text is too long to analyze' }, 400);
   }
 
-  const userPayload = JSON.stringify({ reviewText, behavioralFields }, null, 2);
+  const userPayload = JSON.stringify({ reviewText, behavioralFields, evidence }, null, 2);
 
   try {
     const res = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -230,11 +260,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
       body: JSON.stringify({
         model: MODEL,
         response_format: { type: 'json_object' },
+        temperature: 0,
         messages: [
           { role: 'system', content: buildSystemPrompt(platform, status) },
           { role: 'user', content: `Review and behavioral data:\n${userPayload}` },
         ],
-        max_tokens: 1800,
+        max_tokens: 2400,
       }),
     });
     if (!res.ok) throw new Error(`OpenAI ${res.status}`);
