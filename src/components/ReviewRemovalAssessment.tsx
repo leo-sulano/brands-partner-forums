@@ -25,6 +25,8 @@ interface Props {
   fields: Record<string, string>;
   tabEntries: Entry[];
   brand: string;
+  cachedAnalysis: ReviewRemovalAssessmentResult | null;
+  cachedHash: string | null;
   disabled?: boolean;
 }
 
@@ -92,14 +94,14 @@ function SignalBadge({ signal }: { signal: AssessmentSignal }) {
   );
 }
 
-export default function ReviewRemovalAssessment({ entry, tab, platform, status, reviewText, headers, fields, tabEntries, brand, disabled }: Props) {
+export default function ReviewRemovalAssessment({ entry, tab, platform, status, reviewText, headers, fields, tabEntries, brand, cachedAnalysis, cachedHash, disabled }: Props) {
   const [result, setResult] = useState<ReviewRemovalAssessmentResult | null>(
-    isValidAssessmentResult(entry.ai_review_analysis) ? entry.ai_review_analysis : null,
+    isValidAssessmentResult(cachedAnalysis) ? cachedAnalysis : null,
   );
-  // Tracked as state (not read directly off the `entry` prop on every render)
-  // so a successful analyze/re-analyze can update the "last saved" baseline
-  // without mutating the prop object — React props are treated as read-only.
-  const [savedHash, setSavedHash] = useState<string | null>(entry.ai_review_analysis_hash ?? null);
+  // Tracked as state (not read directly off a prop on every render) so a
+  // successful analyze/re-analyze can update the "last saved" baseline
+  // without mutating the prop — React props are treated as read-only.
+  const [savedHash, setSavedHash] = useState<string | null>(cachedHash ?? null);
   const [currentHash, setCurrentHash] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +133,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
     try {
       const { analysis, model } = await requestReviewRemovalAssessment({ platform, status, reviewText, behavioralFields, evidence });
       const hash = currentHash ?? (await hashAssessmentInput({ platform, reviewText, behavioralFields, evidence }));
-      await saveReviewAnalysis(entry.id, tab, analysis, hash, model);
+      await saveReviewAnalysis(entry.id, tab, platform, analysis, evidence, hash, model);
       setResult(analysis);
       setSavedHash(hash);
     } catch (err) {
