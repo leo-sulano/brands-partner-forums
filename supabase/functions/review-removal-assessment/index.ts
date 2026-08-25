@@ -158,6 +158,10 @@ Rules you MUST follow:
   evidence.hardSignals.proxyTiedToOtherRemoval is true, that signal MUST appear as
   your top-ranked "root_cause" candidate unless you explicitly explain in
   "evidence_against_removal" why it does not apply to this specific case.
+  Note: "proxyTiedToOtherRemoval" means the proxy was tied to a removal on ANY
+  platform this tab tracks, not necessarily the platform you are currently
+  assessing — state which platform(s) the removal(s) were actually on if you
+  cite this signal, rather than implying it happened on the platform under review.
 - "agent_recommendation.specific_actions" must be concrete and behavioral (things a
   human agent can change about how or when they act) — never a restatement of
   platform policy.

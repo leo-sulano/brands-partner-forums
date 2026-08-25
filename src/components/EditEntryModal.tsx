@@ -34,6 +34,12 @@ const YES_NO_OPTS = [
 
 const ACCOUNT_FIELD_PRIORITY = ['Account', 'Country', 'Proxy Used', 'Email', 'Password', 'Account Name', 'Account Surname', 'Agent'];
 
+// Stable reference so passing tabEntries={tabEntries ?? EMPTY_ENTRIES} never creates a new
+// array identity on a render where tabEntries is undefined — a fresh [] every render would
+// defeat ReviewRemovalAssessment's useMemo (keyed on [tabEntries, ...]) if this component
+// were ever called without the prop.
+const EMPTY_ENTRIES: Entry[] = [];
+
 const BRAND_NAME_COLS = new Set(['Brands', 'Brand Name', 'Brand']);
 
 function isStatusCol(h: string) { return h.toLowerCase().includes('status'); }
@@ -465,7 +471,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                       reviewText={fields[reviewTextKey] ?? ''}
                       headers={headers}
                       fields={fields}
-                      tabEntries={tabEntries ?? []}
+                      tabEntries={tabEntries ?? EMPTY_ENTRIES}
                       brand={brand}
                       disabled={saving}
                     />
@@ -497,7 +503,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     reviewText={fields['AG Review Text'] ?? ''}
                     headers={headers}
                     fields={fields}
-                    tabEntries={tabEntries ?? []}
+                    tabEntries={tabEntries ?? EMPTY_ENTRIES}
                     brand={brand}
                     disabled={saving}
                   />
@@ -528,7 +534,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                     reviewText={fields['CG Review Text'] ?? ''}
                     headers={headers}
                     fields={fields}
-                    tabEntries={tabEntries ?? []}
+                    tabEntries={tabEntries ?? EMPTY_ENTRIES}
                     brand={brand}
                     disabled={saving}
                   />

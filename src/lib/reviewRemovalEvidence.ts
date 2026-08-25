@@ -1,5 +1,5 @@
-import type { Entry } from '../types/entry';
-import type { Platform } from './scoreSummary';
+import type { Entry } from '../types/entry.ts';
+import type { Platform } from './scoreSummary.ts';
 import {
   PLATFORM_STATUS_KEYS,
   pick,
@@ -8,10 +8,16 @@ import {
   isRemovedStatus,
   rateFromCounts,
   successRatePct,
-} from './scoreSummary';
-import { canonicalProxyKey, resolveProxyLabel, NO_PROXY_LABEL } from './proxyAliases';
-import { normalizeBrandKey } from './removedPlatformBrands';
-import { BRAND_COLS, getTabPlatforms } from './tab-configs';
+} from './scoreSummary.ts';
+import { canonicalProxyKey, resolveProxyLabel, NO_PROXY_LABEL } from './proxyAliases.ts';
+import { normalizeBrandKey } from './removedPlatformBrands.ts';
+import { BRAND_COLS, getTabPlatforms, getEntryCountry } from './tab-configs.ts';
+
+// BRAND_COLS' trailing 'Account Name' fallback is appropriate for other consumers with no
+// real brand column, but here it would let a row with a blank brand cell contribute its
+// account holder's name to exampleBrands (sent to OpenAI, labeled as a brand) or to
+// brand-history matching. Excluded so a blank-brand row is skipped instead of mislabeled.
+const BRAND_COLS_FOR_MATCHING = BRAND_COLS.filter((c) => c !== 'Account Name');
 
 export interface RemovalEvidenceCrossEntry {
   sameProxyCount: number;
@@ -61,7 +67,7 @@ export function computeRemovalEvidence(
   const currentProxyRaw = currentEntry.data['Proxy Used'] ?? '';
   const currentProxyLabel = resolveProxyLabel(currentProxyRaw);
   const currentProxyKey = canonicalProxyKey(currentProxyRaw);
-  const currentCountry = (currentEntry.data.Country ?? '').trim().toLowerCase();
+  const currentCountry = getEntryCountry(currentEntry.data, tab).trim().toLowerCase();
 
   let sameProxyCount = 0;
   let sameProxyRemovedCount = 0;
@@ -75,7 +81,7 @@ export function computeRemovalEvidence(
       if (canonicalProxyKey(otherProxyRaw) !== currentProxyKey) continue;
 
       sameProxyCount++;
-      const otherBrand = (pick(other.data, BRAND_COLS) ?? '').trim();
+      const otherBrand = (pick(other.data, BRAND_COLS_FOR_MATCHING) ?? '').trim();
       if (otherBrand) exampleBrandsSet.add(otherBrand);
 
       const otherRemoved = tabPlatforms.some((p) => {
@@ -84,7 +90,7 @@ export function computeRemovalEvidence(
       });
       if (otherRemoved) sameProxyRemovedCount++;
 
-      const otherCountry = (other.data.Country ?? '').trim().toLowerCase();
+      const otherCountry = getEntryCountry(other.data, tab).trim().toLowerCase();
       if (otherCountry && otherCountry === currentCountry) sameProxySameCountryCount++;
     }
   }
@@ -95,7 +101,7 @@ export function computeRemovalEvidence(
   let liveCount = 0;
   let removedCount = 0;
   for (const other of others) {
-    const otherBrand = (pick(other.data, BRAND_COLS) ?? '').trim();
+    const otherBrand = (pick(other.data, BRAND_COLS_FOR_MATCHING) ?? '').trim();
     if (!otherBrand || normalizeBrandKey(otherBrand) !== brandKey) continue;
     const status = pick(other.data, PLATFORM_STATUS_KEYS[platform]);
     if (status == null) continue;

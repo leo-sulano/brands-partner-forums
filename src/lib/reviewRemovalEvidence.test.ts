@@ -63,6 +63,49 @@ describe('computeRemovalEvidence — cross-entry proxy pattern', () => {
   });
 });
 
+describe('computeRemovalEvidence — brand resolution excludes Account Name fallback', () => {
+  it('does not surface an Account Name as an example brand when the row has no real brand value', () => {
+    const current = makeEntry({ Brands: 'BrandA', 'Proxy Used': 'SmartProxy', 'TP Review Status': 'Removed' });
+    const blankBrandRow = makeEntry({ Brands: '', 'Account Name': 'John Smith', 'Proxy Used': 'SmartProxy', 'TP Review Status': 'Live' });
+
+    const evidence = computeRemovalEvidence([current, blankBrandRow], current, 'tp', 'BrandA', 'Rooster Partners');
+
+    expect(evidence.crossEntry.sameProxyCount).toBe(1);
+    expect(evidence.crossEntry.exampleBrands).toEqual([]);
+  });
+});
+
+describe('computeRemovalEvidence — country resolution falls back through getEntryCountry', () => {
+  it('falls back to the Account-derived country via getEntryCountry when Country is blank', () => {
+    // Mirrors the exact (tab, Account) pattern already verified in
+    // tab-configs.test.ts:143-146 — a pipe-delimited Account on a Wizard of Odds row
+    // derives Country from its third segment when the Country cell itself is blank.
+    const current = makeEntry(
+      { Brands: 'BrandA', 'Proxy Used': 'SmartProxy', Country: null, Account: '1182 | Test | Norway' },
+      'Wizard of Odds',
+    );
+    const sameDerivedCountry = makeEntry(
+      { Brands: 'BrandB', 'Proxy Used': 'SmartProxy', Country: null, Account: '2200 | Test | Norway' },
+      'Wizard of Odds',
+    );
+    const differentDerivedCountry = makeEntry(
+      { Brands: 'BrandC', 'Proxy Used': 'SmartProxy', Country: null, Account: '3300 | Test | Germany' },
+      'Wizard of Odds',
+    );
+
+    const evidence = computeRemovalEvidence(
+      [current, sameDerivedCountry, differentDerivedCountry],
+      current,
+      'wo',
+      'BrandA',
+      'Wizard of Odds',
+    );
+
+    expect(evidence.crossEntry.sameProxyCount).toBe(2);
+    expect(evidence.crossEntry.sameProxySameCountryCount).toBe(1);
+  });
+});
+
 describe('computeRemovalEvidence — brand history', () => {
   it('classifies this brand\'s other entries on this platform into live/removed and computes a matching success rate', () => {
     const current = makeEntry({ Brands: 'BrandA', 'TP Review Status': 'Removed' });

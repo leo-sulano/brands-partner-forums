@@ -143,6 +143,8 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
 
   if (!reviewText.trim() && !result) return null;
 
+  const evidenceLine = evidenceSummaryLine(evidence);
+
   return (
     <div className="mt-3 rounded-md border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-2">
@@ -162,17 +164,17 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
         <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</div>
       )}
 
+      {evidenceLine && (
+        <div className="mt-2 rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+          {evidenceLine}
+        </div>
+      )}
+
       {result && (
         <div className="mt-3 space-y-2">
           {isStale && (
             <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
               Outdated — review data changed since this assessment was generated.
-            </div>
-          )}
-
-          {evidenceSummaryLine(evidence) && (
-            <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
-              {evidenceSummaryLine(evidence)}
             </div>
           )}
 
@@ -254,6 +256,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
                 </div>
               )}
               <div><span className="font-medium text-slate-700">Policy Category:</span> {result.policy_category || '—'}</div>
+              <div><span className="font-medium text-slate-700">Why:</span> {result.why_it_may_have_been_removed || '—'}</div>
               <div><span className="font-medium text-slate-700">Evidence:</span> {result.evidence_summary || '—'}</div>
               <div><span className="font-medium text-slate-700">Alternative Explanation:</span> {result.alternative_explanation || '—'}</div>
               <div><span className="font-medium text-slate-700">Recommendation:</span> {result.recommendation || '—'}</div>
