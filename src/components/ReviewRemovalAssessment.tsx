@@ -10,8 +10,9 @@ import {
   type ReviewRemovalAssessmentResult,
   type AssessmentSignal,
 } from '../lib/reviewRemovalAssessment';
+import { computeRemovalEvidence } from '../lib/reviewRemovalEvidence';
 import { saveReviewAnalysis } from '../lib/queries';
-import type { Platform } from '../lib/scoreSummary';
+import { PLATFORM_SHORT_LABEL, type Platform } from '../lib/scoreSummary';
 import Tooltip from './Tooltip';
 
 interface Props {
@@ -22,6 +23,8 @@ interface Props {
   reviewText: string;
   headers: string[];
   fields: Record<string, string>;
+  tabEntries: Entry[];
+  brand: string;
   disabled?: boolean;
 }
 
@@ -51,6 +54,28 @@ function riskBucket(score: number): { emoji: string; label: string } {
   return { emoji: '🟢', label: 'Low' };
 }
 
+function evidenceSummaryLine(evidence: ReturnType<typeof computeRemovalEvidence>): string | null {
+  const parts: string[] = [];
+  const { crossEntry, brandHistory, crossPlatform } = evidence;
+
+  if (crossEntry.sameProxyCount > 0) {
+    const removedNote = crossEntry.sameProxyRemovedCount > 0 ? ` (${crossEntry.sameProxyRemovedCount} removed)` : '';
+    parts.push(`Same proxy: ${crossEntry.sameProxyCount} other entr${crossEntry.sameProxyCount === 1 ? 'y' : 'ies'}${removedNote}`);
+  }
+  if (brandHistory.totalReviews > 0) {
+    const pctNote = brandHistory.successRatePct != null ? ` (${brandHistory.successRatePct}%)` : '';
+    parts.push(`Brand history: ${brandHistory.liveCount}/${brandHistory.totalReviews} live${pctNote}`);
+  }
+  if (crossPlatform.applicable) {
+    const otherParts = Object.entries(crossPlatform.other)
+      .filter(([, v]) => v && v.status)
+      .map(([p, v]) => `${PLATFORM_SHORT_LABEL[p as keyof typeof PLATFORM_SHORT_LABEL]} ${v!.status}`);
+    if (otherParts.length > 0) parts.push(`Other platforms: ${otherParts.join(', ')}`);
+  }
+
+  return parts.length > 0 ? parts.join(' · ') : null;
+}
+
 const SEVERITY_RANK: Record<AssessmentSignal['severity'], number> = { high: 0, medium: 1, low: 2 };
 
 function SignalBadge({ signal }: { signal: AssessmentSignal }) {
@@ -67,7 +92,7 @@ function SignalBadge({ signal }: { signal: AssessmentSignal }) {
   );
 }
 
-export default function ReviewRemovalAssessment({ entry, tab, platform, status, reviewText, headers, fields, disabled }: Props) {
+export default function ReviewRemovalAssessment({ entry, tab, platform, status, reviewText, headers, fields, tabEntries, brand, disabled }: Props) {
   const [result, setResult] = useState<ReviewRemovalAssessmentResult | null>(
     isValidAssessmentResult(entry.ai_review_analysis) ? entry.ai_review_analysis : null,
   );
@@ -81,16 +106,20 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
   const [expanded, setExpanded] = useState(false);
 
   const behavioralFields = useMemo(() => collectBehavioralFields(headers, fields), [headers, fields]);
+  const evidence = useMemo(
+    () => computeRemovalEvidence(tabEntries, entry, platform, brand, tab),
+    [tabEntries, entry, platform, brand, tab],
+  );
 
   useEffect(() => {
     let cancelled = false;
-    hashAssessmentInput({ platform, reviewText, behavioralFields }).then((h) => {
+    hashAssessmentInput({ platform, reviewText, behavioralFields, evidence }).then((h) => {
       if (!cancelled) setCurrentHash(h);
     });
     return () => {
       cancelled = true;
     };
-  }, [platform, reviewText, behavioralFields]);
+  }, [platform, reviewText, behavioralFields, evidence]);
 
   const isStale = result !== null && currentHash !== null && savedHash !== currentHash;
   const hasFreshResult = result !== null && !isStale;
@@ -100,8 +129,8 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
     setLoading(true);
     setError(null);
     try {
-      const { analysis, model } = await requestReviewRemovalAssessment({ platform, status, reviewText, behavioralFields });
-      const hash = currentHash ?? (await hashAssessmentInput({ platform, reviewText, behavioralFields }));
+      const { analysis, model } = await requestReviewRemovalAssessment({ platform, status, reviewText, behavioralFields, evidence });
+      const hash = currentHash ?? (await hashAssessmentInput({ platform, reviewText, behavioralFields, evidence }));
       await saveReviewAnalysis(entry.id, tab, analysis, hash, model);
       setResult(analysis);
       setSavedHash(hash);
@@ -141,6 +170,12 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
             </div>
           )}
 
+          {evidenceSummaryLine(evidence) && (
+            <div className="rounded-md bg-slate-50 px-2 py-1 text-[11px] text-slate-600">
+              {evidenceSummaryLine(evidence)}
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-700">
             <span>Risk: {riskBucket(result.risk_score).emoji} {riskBucket(result.risk_score).label}</span>
             <span>Assessment: {OVERALL_META[result.overall_result].emoji} {OVERALL_META[result.overall_result].label}</span>
@@ -148,8 +183,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
           </div>
 
           <div className="text-xs text-slate-600">
-            <div><span className="font-medium text-slate-700">Likely Reason:</span> {result.likely_reason || '—'}</div>
-            <div className="mt-0.5"><span className="font-medium text-slate-700">Why:</span> {result.why_it_may_have_been_removed || '—'}</div>
+            <div><span className="font-medium text-slate-700">Root Cause:</span> {result.root_cause.label || '—'} <span className="text-slate-400">({result.root_cause.confidence} confidence)</span></div>
           </div>
 
           {(result.content_assessment.signals.length > 0 || result.behavioral_assessment.signals.length > 0) && (
@@ -158,6 +192,17 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
                 .sort((a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity])
                 .slice(0, 6)
                 .map((s, i) => <SignalBadge key={`${s.name}-${i}`} signal={s} />)}
+            </div>
+          )}
+
+          {result.agent_recommendation.summary && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1.5 text-xs text-blue-800">
+              <span className="font-medium">For Next Time:</span> {result.agent_recommendation.summary}
+              {result.agent_recommendation.specific_actions.length > 0 && (
+                <ul className="mt-1 list-disc pl-4">
+                  {result.agent_recommendation.specific_actions.map((action, i) => <li key={i}>{action}</li>)}
+                </ul>
+              )}
             </div>
           )}
 
@@ -184,6 +229,30 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
                 </span>{' '}
                 {result.behavioral_assessment.summary}
               </div>
+              {result.root_cause.alternative_causes.length > 0 && (
+                <div>
+                  <span className="font-medium text-slate-700">Alternative Causes:</span>
+                  <ul className="mt-0.5 list-disc pl-4">
+                    {result.root_cause.alternative_causes.map((c, i) => <li key={i}>{c.label} <span className="text-slate-400">({c.likelihood})</span></li>)}
+                  </ul>
+                </div>
+              )}
+              {result.evidence_for_removal.length > 0 && (
+                <div>
+                  <span className="font-medium text-slate-700">Evidence For Removal:</span>
+                  <ul className="mt-0.5 list-disc pl-4">
+                    {result.evidence_for_removal.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
+              {result.evidence_against_removal.length > 0 && (
+                <div>
+                  <span className="font-medium text-slate-700">Evidence Against Removal:</span>
+                  <ul className="mt-0.5 list-disc pl-4">
+                    {result.evidence_against_removal.map((e, i) => <li key={i}>{e}</li>)}
+                  </ul>
+                </div>
+              )}
               <div><span className="font-medium text-slate-700">Policy Category:</span> {result.policy_category || '—'}</div>
               <div><span className="font-medium text-slate-700">Evidence:</span> {result.evidence_summary || '—'}</div>
               <div><span className="font-medium text-slate-700">Alternative Explanation:</span> {result.alternative_explanation || '—'}</div>
