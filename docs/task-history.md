@@ -6051,9 +6051,11 @@ same Project Paused column.
 Full suite (2079 tests) and build both pass; `deno check` clean on both `sync-schedule-pms` and
 `generate-weekly-schedule` (the two Deno consumers of `pmsSync.ts`/`scheduleUtils.ts`), and
 `generate-weekly-schedule`'s own Deno test suite (7 tests, unaffected — it only pushes activations,
-never status syncs) still passes. **Pending manual deploy:** `supabase functions deploy
-sync-schedule-pms` — until redeployed, the live function still runs the old Review/QA-only mapping
-and never moves a paused task at all. No migration/schema change, no new Vercel env var. Not yet
-live-verified against a real PMS card move in this session (no live browser/PMS credentials
-available) — worth confirming once deployed: settle a slot (e.g. mark an entry Done) and watch its
-linked task land in Done, then manually pause a day cell and watch its task land in Project Paused.
+never status syncs) still passes.
+
+**Deployed (2026-08-26, same session).** `git push origin main` (frontend), then `supabase functions
+deploy sync-schedule-pms` (confirmed version 14, `ACTIVE`, via `supabase functions list`). No
+migration/schema change, no new Vercel env var — nothing else to do. Not yet live-verified against a
+real PMS card move (no live browser/PMS credentials available in this session) — worth confirming
+when convenient: settle a slot (e.g. mark an entry Done) and watch its linked task land in Done, then
+manually pause a day cell and watch its task land in Project Paused.

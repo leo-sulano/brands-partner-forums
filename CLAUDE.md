@@ -76,9 +76,9 @@ Brands Partner Forum/
   manually-paused day cell into the same `isPaused` signal already covering scheduler auto-pause and
   the `brand_platform_override` force-pause. Full suite (2079 tests) and build both pass; `deno
   check` clean on both Deno consumers of the shared module (`sync-schedule-pms`,
-  `generate-weekly-schedule`). **Pending manual deploy:** `supabase functions deploy
-  sync-schedule-pms` — until redeployed, the live function still runs the old Review/QA-only mapping
-  and never moves a paused task. No schema change, no new Vercel env var. Task 267.
+  `generate-weekly-schedule`). **Deployed the same session:** `supabase functions deploy
+  sync-schedule-pms` (version 14, confirmed `ACTIVE`) and `git push origin main`. No schema change,
+  no new Vercel env var. Task 267.
 - *2026-08-25 (prior):* Fixed a real pre-existing bug: `entries.ai_review_analysis` was a single
   shared slot per entry, not one per platform, so on a multi-platform tab analyzing one platform's
   review silently overwrote another's cached analysis on the same entry. New `entry_review_analyses`
@@ -1167,10 +1167,12 @@ Brands Partner Forum/
   Treat every "Pending manual deploy" bullet appearing *below* this note as potentially stale for the
   same reason — verify against `supabase functions list`/`supabase migration list` before re-doing or
   reporting on any of them, rather than trusting the bullet text alone.
-- **Pending manual deploy (2026-08-26, Task 267).** `supabase functions deploy sync-schedule-pms` —
-  ships the Done-column/Project-Paused-column remap and the manual-per-day-pause fix described in
-  the Recent Changes entry above. No migration, no Vercel env var. Until deployed, the live function
-  still moves settled slots to Review/QA and still leaves a paused combo's task untouched in To Do.
+- **Resolved (2026-08-26, Task 267).** `supabase functions deploy sync-schedule-pms` — deployed
+  (version 14, confirmed `ACTIVE` via `supabase functions list`) the same session, along with the
+  frontend push to `origin/main`. The Done-column/Project-Paused-column remap and the manual-per-
+  day-pause fix (see the Recent Changes entry above) are both fully live. Not yet independently
+  live-verified against a real PMS card move (no live browser session in this session) — worth
+  confirming once a real slot settles or a day gets manually paused.
 - **Pending manual deploy (2026-08-25, Task 264) — deploy order matters.** The per-platform review
   analysis storage fix + `get_review_analyses` Ask AI tool need:
   1. `supabase db push` (applies the `entry_review_analyses` migration) — should run before or
