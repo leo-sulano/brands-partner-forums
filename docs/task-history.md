@@ -6229,3 +6229,78 @@ and its single call site in `TabScheduleSection.tsx` (confirmed via grep: no oth
 suite (2091 tests, 6 new) and build both pass. Live-verified via Playwright on the real Hanan tab:
 opened DachBet.com's AskGamblers picker (scheduled Mon/Tue/Thu, blank Wed/Fri) and confirmed only
 Mon/Tue/Thu render as checkboxes, with Tue pre-checked to match its real paused state.
+
+---
+
+## Task 272: Ask AI Date-Range Reporting
+
+**Date:** August 26, 2026
+
+Requested directly by the user after asking whether Ask AI could produce a performance report for
+a week/month/year/specific date range — investigation found it couldn't: `query_entries` only
+supported a single `month` string filter, and `get_score_summary`/`get_success_rate_by_field` had
+no date filtering at all (`get_score_summary`'s own tool description said "All-time only"). Added
+real date-range support across all three plus a new report-composing tool, entirely within
+`supabase/functions/ai-assistant/` (no schema change, no dashboard frontend touched).
+
+New shared date gate in `tools.ts` — `PLATFORM_DATE_KEYS`, `parsePostDate`,
+`passesPlatformDateFilter(data, platform, fromISO?, toISO?)`, `DateRangeArgs` — hand-ported from
+the real `src/lib/scoreSummary.ts` functions of the same name/shape (verified line-for-line by the
+Task 1 reviewer), following this file's own established policy of porting pure logic rather than
+cross-importing the larger file (a large `src/lib`-rooted import chain broke a real deploy before,
+Task 231). Same "undated/unparseable row always passes a range" bias as the dashboard, so a date
+filter can't silently skew a live/removed rate by dropping undated Removed/Refused rows.
+
+`query_entries` gained `date_from`/`date_to` (alongside the existing `month`): checks a row against
+whichever platform(s) apply — the tab's own platforms via `getTabPlatforms` if `tab` is given, all
+4 OR'd otherwise — but only among platforms the row actually has a status recorded for, falling
+back to checking all candidates only when none apply. This fallback logic closed a real bug caught
+during the plan's own self-review before implementation started: checking an inapplicable
+platform's simply-*absent* date key would otherwise trigger the lenient "undated → always passes"
+bias and silently defeat the range filter for nearly every cross-tab row, since most rows only
+populate 1-2 of the 4 platforms' fields.
+
+`get_score_summary` gained `date_from`/`date_to` with two deliberately distinct gates, matching the
+dashboard's own `computeScoreSummary`/`computeSuccessRates` split: live/removed counts (and
+`successRate`) use the lenient gate; the star-rating breakdown (only computed for exactly one
+platform) uses a stricter one — a Published row with no parseable date is excluded from the
+breakdown and tallied in a new `excludedRows` field, while a dated-but-out-of-range row is silently
+skipped without inflating that count. `scoreSummary()`'s return type changed from
+`BrandScoreSummary[]` to `{ brands, excludedRows }` (mirroring the dashboard's `ScoreSummaryResult`
+shape) — a deliberate breaking change requiring all 10 pre-existing direct call sites in
+`tools_test.ts` to be updated in the same task, verified via grep by the task reviewer, not just
+trusted from the implementer's report. The response also echoes the applied range as `dateRange`
+(`{from, to}` or `null`). `get_success_rate_by_field` got the same lenient gate as a simple trailing
+optional parameter — no return-shape change, no existing call sites broken.
+
+New `get_performance_report` tool: `date_from`/`date_to` required (unlike the other three tools,
+where they're optional), optional `tab`/`platform`. Returns period totals (live/removed/
+successRate/entries) plus a per-brand breakdown sorted by volume descending — the one-call answer
+to "give me a report for last month." Live/removed accounting reuses the same "any decided status,
+not just Published" bucket-existence rule `get_success_rate_by_field` uses, not `get_score_summary`'s
+narrower Published-only star gate, since a performance report is about outcomes across all decided
+reviews. Applies the same archived-tab, paused-tab, and `removed_platform_brands` exclusions every
+other review-data tool in this file already applies (confirmed by the task reviewer diffing the new
+dispatch branch against `get_score_summary`'s, nearly line-for-line). System prompt (`index.ts`)
+updated to steer the model toward `date_from`/`date_to` (computed from the current-date system
+message, same pattern as `get_schedule`'s `week_start`) and toward `get_performance_report` for
+report-shaped questions, instead of chaining raw `query_entries` calls.
+
+Followed the full brainstorming → spec → plan → Subagent-Driven Development pipeline (this
+project's CLAUDE.md explicitly routes any change touching date/status/platform filtering logic
+through the full process, given this project's history of exactly this class of bug — Tasks 173,
+174, 180). Spec:
+`docs/superpowers/specs/2026-08-26-ask-ai-date-range-reporting-design.md`. Plan:
+`docs/superpowers/plans/2026-08-26-ask-ai-date-range-reporting.md`. Built via 6 subagent-driven
+tasks (2 dispatch bugs — the `query_entries` platform-applicability gap above, and one star-breakdown
+test whose premise didn't account for the live/removed gate also gating bucket existence — both
+caught and fixed during the plan's own pre-implementation self-review, not mid-loop), each with an
+independent task review; all 6 reviews came back clean on the first pass, no fix-loop rounds
+needed. One Minor finding deferred from Task 5's review (no test exercises a genuinely
+undecided-status row for `performanceReport`'s `totals.entries` counting — code correct by
+inspection, plan-mandated test list) is parked for whenever this area is next touched, not
+blocking. Full suite: 146 passed (up from the 118-test baseline), `deno check tools.ts index.ts`
+clean throughout. **Deployed the same session:** `supabase functions deploy ai-assistant`, confirmed
+`ACTIVE` version 42 via `supabase functions list`. All 6 tasks landed directly on `main` (no
+worktree — user explicitly opted out, per the standing preference that only one worktree fits their
+workflow at a time), so no merge step was needed.
