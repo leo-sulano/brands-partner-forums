@@ -25,6 +25,9 @@ import {
   resolveAgentLabels,
   parsePostDate,
   passesPlatformDateFilter,
+  validateDateRangeArgs,
+  resolveDateBounds,
+  resolvePlatformArg,
   EntryRow,
 } from './tools.ts';
 
@@ -173,6 +176,54 @@ Deno.test('passesPlatformDateFilter supports an open-ended range (only from, or 
   assertEquals(passesPlatformDateFilter(data, 'tp', '2026-06-01', undefined), false);
   assertEquals(passesPlatformDateFilter(data, 'tp', undefined, '2026-05-31'), true);
   assertEquals(passesPlatformDateFilter(data, 'tp', undefined, '2026-04-30'), false);
+});
+
+Deno.test('resolveDateBounds resolves inclusive from/to Date bounds, and null when a bound is absent', () => {
+  const { fromBound, toBound } = resolveDateBounds({ from: '2026-05-01', to: '2026-05-31' });
+  // Local-time component checks, not toISOString() (which shifts by the
+  // local UTC offset and would make this test timezone-dependent).
+  assertEquals(fromBound?.getFullYear(), 2026);
+  assertEquals(fromBound?.getMonth(), 4); // 0-indexed: May
+  assertEquals(fromBound?.getDate(), 1);
+  assertEquals(fromBound?.getHours(), 0);
+  assertEquals(toBound?.getDate(), 31);
+  assertEquals(toBound?.getHours(), 23);
+  assertEquals(resolveDateBounds({}).fromBound, null);
+  assertEquals(resolveDateBounds({}).toBound, null);
+});
+
+Deno.test('validateDateRangeArgs accepts a valid range, an absent range, and an open-ended range', () => {
+  assertEquals(validateDateRangeArgs('2026-05-01', '2026-05-31'), null);
+  assertEquals(validateDateRangeArgs(undefined, undefined), null);
+  assertEquals(validateDateRangeArgs('2026-05-01', undefined), null);
+});
+
+Deno.test('validateDateRangeArgs rejects an unparseable date_from/date_to', () => {
+  assertEquals(validateDateRangeArgs('not a date', '2026-05-31'), 'date_from must be a valid YYYY-MM-DD date.');
+  assertEquals(validateDateRangeArgs('2026-05-01', 'garbage'), 'date_to must be a valid YYYY-MM-DD date.');
+});
+
+Deno.test('validateDateRangeArgs rejects a reversed range (from after to)', () => {
+  assertEquals(validateDateRangeArgs('2026-05-31', '2026-05-01'), 'date_from must not be after date_to.');
+});
+
+// A bare "2026" or "may 2026" would actually parse successfully via
+// parsePostDate's lenient native-Date() fallback (confirmed directly: both
+// resolve to a real Date) -- but date_from/date_to are documented everywhere
+// in this file as always strict YYYY-MM-DD, so validateDateRangeArgs checks
+// that exact shape rather than reusing parsePostDate's full leniency. These
+// two cases are the reason this finding exists in the first place.
+Deno.test('validateDateRangeArgs rejects date-shorthand that parsePostDate would otherwise silently accept (bare year, "month year")', () => {
+  assertEquals(validateDateRangeArgs('2026', '2026-05-31'), 'date_from must be a valid YYYY-MM-DD date.');
+  assertEquals(validateDateRangeArgs('may 2026', '2026-05-31'), 'date_from must be a valid YYYY-MM-DD date.');
+});
+
+Deno.test('resolvePlatformArg defaults to tp when omitted, filters invalid values, falls back to tp when all invalid', () => {
+  assertEquals(resolvePlatformArg(undefined), ['tp']);
+  assertEquals(resolvePlatformArg('ag'), ['ag']);
+  assertEquals(resolvePlatformArg(['ag', 'bogus', 'cg']), ['ag', 'cg']);
+  assertEquals(resolvePlatformArg(['bogus']), ['tp']);
+  assertEquals(resolvePlatformArg([]), ['tp']);
 });
 
 // Single-table mock: `rows` back the `entries` table only. Any other table
@@ -1525,6 +1576,22 @@ Deno.test('get_review_analyses rejects an invalid platform value', async () => {
   assertEquals(typeof result.error, 'string');
 });
 
+Deno.test('query_entries returns an error for an unparseable date_from, without querying the database', async () => {
+  const result: any = await runTool(mockSupabaseTables({ entries: [{ id: '1', tab: 't', data: {} }] }), 'query_entries', { date_from: 'not a date' });
+  assertEquals(result.error, 'date_from must be a valid YYYY-MM-DD date.');
+});
+
+Deno.test('query_entries treats a whitespace-only status as blank for platform-applicability, matching the other date-filtered tools', async () => {
+  const tables = {
+    entries: [
+      // tp status is whitespace-only -> not applicable; ag is the real applicable platform, out of range.
+      { id: '1', tab: 't', data: { Brand: 'X', 'Review Status': ' ', 'AG Review Status': 'Published', 'Ask Gambler review added': '2026-04-01' } },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', { date_from: '2026-05-01', date_to: '2026-05-31' });
+  assertEquals(result.total, 0); // excluded: ag (the only genuinely applicable platform) is out of range
+});
+
 Deno.test('query_entries date_from/date_to filters by the tab\'s own active platform(s) when tab is given', async () => {
   const tables = {
     entries: [
@@ -1628,6 +1695,11 @@ Deno.test('scoreSummary with 2+ platforms never populates excludedRows (star bre
   assertEquals(out.excludedRows, 0);
 });
 
+Deno.test('get_score_summary returns an error for an unparseable date_to', async () => {
+  const result: any = await runTool(mockSupabaseTables({ entries: [] }), 'get_score_summary', { date_to: 'may 2026' });
+  assertEquals(result.error, 'date_to must be a valid YYYY-MM-DD date.');
+});
+
 Deno.test('get_score_summary end-to-end applies date_from/date_to and echoes the range', async () => {
   const tables = {
     entries: [
@@ -1674,6 +1746,11 @@ Deno.test('successRateByField with no range behaves exactly as before (regressio
   const enigma = out.find((r) => r.value === 'Enigma')!;
   assertEquals(enigma.live, 1);
   assertEquals(enigma.removed, 1);
+});
+
+Deno.test('get_success_rate_by_field returns an error for an unparseable date_from', async () => {
+  const result: any = await runTool(mockSupabaseTables({ entries: [] }), 'get_success_rate_by_field', { field: 'proxy', date_from: '2026' });
+  assertEquals(result.error, 'date_from must be a valid YYYY-MM-DD date.');
 });
 
 Deno.test('get_success_rate_by_field end-to-end applies date_from/date_to', async () => {
@@ -1741,9 +1818,38 @@ Deno.test('performanceReport with no matching rows returns empty totals/brands, 
   assertEquals(out.brands, []);
 });
 
+Deno.test('performanceReport counts an undecided-status (Pending) row in totals.entries but not in live/removed', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-05-05' } },
+    { id: '2', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Pending', 'Trust Pilot': '2026-05-06' } },
+  ];
+  const out = performanceReport(entries, ['tp'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.totals.entries, 2); // both rows matched a non-blank, in-range status
+  assertEquals(out.totals.live, 1); // only the Published row is a decided outcome
+  assertEquals(out.totals.removed, 0);
+});
+
 Deno.test('get_performance_report requires date_from and date_to', async () => {
   const result: any = await runTool(mockSupabaseTables({ entries: [] }), 'get_performance_report', { date_from: '2026-05-01' });
   assertEquals(result.error, 'Both date_from and date_to (YYYY-MM-DD) are required.');
+});
+
+Deno.test('get_performance_report returns an error for a reversed range', async () => {
+  const result: any = await runTool(mockSupabaseTables({ entries: [] }), 'get_performance_report', { date_from: '2026-05-31', date_to: '2026-05-01' });
+  assertEquals(result.error, 'date_from must not be after date_to.');
+});
+
+Deno.test('get_performance_report caps the brands breakdown and reports totalBrands separately from the totals', async () => {
+  const entries = Array.from({ length: 3 }, (_, i) => ({
+    id: String(i), tab: 't', data: { Brand: `Brand${i}`, 'Review Status': 'Published', 'Trust Pilot': '2026-05-05' },
+  }));
+  const tables = { entries, removed_platform_brands: [] };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_performance_report', {
+    date_from: '2026-05-01', date_to: '2026-05-31', limit: 2,
+  });
+  assertEquals(result.brands.length, 2);
+  assertEquals(result.totalBrands, 3);
+  assertEquals(result.totals.live, 3); // totals unaffected by the brands cap
 });
 
 Deno.test('get_performance_report end-to-end: tab-scoped, echoes period, excludes a paused tab and a removed-flagged brand', async () => {

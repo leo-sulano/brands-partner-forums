@@ -48,6 +48,19 @@ export function isSensitiveField(field: string): boolean {
   return SENSITIVE_KEYS_NORM.has(String(field ?? '').trim().toLowerCase());
 }
 
+// Normalizes a tool's `platform` arg (bare string, array, or omitted) into a
+// validated Platform[], defaulting to ['tp'] when omitted or when every
+// supplied value is invalid — the one place this parsing logic lives, used
+// by get_score_summary, get_success_rate_by_field, and get_performance_report.
+export function resolvePlatformArg(rawPlatform: unknown): Platform[] {
+  const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+  const requestedPlatforms: string[] = Array.isArray(rawPlatform)
+    ? rawPlatform
+    : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
+  const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
+  return rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+}
+
 export function collectFieldNames(rows: EntryRow[]): string[] {
   const set = new Set<string>();
   for (const r of rows) {
@@ -197,10 +210,7 @@ export function passesPlatformDateFilter(
   fromISO?: string,
   toISO?: string,
 ): boolean {
-  const fromDate = fromISO ? parsePostDate(fromISO) : null;
-  const toDate = toISO ? parsePostDate(toISO) : null;
-  const fromBound = fromDate ? startOfDay(fromDate) : null;
-  const toBound = toDate ? endOfDay(toDate) : null;
+  const { fromBound, toBound } = resolveDateBounds({ from: fromISO, to: toISO });
   if (!fromBound && !toBound) return true;
   const raw = pick(data, PLATFORM_DATE_KEYS[platform]);
   if (raw == null) return true;
@@ -209,6 +219,56 @@ export function passesPlatformDateFilter(
   if (fromBound && date < fromBound) return false;
   if (toBound && date > toBound) return false;
   return true;
+}
+
+// Resolves a DateRangeArgs into inclusive Date bounds, shared by
+// passesPlatformDateFilter and scoreSummary's stricter star-breakdown gate —
+// the one place "from"/"to" ISO strings become comparable Date objects, so
+// the two gates can't silently drift on how a bound is computed.
+export function resolveDateBounds(range: DateRangeArgs): { fromBound: Date | null; toBound: Date | null } {
+  const fromDate = range.from ? parsePostDate(range.from) : null;
+  const toDate = range.to ? parsePostDate(range.to) : null;
+  return {
+    fromBound: fromDate ? startOfDay(fromDate) : null,
+    toBound: toDate ? endOfDay(toDate) : null,
+  };
+}
+
+const STRICT_ISO_DATE_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/;
+
+// Validates a raw date_from/date_to arg pair before it's used anywhere.
+// Deliberately stricter than parsePostDate: parsePostDate also accepts
+// DD/MM/YYYY (the sheet format) and a lenient native-Date() fallback, both
+// needed for parsing whatever format a stored review-post date happens to be
+// in — but every date_from/date_to tool description in this file documents
+// the arg as always YYYY-MM-DD, so a shorthand like '2026' or 'may 2026'
+// should be rejected here, not silently accepted via parsePostDate's native
+// fallback into an unintended single-day/month range. Returns an error
+// string naming the bad field(s) if either is present-but-unparseable, or if
+// both are present and from > to. Returns null when the pair is usable
+// (including when both are simply absent — no range requested is not an
+// error).
+export function validateDateRangeArgs(dateFrom: unknown, dateTo: unknown): string | null {
+  const isValidIsoDate = (v: unknown): boolean => {
+    const s = String(v).trim();
+    const m = STRICT_ISO_DATE_RE.exec(s);
+    if (!m) return false;
+    return buildDate(+m[1], +m[2], +m[3]) != null;
+  };
+  const badFields: string[] = [];
+  if (dateFrom != null && dateFrom !== '' && !isValidIsoDate(dateFrom)) badFields.push('date_from');
+  if (dateTo != null && dateTo !== '' && !isValidIsoDate(dateTo)) badFields.push('date_to');
+  if (badFields.length > 0) {
+    return `${badFields.join(' and ')} must be a valid YYYY-MM-DD date.`;
+  }
+  if (dateFrom && dateTo) {
+    const from = parsePostDate(String(dateFrom));
+    const to = parsePostDate(String(dateTo));
+    if (from && to && from > to) {
+      return 'date_from must not be after date_to.';
+    }
+  }
+  return null;
 }
 
 const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
@@ -613,6 +673,13 @@ export interface ScoreSummaryResult {
 // gate from computeScoreSummary — when a range is active, a Published row
 // with no parseable date is excluded from the breakdown and tallied in
 // excludedRows instead of silently counted or silently dropped.
+// Deliberate divergence from the dashboard, worth knowing: src/lib's
+// computeScoreSummary creates a brand's bucket from status alone, before any
+// date gate, so a brand whose rows are all outside the requested range still
+// appears in the result (with zero rated) — this ported version gates
+// bucket existence on the date filter too (via the matchedAny check below),
+// so such a brand disappears from `brands` entirely when a range is active.
+// This is a documented choice for this tool, not a bug.
 export function scoreSummary(
   entries: EntryRow[],
   platforms: Platform[] = ['tp'],
@@ -627,10 +694,7 @@ export function scoreSummary(
   const showStars = resolved.length === 1;
   const maxScore = showStars ? PLATFORM_MAX_SCORE[resolved[0]] : 0;
   const dateFilterActive = !!(range.from || range.to);
-  const rangeFromDate = range.from ? parsePostDate(range.from) : null;
-  const rangeToDate = range.to ? parsePostDate(range.to) : null;
-  const rangeFromBound = rangeFromDate ? startOfDay(rangeFromDate) : null;
-  const rangeToBound = rangeToDate ? endOfDay(rangeToDate) : null;
+  const { fromBound: rangeFromBound, toBound: rangeToBound } = resolveDateBounds(range);
 
   interface Bucket {
     tab: string;
@@ -917,7 +981,9 @@ export const TOOL_DEFS = [
         'in range. A row with no parseable date for an applicable platform still counts ' +
         '(never silently excluded by the range, same as every other date-filtered tool here). ' +
         'month and date_from/date_to can be combined (both must pass) but this is rarely ' +
-        'useful — prefer one or the other.',
+        'useful — prefer one or the other. ' +
+        'An unparseable date_from/date_to, or date_from after date_to, returns an error instead ' +
+        'of silently ignoring the filter.',
       parameters: {
         type: 'object',
         properties: {
@@ -975,7 +1041,9 @@ export const TOOL_DEFS = [
         'Brands whose page on the queried platform was flagged removed ' +
         '(see get_removed_platform_flags) are excluded from these results entirely. ' +
         'A tab that has been archived or paused is excluded the same way — an empty or missing ' +
-        'result for that tab may mean it\'s archived or paused, not that it never existed.',
+        'result for that tab may mean it\'s archived or paused, not that it never existed. ' +
+        'An unparseable date_from/date_to, or date_from after date_to, returns an error instead ' +
+        'of silently ignoring the filter.',
       parameters: {
         type: 'object',
         properties: {
@@ -1029,7 +1097,9 @@ export const TOOL_DEFS = [
         'have no Agent field recorded at all. ' +
         'date_from/date_to (YYYY-MM-DD, inclusive) narrow the live/removed counts to that ' +
         'period — a row with no parseable date for a checked platform still counts (never ' +
-        'silently excluded by the range, same as every other date-filtered tool here).',
+        'silently excluded by the range, same as every other date-filtered tool here). ' +
+        'An unparseable date_from/date_to, or date_from after date_to, returns an error instead ' +
+        'of silently ignoring the filter.',
       parameters: {
         type: 'object',
         properties: {
@@ -1189,12 +1259,21 @@ export const TOOL_DEFS = [
         'rule as get_success_rate_by_field (not get_score_summary\'s Published-only star ' +
         'gate) — a row with no parseable date for the platform being checked still counts ' +
         '(never silently dropped by the range, matching every other date-filtered tool here). ' +
+        'totals.entries counts every row that matched a non-blank, in-range status for the ' +
+        'requested platform(s) — including undecided ones like Pending or On Pause — so it can ' +
+        'be larger than live + removed; that is not an inconsistency, it just means some ' +
+        'matched rows have no decided outcome yet. ' +
         'platform accepts one or more of tp (TrustPilot, default), ag (AskGamblers), cg ' +
         '(CasinoGuru), wo (Wizard of Odds) — multiple platforms combine into one OR\'d total, ' +
         'same as get_score_summary. tab optionally restricts to one tab (all tabs if omitted). ' +
         'Brands whose page on the queried platform was flagged removed (see ' +
         'get_removed_platform_flags), and any archived or paused tab, are excluded — the same ' +
-        'exclusions every other review-data tool here applies.',
+        'exclusions every other review-data tool here applies. ' +
+        'brands is capped at limit (default 50, max 100), sorted by volume — totalBrands ' +
+        'reports the true count so you can say "top N of M" if it was truncated; totals are ' +
+        'never affected by the cap. ' +
+        'An unparseable date_from/date_to, or date_from after date_to, returns an error instead ' +
+        'of silently ignoring the filter.',
       parameters: {
         type: 'object',
         properties: {
@@ -1202,6 +1281,7 @@ export const TOOL_DEFS = [
           date_to: { type: 'string', description: 'YYYY-MM-DD, end of the report period (inclusive)' },
           tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
           platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics). Omitting this parameter defaults to TrustPilot only.' },
+          limit: { type: 'number', description: 'max brands to return in the breakdown, default 50, max 100' },
         },
         required: ['date_from', 'date_to'],
       },
@@ -1228,6 +1308,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { fields: collectFieldNames(data ?? []) };
   }
   if (name === 'query_entries') {
+    const dateError = validateDateRangeArgs(args?.date_from, args?.date_to);
+    if (dateError) return { error: dateError };
     if (args?.field_filters !== undefined) {
       const ff = args.field_filters;
       if (typeof ff !== 'object' || ff === null || Array.isArray(ff)) {
@@ -1268,7 +1350,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
         // If the row has no status for ANY checked platform, fall back to
         // checking them all anyway — same "unsure, include" bias as the rest
         // of this file, just applied one level up.
-        const applicable = platformsToCheck.filter((p) => !!pick(e.data, PLATFORM_STATUS_KEYS[p]));
+        const applicable = platformsToCheck.filter((p) => !!(pick(e.data, PLATFORM_STATUS_KEYS[p]) ?? '').trim());
         const checkPlatforms = applicable.length > 0 ? applicable : platformsToCheck;
         return checkPlatforms.some((p) => passesPlatformDateFilter(e.data, p, args.date_from, args.date_to));
       });
@@ -1306,6 +1388,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { id: data.id, tab: data.tab, data: redactSensitive(data.data) };
   }
   if (name === 'get_score_summary') {
+    const dateError = validateDateRangeArgs(args?.date_from, args?.date_to);
+    if (dateError) return { error: dateError };
     let q = supabase.from('entries').select('id, tab, data');
     if (args?.tab) q = q.eq('tab', args.tab);
     const [{ data: rawData, error }, removedSet, archivedSet, pausedSet] = await Promise.all([
@@ -1313,13 +1397,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     ]);
     if (error) throw error;
     const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
-    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const rawPlatform = args?.platform;
-    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
-      ? rawPlatform
-      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
-    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
-    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+    const platforms = resolvePlatformArg(args?.platform);
     const range: DateRangeArgs = { from: args?.date_from, to: args?.date_to };
     const { brands, excludedRows } = scoreSummary(data ?? [], platforms, removedSet, range);
     return {
@@ -1336,6 +1414,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { flags: data ?? [] };
   }
   if (name === 'get_success_rate_by_field') {
+    const dateError = validateDateRangeArgs(args?.date_from, args?.date_to);
+    if (dateError) return { error: dateError };
     let q = supabase.from('entries').select('id, tab, data, updated_at');
     if (args?.tab) q = q.eq('tab', args.tab);
     const [{ data: rawData, error }, removedSet, archivedSet, pausedSet, assignmentRows] = await Promise.all([
@@ -1343,13 +1423,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     ]);
     if (error) throw error;
     const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
-    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const rawPlatform = args?.platform;
-    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
-      ? rawPlatform
-      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
-    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
-    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+    const platforms = resolvePlatformArg(args?.platform);
     const agentLabels = args?.field === 'agent'
       ? resolveAgentLabels(data as (EntryRow & { updated_at: string })[], assignmentRows)
       : undefined;
@@ -1500,6 +1574,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     return { total: combined.length, rows: combined.slice(0, limit) };
   }
   if (name === 'get_performance_report') {
+    const dateError = validateDateRangeArgs(args?.date_from, args?.date_to);
+    if (dateError) return { error: dateError };
     if (!args?.date_from || !args?.date_to) {
       return { error: 'Both date_from and date_to (YYYY-MM-DD) are required.' };
     }
@@ -1510,15 +1586,15 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     ]);
     if (error) throw error;
     const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
-    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
-    const rawPlatform = args?.platform;
-    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
-      ? rawPlatform
-      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
-    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
-    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+    const platforms = resolvePlatformArg(args?.platform);
     const report = performanceReport(data ?? [], platforms, removedSet, { from: args.date_from, to: args.date_to });
-    return { period: { from: args.date_from, to: args.date_to }, ...report };
+    const limit = Math.min(Number(args?.limit) || 50, 100);
+    return {
+      period: { from: args.date_from, to: args.date_to },
+      totals: report.totals,
+      brands: report.brands.slice(0, limit),
+      totalBrands: report.brands.length,
+    };
   }
   return { error: `unknown tool: ${name}` };
 }
