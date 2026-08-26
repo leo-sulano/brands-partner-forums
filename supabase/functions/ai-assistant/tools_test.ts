@@ -22,6 +22,8 @@ import {
   groupByField,
   reviewTextsByStatus,
   resolveAgentLabels,
+  parsePostDate,
+  passesPlatformDateFilter,
   EntryRow,
 } from './tools.ts';
 
@@ -114,6 +116,62 @@ Deno.test('redactSensitive strips credential keys with different case or trailin
   assertEquals(out2.Account, 'x');
   assertEquals('AG Password ' in out2, false);
   assertEquals('cg password' in out2, false);
+});
+
+Deno.test('parsePostDate accepts YYYY-MM-DD', () => {
+  const d = parsePostDate('2026-05-11');
+  assertEquals(d?.getFullYear(), 2026);
+  assertEquals(d?.getMonth(), 4);
+  assertEquals(d?.getDate(), 11);
+});
+
+Deno.test('parsePostDate accepts DD/MM/YYYY (sheet format)', () => {
+  const d = parsePostDate('11/05/2026');
+  assertEquals(d?.getFullYear(), 2026);
+  assertEquals(d?.getMonth(), 4);
+  assertEquals(d?.getDate(), 11);
+});
+
+Deno.test('parsePostDate rejects an invalid or empty value', () => {
+  assertEquals(parsePostDate('not a date'), null);
+  assertEquals(parsePostDate(''), null);
+  assertEquals(parsePostDate(null), null);
+  assertEquals(parsePostDate(undefined), null);
+});
+
+Deno.test('passesPlatformDateFilter with no bounds is always true', () => {
+  assertEquals(passesPlatformDateFilter({ 'Trust Pilot': '2026-05-11' }, 'tp'), true);
+  assertEquals(passesPlatformDateFilter({}, 'tp'), true);
+});
+
+Deno.test('passesPlatformDateFilter includes a row with no date for the platform (undated bias, never excluded by a range)', () => {
+  assertEquals(passesPlatformDateFilter({}, 'tp', '2026-05-01', '2026-05-31'), true);
+  assertEquals(passesPlatformDateFilter({ 'Trust Pilot': 'garbage' }, 'tp', '2026-05-01', '2026-05-31'), true);
+});
+
+Deno.test('passesPlatformDateFilter includes a dated row inside the range, excludes one outside it', () => {
+  const data = { 'Trust Pilot': '2026-05-15' };
+  assertEquals(passesPlatformDateFilter(data, 'tp', '2026-05-01', '2026-05-31'), true);
+  assertEquals(passesPlatformDateFilter(data, 'tp', '2026-06-01', '2026-06-30'), false);
+});
+
+Deno.test('passesPlatformDateFilter bounds are inclusive at day granularity', () => {
+  assertEquals(passesPlatformDateFilter({ 'Trust Pilot': '2026-05-01' }, 'tp', '2026-05-01', '2026-05-31'), true);
+  assertEquals(passesPlatformDateFilter({ 'Trust Pilot': '2026-05-31' }, 'tp', '2026-05-01', '2026-05-31'), true);
+});
+
+Deno.test('passesPlatformDateFilter checks the requested platform\'s own date column, not another platform\'s', () => {
+  const data = { 'Ask Gambler review added': '2026-05-15' }; // no 'Trust Pilot' key at all
+  assertEquals(passesPlatformDateFilter(data, 'tp', '2026-06-01', '2026-06-30'), true); // undated for tp -> always true
+  assertEquals(passesPlatformDateFilter(data, 'ag', '2026-06-01', '2026-06-30'), false); // dated for ag, out of range
+});
+
+Deno.test('passesPlatformDateFilter supports an open-ended range (only from, or only to)', () => {
+  const data = { 'Trust Pilot': '2026-05-15' };
+  assertEquals(passesPlatformDateFilter(data, 'tp', '2026-05-01', undefined), true);
+  assertEquals(passesPlatformDateFilter(data, 'tp', '2026-06-01', undefined), false);
+  assertEquals(passesPlatformDateFilter(data, 'tp', undefined, '2026-05-31'), true);
+  assertEquals(passesPlatformDateFilter(data, 'tp', undefined, '2026-04-30'), false);
 });
 
 // Single-table mock: `rows` back the `entries` table only. Any other table

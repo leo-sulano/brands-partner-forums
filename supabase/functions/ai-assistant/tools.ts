@@ -125,6 +125,92 @@ export const PLATFORM_STATUS_KEYS: Record<Platform, readonly string[]> = {
   wo: ['WoO Review Status'],
 };
 
+// Ported from src/lib/scoreSummary.ts's PLATFORM_DATE_KEYS/parsePostDate/
+// passesPlatformDateFilter — keep in sync manually if any of the three
+// change, same convention as this file's other ported constants
+// (PLATFORM_STATUS_KEYS above). Shared date gate every date-aware tool in
+// this file uses (query_entries, get_score_summary,
+// get_success_rate_by_field, get_performance_report).
+export const PLATFORM_DATE_KEYS: Record<Platform, readonly string[]> = {
+  tp: ['Trust Pilot'],
+  ag: ['Ask Gambler review added'],
+  cg: ['Casino Guru review added'],
+  wo: ['Wizard of Odds'],
+};
+
+function buildDate(y: number, mo: number, d: number): Date | null {
+  if (mo < 1 || mo > 12) return null;
+  if (d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+// Same 3-branch parse as src/lib/scoreSummary.ts's parsePostDate: YYYY-MM-DD
+// (also used for date_from/date_to, which are always this format), DD/MM/YYYY
+// (sheet format), then a native Date() fallback for JS Date.toString() values.
+export function parsePostDate(raw: string | null | undefined): Date | null {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+
+  let m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  if (m) {
+    const y = +m[1], mo = +m[2], d = +m[3];
+    return buildDate(y, mo, d);
+  }
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(s);
+  if (m) {
+    const d = +m[1], mo = +m[2], y = +m[3];
+    return buildDate(y, mo, d);
+  }
+  const native = new Date(s);
+  if (!isNaN(native.getTime())) {
+    return new Date(native.getFullYear(), native.getMonth(), native.getDate());
+  }
+  return null;
+}
+
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+function endOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+
+// Shared date-range param shape for scoreSummary/successRateByField/performanceReport.
+export interface DateRangeArgs {
+  from?: string;
+  to?: string;
+}
+
+// Ranged date-gate for a single platform's date column, mirroring
+// src/lib/scoreSummary.ts's passesPlatformDateFilter (+ the passesDateFilter
+// it wraps) exactly. No bounds -> always true. A row with no parseable date
+// for this platform's date column -> always true (never excluded by a
+// range) -- this is what stops date-filtering from skewing a live/removed
+// rate by dropping undated Removed/Refused rows. Bounds are inclusive, at
+// day granularity.
+export function passesPlatformDateFilter(
+  data: Record<string, any>,
+  platform: Platform,
+  fromISO?: string,
+  toISO?: string,
+): boolean {
+  const fromDate = fromISO ? parsePostDate(fromISO) : null;
+  const toDate = toISO ? parsePostDate(toISO) : null;
+  const fromBound = fromDate ? startOfDay(fromDate) : null;
+  const toBound = toDate ? endOfDay(toDate) : null;
+  if (!fromBound && !toBound) return true;
+  const raw = pick(data, PLATFORM_DATE_KEYS[platform]);
+  if (raw == null) return true;
+  const date = parsePostDate(raw);
+  if (date == null) return true;
+  if (fromBound && date < fromBound) return false;
+  if (toBound && date > toBound) return false;
+  return true;
+}
+
 const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
   tp: ['TP Score added', 'Score added', 'Score Added', 'Score'],
   ag: ['AG Score added'],
