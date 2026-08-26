@@ -25,7 +25,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
 import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -523,6 +523,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [tabCtx],
   );
 
+  // Brand -> Account (the actual login/email used to post, distinct from
+  // Agent — the staff member who owns the brand), same tooltip pattern and
+  // resolution rule as countryIndex above.
+  const accountIndex = useMemo(
+    () => buildAccountIndex(tabCtx?.entries ?? []),
+    [tabCtx],
+  );
+
   // Declared here (not further down, near where it's historically lived)
   // because brandPlatforms/filteredBrands below close over it inside a
   // useMemo callback that runs synchronously during this render — a
@@ -855,6 +863,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 const brandKey = normalizeBrandKey(brand);
                 const agent = agentIndex.get(brandKey);
                 const country = countryIndex.get(brandKey);
+                const account = accountIndex.get(brandKey);
                 const pausedPlatforms = activePlatforms.filter((p) => weekPausesByPlatform[p]);
                 const manualPausedPlatforms = brandPlatforms(brand)
                   .filter((p) => !weekPausesByPlatform[p])
@@ -900,6 +909,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             doneByPlatform={doneByPlatform}
                             agent={agent}
                             country={country}
+                            account={account}
                             isPastDay={dayISO < todayISO}
                             // Legacy weeks (imported platform-null brand_schedule rows,
                             // pre-dating per-platform tracking) are read-only: forcing
@@ -925,13 +935,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0 || noSchedulePlatforms.length > 0) && (
                         <div className="flex flex-wrap gap-1">
                           {pausedPlatforms.map((p) => (
-                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={weekPausesByPlatform[p] as BrandPlatformPause} agent={agent} country={country} />
+                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={weekPausesByPlatform[p] as BrandPlatformPause} agent={agent} country={country} account={account} />
                           ))}
                           {manualPausedPlatforms.map(({ platform, days }) => (
-                            <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} />
+                            <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} account={account} />
                           ))}
                           {noSchedulePlatforms.map((platform) => (
-                            <PausedPlatformIndicator key={platform} platform={platform} source="no-schedule" agent={agent} country={country} />
+                            <PausedPlatformIndicator key={platform} platform={platform} source="no-schedule" agent={agent} country={country} account={account} />
                           ))}
                         </div>
                       )}

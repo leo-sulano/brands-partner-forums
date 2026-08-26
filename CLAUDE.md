@@ -61,7 +61,19 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-26 (newest):* Task 266's `MAX_UNSCOPED_BATCH = 20` cap on a filter-free Check Status
+- *2026-08-26 (newest):* Schedule Planner's day-cell tooltip gained an Account line (the actual
+  login/email used to post, distinct from Agent — the staff member who owns the brand), per a
+  direct user request off a screenshot. New `buildAccountIndex` (`src/lib/scheduler/
+  scheduleUtils.ts`) mirrors `buildAgentIndex`/`buildCountryIndex` exactly — same
+  most-recently-updated-entry, brand-level resolution rule, just reading the `Account` column — so
+  it can't disagree with how Agent/Country are already resolved for this same tooltip. A new
+  `account` prop threads through `ScheduleCell`/`PlatformChip`/`PausedPlatformIndicator`
+  (`calendarRenderer.tsx`) and `TabScheduleSection.tsx`'s new `accountIndex` memo, alongside the
+  existing `agent`/`country` props. Tier 1 (fast path) — confined entirely to the Schedule
+  Planner's own tooltip components (confirmed via grep: no other importers of `AgentCountryLines`/
+  `buildAgentIndex`/`buildCountryIndex`). Full build and the scheduler test suite (505 tests) both
+  pass. Task 269.
+- *2026-08-26 (prior):* Task 266's `MAX_UNSCOPED_BATCH = 20` cap on a filter-free Check Status
   click is removed entirely (`cap_unscoped_batch()` and its 4 call sites deleted from
   `scripts/check_review_status.py`/`status_server.py`/`check_ag_status.py`/`check_cg_status.py`/
   `check_wo_status.py`), per direct user request after they asked how to re-check hundreds of

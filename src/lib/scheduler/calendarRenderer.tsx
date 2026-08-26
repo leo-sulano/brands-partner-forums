@@ -6,16 +6,18 @@ import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvi
 import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
 import Tooltip, { useTooltip } from '../../components/Tooltip';
 
-// Shared tooltip body for a brand's Agent/Country, appended below whatever
-// status/assignee lines a cell already shows — same brand-level values
-// (most-recently-updated entry) buildAgentIndex/buildCountryIndex resolve,
-// so this can't disagree with the Agent PMS task assignment already uses.
-function AgentCountryLines({ agent, country }: { agent?: string; country?: string }) {
-  if (!agent && !country) return null;
+// Shared tooltip body for a brand's Agent/Country/Account, appended below
+// whatever status/assignee lines a cell already shows — same brand-level
+// values (most-recently-updated entry) buildAgentIndex/buildCountryIndex/
+// buildAccountIndex resolve, so this can't disagree with the Agent PMS task
+// assignment already uses.
+function AgentCountryLines({ agent, country, account }: { agent?: string; country?: string; account?: string }) {
+  if (!agent && !country && !account) return null;
   return (
     <>
       {agent && <div>Agent: {agent}</div>}
       {country && <div>Country: {country}</div>}
+      {account && <div>Account: {account}</div>}
     </>
   );
 }
@@ -49,10 +51,11 @@ interface ScheduleCellProps {
   // "who this would be assigned to in PMS", so it deliberately isn't paired
   // with a separate PMS-reported assignee name (redundant, and can disagree
   // with Agent when a task predates the current Agent value). Not
-  // per-platform or per-day — a brand has one Agent/Country regardless of
-  // which platform's chip is hovered.
+  // per-platform or per-day — a brand has one Agent/Country/Account
+  // regardless of which platform's chip is hovered.
   agent?: string;
   country?: string;
+  account?: string;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
   // day would otherwise look identical to a confirmed post even though the
@@ -76,6 +79,7 @@ interface PlatformChipProps {
   label: string;
   agent?: string;
   country?: string;
+  account?: string;
   onClick: () => void;
 }
 
@@ -113,12 +117,12 @@ export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
 // chips) — wrapping it in Tooltip's own extra trigger <span> would add a
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
-function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, onClick }: PlatformChipProps) {
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, onClick }: PlatformChipProps) {
   const badge = PLATFORM_BADGE[platform];
   const content = (
     <div>
       <div>{PLATFORM_FULL_LABEL[platform]}: {label}</div>
-      <AgentCountryLines agent={agent} country={country} />
+      <AgentCountryLines agent={agent} country={country} account={account} />
     </div>
   );
   const { triggerProps, portal } = useTooltip(content);
@@ -183,7 +187,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -247,6 +251,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             label={label}
             agent={agent}
             country={country}
+            account={account}
             onClick={() => onToggle(platform)}
           />
         );
@@ -266,11 +271,11 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
   );
 }
 
-// agent/country: same brand-level values as ScheduleCell's own props (see
-// their doc comment above) — shown as extra tooltip lines below the reason
-// text, so this indicator's tooltip matches the day-cell chips' instead of
-// omitting the brand's Agent/Country entirely.
-type PausedPlatformIndicatorProps = { agent?: string; country?: string } & (
+// agent/country/account: same brand-level values as ScheduleCell's own props
+// (see their doc comment above) — shown as extra tooltip lines below the
+// reason text, so this indicator's tooltip matches the day-cell chips'
+// instead of omitting the brand's Agent/Country/Account entirely.
+type PausedPlatformIndicatorProps = { agent?: string; country?: string; account?: string } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
   | { platform: Platform; source: 'no-schedule' }
@@ -309,7 +314,7 @@ function titleFor(props: PausedPlatformIndicatorProps): string {
 }
 
 export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
-  const { platform, agent, country } = props;
+  const { platform, agent, country, account } = props;
   const [line1, line2] = titleFor(props).split('\n');
   return (
     <Tooltip
@@ -317,7 +322,7 @@ export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
         <div>
           <div>{line1}</div>
           {line2 && <div>{line2}</div>}
-          <AgentCountryLines agent={agent} country={country} />
+          <AgentCountryLines agent={agent} country={country} account={account} />
         </div>
       )}
     >

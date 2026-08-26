@@ -245,6 +245,28 @@ export function buildCountryIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+// Same "most-recently-updated entry" resolution rule as buildAgentIndex/
+// buildCountryIndex above, reading Account (the actual login/email used to
+// post, distinct from Agent — the staff member who owns the brand). Used
+// for the Schedule Planner tooltip's read-only Account line.
+export function buildAccountIndex(entries: Entry[]): Map<string, string> {
+  const latestByBrand = new Map<string, { account: string; updatedAt: string }>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const account = (entry.data.Account ?? '').trim();
+    if (!account) continue;
+    const brandKey = normalizeBrandKey(brand);
+    const existing = latestByBrand.get(brandKey);
+    if (!existing || entry.updated_at > existing.updatedAt) {
+      latestByBrand.set(brandKey, { account, updatedAt: entry.updated_at });
+    }
+  }
+  const result = new Map<string, string>();
+  for (const [brandKey, { account }] of latestByBrand) result.set(brandKey, account);
+  return result;
+}
+
 export interface BrandAgentAssignmentRow {
   tab: string;
   brand: string;

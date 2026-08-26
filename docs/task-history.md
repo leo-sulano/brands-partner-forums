@@ -6124,3 +6124,26 @@ now-live systemd-managed process, `/health` returns `{"ok":true}`, `systemctl st
 large unfiltered Check Status click (would require triggering a real multi-hundred-entry Selenium
 run) — worth the user trying the original ask (filter Status = Live on a brand tab with hundreds of
 Published entries, click Check Status, confirm it doesn't stop at 20).
+
+---
+
+## Task 269: Schedule Planner Tooltip — Add Account Line
+
+**Date:** August 26, 2026
+
+Requested directly by the user off a screenshot of the Schedule Planner grid, whose day-cell
+tooltip showed only "Trustpilot: Published / Agent: ANN / Country: Australia" — added a third
+`Account: <value>` line, the actual login/email used to post (distinct from Agent, the staff
+member who owns the brand). New `buildAccountIndex` (`src/lib/scheduler/scheduleUtils.ts`) mirrors
+`buildAgentIndex`/`buildCountryIndex` exactly — same most-recently-updated-entry, brand-level
+resolution rule, just reading the entry's `Account` column — so it can't disagree with how Agent/
+Country are already resolved for this same tooltip. `AgentCountryLines`
+(`src/lib/scheduler/calendarRenderer.tsx`) now also renders the Account line, and a new `account`
+prop threads through `ScheduleCell`/`PlatformChip`/`PausedPlatformIndicator` alongside the existing
+`agent`/`country` props. `TabScheduleSection.tsx` gained an `accountIndex` memo (same pattern as its
+existing `countryIndex`) and passes `account={accountIndex.get(brandKey)}` into every call site that
+already passes `agent`/`country` — day-cell chips and all three Paused-column indicator variants
+(system/manual/no-schedule). Tier 1 (fast path) — confined entirely to the Schedule Planner's own
+tooltip components; no other surface renders this tooltip (confirmed via grep: `AgentCountryLines`
+and `buildAgentIndex`/`buildCountryIndex` have no importers outside `src/lib/scheduler/` and
+`TabScheduleSection.tsx`). Full build and the scheduler test suite (505 tests) both pass.
