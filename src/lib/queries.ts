@@ -850,15 +850,30 @@ async function upsertEntryCredentials(
   if (error) throw error;
 }
 
+// Paginates in 1 000-row batches like fetchAllTabEntries above — a tab with
+// more than 1 000 entries (e.g. Rooster Partners' 1791) would otherwise be
+// silently truncated to Postgrest's default page size, dropping whichever
+// rows happen to sort past the cutoff. Caught live: an unpaginated version of
+// this function shipped first and silently omitted a real entry's credentials
+// on exactly this tab.
 export async function fetchEntryCredentials(tab: string, client: SupabaseClient = supabase): Promise<Record<string, EntryCredentials>> {
-  const { data, error } = await client
-    .from('entry_credentials')
-    .select('entry_id, password, casino_password, backup_codes, authenticator_backup, ag_password, cg_password')
-    .eq('tab', tab);
-  if (error) throw error;
+  const PAGE = 1000;
+  const all: (EntryCredentials & { entry_id: string })[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await client
+      .from('entry_credentials')
+      .select('entry_id, password, casino_password, backup_codes, authenticator_backup, ag_password, cg_password')
+      .eq('tab', tab)
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all.push(...((data ?? []) as (EntryCredentials & { entry_id: string })[]));
+    if ((data ?? []).length < PAGE) break;
+    from += PAGE;
+  }
   const byEntryId: Record<string, EntryCredentials> = {};
-  for (const row of data ?? []) {
-    const { entry_id, ...rest } = row as EntryCredentials & { entry_id: string };
+  for (const row of all) {
+    const { entry_id, ...rest } = row;
     byEntryId[entry_id] = rest;
   }
   return byEntryId;
