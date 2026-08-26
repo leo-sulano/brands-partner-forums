@@ -70,6 +70,16 @@ export function effectivePauseDays(row: BrandScheduleRow | undefined, systemPaus
   });
 }
 
+// Every weekday that has real scheduling data for one platform this week —
+// an explicit 'active' or 'paused' day status, or (when no day has its own
+// status) every day if the whole platform is system-paused, since a
+// system-paused combo stores zero day rows by design. Used by the Schedule
+// Status pause-days picker to only offer days that are actually scheduled,
+// so a blank day (nothing planned there at all) can't be marked "paused."
+export function pausableWeekdays(row: BrandScheduleRow | undefined, systemPaused: boolean): Weekday[] {
+  return WEEKDAYS.filter((day) => (row?.[day] ?? null) != null || systemPaused);
+}
+
 // True when a platform has nothing scheduled at all this week: the row is
 // missing entirely, or every one of its 5 weekday fields is null. A row
 // with even one 'paused' day does NOT qualify — that's either the

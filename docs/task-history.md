@@ -6194,3 +6194,38 @@ above, put in place) — clean restart, `NRestarts=0`, `active (running)`, `/hea
 independently exercised against a real dashboard click with a date range set (would require
 triggering a real Selenium run) — worth trying: set a narrow date range on a brand tab with entries
 both inside and outside it, click Check Status, and confirm only the in-range entries get checked.
+
+---
+
+## Task 271: Schedule Status Pause-Days Modal Only Offers Actually-Scheduled Days
+
+**Date:** August 26, 2026
+
+Requested directly by the user off a screenshot of the Hanan tab: the Schedule Status column's
+pause-days modal (from the "bulk-pause days per platform" feature shipped the same day, commit
+`8374f8c`) listed all 5 weekdays as pausable checkboxes regardless of whether that platform had
+anything scheduled on a given day — e.g. opening AskGamblers' picker for a brand scheduled only
+Mon/Tue/Thu still showed Wed and Fri as checkboxes, letting ops accidentally mark a genuinely blank
+day as "paused." The modal now only lists the days that actually have a schedule for that platform.
+
+New pure `pausableWeekdays(row, systemPaused)` (`src/lib/scheduler/scheduleUtils.ts`, TDD'd) returns
+a weekday when it has any real per-day status (`'active'` or `'paused'`) or — critically — when the
+whole platform is system-paused for the week, since a system-paused combo stores zero day rows by
+design (an already-fully-paused platform must still show all 5 days so it can be reviewed/resumed,
+not zero). `PauseDaysModal.tsx` gained a required `scheduledDays` prop and renders checkboxes only
+for those days, with a "Nothing scheduled this week for `<platform>`" message (Close-only, no Save)
+for the rare case a platform bucket has neither a system pause nor any per-day row yet (reachable on
+a future/past week). `TabScheduleSection.tsx`'s `pauseDaysModalData` computes `scheduledDays` via
+`pausableWeekdays` using the same `rowsByPlatform`/`pausesByPlatform` the existing `initialPausedDays`
+already reads, so the two can't disagree about which days the picker is showing. No component-level
+tests exist for this project's modals (confirmed via repo-wide search — verified via build + a live
+check instead, matching the established pattern); the new day-selection logic itself is pure and
+fully covered in `scheduleUtils.test.ts`.
+
+Went through brainstorming's bounded path (one clarifying question to confirm the exact
+interpretation, in-chat design, explicit approval) since it changes shipped-that-day behavior on a
+shared modal, then TDD for the new pure function. Tier 1 (fast path) — confined to `PauseDaysModal`
+and its single call site in `TabScheduleSection.tsx` (confirmed via grep: no other importers). Full
+suite (2091 tests, 6 new) and build both pass. Live-verified via Playwright on the real Hanan tab:
+opened DachBet.com's AskGamblers picker (scheduled Mon/Tue/Thu, blank Wed/Fri) and confirmed only
+Mon/Tue/Thu render as checkboxes, with Tue pre-checked to match its real paused state.

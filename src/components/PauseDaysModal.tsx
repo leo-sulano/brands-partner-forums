@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
-import { WEEKDAYS, WEEKDAY_LABELS, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, type Weekday } from '../lib/scheduleBrands';
 
 interface Props {
   brand: string;
   platform: Platform;
   weekLabel: string;
+  scheduledDays: Weekday[];
   initialPausedDays: Weekday[];
   onSave: (pausedDays: Weekday[]) => void;
   onClose: () => void;
@@ -20,8 +21,10 @@ interface Props {
 // initialPausedDays and writes just the days that actually changed via the
 // same setBrandScheduleDay/handleSetDayStatus path a single cell click
 // already uses, so nothing downstream (PMS sync, export) needs to know this
-// modal exists.
-export default function PauseDaysModal({ brand, platform, weekLabel, initialPausedDays, onSave, onClose }: Props) {
+// modal exists. Only offers scheduledDays (from pausableWeekdays) as
+// checkboxes — a day with nothing scheduled at all for this platform isn't
+// shown, since there's nothing there to pause.
+export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDays, initialPausedDays, onSave, onClose }: Props) {
   const [pausedDays, setPausedDays] = useState<Set<Weekday>>(() => new Set(initialPausedDays));
 
   useEffect(() => {
@@ -66,22 +69,28 @@ export default function PauseDaysModal({ brand, platform, weekLabel, initialPaus
           </button>
         </div>
 
-        <div className="px-4 pb-2 space-y-1.5">
-          {WEEKDAYS.map((day) => (
-            <label
-              key={day}
-              className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
-            >
-              <input
-                type="checkbox"
-                checked={pausedDays.has(day)}
-                onChange={() => toggleDay(day)}
-                className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"
-              />
-              {WEEKDAY_LABELS[day]}
-            </label>
-          ))}
-        </div>
+        {scheduledDays.length === 0 ? (
+          <p className="px-5 pb-4 text-sm text-slate-500">
+            Nothing scheduled this week for {PLATFORM_FULL_LABEL[platform]}.
+          </p>
+        ) : (
+          <div className="px-4 pb-2 space-y-1.5">
+            {scheduledDays.map((day) => (
+              <label
+                key={day}
+                className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
+              >
+                <input
+                  type="checkbox"
+                  checked={pausedDays.has(day)}
+                  onChange={() => toggleDay(day)}
+                  className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"
+                />
+                {WEEKDAY_LABELS[day]}
+              </label>
+            ))}
+          </div>
+        )}
 
         <div className="flex items-center justify-end gap-2 px-5 pt-3 pb-5">
           <button
@@ -89,15 +98,17 @@ export default function PauseDaysModal({ brand, platform, weekLabel, initialPaus
             onClick={onClose}
             className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
           >
-            Cancel
+            {scheduledDays.length === 0 ? 'Close' : 'Cancel'}
           </button>
-          <button
-            type="button"
-            onClick={() => { onSave([...pausedDays]); onClose(); }}
-            className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            Save
-          </button>
+          {scheduledDays.length > 0 && (
+            <button
+              type="button"
+              onClick={() => { onSave([...pausedDays]); onClose(); }}
+              className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Save
+            </button>
+          )}
         </div>
       </div>
     </div>

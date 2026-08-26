@@ -25,7 +25,7 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -780,8 +780,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     ? (() => {
         const { brand, platform } = pauseDaysTarget;
         const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
+        const systemPaused = !!pausesByPlatform[platform];
         return {
-          initialPausedDays: effectivePauseDays(rowsByPlatform[platform], !!pausesByPlatform[platform]),
+          scheduledDays: pausableWeekdays(rowsByPlatform[platform], systemPaused),
+          initialPausedDays: effectivePauseDays(rowsByPlatform[platform], systemPaused),
           weekLabel: `Week of ${formatWeekdayDate(weekStart, 0)} – ${formatWeekdayDate(weekStart, 4)}`,
         };
       })()
@@ -1026,6 +1028,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           brand={pauseDaysTarget.brand}
           platform={pauseDaysTarget.platform}
           weekLabel={pauseDaysModalData.weekLabel}
+          scheduledDays={pauseDaysModalData.scheduledDays}
           initialPausedDays={pauseDaysModalData.initialPausedDays}
           onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
           onClose={() => setPauseDaysTarget(null)}
