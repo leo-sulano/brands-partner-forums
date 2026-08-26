@@ -200,7 +200,13 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
 
         {brandsOpen && (
           <div key={tabsVersion} className="contents">
-            {OPERATIONAL_TABS.map((tab) => {
+            {/* Active tabs first, paused tabs sink to the bottom -- a stable
+                sort so a tab pause/unpause only moves it between the two
+                groups, never reorders it relative to siblings in the same
+                group. */}
+            {[...OPERATIONAL_TABS]
+              .sort((a, b) => Number(isTabPaused(a)) - Number(isTabPaused(b)))
+              .map((tab) => {
               const Icon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
               const platforms = getTabPlatforms(tab);
               return (
