@@ -594,15 +594,29 @@ export interface BrandScoreSummary {
   successRate: number | null;
 }
 
+export interface ScoreSummaryResult {
+  brands: BrandScoreSummary[];
+  excludedRows: number;
+}
+
 // Star rollup (Published-only) AND live/removed Success Rate, grouped by
 // `${tab} ${brand}`, computed in one pass per platform. Mirrors
 // computeScoreSummary + computeSuccessRates in src/lib/scoreSummary.ts, merged
 // into a single result since the assistant only ever needs the combined view.
+// `range` (YYYY-MM-DD from/to, both optional) applies two different gates,
+// matching the dashboard exactly: live/removed counts use the lenient
+// passesPlatformDateFilter gate (an undated row always counts, so a date
+// range can't skew Success Rate by silently dropping undated Removed/Refused
+// rows); the star-rating breakdown (single-platform only) uses the stricter
+// gate from computeScoreSummary — when a range is active, a Published row
+// with no parseable date is excluded from the breakdown and tallied in
+// excludedRows instead of silently counted or silently dropped.
 export function scoreSummary(
   entries: EntryRow[],
   platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
-): BrandScoreSummary[] {
+  range: DateRangeArgs = {},
+): ScoreSummaryResult {
   const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   // Same rule as computeScoreSummary (Task 5): the star/score breakdown only
   // ever applies for exactly one platform — 2+ platforms still combine
@@ -610,6 +624,11 @@ export function scoreSummary(
   // a >1-length platforms array as "combined totals only, no star detail").
   const showStars = resolved.length === 1;
   const maxScore = showStars ? PLATFORM_MAX_SCORE[resolved[0]] : 0;
+  const dateFilterActive = !!(range.from || range.to);
+  const rangeFromDate = range.from ? parsePostDate(range.from) : null;
+  const rangeToDate = range.to ? parsePostDate(range.to) : null;
+  const rangeFromBound = rangeFromDate ? startOfDay(rangeFromDate) : null;
+  const rangeToBound = rangeToDate ? endOfDay(rangeToDate) : null;
 
   interface Bucket {
     tab: string;
@@ -620,6 +639,7 @@ export function scoreSummary(
     removed: number;
   }
   const buckets = new Map<string, Bucket>();
+  let excludedRows = 0;
 
   for (const e of entries) {
     const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
@@ -633,6 +653,7 @@ export function scoreSummary(
       if (removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
       const status = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
       if (!status) continue;
+      if (!passesPlatformDateFilter(e.data, platform, range.from, range.to)) continue;
       matchedAny = true;
       if (isLiveStatus(status)) matchedLive = true;
       else if (isRemovedStatus(status)) matchedRemoved = true;
@@ -653,13 +674,25 @@ export function scoreSummary(
     else if (matchedRemoved) b.removed += 1;
 
     if (showStars && solePublished) {
-      const score = parseScore(pick(e.data, PLATFORM_SCORE_KEYS[resolved[0]]), maxScore);
-      if (score == null) b.unrated += 1;
-      else b.counts[score] += 1;
+      const date = parsePostDate(pick(e.data, PLATFORM_DATE_KEYS[resolved[0]]));
+      let shouldCount = true;
+      if (dateFilterActive) {
+        if (date == null) {
+          excludedRows++;
+          shouldCount = false;
+        } else if ((rangeFromBound && date < rangeFromBound) || (rangeToBound && date > rangeToBound)) {
+          shouldCount = false;
+        }
+      }
+      if (shouldCount) {
+        const score = parseScore(pick(e.data, PLATFORM_SCORE_KEYS[resolved[0]]), maxScore);
+        if (score == null) b.unrated += 1;
+        else b.counts[score] += 1;
+      }
     }
   }
 
-  return [...buckets.values()].map((b) => {
+  const brandsOut = [...buckets.values()].map((b) => {
     let rated = 0;
     let weighted = 0;
     for (let i = 1; i <= maxScore; i++) {
@@ -679,6 +712,8 @@ export function scoreSummary(
       publishedTotal, rated, average, label, live: b.live, removed: b.removed, successRate,
     };
   });
+
+  return { brands: brandsOut, excludedRows };
 }
 
 export interface ReviewTextRow {
@@ -842,8 +877,16 @@ export const TOOL_DEFS = [
         'multi-select filters use — it does not average or intersect them. Star-rating ' +
         'detail is only meaningful for exactly one platform at a time — when 2+ ' +
         'platforms are passed, the response still includes combined live/removed/' +
-        'successRate but zeroes out the star breakdown. All-time only — no date-range ' +
-        'filtering yet. Brands whose page on the queried platform was flagged removed ' +
+        'successRate but zeroes out the star breakdown. ' +
+        'date_from/date_to (YYYY-MM-DD, inclusive) apply two different gates: ' +
+        'live/removed counts and successRate never drop an undated row (a range can\'t ' +
+        'silently skew the rate), but the star-rating breakdown DOES exclude an undated ' +
+        'Published row when a range is set — its count is reported separately as ' +
+        'excludedRows, so say "N reviews had no recorded date and are not reflected in ' +
+        'the star breakdown" rather than presenting the breakdown as complete when ' +
+        'excludedRows is nonzero. The response echoes the applied range as dateRange ' +
+        '({from, to}), or null when no range was requested. ' +
+        'Brands whose page on the queried platform was flagged removed ' +
         '(see get_removed_platform_flags) are excluded from these results entirely. ' +
         'A tab that has been archived or paused is excluded the same way — an empty or missing ' +
         'result for that tab may mean it\'s archived or paused, not that it never existed.',
@@ -852,6 +895,8 @@ export const TOOL_DEFS = [
         properties: {
           tab: { type: 'string' },
           platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection). Omitting this parameter defaults to TrustPilot only, matching this tool\'s existing single-platform behavior — explicitly list platforms (including all 4) to get a combined total.' },
+          date_from: { type: 'string', description: 'YYYY-MM-DD, inclusive start of a date range' },
+          date_to: { type: 'string', description: 'YYYY-MM-DD, inclusive end of a date range' },
         },
       },
     },
@@ -1149,7 +1194,13 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
     const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
     const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
-    return { brands: scoreSummary(data ?? [], platforms, removedSet) };
+    const range: DateRangeArgs = { from: args?.date_from, to: args?.date_to };
+    const { brands, excludedRows } = scoreSummary(data ?? [], platforms, removedSet, range);
+    return {
+      brands,
+      excludedRows,
+      dateRange: (args?.date_from || args?.date_to) ? { from: args?.date_from ?? null, to: args?.date_to ?? null } : null,
+    };
   }
   if (name === 'get_removed_platform_flags') {
     let q = supabase.from('removed_platform_brands').select('tab, brand, platform');

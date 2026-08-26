@@ -59,7 +59,7 @@ Deno.test('scoreSummary counts Published only', () => {
     { id: '1', tab: 't', data: { Brand: 'A', 'Review Status': 'Published', 'Score added': '5' } },
     { id: '2', tab: 't', data: { Brand: 'A', 'Review Status': 'Removed', 'Score added': '1' } },
   ];
-  const out = scoreSummary(entries);
+  const out = scoreSummary(entries).brands;
   assertEquals(out.length, 1);
   assertEquals(out[0].rated, 1);
   assertEquals(out[0].average, 5);
@@ -516,7 +516,7 @@ Deno.test('scoreSummary is platform-aware and supports AskGamblers 1-10 scores',
     // A TP status key on the same tab/brand must NOT leak into an AG-scoped query.
     { id: '3', tab: 't', data: { Brand: 'A', 'Review Status': 'Published', 'Score added': '2' } },
   ];
-  const out = scoreSummary(entries, ['ag']);
+  const out = scoreSummary(entries, ['ag']).brands;
   assertEquals(out.length, 1);
   assertEquals(out[0].rated, 1);
   assertEquals(out[0].average, 8);
@@ -530,7 +530,7 @@ Deno.test('scoreSummary creates a bucket for a brand with only Removed entries (
     { id: '1', tab: 't', data: { Brand: 'B', 'Review Status': 'Removed' } },
     { id: '2', tab: 't', data: { Brand: 'B', 'Review Status': 'Refused' } },
   ];
-  const out = scoreSummary(entries);
+  const out = scoreSummary(entries).brands;
   assertEquals(out.length, 1);
   assertEquals(out[0].rated, 0);
   assertEquals(out[0].average, null);
@@ -545,7 +545,7 @@ Deno.test('scoreSummary floors successRate to a whole percent, matching the dash
     { id: '2', tab: 't', data: { Brand: 'D', 'Review Status': 'Live' } },
     { id: '3', tab: 't', data: { Brand: 'D', 'Review Status': 'Removed' } },
   ];
-  const out = scoreSummary(entries);
+  const out = scoreSummary(entries).brands;
   assertEquals(out[0].live, 2);
   assertEquals(out[0].removed, 1);
   // Raw rate is 2/3 * 100 = 66.666...; floored (not rounded) to 66.
@@ -569,7 +569,7 @@ Deno.test('scoreSummary works for cg and wo platforms, not just tp/ag', () => {
   const cgEntries: EntryRow[] = [
     { id: '1', tab: 't', data: { Brand: 'D', 'CG Review Status': 'Published', 'CG Score added': '4' } },
   ];
-  const cgOut = scoreSummary(cgEntries, ['cg']);
+  const cgOut = scoreSummary(cgEntries, ['cg']).brands;
   assertEquals(cgOut.length, 1);
   assertEquals(cgOut[0].rated, 1);
   assertEquals(cgOut[0].average, 4);
@@ -577,7 +577,7 @@ Deno.test('scoreSummary works for cg and wo platforms, not just tp/ag', () => {
   const woEntries: EntryRow[] = [
     { id: '2', tab: 't', data: { Brand: 'E', 'WoO Review Status': 'Published', 'Wizard of OddsScore added': '5' } },
   ];
-  const woOut = scoreSummary(woEntries, ['wo']);
+  const woOut = scoreSummary(woEntries, ['wo']).brands;
   assertEquals(woOut.length, 1);
   assertEquals(woOut[0].rated, 1);
   assertEquals(woOut[0].average, 5);
@@ -587,7 +587,7 @@ Deno.test('scoreSummary attaches a rating label matching the computed average', 
   const entries: EntryRow[] = [
     { id: '1', tab: 't', data: { Brand: 'F', 'Review Status': 'Published', 'Score added': '5' } },
   ];
-  const out = scoreSummary(entries);
+  const out = scoreSummary(entries).brands;
   assertEquals(out[0].average, 5);
   assertEquals(out[0].label, 'Excellent');
 });
@@ -697,7 +697,7 @@ Deno.test('scoreSummary excludes a brand flagged as removed for the queried plat
     { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '5' } },
   ];
   const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
-  const out = scoreSummary(entries, ['tp'], removedSet);
+  const out = scoreSummary(entries, ['tp'], removedSet).brands;
   assertEquals(out.length, 0);
 });
 
@@ -706,7 +706,7 @@ Deno.test('scoreSummary does not exclude a brand flagged as removed on a differe
     { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '8' } },
   ];
   const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
-  const out = scoreSummary(entries, ['ag'], removedSet);
+  const out = scoreSummary(entries, ['ag'], removedSet).brands;
   assertEquals(out.length, 1);
 });
 
@@ -853,7 +853,7 @@ Deno.test('scoreSummary with an empty platforms array falls back to all 4 combin
     { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'AG Score added': '9' } },
     { id: '2', tab: 't', data: { Brand: 'Acme', 'CG Review Status': 'Removed' } },
   ];
-  const out = scoreSummary(entries, []);
+  const out = scoreSummary(entries, []).brands;
   assertEquals(out.length, 1);
   // Neither row has a TP status, so ['tp'] (the omitted-platform default)
   // would find nothing for this brand — [] must resolve to all 4 platforms
@@ -1576,4 +1576,77 @@ Deno.test('query_entries combines date_from/date_to with month (both must pass)'
   });
   assertEquals(result.total, 1);
   assertEquals(result.rows[0].data.Brand, 'Acme');
+});
+
+Deno.test('scoreSummary\'s live/removed counts still include an undated row when a range is active (lenient gate)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'H', 'Review Status': 'Removed' } }, // no date at all
+  ];
+  const out = scoreSummary(entries, ['tp'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.brands[0].removed, 1);
+  assertEquals(out.excludedRows, 0); // excludedRows only ever reflects the star-breakdown gate
+});
+
+Deno.test('scoreSummary excludes an undated Published row from the star breakdown when a range is active, and counts it in excludedRows', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'G', 'Review Status': 'Published', 'Score added': '5', 'Trust Pilot': '2026-05-15' } },
+    { id: '2', tab: 't', data: { Brand: 'G', 'Review Status': 'Published', 'Score added': '4' } }, // no date
+  ];
+  const noRange = scoreSummary(entries, ['tp'], new Set(), {});
+  assertEquals(noRange.excludedRows, 0);
+  assertEquals(noRange.brands[0].rated, 2);
+
+  const withRange = scoreSummary(entries, ['tp'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(withRange.excludedRows, 1);
+  assertEquals(withRange.brands[0].rated, 1);
+  assertEquals(withRange.brands[0].average, 5);
+});
+
+Deno.test('scoreSummary excludes a dated Published row outside the range from the star breakdown, without inflating excludedRows', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'I', 'Review Status': 'Published', 'Score added': '3', 'Trust Pilot': '2026-05-10' } }, // in range
+    { id: '2', tab: 't', data: { Brand: 'I', 'Review Status': 'Published', 'Score added': '2', 'Trust Pilot': '2026-04-01' } }, // out of range
+  ];
+  // Note: a row whose only checked platform's date is out of range never
+  // passes the live/removed gate either (passesPlatformDateFilter is also
+  // what determines matchedAny) — so it contributes to neither live/removed
+  // nor the star breakdown, and never inflates excludedRows (that only
+  // tracks rows with NO parseable date, not out-of-range ones). The in-range
+  // row above exists so the brand still has a bucket to assert against.
+  const out = scoreSummary(entries, ['tp'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.brands[0].rated, 1);
+  assertEquals(out.brands[0].average, 3);
+  assertEquals(out.excludedRows, 0);
+});
+
+Deno.test('scoreSummary with 2+ platforms never populates excludedRows (star breakdown only ever runs for exactly one platform)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'J', 'TP Review Status': 'Published' } }, // undated
+  ];
+  const out = scoreSummary(entries, ['tp', 'ag'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.excludedRows, 0);
+});
+
+Deno.test('get_score_summary end-to-end applies date_from/date_to and echoes the range', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '5', 'Trust Pilot': '2026-05-15' } },
+      { id: '2', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '2', 'Trust Pilot': '2026-04-01' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', { date_from: '2026-05-01', date_to: '2026-05-31' });
+  assertEquals(result.dateRange, { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(result.brands[0].rated, 1);
+  assertEquals(result.brands[0].average, 5);
+});
+
+Deno.test('get_score_summary reports dateRange as null when no date filter is passed', async () => {
+  const tables = {
+    entries: [{ id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Score added': '5' } }],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_score_summary', {});
+  assertEquals(result.dateRange, null);
+  assertEquals(result.excludedRows, 0);
 });
