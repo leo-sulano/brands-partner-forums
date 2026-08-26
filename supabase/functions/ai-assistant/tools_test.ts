@@ -7,6 +7,7 @@ import {
   entryMatches,
   matchesStatus,
   scoreSummary,
+  performanceReport,
   redactSensitive,
   runTool,
   successRateByField,
@@ -1689,4 +1690,79 @@ Deno.test('get_success_rate_by_field end-to-end applies date_from/date_to', asyn
   const enigma = result.results.find((r: any) => r.value === 'Enigma');
   assertEquals(enigma.live, 1);
   assertEquals(enigma.removed, 0);
+});
+
+Deno.test('performanceReport computes period totals and a per-brand breakdown sorted by volume descending', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-05-05' } },
+    { id: '2', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Removed', 'Trust Pilot': '2026-05-06' } },
+    { id: '3', tab: 't', data: { Brand: 'Zeta', 'Review Status': 'Published', 'Trust Pilot': '2026-05-10' } },
+    { id: '4', tab: 't', data: { Brand: 'Zeta', 'Review Status': 'Published' } }, // undated, still counts (lenient gate)
+    { id: '5', tab: 't', data: { Brand: 'Zeta', 'Review Status': 'Removed', 'Trust Pilot': '2026-05-12' } },
+    { id: '6', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-04-01' } }, // out of range, excluded
+  ];
+  const out = performanceReport(entries, ['tp'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.totals.live, 3);
+  assertEquals(out.totals.removed, 2);
+  assertEquals(out.totals.entries, 5);
+  assertEquals(out.brands.map((b) => b.brand), ['Zeta', 'Acme']);
+  assertEquals(out.brands[0].live, 2);
+  assertEquals(out.brands[0].removed, 1);
+  assertEquals(out.brands[1].live, 1);
+  assertEquals(out.brands[1].removed, 1);
+});
+
+Deno.test('performanceReport excludes a brand flagged removed for the queried platform', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-05-05' } },
+  ];
+  const removedSet = buildRemovedPlatformBrandSet([{ tab: 't', brand: 'Acme', platform: 'tp' }]);
+  const out = performanceReport(entries, ['tp'], removedSet, { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.brands.length, 0);
+  assertEquals(out.totals.entries, 0);
+});
+
+Deno.test('performanceReport combines multiple platforms with OR semantics (live wins over removed on the same row)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: {
+      Brand: 'Acme',
+      'TP Review Status': 'Removed', 'Trust Pilot': '2026-05-05',
+      'CG Review Status': 'Published', 'Casino Guru review added': '2026-05-05',
+    } },
+  ];
+  const out = performanceReport(entries, ['tp', 'cg'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.brands[0].live, 1);
+  assertEquals(out.brands[0].removed, 0);
+});
+
+Deno.test('performanceReport with no matching rows returns empty totals/brands, not an error', () => {
+  const out = performanceReport([], ['tp'], new Set(), { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(out.totals, { live: 0, removed: 0, successRate: null, entries: 0 });
+  assertEquals(out.brands, []);
+});
+
+Deno.test('get_performance_report requires date_from and date_to', async () => {
+  const result: any = await runTool(mockSupabaseTables({ entries: [] }), 'get_performance_report', { date_from: '2026-05-01' });
+  assertEquals(result.error, 'Both date_from and date_to (YYYY-MM-DD) are required.');
+});
+
+Deno.test('get_performance_report end-to-end: tab-scoped, echoes period, excludes a paused tab and a removed-flagged brand', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'Rooster Partners', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-05-05' } },
+      { id: '2', tab: 'Rooster Partners', data: { Brand: 'Beta', 'Review Status': 'Removed', 'Trust Pilot': '2026-05-06' } },
+      { id: '3', tab: 'Hanan', data: { Brand: 'Gamma', 'Review Status': 'Published', 'Trust Pilot': '2026-05-05' } },
+    ],
+    tab_archive_log: [],
+    paused_tabs: [{ tab: 'Hanan' }],
+    removed_platform_brands: [{ tab: 'Rooster Partners', brand: 'Beta', platform: 'tp' }],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_performance_report', {
+    tab: 'Rooster Partners', date_from: '2026-05-01', date_to: '2026-05-31',
+  });
+  assertEquals(result.period, { from: '2026-05-01', to: '2026-05-31' });
+  assertEquals(result.brands.length, 1);
+  assertEquals(result.brands[0].brand, 'Acme');
+  assertEquals(result.totals.live, 1);
+  assertEquals(result.totals.removed, 0);
 });

@@ -718,6 +718,90 @@ export function scoreSummary(
   return { brands: brandsOut, excludedRows };
 }
 
+export interface PerformanceReportBrand {
+  tab: string;
+  brand: string;
+  live: number;
+  removed: number;
+  successRate: number | null;
+}
+
+export interface PerformanceReportResult {
+  totals: { live: number; removed: number; successRate: number | null; entries: number };
+  brands: PerformanceReportBrand[];
+}
+
+// Period totals + per-brand live/removed breakdown for "give me a report for
+// <period>" questions. Reuses the same "any decided status, not just
+// Published" live/removed semantics as successRateByField (not
+// scoreSummary's Published-only star gate — a performance report is about
+// outcomes, not the subset of Published reviews), gated by the same lenient
+// passesPlatformDateFilter (an undated row still counts, so a date range
+// can't skew the rate by silently dropping undated Removed/Refused rows).
+// `entries` in totals counts every row that matched a non-blank, in-range
+// status for the requested platform(s) — including an undecided one like
+// Pending — mirroring the bucket-existence rule successRateByField/
+// scoreSummary already use, not just rows that had a live/removed outcome.
+export function performanceReport(
+  entries: EntryRow[],
+  platforms: Platform[] = ['tp'],
+  removedPlatformBrands: Set<string> = new Set(),
+  range: DateRangeArgs = {},
+): PerformanceReportResult {
+  const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
+  const buckets = new Map<string, { tab: string; brand: string; live: number; removed: number }>();
+  let totalLive = 0;
+  let totalRemoved = 0;
+  let totalEntries = 0;
+
+  for (const e of entries) {
+    const brand = (pick(e.data, BRAND_KEYS) ?? '').trim();
+    if (!brand) continue;
+
+    let matchedAny = false;
+    let matchedLive = false;
+    let matchedRemoved = false;
+    for (const platform of resolved) {
+      if (removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
+      const status = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      if (!status) continue;
+      if (!passesPlatformDateFilter(e.data, platform, range.from, range.to)) continue;
+      matchedAny = true;
+      if (isLiveStatus(status)) matchedLive = true;
+      else if (isRemovedStatus(status)) matchedRemoved = true;
+    }
+    if (!matchedAny) continue;
+
+    const key = `${e.tab} ${brand}`;
+    let b = buckets.get(key);
+    if (!b) {
+      b = { tab: e.tab, brand, live: 0, removed: 0 };
+      buckets.set(key, b);
+    }
+    totalEntries += 1;
+    if (matchedLive) { b.live += 1; totalLive += 1; }
+    else if (matchedRemoved) { b.removed += 1; totalRemoved += 1; }
+  }
+
+  const brandsOut: PerformanceReportBrand[] = [...buckets.values()]
+    .map((b) => {
+      const total = b.live + b.removed;
+      const rawRate = total === 0 ? null : (b.live / total) * 100;
+      const successRate = rawRate == null ? null : (rawRate === 100 ? 100 : Math.floor(rawRate));
+      return { tab: b.tab, brand: b.brand, live: b.live, removed: b.removed, successRate };
+    })
+    .sort((a, b) => (b.live + b.removed) - (a.live + a.removed));
+
+  const totalDecided = totalLive + totalRemoved;
+  const totalRawRate = totalDecided === 0 ? null : (totalLive / totalDecided) * 100;
+  const totalSuccessRate = totalRawRate == null ? null : (totalRawRate === 100 ? 100 : Math.floor(totalRawRate));
+
+  return {
+    totals: { live: totalLive, removed: totalRemoved, successRate: totalSuccessRate, entries: totalEntries },
+    brands: brandsOut,
+  };
+}
+
 export interface ReviewTextRow {
   brand: string;
   text: string;
@@ -1088,6 +1172,41 @@ export const TOOL_DEFS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_performance_report',
+      description:
+        'One-call performance report for a date range: period totals (live, removed, ' +
+        'Success Rate, entries) plus a per-brand breakdown, sorted by volume (most active ' +
+        'brand first). This is the first choice for "give me a report/summary for <period>" ' +
+        'questions — for a narrower follow-up (raw rows, review text, a single brand\'s star ' +
+        'rating), use query_entries/get_review_texts/get_score_summary instead. ' +
+        'date_from and date_to are both required, YYYY-MM-DD — compute the actual dates ' +
+        'yourself from the current-date system message (e.g. "last month" -> the 1st and ' +
+        'last day of the previous calendar month), the same way you already compute ' +
+        'week_start for get_schedule. Live/removed counts use the same "any decided status" ' +
+        'rule as get_success_rate_by_field (not get_score_summary\'s Published-only star ' +
+        'gate) — a row with no parseable date for the platform being checked still counts ' +
+        '(never silently dropped by the range, matching every other date-filtered tool here). ' +
+        'platform accepts one or more of tp (TrustPilot, default), ag (AskGamblers), cg ' +
+        '(CasinoGuru), wo (Wizard of Odds) — multiple platforms combine into one OR\'d total, ' +
+        'same as get_score_summary. tab optionally restricts to one tab (all tabs if omitted). ' +
+        'Brands whose page on the queried platform was flagged removed (see ' +
+        'get_removed_platform_flags), and any archived or paused tab, are excluded — the same ' +
+        'exclusions every other review-data tool here applies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          date_from: { type: 'string', description: 'YYYY-MM-DD, start of the report period (inclusive)' },
+          date_to: { type: 'string', description: 'YYYY-MM-DD, end of the report period (inclusive)' },
+          tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
+          platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics). Omitting this parameter defaults to TrustPilot only.' },
+        },
+        required: ['date_from', 'date_to'],
+      },
+    },
+  },
 ];
 
 // --- tool dispatch (impure: needs a supabase client) ---
@@ -1379,6 +1498,27 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     }
 
     return { total: combined.length, rows: combined.slice(0, limit) };
+  }
+  if (name === 'get_performance_report') {
+    if (!args?.date_from || !args?.date_to) {
+      return { error: 'Both date_from and date_to (YYYY-MM-DD) are required.' };
+    }
+    let q = supabase.from('entries').select('id, tab, data');
+    if (args?.tab) q = q.eq('tab', args.tab);
+    const [{ data: rawData, error }, removedSet, archivedSet, pausedSet] = await Promise.all([
+      q, fetchRemovedPlatformBrandSet(supabase), fetchArchivedTabNameSet(supabase), fetchPausedTabNameSet(supabase),
+    ]);
+    if (error) throw error;
+    const data = (rawData ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
+    const validPlatforms: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+    const rawPlatform = args?.platform;
+    const requestedPlatforms: string[] = Array.isArray(rawPlatform)
+      ? rawPlatform
+      : (typeof rawPlatform === 'string' && rawPlatform ? [rawPlatform] : []);
+    const filteredPlatforms = requestedPlatforms.filter((p): p is Platform => validPlatforms.includes(p as Platform));
+    const platforms: Platform[] = rawPlatform == null ? ['tp'] : (filteredPlatforms.length > 0 ? filteredPlatforms : ['tp']);
+    const report = performanceReport(data ?? [], platforms, removedSet, { from: args.date_from, to: args.date_to });
+    return { period: { from: args.date_from, to: args.date_to }, ...report };
   }
   return { error: `unknown tool: ${name}` };
 }
