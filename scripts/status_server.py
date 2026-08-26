@@ -30,7 +30,7 @@ from check_review_status import (
     load_entries, build_driver, fetch_status,
     find_status_col, find_score_col, update_entry,
     BATCH_SIZE, DELAY_BETWEEN_BATCHES, CHROME_RESTART_EVERY,
-    REVIEW_TEXT_KEYS, cap_unscoped_batch,
+    REVIEW_TEXT_KEYS,
 )
 from check_ag_status import check_ag_for_tab
 from check_cg_status import check_cg_for_tab
@@ -156,14 +156,11 @@ def check_status():
         # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published, brands=brands,
                                 status_filters=status_filters, agents=agents, proxies=proxies, countries=countries)
-        # Rotation removed (2026-08-25) -- every brand is eligible every day now.
-        # An explicit status/brand/agent/proxy/country filter still means "check
-        # exactly these entries," uncapped; an unscoped run is instead capped to
-        # a small batch (MAX_UNSCOPED_BATCH) so a click can't balloon into a bulk
-        # run across a large tab.
-        has_scope_filter = bool(status_filters or brands or agents or proxies or countries)
+        # Rotation removed (2026-08-25); the unscoped-run cap that replaced it was
+        # itself removed (2026-08-26) -- every brand is eligible every day, and a
+        # filter-free click checks every eligible entry on the tab, however many
+        # that is.
         skipped_group = 0
-        entries = cap_unscoped_batch(entries, has_scope_filter)
         total = len(entries)
         print(f'\n[server] TP check started — {total} entries ({scope})')
 

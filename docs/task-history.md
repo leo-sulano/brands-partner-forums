@@ -6059,3 +6059,68 @@ migration/schema change, no new Vercel env var — nothing else to do. Not yet l
 real PMS card move (no live browser/PMS credentials available in this session) — worth confirming
 when convenient: settle a slot (e.g. mark an entry Done) and watch its linked task land in Done, then
 manually pause a day cell and watch its task land in Project Paused.
+
+---
+
+## Task 268: Check Status — Remove Unscoped-Run Cap; Fixed a Live systemd/Orphan-Process Crash Loop
+
+**Date:** August 26, 2026
+
+Requested directly by the user, after asking how to re-check hundreds of Published entries on a
+brand tab: Task 266's `MAX_UNSCOPED_BATCH = 20` cap on a filter-free Check Status click is removed
+entirely. `cap_unscoped_batch()` (`scripts/check_review_status.py`) and its 4 call sites
+(`status_server.py`'s TP branch, `check_ag_for_tab`/`check_cg_for_tab`/`check_wo_for_tab`) are
+deleted; a filter-free click now checks every eligible entry on the tab, however many that is, same
+as an explicitly-filtered click already did. Confirmed the tradeoff with the user first
+(`AskUserQuestion` — remove entirely / raise the number / leave as-is) given the cap existed
+specifically as this project's EC2-load control after the real Task 226 OOM/hang incident; user chose
+remove entirely. The per-platform Chrome-restart-every-N-entries safeguard from that same incident
+fix is untouched and still protects against the original memory-leak failure mode — what's gone is
+only the artificial small-batch ceiling, not the safety net that actually prevented the OOM. `skipped_group`
+stays in every response (still always `0`) for response-shape stability, same as Task 266 left it.
+3 now-obsolete tests removed from `scripts/test_check_review_status.py`
+(`test_cap_unscoped_batch_truncates_when_no_scope_filter`,
+`test_cap_unscoped_batch_leaves_scoped_run_uncapped`,
+`test_cap_unscoped_batch_uses_module_default_when_under_it`). Full scripts suite: 133 passed (was
+136). Bounded fix (Tier 2 — confined to `scripts/`), implemented directly with one self-review pass,
+no formal spec/plan doc.
+
+**Real incident found and fixed while deploying this session, unrelated to the cap change itself:**
+after `scp`-ing the 5 modified files and running `sudo systemctl restart status-server.service`, the
+unit went into `activating (auto-restart)` instead of `active` — `journalctl` showed it had in fact
+been crash-looping continuously since the *previous* deploy (Task 266, 2026-08-25), with
+`NRestarts` already at 9397 and climbing roughly every 5 seconds, every attempt failing with `Address
+already in use` on port 5001. `/health` had nonetheless been answering `{"ok":true}` correctly this
+whole time, which is what made the loop invisible to every health check anyone ran in the 24 hours
+since — `lsof -i :5001` found the real explanation: an unmanaged orphan process
+(`python3 status_server.py --port 5001`, PID 467482, started Aug25) was holding the port and serving
+all real traffic, running whatever code was live at the moment it was started, while the
+systemd-managed unit endlessly failed to rebind the same port in the background. Root cause: Task
+266's own deploy note describes restarting via a bare `nohup`-style script specifically to dodge the
+`pkill -f status_server` self-matching-the-SSH-command gotcha — but the server has run under systemd
+(`Restart=always`) since 2026-07-10, so replacing it with anything other than `systemctl restart`
+doesn't cleanly hand off the port; it races systemd for it and, whichever process loses, leaves a
+permanent split between "what's actually serving requests" and "what the deploy checklist thinks is
+running." This wasn't a one-off mistake — `docs/ec2-scraper-runbook.md` itself still documented the
+stale pre-systemd `pkill -f status_server` + `nohup ... &` restart pattern in 5 separate places
+(the Quick Start restart step, the one-time-backfill turn-on/turn-off steps, and the entire original
+"Status Server" first-time-setup section's Start/Check/Stop/Update subsections), so following the
+runbook's own documented procedure is what caused this, and would cause it again on the next deploy.
+
+Fixed by killing the orphan PID directly (`kill 467482` — by PID, not `pkill -f`, to avoid the
+self-match risk that motivated the bad workaround in the first place) and letting the already-retrying
+systemd unit take the now-free port; confirmed `active (running)`, stable, `NRestarts` frozen, and
+`md5sum` of the 5 live files on the box now matches the repo exactly (the previous "deploy" was
+therefore never actually live — the orphan had old code the whole time). All 5 stale
+`pkill`/`nohup` restart sections in `docs/ec2-scraper-runbook.md` rewritten to use
+`sudo systemctl restart/start/stop/status status-server.service`, each with an explicit warning
+about why the old pattern is unsafe now; also corrected the doc's `~/server.log` log-viewing
+guidance to `journalctl -u status-server.service` (systemd's stdout never reaches that file, a
+gap `[[feedback_ec2_deploy_parity]]` had already flagged but the runbook itself never picked up).
+
+Live-verified end to end this session: `md5sum` parity confirmed for all 5 files against the
+now-live systemd-managed process, `/health` returns `{"ok":true}`, `systemctl status` shows
+`active (running)` with a frozen restart counter. Not yet independently exercised against a real
+large unfiltered Check Status click (would require triggering a real multi-hundred-entry Selenium
+run) — worth the user trying the original ask (filter Status = Live on a brand tab with hundreds of
+Published entries, click Check Status, confirm it doesn't stop at 20).

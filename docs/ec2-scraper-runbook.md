@@ -77,10 +77,11 @@ ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.1
 **2. Health check**
 ```bash
 df -h /                                                # disk usage — investigate if over ~80%
-ps aux | grep -E 'status_server|check_review_status'   # is the API server up? anything stuck running?
+sudo systemctl status status-server.service --no-pager  # is the API server up? active/crash-looping?
+ps aux | grep -E 'status_server|check_review_status'   # anything stuck, or an orphan not managed by systemd?
 crontab -l                                             # should show 3 jobs: daily brand-removal check, tmp sweep, weekly dnf clean (weekly all-platform scraper removed 2026-08-17)
 tail -30 ~/scraper.log                                 # last scraper run — any errors?
-tail -30 ~/server.log                                  # status server — any errors?
+sudo journalctl -u status-server.service -n 30 --no-pager  # status server logs — ~/server.log is stale (systemd's stdout goes to journald, not that file)
 ```
 
 **3. Manual cache cleanup** (if disk looks high before the scheduled jobs would run — see [Maintenance / Cache Cleanup](#maintenance--cache-cleanup) for what these normally run on)
@@ -92,9 +93,17 @@ sudo logrotate -f /etc/logrotate.d/scraper   # force log rotation now instead of
 
 **4. Restart the status server** (if it's down, or serving stale code after a deploy — see [Status Server](#status-server-flask-api-for-dashboard-check-status-button))
 ```bash
-pkill -f status_server
-nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+sudo systemctl restart status-server.service
+sudo systemctl is-active status-server.service   # should print "active"
+curl -s http://127.0.0.1:5001/health              # should print {"ok":true}
 ```
+Never `pkill -f status_server` + `nohup` — the service runs under systemd (`Restart=always`)
+as of 2026-07-10, and a manual pkill/nohup races systemd for port 5001 instead of replacing
+the process it manages, leaving an unmanaged orphan process serving traffic while systemd
+crash-loops in the background trying to rebind the same port forever (confirmed live
+2026-08-26 — a prior deploy's manual restart caused exactly this, ~9,400 failed systemd
+restarts over 24h, undetected because the orphan kept `/health` answering fine the whole
+time).
 
 **5. If the instance was stopped and restarted**, the public IP changes (see [Elastic IP](#elastic-ip)):
 - Update the `ssh`/`scp` commands throughout this doc with the new IP
@@ -346,9 +355,17 @@ scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo
 scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\check_wo_status.py" ec2-user@54.179.186.205:~/check_wo_status.py
 scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.179.186.205:~/status_server.py
 
-# Then restart the status server so it picks up the new code:
-pkill -f status_server
-nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+# Then restart the status server so it picks up the new code — status_server.py
+# runs under systemd (Restart=always) as of 2026-07-10; a manual pkill/nohup
+# fights the unit's own auto-restart and races it for port 5001, leaving an
+# orphan process that "works" while systemd crash-loops trying to rebind the
+# same port forever in the background (confirmed live 2026-08-26 — a prior
+# deploy's manual pkill/nohup left systemd restart-looping ~9,400 times over
+# 24h while an unmanaged orphan silently served all real traffic). Always use
+# systemctl, never pkill/nohup:
+sudo systemctl restart status-server.service
+sudo systemctl is-active status-server.service   # should print "active"
+curl -s http://127.0.0.1:5001/health              # should print {"ok":true}
 ```
 
 ---
@@ -374,15 +391,17 @@ scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo
 **2. Turn the bypass on** (SSH in first):
 ```bash
 echo "SCHEDULE_GROUP_BYPASS=1" >> ~/.env
-pkill -f status_server
-nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+sudo systemctl restart status-server.service
+sudo systemctl is-active status-server.service   # should print "active"
 ```
-The `pkill`/restart is required even though `status_server.py`'s own source didn't change —
-it's a long-running process that already has the old `schedule_groups.py` imported in memory,
-and Python won't pick up the new file (or the new env var) without a restart. A fresh
+The restart is required even though `status_server.py`'s own source didn't change — it's a
+long-running process that already has the old `schedule_groups.py` imported in memory, and
+Python won't pick up the new file (or the new env var) without a restart. A fresh
 `python3 check_review_status.py` cron invocation would pick up both automatically since it
 starts a new process, but the dashboard's "Check Status" button always goes through this
-already-running server.
+already-running server. Use `systemctl`, never `pkill`/`nohup` — the service runs under
+systemd (`Restart=always`) as of 2026-07-10, and a manual pkill/nohup races it for port 5001
+instead of replacing it cleanly (see the warning in the "Updating the Script" section above).
 
 **3. Run the actual checks from the dashboard** — for each brand tab, filter Status to **Live**
 and click **Check Status** (TP), then switch the filter to **Removed** and click **Check Status**
@@ -393,8 +412,8 @@ fetch and `TP Review Text` simply stays whatever was last captured (or unset).
 **4. Turn the bypass back off** as soon as the backfill is done — do not leave it set:
 ```bash
 sed -i '/^SCHEDULE_GROUP_BYPASS=/d' ~/.env
-pkill -f status_server
-nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+sudo systemctl restart status-server.service
+sudo systemctl is-active status-server.service   # should print "active"
 ```
 Verify it's gone: `grep SCHEDULE_GROUP_BYPASS ~/.env` should print nothing.
 
@@ -584,24 +603,32 @@ echo "CHECK_STATUS_TOKEN=your_token_here" >> ~/.env
 
 Open port 5001 in the EC2 security group: **AWS Console → EC2 → Security Groups → scraper-leo-sg → Inbound rules → Add rule: TCP 5001, Source 0.0.0.0/0**.
 
+**As of 2026-07-10 the server runs under a systemd unit (`status-server.service`,
+`Restart=always`), not the bare `nohup` process this "First-time setup" describes — the
+`nohup`/`pkill` commands below are the original pre-systemd bootstrap and must never be used
+once the unit exists (confirmed live 2026-08-26: doing so races systemd for port 5001 and
+leaves an unmanaged orphan silently serving traffic while systemd crash-loops trying to rebind
+the same port). Use them only if `status-server.service` itself doesn't exist yet on a fresh
+box; otherwise use the systemd commands in the sections below.**
+
 ### Start the server
 
 ```bash
-nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
-echo "PID: $!"
+sudo systemctl start status-server.service
+sudo systemctl enable status-server.service   # survive reboots
 ```
 
 ### Check if it's running / view logs
 
 ```bash
-ps aux | grep status_server
-tail -f ~/server.log
+sudo systemctl status status-server.service --no-pager
+sudo journalctl -u status-server.service -f   # ~/server.log is stale; systemd's stdout goes to journald
 ```
 
 ### Stop the server
 
 ```bash
-pkill -f status_server
+sudo systemctl stop status-server.service
 ```
 
 ### Update the server script
@@ -611,8 +638,8 @@ pkill -f status_server
 scp -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" "C:\Users\Leo\OneDrive\Desktop\AI Automation\Internal Projects\Forums Dashboard\scripts\status_server.py" ec2-user@54.179.186.205:~/status_server.py
 
 # Then SSH in and restart:
-pkill -f status_server
-nohup python3 ~/status_server.py --port 5001 > ~/server.log 2>&1 &
+sudo systemctl restart status-server.service
+sudo systemctl is-active status-server.service   # should print "active"
 ```
 
 ### Supabase Edge Function configuration

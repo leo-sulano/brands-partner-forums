@@ -569,18 +569,6 @@ BRAND_COLS = ["Brands", "Brand Name", "Brand", "Brand / TP URL PAGE", "URL PAGE"
 #               keep re-checking to catch a Published -> Removed/Refused change.
 CHECKABLE_STATUSES = {"done", "pending", "published"}
 
-# Caps an *unscoped* Check Status click (no status/brand/agent/proxy/country
-# filter active) to this many entries per platform per tab, so a click can't
-# balloon into a bulk run across a large tab. Replaces the old 3-week
-# brand-group rotation (schedule_groups.py / filter_by_active_group) as this
-# project's EC2-load control for Check Status specifically (2026-08-25) --
-# rotation meant any given brand only got checked once every 3 weeks even on a
-# manual click; this instead lets every brand be eligible every day, just a
-# few entries at a time. A request already narrowed by an explicit filter is
-# NOT capped -- same "explicit filter = exactly what was asked for" precedent
-# Task 265 established for the rotation gate this replaces.
-MAX_UNSCOPED_BATCH = 20
-
 # ─── Status Parsing (mirrors parser.ts) ──────────────────────────────────────
 
 STATE_MAP: dict[str, str] = {
@@ -855,22 +843,6 @@ def filter_by_active_group(entries: list[dict], bypass: bool = False) -> tuple[l
         else:
             skipped += 1
     return kept, skipped
-
-
-def cap_unscoped_batch(entries: list[dict], has_scope_filter: bool,
-                        max_batch: int = MAX_UNSCOPED_BATCH) -> list[dict]:
-    """Caps an *unscoped* Check Status run to `max_batch` entries -- this
-    project's EC2-load control for the dashboard's Check Status button
-    (status_server.py's TP branch, check_ag_for_tab, check_cg_for_tab,
-    check_wo_for_tab), replacing the 3-week rotation gate above
-    (filter_by_active_group) for that one feature specifically (2026-08-25).
-    `has_scope_filter=True` (an explicit status/brand/agent/proxy/country
-    filter is active) returns `entries` unchanged -- same "explicit filter
-    means check exactly this" precedent `filter_by_active_group`'s own
-    `bypass` parameter already established."""
-    if has_scope_filter:
-        return entries
-    return entries[:max_batch]
 
 
 # Mirrors src/lib/proxyAliases.ts's resolveProxyLabel/isRedactedProxyValue: a raw

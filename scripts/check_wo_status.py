@@ -37,7 +37,6 @@ from check_review_status import (
     log_check_error,
     status_filter_matches,
     matches_scope_filters,
-    cap_unscoped_batch,
     extract_review_card_text,
     split_review_header,
     REVIEW_TEXT_KEYS,
@@ -250,12 +249,10 @@ def check_wo_for_tab(
     dry_run: bool = False,
 ) -> dict:
     entries = load_wo_entries(tab, include_published, status_filters, brands, agents, proxies, countries)
-    # Rotation removed (2026-08-25) -- every brand is eligible every day now. An
-    # explicit filter still means "check exactly these entries," uncapped; an
-    # unscoped run is instead capped to a small batch (MAX_UNSCOPED_BATCH).
-    has_scope_filter = bool(status_filters or brands or agents or proxies or countries)
+    # Rotation removed (2026-08-25); the unscoped-run cap that replaced it was
+    # itself removed (2026-08-26) -- every brand is eligible every day, and a
+    # filter-free click checks every eligible entry on the tab.
     skipped_group = 0
-    entries = cap_unscoped_batch(entries, has_scope_filter)
     total = len(entries)
     if not total:
         return {"checked": 0, "updated": 0, "errors": 0, "sheet_errors": 0, "total": 0, "skipped_group": skipped_group}

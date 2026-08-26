@@ -61,7 +61,30 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-26 (newest):* Schedule Planner → PMS status sync (Task 247) now maps to two different
+- *2026-08-26 (newest):* Task 266's `MAX_UNSCOPED_BATCH = 20` cap on a filter-free Check Status
+  click is removed entirely (`cap_unscoped_batch()` and its 4 call sites deleted from
+  `scripts/check_review_status.py`/`status_server.py`/`check_ag_status.py`/`check_cg_status.py`/
+  `check_wo_status.py`), per direct user request after they asked how to re-check hundreds of
+  Published entries on a brand tab — confirmed the tradeoff first via `AskUserQuestion` (remove
+  entirely / raise the number / leave as-is) given the cap existed as this project's EC2-load
+  control after the real Task 226 OOM incident; user chose remove entirely. The Chrome-restart
+  safeguard from that same incident (unrelated to the cap) is untouched. **While deploying, found
+  and fixed a real live incident, unrelated to the cap change:** the EC2 box had been silently
+  running on stale code for 24 hours — Task 266's own deploy (2026-08-25) restarted the server via
+  a manual `nohup`-style script instead of `systemctl` (to dodge the `pkill -f status_server`
+  self-matching-the-SSH-command gotcha), which raced systemd for port 5001 instead of replacing the
+  systemd-managed process; the manual process won the race and kept serving all real traffic (so
+  `/health` looked fine the whole time), while the systemd unit crash-looped trying to rebind the
+  same port ~9,400 times over 24h, completely invisible to any health check. Root cause:
+  `docs/ec2-scraper-runbook.md` itself still documented the stale pre-systemd `pkill`/`nohup`
+  restart pattern in 5 separate places — fixed all 5 to use `sudo systemctl restart/start/stop/
+  status status-server.service`, plus corrected its `~/server.log` log-viewing guidance to
+  `journalctl -u status-server.service` (systemd's stdout never reaches that file). Live-verified:
+  killed the orphan PID directly (by PID, not `pkill -f`), confirmed the systemd unit is now
+  `active (running)` with a frozen restart counter, and `md5sum` of all 5 files on the box now
+  matches the repo exactly. Full scripts suite: 133 passed (3 now-obsolete cap tests removed).
+  Bounded fix (Tier 2), no spec/plan doc. Task 268.
+- *2026-08-26 (prior):* Schedule Planner → PMS status sync (Task 247) now maps to two different
   real PMS columns per direct user request. Pending/Done/Published/Removed now move to the real
   **Done** column instead of Review/QA — a settled slot is done, not awaiting review. A paused combo
   now moves its task to the real **Project Paused** column (confirmed live via the PMS API's own
