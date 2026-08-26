@@ -56,6 +56,12 @@ interface ScheduleCellProps {
   agent?: string;
   country?: string;
   account?: string;
+  // Who forced the current scheduler-level pause for a platform, keyed by
+  // platform — only populated when that platform's active brand_platform_pause
+  // reason is PERSISTENT_PAUSE_REASONS.manual (a forced override, not an
+  // auto-detected one), resolved from brand_platform_override.set_by. Absent
+  // (or no entry) means "unknown/not applicable," never rendered as blank.
+  pausedByPlatform?: Partial<Record<Platform, string>>;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
   // day would otherwise look identical to a confirmed post even though the
@@ -80,6 +86,14 @@ interface PlatformChipProps {
   agent?: string;
   country?: string;
   account?: string;
+  // True whenever this chip represents an actual pause (scheduler-level or a
+  // per-day manual pause) — Agent/Country/Account are dropped from the
+  // tooltip in that case in favor of the pause's own reason (+ who forced it,
+  // when known), since a paused chip already isn't the "this would post as
+  // <account>" claim those three lines exist to answer.
+  isPausedState: boolean;
+  pauseReason?: string;
+  pausedBy?: string;
   onClick: () => void;
 }
 
@@ -117,12 +131,19 @@ export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
 // chips) — wrapping it in Tooltip's own extra trigger <span> would add a
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
-function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, onClick }: PlatformChipProps) {
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, isPausedState, pauseReason, pausedBy, onClick }: PlatformChipProps) {
   const badge = PLATFORM_BADGE[platform];
   const content = (
     <div>
       <div>{PLATFORM_FULL_LABEL[platform]}: {label}</div>
-      <AgentCountryLines agent={agent} country={country} account={account} />
+      {isPausedState ? (
+        <>
+          {pauseReason && <div>Reason: {pauseReason}</div>}
+          {pausedBy && <div>Paused by: {pausedBy}</div>}
+        </>
+      ) : (
+        <AgentCountryLines agent={agent} country={country} account={account} />
+      )}
     </div>
   );
   const { triggerProps, portal } = useTooltip(content);
@@ -187,7 +208,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -226,6 +247,16 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         // it's a verified fact about that exact day, the same footing
         // Removed/Confirmed already had before Pending/Done joined them.
         const planUnverified = isPastDay && !effectivePaused && !hasEvidence && status != null;
+        // Actual-pause tooltip content (reason + who, no Agent/Country/
+        // Account) covers both pause shapes this cell can show: the
+        // scheduler-level week pause (effectivePaused) and a per-day manual
+        // pause (status === 'paused', set by cycling this exact day). Only
+        // the former has a reason/pausedBy to show — a per-day pause has no
+        // backing brand_platform_pause row, so its header label ("Paused
+        // (manual)") already says everything there is to say.
+        const isPausedState = effectivePaused || status === 'paused';
+        const pauseReason = effectivePaused ? pausesByPlatform[platform]?.reason : undefined;
+        const pausedBy = effectivePaused ? pausedByPlatform?.[platform] : undefined;
         const label = isRemoved
           ? 'Removed'
           : isConfirmed
@@ -252,6 +283,9 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             agent={agent}
             country={country}
             account={account}
+            isPausedState={isPausedState}
+            pauseReason={pauseReason}
+            pausedBy={pausedBy}
             onClick={() => onToggle(platform)}
           />
         );
@@ -273,8 +307,13 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 
 // agent/country/account: same brand-level values as ScheduleCell's own props
 // (see their doc comment above) — shown as extra tooltip lines below the
-// reason text, so this indicator's tooltip matches the day-cell chips'
-// instead of omitting the brand's Agent/Country/Account entirely.
+// reason text for the 'active' and 'no-schedule' variants, matching the
+// day-cell chips' own tooltip. The two actual-pause variants ('system',
+// 'manual') deliberately drop these three in favor of pausedBy — see the
+// content-building logic in ScheduleStatusIcon below for why.
+// pausedBy: who forced the pause, resolved from brand_platform_override.set_by
+// — only meaningful (and only ever passed) for the 'system' variant when its
+// pause.reason is PERSISTENT_PAUSE_REASONS.manual; undefined otherwise.
 // onClick/clickable: every variant (including 'active', a platform with no
 // paused days at all) opens the same PauseDaysModal, pre-checked to that
 // platform's current effectivePauseDays — this is the Schedule Status
@@ -283,7 +322,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // clickable is gated the same way ScheduleCell's chips already are
 // (isApproved && not a legacy week), so a read-only view never renders a
 // button here.
-type ScheduleStatusIconProps = { agent?: string; country?: string; account?: string; clickable: boolean; onClick: () => void } & (
+type ScheduleStatusIconProps = { agent?: string; country?: string; account?: string; pausedBy?: string; clickable: boolean; onClick: () => void } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
   | { platform: Platform; source: 'no-schedule' }
@@ -330,15 +369,28 @@ function titleFor(props: ScheduleStatusIconProps): string {
 // focusable trigger, so wrapping it in Tooltip's own extra <span> would add
 // a redundant tab stop.
 export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
-  const { platform, agent, country, account, clickable, onClick } = props;
+  const { platform, agent, country, account, pausedBy, clickable, onClick } = props;
   const [line1, line2] = titleFor(props).split('\n');
   const isPaused = props.source !== 'active';
+  // 'no-schedule' isn't an actual pause — it's just that nothing has been
+  // scheduled yet this week, which is why it still shows Agent/Country/
+  // Account (the plan may be un-executed, but the brand's account/country
+  // already exist and aren't vague). 'system'/'manual' ARE real pauses, so
+  // their tooltip drops those three lines for the pause's own reason (+ who
+  // forced it, for 'system' when known) instead — a paused platform isn't
+  // "about to post as this account," so those lines would be misleading
+  // clutter rather than useful context.
+  const isActualPause = props.source === 'system' || props.source === 'manual';
   const actionLine = clickable ? (isPaused ? 'Click to manage pause days' : 'Click to pause days') : null;
   const content = (
     <div>
       <div>{line1}</div>
       {line2 && <div>{line2}</div>}
-      <AgentCountryLines agent={agent} country={country} account={account} />
+      {isActualPause ? (
+        pausedBy && <div>Paused by: {pausedBy}</div>
+      ) : (
+        <AgentCountryLines agent={agent} country={country} account={account} />
+      )}
       {actionLine && <div>{actionLine}</div>}
     </div>
   );

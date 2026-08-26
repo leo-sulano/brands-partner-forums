@@ -20,9 +20,10 @@ import {
 } from '../lib/queries';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
-import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
+import { buildOverrideMap, buildOverrideSetByMap, overrideKey, type OverrideState } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
+import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
 import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
@@ -110,6 +111,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     entries: Entry[];
     removedPlatformBrandSet: Set<string>;
     overrideMap: Map<string, OverrideState>;
+    // Display-only "who forced this override" lookup (brand_platform_override
+    // .set_by) — kept separate from overrideMap since schedulerService.ts's
+    // pause-resolution logic only ever needs the OverrideState, not the actor.
+    overrideSetByMap: Map<string, string>;
     hiddenBrandSet: Set<string>;
     platformRestrictionMap: Map<string, Platform>;
     agentAssignmentRows: BrandAgentAssignmentRow[];
@@ -230,6 +235,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           entries: rawEntries,
           removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
           overrideMap: buildOverrideMap(overrideRows),
+          overrideSetByMap: buildOverrideSetByMap(overrideRows),
           hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
           platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
           agentAssignmentRows,
@@ -677,6 +683,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     onPlatformCounts?.(tab, platformCounts);
   }, [tab, platformCounts, onPlatformCounts]);
 
+  // Who forced a brand+platform's override, if any — used only to surface
+  // "Paused by" on a pause whose reason is PERSISTENT_PAUSE_REASONS.manual
+  // (i.e. the pause exists because of a forced override, not auto-detection).
+  // Overrides aren't week-scoped, so this doesn't take a week argument.
+  function pausedByFor(brandKey: string, platform: Platform): string | undefined {
+    return tabCtx?.overrideSetByMap.get(overrideKey(tab, brandKey, platform));
+  }
+
   // colWeekStartISO defaults to weekStartISO (the nav's own week) so every
   // existing call site that only ever cared about one week — the trailing
   // Paused-column summary, Export — can keep calling this with no argument.
@@ -684,19 +698,27 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   function computeCellData(brand: string, colWeekStartISO: string = weekStartISO): {
     rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
     pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+    pausedByPlatform: Partial<Record<Platform, string>>;
   } {
     const brandKey = normalizeBrandKey(brand);
     const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
     const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
+    const pausedByPlatform: Partial<Record<Platform, string>> = {};
     for (const platform of brandPlatforms(brand)) {
       const r = scheduleFor(scheduleRows, tab, brand, colWeekStartISO, platform);
       if (r) rowsByPlatform[platform] = r;
       const p = pauses.find(
         (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === colWeekStartISO,
       );
-      if (p) pausesByPlatform[platform] = p;
+      if (p) {
+        pausesByPlatform[platform] = p;
+        if (p.reason === PERSISTENT_PAUSE_REASONS.manual) {
+          const by = pausedByFor(brandKey, platform);
+          if (by) pausedByPlatform[platform] = by;
+        }
+      }
     }
-    return { rowsByPlatform, pausesByPlatform };
+    return { rowsByPlatform, pausesByPlatform, pausedByPlatform };
   }
 
   async function handleCellClick(brand: string, platform: Platform, col: ScheduleColumn) {
@@ -896,7 +918,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 // below is inherently a "this week" concept, independent of
                 // however many extra weeks the grid's day cells might also
                 // be showing.
-                const { rowsByPlatform: weekRowsByPlatform, pausesByPlatform: weekPausesByPlatform } = computeCellData(brand);
+                const { rowsByPlatform: weekRowsByPlatform, pausesByPlatform: weekPausesByPlatform, pausedByPlatform: weekPausedByPlatform } = computeCellData(brand);
                 const brandKey = normalizeBrandKey(brand);
                 const agent = agentIndex.get(brandKey);
                 const country = countryIndex.get(brandKey);
@@ -926,7 +948,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                     </td>
                     {columns.map((col) => {
                       const dayISO = col.iso;
-                      const { rowsByPlatform, pausesByPlatform } = computeCellData(brand, col.weekStartISO);
+                      const { rowsByPlatform, pausesByPlatform, pausedByPlatform } = computeCellData(brand, col.weekStartISO);
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
                       const pendingByPlatform = computePendingByPlatform(brand, dayISO);
@@ -946,6 +968,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             agent={agent}
                             country={country}
                             account={account}
+                            pausedByPlatform={pausedByPlatform}
                             isPastDay={dayISO < todayISO}
                             // Legacy weeks (imported platform-null brand_schedule rows,
                             // pre-dating per-platform tracking) are read-only: forcing
@@ -986,7 +1009,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           const onClick = () => setPauseDaysTarget({ brand, platform });
                           if (weekPausesByPlatform[platform]) {
                             return (
-                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} country={country} account={account} pausedBy={weekPausedByPlatform[platform]} clickable={clickable} onClick={onClick} />
                             );
                           }
                           if (manuallyPausedPlatformSet.has(platform)) {

@@ -23,3 +23,17 @@ export function buildOverrideMap(
 ): Map<string, OverrideState> {
   return new Map(rows.map((r) => [overrideKey(r.tab, r.brand_key, r.platform), r.override_state]));
 }
+
+// Separate from buildOverrideMap (whose Map<string, OverrideState> value
+// shape is relied on by schedulerService.ts's pause-resolution logic) so
+// that logic never has to change just because a display-only "who set this"
+// lookup was added. Only rows with a real set_by are included — a legacy or
+// unattributed override simply has no entry here, and callers should treat
+// that as "unknown," not render an empty name.
+export function buildOverrideSetByMap(
+  rows: { tab: string; brand_key: string; platform: Platform; set_by: string | null }[],
+): Map<string, string> {
+  return new Map(
+    rows.filter((r) => !!r.set_by).map((r) => [overrideKey(r.tab, r.brand_key, r.platform), r.set_by as string]),
+  );
+}

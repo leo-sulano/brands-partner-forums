@@ -6304,3 +6304,49 @@ clean throughout. **Deployed the same session:** `supabase functions deploy ai-a
 `ACTIVE` version 42 via `supabase functions list`. All 6 tasks landed directly on `main` (no
 worktree — user explicitly opted out, per the standing preference that only one worktree fits their
 workflow at a time), so no merge step was needed.
+
+---
+
+## Task 273: Schedule Planner Tooltips — Keep Account/Country on Unexecuted Plans, Hide Them on Real Pauses
+
+**Date:** August 26, 2026
+
+Requested directly by the user off two screenshots of the Schedule Planner grid. First: confirmed
+the existing behavior is correct and needs no change — a day-cell chip or Schedule Status icon that
+merely hasn't executed yet (a "Scheduled" plan-only chip, or the "no schedule this week" reason) is
+not vague, since it already shows the brand's real Agent/Country/Account (Task 269) even though
+nothing has posted yet. Second, the actual ask: for a chip or icon that IS an actual pause — a
+scheduler-level week pause (auto-detected or forced via `brand_platform_override`) or a per-day
+manual pause — the tooltip should drop those three lines (they're not the "this would post as
+`<account>`" claim a paused platform is making) in favor of the pause's own reason, plus who forced
+it when the pause is a manual/forced override rather than an auto-detected one.
+
+`brand_platform_override.set_by` (written since the table's original migration, via
+`setBrandPlatformOverride`'s `currentUserEmail()` call, but never read back anywhere) is now
+selected by `fetchBrandPlatformOverrides` (`src/lib/queries.ts`) and exposed as a display-only
+`Map<string, string>` via new `buildOverrideSetByMap` (`src/lib/scheduleOverrides.ts`) — kept
+separate from the existing `buildOverrideMap`/`Map<string, OverrideState>` so schedulerService.ts's
+pause-resolution logic (which only ever needs the state, not the actor) never has to change.
+`TabScheduleSection.tsx` fetches it alongside the existing override rows into a new
+`tabCtx.overrideSetByMap`, and a new `pausedByFor(brandKey, platform)` helper resolves "who" only
+when a pause's `reason === PERSISTENT_PAUSE_REASONS.manual` — an auto-detected pause (two
+consecutive Removed/Refused, or a low rolling-30-day success rate) has no actor and correctly shows
+no "Paused by" line.
+
+`calendarRenderer.tsx`: `PlatformChip` gained `isPausedState`/`pauseReason`/`pausedBy` — true for
+both the scheduler-level pause (`effectivePaused`) and a per-day manual pause (`status === 'paused'`,
+which has no reason/actor of its own since it's not backed by a `brand_platform_pause` row; its
+"Paused (manual)" header label already says everything there is to say). `ScheduleStatusIcon` gained
+a parallel `isActualPause` check (`source === 'system' || 'manual'`) that swaps `AgentCountryLines`
+for a `pausedBy` line — deliberately excluding `'no-schedule'`, which is NOT a real pause despite
+sharing its "⛔ Paused" visual bucket, and keeps showing Agent/Country/Account per the first,
+already-correct half of this request.
+
+Tier 2 (light path) — touches `queries.ts` but only as a purely additive field/select on an existing
+read path with no behavior change for any other consumer (`BrandGroup.tsx`'s own override-editing
+flow uses its own separate inline row type and is unaffected); confined otherwise to Schedule
+Planner's own tooltip components. Implemented directly with one self-review pass, no formal
+spec/plan doc. New `buildOverrideSetByMap` test coverage in `scheduleOverrides.test.ts`. Full suite
+(2093 tests) and build both pass; `deno check` on `generate-weekly-schedule/index.ts` (the one
+deployed function that imports `scheduleOverrides.ts` transitively via `schedulerService.ts`) stays
+clean. No migration needed (`set_by` already existed); no deploy needed (frontend-only change).

@@ -1030,12 +1030,16 @@ export interface BrandPlatformOverride {
   brand_key: string;
   platform: Platform;
   override_state: 'pause' | 'active';
+  // Who set the override (currentUserEmail() at set time) — surfaced in the
+  // Schedule Planner tooltip so a forced pause/active can say who forced it,
+  // not just that it's forced.
+  set_by: string | null;
 }
 
 export async function fetchBrandPlatformOverrides(tab: string, client: SupabaseClient = supabase): Promise<BrandPlatformOverride[]> {
   const { data, error } = await client
     .from('brand_platform_override')
-    .select('tab, brand_key, platform, override_state')
+    .select('tab, brand_key, platform, override_state, set_by')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as BrandPlatformOverride[];
