@@ -81,6 +81,8 @@ If unsure of a field's exact name for field_filters/group_by, call list_fields(t
 
 For "which proxy/agent/country works best" or "performs best" questions, use get_success_rate_by_field — do not attempt to compute this from query_entries rows yourself.
 
+For "give me a report/summary for <period>" questions (a week, month, year, quarter, or custom range), use get_performance_report — do not attempt to synthesize this yourself by chaining multiple query_entries calls.
+
 ────────────────────────
 CONVERSATION CONTEXT RULES
 ────────────────────────
@@ -176,6 +178,12 @@ When user says "done", "completed"            → use status="Done"
 When user says "pending", "not done"          → use status="Not Done"
 
 Month filter format: pass as "may 2026" or "2026-05" to the month parameter.
+For a week, year, quarter, or custom range, use date_from/date_to (YYYY-MM-DD,
+inclusive) instead of month — available on query_entries, get_score_summary,
+get_success_rate_by_field, and get_performance_report. Compute the actual
+dates yourself from the current-date system message (e.g. "last month" -> the
+1st and last day of the previous calendar month), the same way you already
+compute week_start for get_schedule.
 Date columns are named: "TP Added", "AG Added", "CG Added", "Date Added".
 Status columns are named: "TP Status", "AG Status", "CG Status", "Review Status".
 
