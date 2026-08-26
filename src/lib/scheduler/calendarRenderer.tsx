@@ -4,7 +4,7 @@ import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
 import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
-import Tooltip, { useTooltip } from '../../components/Tooltip';
+import { useTooltip } from '../../components/Tooltip';
 
 // Shared tooltip body for a brand's Agent/Country/Account, appended below
 // whatever status/assignee lines a cell already shows — same brand-level
@@ -275,10 +275,19 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // (see their doc comment above) — shown as extra tooltip lines below the
 // reason text, so this indicator's tooltip matches the day-cell chips'
 // instead of omitting the brand's Agent/Country/Account entirely.
-type PausedPlatformIndicatorProps = { agent?: string; country?: string; account?: string } & (
+// onClick/clickable: every variant (including 'active', a platform with no
+// paused days at all) opens the same PauseDaysModal, pre-checked to that
+// platform's current effectivePauseDays — this is the Schedule Status
+// column's whole reason for existing: a bulk way to set which days are
+// paused for one platform without clicking each day cell individually.
+// clickable is gated the same way ScheduleCell's chips already are
+// (isApproved && not a legacy week), so a read-only view never renders a
+// button here.
+type ScheduleStatusIconProps = { agent?: string; country?: string; account?: string; clickable: boolean; onClick: () => void } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
   | { platform: Platform; source: 'no-schedule' }
+  | { platform: Platform; source: 'active' }
 );
 
 function resumeWeekLabel(pausedWeekStart: string): string {
@@ -294,7 +303,7 @@ function resumeWeekLabel(pausedWeekStart: string): string {
 // row. A future week starts fresh with its own independently-clicked or
 // freshly-generated days, so there's nothing accurate to claim about when
 // either "ends."
-function titleFor(props: PausedPlatformIndicatorProps): string {
+function titleFor(props: ScheduleStatusIconProps): string {
   if (props.source === 'system') {
     const { pause } = props;
     // "Manually paused" (Task 7) persists for as long as the override stays
@@ -310,32 +319,61 @@ function titleFor(props: PausedPlatformIndicatorProps): string {
   if (props.source === 'manual') {
     return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;
   }
-  return 'Reason: No schedule this week';
+  if (props.source === 'no-schedule') {
+    return 'Reason: No schedule this week';
+  }
+  return 'No days paused';
 }
 
-export function PausedPlatformIndicator(props: PausedPlatformIndicatorProps) {
-  const { platform, agent, country, account } = props;
+// Uses useTooltip rather than the default Tooltip component — same reason
+// as PlatformChip above: the rendered <button>/<span> is already its own
+// focusable trigger, so wrapping it in Tooltip's own extra <span> would add
+// a redundant tab stop.
+export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
+  const { platform, agent, country, account, clickable, onClick } = props;
   const [line1, line2] = titleFor(props).split('\n');
+  const isPaused = props.source !== 'active';
+  const actionLine = clickable ? (isPaused ? 'Click to manage pause days' : 'Click to pause days') : null;
+  const content = (
+    <div>
+      <div>{line1}</div>
+      {line2 && <div>{line2}</div>}
+      <AgentCountryLines agent={agent} country={country} account={account} />
+      {actionLine && <div>{actionLine}</div>}
+    </div>
+  );
+  const { triggerProps, portal } = useTooltip(content);
+  // isPaused variants (system/manual/no-schedule) stay always-visible, same
+  // as before this feature — an active platform's icon is hover/focus-only
+  // (matching ScheduleCell's own "+ Add Platform" affordance) so a fully
+  // active row doesn't get visually cluttered with one icon per platform.
+  const className = `inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
+    isPaused ? 'bg-slate-100 text-slate-500' : 'bg-white text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
+  } ${clickable ? 'cursor-pointer hover:bg-slate-200' : ''}`;
+  const inner = (
+    <>
+      {isPaused && '⛔'}
+      <img
+        src={PLATFORM_FAVICON[platform]}
+        alt={PLATFORM_BADGE[platform].label}
+        className="size-3 rounded-sm"
+        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+      />
+      {isPaused && 'Paused'}
+    </>
+  );
   return (
-    <Tooltip
-      content={(
-        <div>
-          <div>{line1}</div>
-          {line2 && <div>{line2}</div>}
-          <AgentCountryLines agent={agent} country={country} account={account} />
-        </div>
+    <>
+      {clickable ? (
+        <button type="button" {...triggerProps} onClick={onClick} className={className} aria-label={`Manage ${PLATFORM_FULL_LABEL[platform]} pause days`}>
+          {inner}
+        </button>
+      ) : (
+        <span {...triggerProps} tabIndex={0} className={className}>
+          {inner}
+        </span>
       )}
-    >
-      <span className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
-        ⛔
-        <img
-          src={PLATFORM_FAVICON[platform]}
-          alt={PLATFORM_BADGE[platform].label}
-          className="size-3 rounded-sm"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
-        Paused
-      </span>
-    </Tooltip>
+      {portal}
+    </>
   );
 }

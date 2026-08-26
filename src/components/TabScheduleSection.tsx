@@ -18,15 +18,16 @@ import {
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
 } from '../lib/queries';
-import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
-import { ScheduleCell, PausedPlatformIndicator } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
+import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
+import PauseDaysModal from './PauseDaysModal';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
@@ -38,7 +39,7 @@ import type { Entry } from '../types/entry';
 // Same red-X-superscript treatment as Brand Tabs' PlatformRemovedBadge, but
 // on the platform's favicon instead of its 2-letter text code — matches the
 // icon-based chips this page already uses everywhere else (ScheduleCell,
-// PausedPlatformIndicator), so a brand's Schedule Planner row stays visually
+// ScheduleStatusIcon), so a brand's Schedule Planner row stays visually
 // consistent with its own day cells.
 function RemovedPlatformIcon({ platform }: { platform: Platform }) {
   return (
@@ -122,6 +123,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
+  const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
   const { isApproved } = useAuth();
 
   // Bumped by the live-entries subscription below on an INSERT (or any
@@ -517,7 +519,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Brand -> Country, for the same tooltip that shows Agent below (see
   // buildCountryIndex's own doc comment for the resolution rule — identical
   // to agentIndex above, just a different column). Purely a display-only
-  // addition to ScheduleCell/PausedPlatformIndicator's tooltip.
+  // addition to ScheduleCell/ScheduleStatusIcon's tooltip.
   const countryIndex = useMemo(
     () => buildCountryIndex(tabCtx?.entries ?? []),
     [tabCtx],
@@ -770,6 +772,37 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       })()
     : null;
 
+  // Always scoped to weekStartISO (computeCellData's default), same "this
+  // navigated week only" scope the Schedule Status column itself already
+  // has — matches what the trailing icons the modal is opened from actually
+  // represent, regardless of how many weeks the day-cell grid is showing.
+  const pauseDaysModalData = pauseDaysTarget
+    ? (() => {
+        const { brand, platform } = pauseDaysTarget;
+        const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
+        return {
+          initialPausedDays: effectivePauseDays(rowsByPlatform[platform], !!pausesByPlatform[platform]),
+          weekLabel: `Week of ${formatWeekdayDate(weekStart, 0)} – ${formatWeekdayDate(weekStart, 4)}`,
+        };
+      })()
+    : null;
+
+  // Only writes the days whose desired paused state actually changed —
+  // reuses handleSetDayStatus (the same per-day write path a single cell
+  // click already goes through: optimistic update, setBrandScheduleDay,
+  // PMS push on 'active', rollback + toast on failure), just called once per
+  // changed day instead of once per click.
+  async function handlePauseDaysSave(brand: string, platform: Platform, initialPausedDays: Weekday[], newPausedDays: Weekday[]) {
+    const wasPaused = new Set(initialPausedDays);
+    const isNowPaused = new Set(newPausedDays);
+    for (const col of columnsForWeek(weekStart)) {
+      const before = wasPaused.has(col.weekday);
+      const after = isNowPaused.has(col.weekday);
+      if (before === after) continue;
+      await handleSetDayStatus(brand, platform, col, after ? 'paused' : 'active');
+    }
+  }
+
   return (
     <div className="rounded-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col">
       {error && (
@@ -836,7 +869,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               <th
                 className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
                 style={{ top: toolbarHeight }}
-              />
+              >
+                Schedule Status
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -864,7 +899,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 const agent = agentIndex.get(brandKey);
                 const country = countryIndex.get(brandKey);
                 const account = accountIndex.get(brandKey);
-                const pausedPlatforms = activePlatforms.filter((p) => weekPausesByPlatform[p]);
                 const manualPausedPlatforms = brandPlatforms(brand)
                   .filter((p) => !weekPausesByPlatform[p])
                   .map((p) => ({ platform: p, days: trailingManualPauseDays(weekRowsByPlatform[p]) }))
@@ -932,19 +966,43 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       );
                     })}
                     <td className="px-3 py-2 text-left">
-                      {(pausedPlatforms.length > 0 || manualPausedPlatforms.length > 0 || noSchedulePlatforms.length > 0) && (
-                        <div className="flex flex-wrap gap-1">
-                          {pausedPlatforms.map((p) => (
-                            <PausedPlatformIndicator key={p} platform={p} source="system" pause={weekPausesByPlatform[p] as BrandPlatformPause} agent={agent} country={country} account={account} />
-                          ))}
-                          {manualPausedPlatforms.map(({ platform, days }) => (
-                            <PausedPlatformIndicator key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} account={account} />
-                          ))}
-                          {noSchedulePlatforms.map((platform) => (
-                            <PausedPlatformIndicator key={platform} platform={platform} source="no-schedule" agent={agent} country={country} account={account} />
-                          ))}
-                        </div>
-                      )}
+                      {/* One Schedule Status icon per active platform, not just
+                          currently-paused ones — clicking any of them opens
+                          PauseDaysModal for that platform, pre-checked to its
+                          real per-day pause state (effectivePauseDays), so a
+                          fully-active platform can be proactively paused
+                          without first clicking through individual day cells.
+                          Which variant a platform gets is purely cosmetic
+                          (system/manual/no-schedule keep today's always-visible
+                          "⛔ Paused" look; a platform in none of those buckets
+                          gets the subtler hover-revealed "active" look) — the
+                          modal itself always reflects real per-day state
+                          regardless of which bucket picked its icon. */}
+                      <div className="flex flex-wrap gap-1">
+                        {brandPlatforms(brand).map((platform) => {
+                          const clickable = isApproved && !isLegacyWeekAt(weekStartISO);
+                          const onClick = () => setPauseDaysTarget({ brand, platform });
+                          if (weekPausesByPlatform[platform]) {
+                            return (
+                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                            );
+                          }
+                          if (manuallyPausedPlatformSet.has(platform)) {
+                            const days = manualPausedPlatforms.find((x) => x.platform === platform)!.days;
+                            return (
+                              <ScheduleStatusIcon key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                            );
+                          }
+                          if (noSchedulePlatforms.includes(platform)) {
+                            return (
+                              <ScheduleStatusIcon key={platform} platform={platform} source="no-schedule" agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                            );
+                          }
+                          return (
+                            <ScheduleStatusIcon key={platform} platform={platform} source="active" agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                          );
+                        })}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -961,6 +1019,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           platforms={addPlatformModalData.platforms}
           onSetStatus={(platform, status) => handleSetDayStatus(addPlatformTarget.brand, platform, addPlatformTarget.col, status)}
           onClose={() => setAddPlatformTarget(null)}
+        />
+      )}
+      {pauseDaysTarget && pauseDaysModalData && (
+        <PauseDaysModal
+          brand={pauseDaysTarget.brand}
+          platform={pauseDaysTarget.platform}
+          weekLabel={pauseDaysModalData.weekLabel}
+          initialPausedDays={pauseDaysModalData.initialPausedDays}
+          onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
+          onClose={() => setPauseDaysTarget(null)}
         />
       )}
     </div>

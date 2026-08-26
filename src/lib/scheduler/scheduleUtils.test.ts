@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -132,6 +132,42 @@ describe('trailingManualPauseDays', () => {
 
   it('returns empty for an undefined row', () => {
     expect(trailingManualPauseDays(undefined)).toEqual([]);
+  });
+});
+
+describe('effectivePauseDays', () => {
+  const row = (days: Partial<Record<Weekday, 'active' | 'paused'>>): BrandScheduleRow => ({
+    tab: 'BITP', brand_key: 'x', week_start: '2026-08-03', platform: 'tp',
+    monday: days.monday ?? null, tuesday: days.tuesday ?? null, wednesday: days.wednesday ?? null,
+    thursday: days.thursday ?? null, friday: days.friday ?? null,
+  });
+
+  it('returns explicitly paused days when there is no system-level pause', () => {
+    expect(effectivePauseDays(row({ monday: 'paused', wednesday: 'paused', friday: 'active' }), false))
+      .toEqual(['monday', 'wednesday']);
+  });
+
+  it('returns every day when a system-level pause is active and no day has its own status', () => {
+    expect(effectivePauseDays(row({}), true))
+      .toEqual(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
+  });
+
+  it('lets an explicit active status override a system-level pause for that day', () => {
+    expect(effectivePauseDays(row({ monday: 'active' }), true))
+      .toEqual(['tuesday', 'wednesday', 'thursday', 'friday']);
+  });
+
+  it('does not require a run — a lone paused day still counts, unlike trailingManualPauseDays', () => {
+    expect(effectivePauseDays(row({ friday: 'paused' }), false)).toEqual(['friday']);
+  });
+
+  it('returns empty for an undefined row with no system-level pause', () => {
+    expect(effectivePauseDays(undefined, false)).toEqual([]);
+  });
+
+  it('returns every day for an undefined row when system-level pause is active', () => {
+    expect(effectivePauseDays(undefined, true))
+      .toEqual(['monday', 'tuesday', 'wednesday', 'thursday', 'friday']);
   });
 });
 

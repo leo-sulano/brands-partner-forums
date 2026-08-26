@@ -55,6 +55,21 @@ export function trailingManualPauseDays(row: BrandScheduleRow | undefined): Week
   return days.length >= 2 ? days : [];
 }
 
+// Every weekday that's effectively paused for one platform this week —
+// either an explicit day-level 'paused' status, or (when the day has no
+// status of its own) a scheduler-level auto-pause covering the whole week.
+// Distinct from trailingManualPauseDays above (which only flags a
+// Friday-anchored run of >=2 days, for the summary badge's "manual"
+// wording) — this returns every effectively-paused day individually, which
+// is what the Schedule Status pause-days picker needs to pre-check the
+// right boxes.
+export function effectivePauseDays(row: BrandScheduleRow | undefined, systemPaused: boolean): Weekday[] {
+  return WEEKDAYS.filter((day) => {
+    const status = row?.[day] ?? null;
+    return status === 'paused' || (status == null && systemPaused);
+  });
+}
+
 // True when a platform has nothing scheduled at all this week: the row is
 // missing entirely, or every one of its 5 weekday fields is null. A row
 // with even one 'paused' day does NOT qualify — that's either the
