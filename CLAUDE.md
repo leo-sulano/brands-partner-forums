@@ -61,7 +61,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-26 (newest):* Schedule Planner's day-cell tooltip gained an Account line (the actual
+- *2026-08-26 (newest):* The dashboard's Date From/To toolbar filter is now a real Check Status
+  scope, alongside the existing Status/Brand/Agent/Proxy/Country five — closing a gap flagged
+  earlier the same session (date range narrowed the visible table but was silently ignored by the
+  actual Check Status request). New shared `passes_date_filter()`/`_parse_post_date()`
+  (`scripts/check_review_status.py`) mirror `passesPlatformDateFilter`/`parsePostDate`
+  (`src/lib/scoreSummary.ts`) for the two real date formats (`YYYY-MM-DD`, `DD/MM/YYYY`), same
+  "undated/unparseable row stays included, not excluded" bias as the TS version. New
+  `TP_DATE_COLS` added (AG/CG/WO already had their own); `matches_scope_filters()` gained
+  `date_cols`/`date_from`/`date_to` params, ANDed in alongside Brand/Agent/Proxy/Country so a date
+  range combines correctly with every other filter. Threaded through all 4 loaders, their calling
+  functions, and all 4 `status_server.py` routes. Frontend: `StatusCheckScope`
+  (`src/lib/queries.ts`) gained `dateFrom`/`dateTo`, forwarded by the one shared `statusCheckBody()`
+  helper so all 4 trigger functions picked it up for free; `BrandGroup.tsx`'s `handleCheckStatus`
+  includes them in its scope object, same pattern as the other 5 fields. 6 new Python tests; full
+  scripts suite 139 passed, full frontend suite 2085 passed, build clean. **Deployed the same
+  session:** `scp` + `sudo systemctl restart status-server.service` (the corrected procedure from
+  the entry below), clean restart, `NRestarts=0`, `md5sum` parity reconfirmed. Bounded fix
+  (Tier 2), no spec/plan doc. Task 270.
+- *2026-08-26 (prior):* Schedule Planner's day-cell tooltip gained an Account line (the actual
   login/email used to post, distinct from Agent — the staff member who owns the brand), per a
   direct user request off a screenshot. New `buildAccountIndex` (`src/lib/scheduler/
   scheduleUtils.ts`) mirrors `buildAgentIndex`/`buildCountryIndex` exactly — same

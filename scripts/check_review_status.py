@@ -24,7 +24,7 @@ import re
 import tempfile
 import time
 import zipfile
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from typing import Iterable, Optional, Union
 
 import requests
@@ -555,6 +555,9 @@ TP_STATUS_COLS = [
     "Review Status",
 ]
 
+# Mirrors PLATFORM_DATE_KEYS.tp in src/lib/scoreSummary.ts -- keep in sync.
+TP_DATE_COLS = ["Trust Pilot"]
+
 # Columns that hold a numeric 1-5 star rating (written as "1"–"5").
 # "Score added" / "Score Added" are Yes/No boolean columns — excluded intentionally.
 SCORE_COLS = ["Score"]
@@ -853,7 +856,71 @@ def _is_no_proxy_value(raw_proxy: str) -> bool:
     return not trimmed or re.fullmatch(r"\*+", trimmed) is not None
 
 
-# Mirrors the dashboard's own Brand/Agent/Proxy/Country filter dropdowns so a
+def _parse_post_date(raw: Optional[str]) -> Optional[date]:
+    """Parses a post-date string. Mirrors parsePostDate in
+    src/lib/scoreSummary.ts for the two formats real dashboard data uses --
+    'YYYY-MM-DD' (the DatePicker's own output, also what date_from/date_to
+    arrive as) and 'DD/MM/YYYY' (the sheet/European convention). Unlike the TS
+    version, does not attempt its native JS Date.toString() legacy fallback;
+    a value that fails to parse here simply returns None, which -- consistent
+    with passes_date_filter below -- means the row stays *included* rather
+    than silently excluded."""
+    if not raw:
+        return None
+    s = raw.strip()
+    if not s:
+        return None
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})$", s)
+    if m:
+        y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    else:
+        m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", s)
+        if not m:
+            return None
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    try:
+        return date(y, mo, d)
+    except ValueError:
+        return None
+
+
+def passes_date_filter(
+    data: dict,
+    date_cols: list[str],
+    date_from: Optional[str],
+    date_to: Optional[str],
+) -> bool:
+    """Date-range gate mirroring passesPlatformDateFilter in
+    src/lib/scoreSummary.ts -- an undated or unparseable row always passes
+    (included, not excluded), same "don't silently vanish an entry" bias that
+    function documents, so a Check Status run scoped to a date range still
+    catches entries whose date column is missing or malformed rather than
+    quietly skipping them forever."""
+    if not date_from and not date_to:
+        return True
+    raw = None
+    for col in date_cols:
+        v = (data.get(col) or "").strip()
+        if v:
+            raw = v
+            break
+    if raw is None:
+        return True
+    d = _parse_post_date(raw)
+    if d is None:
+        return True
+    if date_from:
+        fb = _parse_post_date(date_from)
+        if fb and d < fb:
+            return False
+    if date_to:
+        tb = _parse_post_date(date_to)
+        if tb and d > tb:
+            return False
+    return True
+
+
+# Mirrors the dashboard's own Brand/Agent/Proxy/Country/date-range filters so a
 # "Check Status" run can be scoped to exactly what's currently filtered in the
 # table for any of TP/AG/CG/WO, the same way status_filter scopes to a status.
 def matches_scope_filters(
@@ -862,6 +929,9 @@ def matches_scope_filters(
     agents: Optional[list[str]] = None,
     proxies: Optional[list[str]] = None,
     countries: Optional[list[str]] = None,
+    date_cols: Optional[list[str]] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> bool:
     """Return True if `data` matches every provided scope filter (AND across
     fields — same semantics as the dashboard's own filter chain), where each
@@ -873,7 +943,10 @@ def matches_scope_filters(
     uses. Agent/Proxy are case-insensitive, trimmed equality checks against the
     raw column value; a blank column value never matches a non-blank filter,
     except a "No Proxy" request, which matches a blank/redacted Proxy Used
-    value specifically (see `_is_no_proxy_value`)."""
+    value specifically (see `_is_no_proxy_value`). `date_cols` is the calling
+    platform's own date column list (e.g. TP_DATE_COLS) -- required whenever
+    `date_from`/`date_to` is passed, since each platform's post-date lives
+    under a different column name."""
     if brands is not None:
         brand_col = find_brand_col(data)
         brand_val = (data.get(brand_col) or "").strip() if brand_col else ""
@@ -894,6 +967,8 @@ def matches_scope_filters(
         wanted_ccs = {country_code_for_entry({"Country": c}) for c in countries}
         if entry_cc not in wanted_ccs:
             return False
+    if (date_from or date_to) and not passes_date_filter(data, date_cols or [], date_from, date_to):
+        return False
     return True
 
 
@@ -928,7 +1003,8 @@ def _fetch_all(params: dict) -> list:
 def load_entries(tab: Optional[str] = None, include_published: bool = True,
                   brands: Optional[list[str]] = None, status_filters: Optional[list[str]] = None,
                   agents: Optional[list[str]] = None, proxies: Optional[list[str]] = None,
-                  countries: Optional[list[str]] = None) -> list[dict]:
+                  countries: Optional[list[str]] = None, date_from: Optional[str] = None,
+                  date_to: Optional[str] = None) -> list[dict]:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
         params["tab"] = f"eq.{tab}"
@@ -953,7 +1029,8 @@ def load_entries(tab: Optional[str] = None, include_published: bool = True,
         current = (data.get(status_col) or "").strip().lower()
         if not status_filter_matches(current, status_filters, default_statuses):
             continue
-        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries):
+        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries,
+                                      date_cols=TP_DATE_COLS, date_from=date_from, date_to=date_to):
             continue
         out.append(row)
     return out

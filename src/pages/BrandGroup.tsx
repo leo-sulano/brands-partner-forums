@@ -1728,14 +1728,16 @@ export default function BrandGroup() {
     setCheckedViewSnapshot({ ids: pageRows.map((e) => e.id), signature: liveViewSignature });
     // Every platform normally skips Published/Removed entries to avoid re-scraping
     // every already-resolved account on every run. Filtering the table — by status,
-    // brand, agent, proxy, or country — and then clicking Check Status scopes that
-    // run to exactly what's currently filtered, for whichever platform(s) it covers.
-    // Every field (including Status/Agent/Proxy/Country, not just Brand) supports any
-    // number of selected values — the check-status API matches an entry if it hits ANY
-    // of the selected values for a given field (OR within a field, AND across fields),
-    // same as the dashboard's own multi-select filters. "No Proxy" is a real backend
-    // value too (matches a blank/redacted Proxy Used field), so it's sent through like
-    // any other selection with no special-casing needed here.
+    // brand, agent, proxy, country, or date — and then clicking Check Status scopes
+    // that run to exactly what's currently filtered, for whichever platform(s) it
+    // covers. Every multi-select field (Status/Agent/Proxy/Country, not just Brand)
+    // supports any number of selected values — the check-status API matches an entry
+    // if it hits ANY of the selected values for a given field (OR within a field, AND
+    // across fields), same as the dashboard's own multi-select filters. "No Proxy" is
+    // a real backend value too (matches a blank/redacted Proxy Used field), so it's
+    // sent through like any other selection with no special-casing needed here. Date
+    // range is matched against each platform's own post-date column, same as this
+    // page's own dateActive/passesPlatformDateFilter gate above.
     const filterLabel = statusFilter.length > 0
       ? statusFilter.map((sf) => STATUS_MULTI_OPTS.find((o) => o.value === sf)?.label ?? sf).join('/')
       : undefined;
@@ -1747,6 +1749,8 @@ export default function BrandGroup() {
       agents: agentFilter.length > 0 ? agentFilter : undefined,
       proxies: proxyFilter.length > 0 ? proxyFilter : undefined,
       countries: countryFilter.length > 0 ? countryFilter : undefined,
+      dateFrom: dateFrom || undefined,
+      dateTo: dateTo || undefined,
     };
     try {
       const results: { checked?: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }[] = [];

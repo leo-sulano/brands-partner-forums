@@ -109,6 +109,8 @@ def load_ag_entries(
     brands: Optional[list[str]] = None,
     agents: Optional[list[str]] = None,
     proxies: Optional[list[str]] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -136,7 +138,8 @@ def load_ag_entries(
             continue
         # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
         # a Check Status run can be scoped to exactly what's currently filtered.
-        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries):
+        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries,
+                                      date_cols=AG_DATE_COLS, date_from=date_from, date_to=date_to):
             continue
         print(f"  [load] id={row['id']} status={current!r} user={ag_user!r} link={ag_link[:40]!r}")
         out.append(row)
@@ -295,13 +298,16 @@ def check_ag_for_tab(
     agents: Optional[list[str]] = None,
     proxies: Optional[list[str]] = None,
     dry_run: bool = False,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> dict:
     """Run AG status check for all eligible entries in `tab`.
     Returns {checked, updated, errors, sheet_errors, total, skipped_group}."""
     ensure_bridges()
     if ensure_display():
         headless = False  # run non-headless under Xvfb so Cloudflare's challenge clears
-    entries = load_ag_entries(tab, include_published, countries, status_filters, brands, agents, proxies)
+    entries = load_ag_entries(tab, include_published, countries, status_filters, brands, agents, proxies,
+                               date_from, date_to)
     # Rotation removed (2026-08-25); the unscoped-run cap that replaced it was
     # itself removed (2026-08-26) -- every brand is eligible every day, and a
     # filter-free click checks every eligible entry on the tab.

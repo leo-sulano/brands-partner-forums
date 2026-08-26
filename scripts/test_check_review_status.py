@@ -233,6 +233,50 @@ def test_matches_scope_filters_combines_all_filters_with_and():
     assert crs.matches_scope_filters(data, brands={'Rollero'}, agents=['Levi'], proxies=['Enigma'], countries=['Germany']) is False
 
 
+def test_passes_date_filter_no_bounds_matches_everything():
+    assert crs.passes_date_filter({}, crs.TP_DATE_COLS, None, None) is True
+    assert crs.passes_date_filter({'Trust Pilot': '15/08/2026'}, crs.TP_DATE_COLS, None, None) is True
+
+
+def test_passes_date_filter_undated_or_unparseable_row_is_included_not_excluded():
+    # Mirrors passesPlatformDateFilter in scoreSummary.ts: a missing or malformed
+    # date value must not silently drop the row out of a date-scoped check.
+    assert crs.passes_date_filter({}, crs.TP_DATE_COLS, '2026-08-01', '2026-08-31') is True
+    assert crs.passes_date_filter({'Trust Pilot': 'not a date'}, crs.TP_DATE_COLS, '2026-08-01', '2026-08-31') is True
+
+
+def test_passes_date_filter_iso_and_ddmmyyyy_within_range():
+    assert crs.passes_date_filter({'Trust Pilot': '2026-08-15'}, crs.TP_DATE_COLS, '2026-08-01', '2026-08-31') is True
+    assert crs.passes_date_filter({'Trust Pilot': '15/08/2026'}, crs.TP_DATE_COLS, '2026-08-01', '2026-08-31') is True
+
+
+def test_passes_date_filter_outside_range_excluded():
+    assert crs.passes_date_filter({'Trust Pilot': '2026-07-31'}, crs.TP_DATE_COLS, '2026-08-01', '2026-08-31') is False
+    assert crs.passes_date_filter({'Trust Pilot': '2026-09-01'}, crs.TP_DATE_COLS, '2026-08-01', '2026-08-31') is False
+
+
+def test_passes_date_filter_open_ended_bounds():
+    # from-only: anything on/after the bound
+    assert crs.passes_date_filter({'Trust Pilot': '2026-08-01'}, crs.TP_DATE_COLS, '2026-08-01', None) is True
+    assert crs.passes_date_filter({'Trust Pilot': '2026-07-31'}, crs.TP_DATE_COLS, '2026-08-01', None) is False
+    # to-only: anything on/before the bound
+    assert crs.passes_date_filter({'Trust Pilot': '2026-08-31'}, crs.TP_DATE_COLS, None, '2026-08-31') is True
+    assert crs.passes_date_filter({'Trust Pilot': '2026-09-01'}, crs.TP_DATE_COLS, None, '2026-08-31') is False
+
+
+def test_matches_scope_filters_date_range_combines_with_other_fields():
+    data = {'Brands': 'Rollero', 'Agent': 'Lai', 'Trust Pilot': '2026-08-15'}
+    assert crs.matches_scope_filters(
+        data, brands={'Rollero'}, agents=['Lai'],
+        date_cols=crs.TP_DATE_COLS, date_from='2026-08-01', date_to='2026-08-31',
+    ) is True
+    # Date range mismatch fails the whole check, same as any other field.
+    assert crs.matches_scope_filters(
+        data, brands={'Rollero'}, agents=['Lai'],
+        date_cols=crs.TP_DATE_COLS, date_from='2026-09-01', date_to='2026-09-30',
+    ) is False
+
+
 def test_load_entries_filters_by_brands_ignores_whitespace(monkeypatch):
     rows = [
         _row('Brand / TP URL PAGE', 'Boho Casino '),

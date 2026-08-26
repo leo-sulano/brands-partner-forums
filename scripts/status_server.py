@@ -112,6 +112,8 @@ def check_status():
     agents: list[str] | None = body.get('agents') or None
     proxies: list[str] | None = body.get('proxies') or None
     countries: list[str] | None = body.get('countries') or None
+    date_from: str | None = body.get('date_from') or None
+    date_to: str | None = body.get('date_to') or None
 
     # Platform-namespaced lock so TP/AG/CG/WO can run concurrently on the same tab.
     # TP keeps its legacy key format for backwards compat with any running checks.
@@ -133,7 +135,7 @@ def check_status():
             print(f'\n[server] AG check started ({scope})')
             result = check_ag_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['ag'],
                                        status_filters=status_filters, brands=brands, agents=agents,
-                                       proxies=proxies, countries=countries)
+                                       proxies=proxies, countries=countries, date_from=date_from, date_to=date_to)
             print(f'[server] AG done. {result}')
             return jsonify(result)
 
@@ -141,7 +143,7 @@ def check_status():
             print(f'\n[server] CG check started ({scope})')
             result = check_cg_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['cg'],
                                        status_filters=status_filters, brands=brands, agents=agents,
-                                       proxies=proxies, countries=countries)
+                                       proxies=proxies, countries=countries, date_from=date_from, date_to=date_to)
             print(f'[server] CG done. {result}')
             return jsonify(result)
 
@@ -149,13 +151,14 @@ def check_status():
             print(f'\n[server] WO check started ({scope})')
             result = check_wo_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['wo'],
                                        status_filters=status_filters, brands=brands, agents=agents,
-                                       proxies=proxies, countries=countries)
+                                       proxies=proxies, countries=countries, date_from=date_from, date_to=date_to)
             print(f'[server] WO done. {result}')
             return jsonify(result)
 
         # Default: TP Selenium check.
         entries = load_entries(tab, include_published=include_published, brands=brands,
-                                status_filters=status_filters, agents=agents, proxies=proxies, countries=countries)
+                                status_filters=status_filters, agents=agents, proxies=proxies, countries=countries,
+                                date_from=date_from, date_to=date_to)
         # Rotation removed (2026-08-25); the unscoped-run cap that replaced it was
         # itself removed (2026-08-26) -- every brand is eligible every day, and a
         # filter-free click checks every eligible entry on the tab, however many
@@ -256,6 +259,8 @@ def check_ag_status_route():
     agents: list[str] | None = body.get('agents') or None
     proxies: list[str] | None = body.get('proxies') or None
     countries: list[str] | None = body.get('countries') or None
+    date_from: str | None = body.get('date_from') or None
+    date_to: str | None = body.get('date_to') or None
     tab_key = f'ag__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -272,7 +277,7 @@ def check_ag_status_route():
         print(f'\n[server] AG check started ({scope})')
         result = check_ag_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['ag'],
                                    status_filters=status_filters, brands=brands, agents=agents,
-                                   proxies=proxies, countries=countries)
+                                   proxies=proxies, countries=countries, date_from=date_from, date_to=date_to)
         print(f'[server] AG done. {result}')
         return jsonify(result)
     finally:
@@ -297,6 +302,8 @@ def check_cg_status_route():
     agents: list[str] | None = body.get('agents') or None
     proxies: list[str] | None = body.get('proxies') or None
     countries: list[str] | None = body.get('countries') or None
+    date_from: str | None = body.get('date_from') or None
+    date_to: str | None = body.get('date_to') or None
     tab_key = f'cg__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -313,7 +320,7 @@ def check_cg_status_route():
         print(f'\n[server] CG check started ({scope})')
         result = check_cg_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['cg'],
                                    status_filters=status_filters, brands=brands, agents=agents,
-                                   proxies=proxies, countries=countries)
+                                   proxies=proxies, countries=countries, date_from=date_from, date_to=date_to)
         print(f'[server] CG done. {result}')
         return jsonify(result)
     finally:
@@ -338,6 +345,8 @@ def check_wo_status_route():
     agents: list[str] | None = body.get('agents') or None
     proxies: list[str] | None = body.get('proxies') or None
     countries: list[str] | None = body.get('countries') or None
+    date_from: str | None = body.get('date_from') or None
+    date_to: str | None = body.get('date_to') or None
     tab_key = f'wo__{tab or "__all__"}'
 
     lock = _get_tab_lock(tab_key)
@@ -354,7 +363,7 @@ def check_wo_status_route():
         print(f'\n[server] WO check started ({scope})')
         result = check_wo_for_tab(tab, include_published=include_published, headless=PLATFORM_HEADLESS['wo'],
                                    status_filters=status_filters, brands=brands, agents=agents,
-                                   proxies=proxies, countries=countries)
+                                   proxies=proxies, countries=countries, date_from=date_from, date_to=date_to)
         print(f'[server] WO done. {result}')
         return jsonify(result)
     finally:

@@ -6116,7 +6116,7 @@ therefore never actually live — the orphan had old code the whole time). All 5
 `sudo systemctl restart/start/stop/status status-server.service`, each with an explicit warning
 about why the old pattern is unsafe now; also corrected the doc's `~/server.log` log-viewing
 guidance to `journalctl -u status-server.service` (systemd's stdout never reaches that file, a
-gap `[[feedback_ec2_deploy_parity]]` had already flagged but the runbook itself never picked up).
+gap already flagged in this project's own deploy-parity notes but the runbook itself never picked up).
 
 Live-verified end to end this session: `md5sum` parity confirmed for all 5 files against the
 now-live systemd-managed process, `/health` returns `{"ok":true}`, `systemctl status` shows
@@ -6147,3 +6147,50 @@ already passes `agent`/`country` — day-cell chips and all three Paused-column 
 tooltip components; no other surface renders this tooltip (confirmed via grep: `AgentCountryLines`
 and `buildAgentIndex`/`buildCountryIndex` have no importers outside `src/lib/scheduler/` and
 `TabScheduleSection.tsx`). Full build and the scheduler test suite (505 tests) both pass.
+
+---
+
+## Task 270: Check Status — Date Range Filter Now Scopes the Run
+
+**Date:** August 26, 2026
+
+Requested directly by the user, closing a documented gap from earlier the same session: the
+dashboard's Date From/To toolbar filter is now a real Check Status scope, alongside the existing
+Status/Brand/Agent/Proxy/Country five. Setting a date range and clicking Check Status now checks
+only entries whose post-date (each platform's own date column) falls inside that range, instead of
+the date filter being silently ignored (previously narrowing the visible table but not the actual
+Check Status request — flagged as a known gap in this session's own earlier answer).
+
+New shared `passes_date_filter()` + `_parse_post_date()` in `scripts/check_review_status.py` mirror
+`passesPlatformDateFilter`/`parsePostDate` in `src/lib/scoreSummary.ts` exactly for the two formats
+real dashboard data uses — `YYYY-MM-DD` (the DatePicker's own output) and `DD/MM/YYYY` (the sheet/
+European convention) — with the same "undated or unparseable row stays included, not excluded" bias
+the TS version documents, so a date-scoped run can't silently skip an entry with a missing/malformed
+date. New `TP_DATE_COLS = ["Trust Pilot"]` added (AG/CG/WO already had their own `*_DATE_COLS`
+constants from before this task). `matches_scope_filters()` — the single function all 4 platforms
+share — gained `date_cols`/`date_from`/`date_to` params and now ANDs the date-range check in
+alongside Brand/Agent/Proxy/Country, so a date range combines correctly with every other filter
+(covered by a new `test_matches_scope_filters_date_range_combines_with_other_fields` test). Threaded
+`date_from`/`date_to` through all 4 loaders (`load_entries`, `load_ag_entries`, `load_cg_entries`,
+`load_wo_entries`), their calling functions, and all 4 `status_server.py` routes (`/check-status`,
+`/check-ag-status`, `/check-cg-status`, `/check-wo-status`) — each platform's loader passes its own
+date-column list so the comparison always reads the right column per platform.
+
+Frontend: `StatusCheckScope` (`src/lib/queries.ts`) gained `dateFrom`/`dateTo`, forwarded as
+`date_from`/`date_to` in the request body by the one shared `statusCheckBody()` helper (so all 4
+trigger functions picked it up with no per-function change). `BrandGroup.tsx`'s `handleCheckStatus`
+now includes `dateFrom`/`dateTo` from the page's own date-range state in the scope object it builds,
+same pattern as the other 5 fields. Bounded fix (Tier 2 — confined to `scripts/` plus one shared
+frontend request-builder and one scope-construction call site, no `queries.ts` KPI/date-status-
+platform aggregation logic touched), implemented directly with one self-review pass, no formal
+spec/plan doc.
+
+6 new Python tests covering no-bounds/undated/unparseable/in-range/out-of-range/open-ended-bound
+cases plus the combined-with-other-fields case. Full scripts suite: 139 passed (was 133). Full
+frontend suite: 2085 passed, build clean. **Deployed the same session:** `scp`'d the 5 backend files
+and restarted via `sudo systemctl restart status-server.service` (the corrected procedure Task 268,
+above, put in place) — clean restart, `NRestarts=0`, `active (running)`, `/health` returns
+`{"ok":true}`, and `md5sum` parity reconfirmed for all 5 files against the repo. Not yet
+independently exercised against a real dashboard click with a date range set (would require
+triggering a real Selenium run) — worth trying: set a narrow date range on a brand tab with entries
+both inside and outside it, click Check Status, and confirm only the in-range entries get checked.

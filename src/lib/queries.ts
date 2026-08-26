@@ -1217,6 +1217,12 @@ export interface StatusCheckScope {
   agents?: string[];
   proxies?: string[];
   countries?: string[];
+  // 'YYYY-MM-DD', same shape the dashboard's own DatePicker/dateFrom+dateTo
+  // state already uses. Matched against the platform's own post-date column
+  // (mirrors passesPlatformDateFilter in scoreSummary.ts) — an entry with no
+  // date, or an unparseable one, is still included rather than excluded.
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<string, unknown>) {
@@ -1228,6 +1234,8 @@ function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<st
     agents: scope.agents,
     proxies: scope.proxies,
     countries: scope.countries,
+    date_from: scope.dateFrom,
+    date_to: scope.dateTo,
     ...extra,
   };
 }

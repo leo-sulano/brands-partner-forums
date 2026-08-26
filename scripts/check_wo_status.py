@@ -93,6 +93,8 @@ def load_wo_entries(
     agents: Optional[list[str]] = None,
     proxies: Optional[list[str]] = None,
     countries: Optional[list[str]] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> list:
     params: dict = {"select": "id,tab,sheet_row_id,data"}
     if tab:
@@ -121,7 +123,8 @@ def load_wo_entries(
             continue
         # Mirrors the dashboard's Brand/Agent/Proxy/Country filter dropdowns —
         # a Check Status run can be scoped to exactly what's currently filtered.
-        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries):
+        if not matches_scope_filters(data, brands=brand_set, agents=agents, proxies=proxies, countries=countries,
+                                      date_cols=WO_DATE_COLS, date_from=date_from, date_to=date_to):
             continue
         out.append(row)
     return out
@@ -247,8 +250,11 @@ def check_wo_for_tab(
     proxies: Optional[list[str]] = None,
     countries: Optional[list[str]] = None,
     dry_run: bool = False,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ) -> dict:
-    entries = load_wo_entries(tab, include_published, status_filters, brands, agents, proxies, countries)
+    entries = load_wo_entries(tab, include_published, status_filters, brands, agents, proxies, countries,
+                               date_from, date_to)
     # Rotation removed (2026-08-25); the unscoped-run cap that replaced it was
     # itself removed (2026-08-26) -- every brand is eligible every day, and a
     # filter-free click checks every eligible entry on the tab.
