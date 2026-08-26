@@ -65,6 +65,7 @@ const FEATURES: FeatureSection[] = [
       'Browse every tracked account/entry for that brand group, filterable and sortable',
       'Add, edit, or delete entries directly, this is the live source of truth',
       'Any approved user can create or delete a Brand Tab from the sidebar, no code change needed',
+      "Edit Entry includes an AI-powered Review Removal Assessment for removed reviews, see below",
     ],
   },
   {
@@ -86,6 +87,7 @@ const FEATURES: FeatureSection[] = [
     blurb: "A chat assistant that can answer questions over the dashboard's data.",
     bullets: [
       "Read-only, it can look up entries, score summaries, schedules, and pauses, it can't edit anything",
+      'Can also summarize saved Review Removal Assessments across brands or agents',
       'Supports voice input where the browser allows it',
     ],
     href: '/ask-ai',
@@ -109,6 +111,7 @@ const FEATURES: FeatureSection[] = [
     bullets: [
       'Auto-generates each brand\'s weekly posting pattern per platform, click a day to cycle it active/paused, and auto-pauses (then resumes) a brand+platform whose recent success rate drops too low',
       'Day cells show real evidence over the plan — confirmed, removed, pending, and done overlays — plus a color-coded Success Rate column per brand',
+      'A Schedule Status column lets you bulk-pause or resume a whole platform\'s weekdays at once, instead of clicking through each day',
       'Two-way sync with the team\'s PMS: activating a chip creates a linked task, a PMS due-date edit reflects back on the calendar, and marking a day\'s real status moves the task to a matching PMS column',
     ],
     href: '/schedule-planner',
@@ -195,11 +198,34 @@ export default function HowItWorks() {
           </li>
           <li className="text-sm text-slate-500 flex gap-2">
             <span className="text-slate-300">&bull;</span>
-            <span>Scoped to whatever filters are active — status, brand, agent, proxy, or country — so you can re-check just a subset</span>
+            <span>Scoped to whatever filters are active — status, brand, agent, proxy, country, or date range — so you can re-check just a subset, or leave everything blank to check every entry on the tab</span>
           </li>
           <li className="text-sm text-slate-500 flex gap-2">
             <span className="text-slate-300">&bull;</span>
             <span>Updates the status column and shows a toast summary once the run completes</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+          AI Review Removal Assessment
+        </p>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          When a review has been removed, Edit Entry's "Analyze Review" button explains why using real evidence gathered from the rest of that brand's entries, not just a guess.
+        </p>
+        <ul className="mt-3 space-y-1">
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Weighs deterministic evidence first — matching proxy/country patterns, this brand's history on the platform, cross-platform corroboration, and duplicate review text — before naming a Root Cause</span>
+          </li>
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Shows Evidence For and Evidence Against side by side, plus a "For Next Time" block with concrete actions for agents</span>
+          </li>
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Cached per platform, so analyzing one platform's review never overwrites another platform's saved result on the same entry</span>
           </li>
         </ul>
       </div>
