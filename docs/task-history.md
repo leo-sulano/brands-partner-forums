@@ -6411,3 +6411,52 @@ component the two tasks above never touched.
 
 Tier 1 (fast path) — confined to `ScheduleStatusIcon` and its one call site; no other importers.
 Full suite (2093 tests) and build both pass.
+
+---
+
+## Task 276: Ask AI Date-Range Reporting — Final-Review Fix Wave
+
+**Date:** August 26, 2026
+
+Follow-up to Task 272 (above), same session: the plan's final whole-branch review (opus,
+independently re-verified `deno check`/all 146 tests/the v42 deploy claim, hand-diffed the port
+against the real `src/lib/scoreSummary.ts`, and empirically probed edge cases rather than just
+reasoning about them) returned "Ready, with fixes" — 2 Important findings and 5 Minor/ruled
+findings, all bundled into one fix wave per this project's SDD process (no per-finding fixers).
+
+The load-bearing finding: none of the 4 date-aware tools validated that `date_from`/`date_to` were
+actually parseable — an unparseable or shorthand value (`'2026'`, `'may 2026'`, a reversed range)
+silently produced an unfiltered or one-day-wide result, and `get_performance_report` echoed the bad
+input back in its `period` field as if it were the real requested range. Fixed with a new shared
+`validateDateRangeArgs()`, called first in all 4 `runTool` branches. The fix implementer caught a
+real subtlety the review's own suggested code would have missed: `parsePostDate` has a lenient
+native-`Date()` fallback (needed for its real consumer, stored review-post dates like "May 11,
+2026") that actually parses both `'2026'` and `'may 2026'` into valid dates — so a naive
+`parsePostDate(x) == null` check would have accepted exactly the malformed inputs it was meant to
+reject. `validateDateRangeArgs` instead checks a strict `YYYY-MM-DD` regex, deliberately not
+reusing `parsePostDate`'s leniency. Also fixed: `get_performance_report`'s description never
+explained that `totals.entries` counts undecided-status rows too (can exceed `live+removed`);
+`query_entries`'s platform-applicability check was untrimmed unlike the other 3 tools;
+`scoreSummary`'s doc comment gained a note on its deliberate divergence from the dashboard (bucket
+existence is date-gated here, unlike `computeScoreSummary`); `get_performance_report`'s `brands`
+array is now capped (`limit`, default 50/max 100) with a `totalBrands` count, matching every other
+row-returning tool's truncation-disclosure pattern; and two real duplications were factored into
+shared helpers (`resolvePlatformArg`, now used by all 3 platform-taking tools instead of a
+3x-copy-pasted block; `resolveDateBounds`, shared by `passesPlatformDateFilter` and `scoreSummary`'s
+stricter star-breakdown gate) — both verified behavior-unchanged via the full suite. Also added the
+one test the ledger had explicitly flagged as a real, un-covered gap: `performanceReport`'s
+`totals.entries` correctly counting a Pending row without it affecting `live`/`removed`.
+
+A scoped re-review (sonnet) verdicted all 7 findings ADDRESSED, independently re-verifying the
+load-bearing `validateDateRangeArgs` regex claim by reading the code directly rather than trusting
+the fix report, and confirming the two "no behavior change" extractions were genuine no-ops. One
+trivial Minor observation was parked, not fixed: the new `limit` param has no lower-bound guard
+against a negative value — ruled acceptable, since it exactly mirrors `query_entries`'s
+already-accepted `limit` pattern (`Math.min(Number(args?.limit) || N, cap)`) rather than being a
+new class of risk this branch introduced. Full suite: 159 passed (146 + 13 new), `deno check
+tools.ts index.ts` clean. **Deployed the same session:** `supabase functions deploy ai-assistant`,
+confirmed `ACTIVE` version 43 (up from Task 272's v42) via `supabase functions list`. Not folded
+into this fix wave, flagged instead as a separate future task per the reviewer's own framing:
+`get_success_rate_by_field` still returns an unrounded rate while the other 2 date-scoped tools
+floor to a whole percent — pre-existing (Task 220's rounding fix only covered one of the two), not
+introduced by this branch.
