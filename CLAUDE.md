@@ -92,8 +92,10 @@ Brands Partner Forum/
   `tab_schemas.headers` since they were never spreadsheet-imported columns — confirmed at scale
   (444/113 rows) and closed the same way with a third migration, widening the CHECK constraint to
   10 keys. A broad regex sweep of every distinct live `entries.data` key found nothing further.
-  Full suite (2106 tests) and build pass. See Known Issues above and Task 277 in
-  `docs/task-history.md` for the full detail.
+  **Then a re-check of that exact fix found a second real bug**: `fetchEntryCredentials` had no
+  pagination, so Rooster Partners' 1791 entries silently truncated at PostgREST's 1,000-row default,
+  dropping the very row being checked. Fixed and re-verified live. Full suite (2106 tests) and build
+  pass. See Known Issues above and Task 277 in `docs/task-history.md` for the full detail.
 - *2026-08-26 (prior):* The dashboard's Date From/To toolbar filter is now a real Check Status
   scope, alongside the existing Status/Brand/Agent/Proxy/Country five — closing a gap flagged
   earlier the same session (date range narrowed the visible table but was silently ignored by the
@@ -1582,11 +1584,16 @@ Brands Partner Forum/
   `tab_schemas.headers` since they were never spreadsheet-imported columns — a `tab_schemas`-based
   discovery method is structurally blind to them. Confirmed at scale (444/113 rows) before fixing;
   the CHECK constraint now covers 10 keys total; a broad regex sweep of every distinct live
-  `entries.data` key found nothing further. See Task 277 in `docs/task-history.md` for the full
+  `entries.data` key found nothing further. **A second live re-check of the same fix caught a second
+  real bug**: `fetchEntryCredentials` had no pagination, unlike `fetchAllTabEntries` — PostgREST
+  caps an unpaginated response at 1,000 rows, so Rooster Partners' 1791 entries silently truncated,
+  dropping the exact row being checked with no error. Fixed by paginating identically to
+  `fetchAllTabEntries`; re-verified live. See Task 277 in `docs/task-history.md` for the full
   detail, including a real, recurring anomaly the first migration's UPDATE silently missed across
   2 checks (root cause never identified) — the CHECK constraint is exactly the reason it no longer
-  matters whether that class of gap is fully understood, and the live-verification catch of AG/CG
-  Password is why "spot-check the real UI" is load-bearing on any data-model-change claim, not
+  matters whether that class of gap is fully understood. Two distinct real bugs on this task were
+  caught only by live-browsing a real entry on the largest affected tab after the "static" fix
+  looked complete — spot-checking the real UI is load-bearing on any data-model-change claim, not
   optional.
 - The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
   in `src/lib/scheduler/schedulerRules.ts`) now windows the rate to a rolling 30 days ending on

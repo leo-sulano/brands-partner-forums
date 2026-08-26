@@ -6590,8 +6590,24 @@ the columns, backfilled from `entries.data`, stripped both keys, and widened the
 violations. `queries.ts`'s `fetchEntryCredentials` select was widened to match. 2 new tests in
 `entryCredentials.test.ts`. Full suite (2106 tests) and build both pass.
 
-Fully deployed and closed: all 3 migrations applied, frontend pushed and live on Vercel Production,
-CHECK constraint enforced across all 10 known credential-key spellings. The live-verification step
-that caught this (not just unit tests or a static tab_schemas sweep) is the reason it's worth
-treating "spot-check the actual UI" as load-bearing, not optional, on any task claiming a data-model
-change is complete — a static discovery method is only as complete as the surface it can see.
+**Second same-session follow-up, also caught by live verification of this exact fix, not a static
+check:** re-checking the same Rooster Partners entry after deploying the AG/CG Password fix showed
+`CG Password` still blank despite `entry_credentials.cg_password` holding the correct value.
+Root cause: `fetchEntryCredentials` (`queries.ts`) had no pagination, unlike `fetchAllTabEntries`
+(which explicitly paginates in 1 000-row batches for exactly this reason, per its own doc comment).
+PostgREST caps an unpaginated response at 1 000 rows by default; Rooster Partners has 1791 real
+entries, so any tab past that threshold silently truncated to whichever 1 000 rows happened to sort
+first, dropping the rest with no error — this specific entry's row simply never made it into the
+response. Confirmed via the browser's own network request/response, not assumption. Fixed by
+paginating `fetchEntryCredentials` identically to `fetchAllTabEntries`. Re-verified live via
+Playwright: Password, AG Password (correctly blank — this entry never had one), and CG Password all
+now match the database exactly.
+
+Fully deployed and closed: all 3 credential migrations applied, frontend pushed and live on Vercel
+Production (3 separate commits/deploys this session as each issue was caught), CHECK constraint
+enforced across all 10 known credential-key spellings, pagination bug fixed and confirmed. Two
+distinct real bugs — the AG/CG Password gap and the pagination truncation — were caught only by
+live-browsing a real entry after the "static" fix looked complete; neither would have been caught by
+unit tests, the build, or a `tab_schemas` sweep alone. The lesson generalizes past this task: for any
+change to how existing data is read back, spot-check the real UI against a row with real data,
+specifically on the largest tab in scope, not just a build/test pass.
