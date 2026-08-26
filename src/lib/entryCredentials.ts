@@ -15,7 +15,21 @@
 // fetched value back under whichever spelling a given tab's real headers
 // use, so every existing UI call site keeps reading/writing entry.data[h]
 // exactly as it always has.
-export type CredentialField = 'password' | 'casino_password' | 'backup_codes' | 'authenticator_backup';
+//
+// `ag_password`/`cg_password` are app-only fields (src/lib/entryFieldSections.ts's
+// AG_SECTION/CG_SECTION) — the reviewer's own login for the AskGamblers/Casino
+// Guru platform, distinct from `password` (the review-account email login) and
+// from `casino_password` (Rooster Partners' separate in-casino account
+// password). They never appear in any tab's tab_schemas headers (they aren't
+// spreadsheet-imported columns), which is exactly why a live tab_schemas
+// header sweep missed them on the first pass — confirmed live via a direct
+// entries.data query instead (444/113 rows respectively) before adding them
+// here. mergeCredentialsIntoData's headers.includes() check will never match
+// either, so both always fall back to their one literal key — correct, since
+// there's no per-tab spelling variance to resolve.
+export type CredentialField =
+  | 'password' | 'casino_password' | 'backup_codes' | 'authenticator_backup'
+  | 'ag_password' | 'cg_password';
 
 export const CREDENTIAL_FIELD_KEYS: Record<CredentialField, readonly string[]> = {
   password: ['Password'],
@@ -25,6 +39,8 @@ export const CREDENTIAL_FIELD_KEYS: Record<CredentialField, readonly string[]> =
   casino_password: ['Casino Password'],
   backup_codes: ['Backup Code', 'Backup Codes'],
   authenticator_backup: ['Authenticator', 'Authenticator Backup', 'Authenticator\nBackup', 'Authenticator\n'],
+  ag_password: ['AG Password'],
+  cg_password: ['CG Password'],
 };
 
 export interface EntryCredentials {
@@ -32,6 +48,8 @@ export interface EntryCredentials {
   casino_password?: string | null;
   backup_codes?: string | null;
   authenticator_backup?: string | null;
+  ag_password?: string | null;
+  cg_password?: string | null;
 }
 
 const CREDENTIAL_FIELD_ENTRIES = Object.entries(CREDENTIAL_FIELD_KEYS) as [CredentialField, readonly string[]][];

@@ -25,6 +25,12 @@ describe('extractCredentials', () => {
     expect(credentials).toEqual({ password: 'login-pw', casino_password: 'casino-pw' });
   });
 
+  it('splits AG Password and CG Password as their own app-only fields', () => {
+    const { credentials, rest } = extractCredentials({ Account: 'acc1', 'AG Password': 'ag-pw', 'CG Password': 'cg-pw' });
+    expect(credentials).toEqual({ ag_password: 'ag-pw', cg_password: 'cg-pw' });
+    expect(rest).toEqual({ Account: 'acc1' });
+  });
+
   it('records an explicit null when a present key is cleared, so a clear round-trips', () => {
     const { credentials, rest } = extractCredentials({ Password: '' });
     expect(credentials).toEqual({ password: null });
@@ -59,5 +65,10 @@ describe('mergeCredentialsIntoData', () => {
     const data = { Account: 'acc1' };
     const merged = mergeCredentialsIntoData(data, { password: null, backup_codes: 'abc' }, ['Password', 'Backup Codes']);
     expect(merged).toEqual({ Account: 'acc1', 'Backup Codes': 'abc' });
+  });
+
+  it('writes AG Password / CG Password to their one literal key, no tab-header lookup needed', () => {
+    const merged = mergeCredentialsIntoData({}, { ag_password: 'ag-pw', cg_password: 'cg-pw' }, []);
+    expect(merged).toEqual({ 'AG Password': 'ag-pw', 'CG Password': 'cg-pw' });
   });
 });

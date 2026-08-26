@@ -6565,5 +6565,33 @@ Full suite (2104 tests, 10 new in `entryCredentials.test.ts`) and build both pas
 gaps #2/#6c were doc-only; Trybet/Login.tsx/export/PMS-pull were Tier 1-2 (confined, one self-review
 pass each); the `matchesPlatform` fix and the `entries` credentials migration were treated at Tier 3
 rigor (shared filtering logic and cross-cutting data-model change respectively) given the standing
-cross-dashboard-consistency and blast-radius rules. Fully deployed and closed: migration applied,
-frontend pushed and live on Vercel Production, CHECK constraint enforced.
+cross-dashboard-consistency and blast-radius rules.
+
+**Same-session follow-up, caught by live verification, not a static check:** a live Playwright
+walkthrough of a real Rooster Partners entry (Carmen/Spinjo) to confirm the credential fields
+actually render correctly post-fix — the exact "worth a quick eyeball" item this task's own summary
+had flagged as unverified — surfaced a real gap the original migration missed entirely: the Edit
+Entry form showed a populated `CG Password` field, a key that had never appeared anywhere in the
+live `tab_schemas` sweep this task's scoping was based on. Root cause: `AG Password`/`CG Password`
+(the reviewer's own AskGamblers/Casino Guru platform login, distinct from the review-account
+`Password` already migrated) are **app-only fields** — rendered by `src/lib/entryFieldSections.ts`'s
+`AG_SECTION`/`CG_SECTION` in `EditEntryModal`, but never spreadsheet-imported columns, so they never
+show up in any tab's `tab_schemas.headers` at all. A live-header-based discovery method can only find
+what's in `tab_schemas`; it structurally cannot see a field that only ever lived in `entries.data`
+directly. Confirmed at scale via a direct query before fixing (444/113 rows with a real AG/CG
+Password), then ran a maximally broad live regex sweep of every distinct `entries.data` key
+(`pass|backup|auth|pin|secret|token|credential|2fa|otp`, then a second pass for
+`pwd|passcode|recovery|seed|api.?key|login|pin.?code|mfa`) to rule out a third round — found nothing
+else. Fixed the same way: `entryCredentials.ts` gained `ag_password`/`cg_password` as two more
+canonical fields (no per-tab spelling variance to resolve — both always fall back to their one
+literal key), a third migration (`20260826170000_add_ag_cg_password_to_entry_credentials.sql`) added
+the columns, backfilled from `entries.data`, stripped both keys, and widened the CHECK constraint
+(dropped and recreated) to reject them too — applying it re-validated the entire table with zero
+violations. `queries.ts`'s `fetchEntryCredentials` select was widened to match. 2 new tests in
+`entryCredentials.test.ts`. Full suite (2106 tests) and build both pass.
+
+Fully deployed and closed: all 3 migrations applied, frontend pushed and live on Vercel Production,
+CHECK constraint enforced across all 10 known credential-key spellings. The live-verification step
+that caught this (not just unit tests or a static tab_schemas sweep) is the reason it's worth
+treating "spot-check the actual UI" as load-bearing, not optional, on any task claiming a data-model
+change is complete — a static discovery method is only as complete as the surface it can see.

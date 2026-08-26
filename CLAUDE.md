@@ -84,8 +84,16 @@ Brands Partner Forum/
   missed, root cause unidentified) was closed properly with a second migration adding a hard
   Postgres CHECK constraint rejecting all 8 keys from `entries.data` outright — applying it
   validated every existing row with zero violations, and any future write path that tries to
-  reintroduce one now fails loudly instead of silently leaking. Full suite (2104 tests) and build
-  pass. See Known Issues above and Task 277 in `docs/task-history.md` for the full detail.
+  reintroduce one now fails loudly instead of silently leaking. **Then a live Playwright
+  walkthrough of a real entry (the "worth a quick eyeball" verification step this task's own
+  summary had flagged) caught 2 more real, currently-exposed credential fields the tab_schemas
+  sweep structurally could not see**: `AG Password`/`CG Password` are app-only fields
+  (`src/lib/entryFieldSections.ts`, rendered by `EditEntryModal`) that never appear in any tab's
+  `tab_schemas.headers` since they were never spreadsheet-imported columns — confirmed at scale
+  (444/113 rows) and closed the same way with a third migration, widening the CHECK constraint to
+  10 keys. A broad regex sweep of every distinct live `entries.data` key found nothing further.
+  Full suite (2106 tests) and build pass. See Known Issues above and Task 277 in
+  `docs/task-history.md` for the full detail.
 - *2026-08-26 (prior):* The dashboard's Date From/To toolbar filter is now a real Check Status
   scope, alongside the existing Status/Brand/Agent/Proxy/Country five — closing a gap flagged
   earlier the same session (date range narrowed the visible table but was silently ignored by the
@@ -1566,10 +1574,20 @@ Brands Partner Forum/
   existing row and found zero violations (definitive, not a manual spot-check), and any future
   write path (frontend, the EC2 `check_review_status.py` scraper, or anything unaudited) that
   tries to reintroduce one now fails loudly instead of silently leaking. Frontend deployed to
-  Vercel Production the same session. See Task 277 in `docs/task-history.md` for a real, recurring
-  anomaly the verification pass caught (4 pre-existing rows the original migration's UPDATE
-  silently missed across 2 checks, root cause never identified) — the CHECK constraint is exactly
-  the reason it no longer matters whether that class of gap is fully understood.
+  Vercel Production the same session. A **third migration**
+  (`20260826170000_add_ag_cg_password_to_entry_credentials.sql`) closed 2 more real, currently-
+  exposed fields a live Playwright walkthrough of a real entry caught (not the `tab_schemas` sweep
+  the first migration was scoped from): `AG Password`/`CG Password` are app-only fields
+  (`src/lib/entryFieldSections.ts`, rendered by `EditEntryModal`) that never appear in any tab's
+  `tab_schemas.headers` since they were never spreadsheet-imported columns — a `tab_schemas`-based
+  discovery method is structurally blind to them. Confirmed at scale (444/113 rows) before fixing;
+  the CHECK constraint now covers 10 keys total; a broad regex sweep of every distinct live
+  `entries.data` key found nothing further. See Task 277 in `docs/task-history.md` for the full
+  detail, including a real, recurring anomaly the first migration's UPDATE silently missed across
+  2 checks (root cause never identified) — the CHECK constraint is exactly the reason it no longer
+  matters whether that class of gap is fully understood, and the live-verification catch of AG/CG
+  Password is why "spot-check the real UI" is load-bearing on any data-model-change claim, not
+  optional.
 - The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
   in `src/lib/scheduler/schedulerRules.ts`) now windows the rate to a rolling 30 days ending on
   `weekStart` (`recalculatePauses`' `last30DaysRange` in `schedulerService.ts`), not all-time —

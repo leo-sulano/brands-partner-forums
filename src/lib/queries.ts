@@ -853,7 +853,7 @@ async function upsertEntryCredentials(
 export async function fetchEntryCredentials(tab: string, client: SupabaseClient = supabase): Promise<Record<string, EntryCredentials>> {
   const { data, error } = await client
     .from('entry_credentials')
-    .select('entry_id, password, casino_password, backup_codes, authenticator_backup')
+    .select('entry_id, password, casino_password, backup_codes, authenticator_backup, ag_password, cg_password')
     .eq('tab', tab);
   if (error) throw error;
   const byEntryId: Record<string, EntryCredentials> = {};
