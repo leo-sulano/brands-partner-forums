@@ -1009,22 +1009,22 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           const onClick = () => setPauseDaysTarget({ brand, platform });
                           if (weekPausesByPlatform[platform]) {
                             return (
-                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} country={country} account={account} pausedBy={weekPausedByPlatform[platform]} clickable={clickable} onClick={onClick} />
+                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} pausedBy={weekPausedByPlatform[platform]} clickable={clickable} onClick={onClick} />
                             );
                           }
                           if (manuallyPausedPlatformSet.has(platform)) {
                             const days = manualPausedPlatforms.find((x) => x.platform === platform)!.days;
                             return (
-                              <ScheduleStatusIcon key={platform} platform={platform} source="manual" days={days} agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                              <ScheduleStatusIcon key={platform} platform={platform} source="manual" days={days} agent={agent} clickable={clickable} onClick={onClick} />
                             );
                           }
                           if (noSchedulePlatforms.includes(platform)) {
                             return (
-                              <ScheduleStatusIcon key={platform} platform={platform} source="no-schedule" agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                              <ScheduleStatusIcon key={platform} platform={platform} source="no-schedule" agent={agent} clickable={clickable} onClick={onClick} />
                             );
                           }
                           return (
-                            <ScheduleStatusIcon key={platform} platform={platform} source="active" agent={agent} country={country} account={account} clickable={clickable} onClick={onClick} />
+                            <ScheduleStatusIcon key={platform} platform={platform} source="active" agent={agent} clickable={clickable} onClick={onClick} />
                           );
                         })}
                       </div>

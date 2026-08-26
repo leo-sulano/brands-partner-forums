@@ -317,15 +317,18 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
   );
 }
 
-// agent/country/account: same brand-level values as ScheduleCell's own props
-// (see their doc comment above) — shown as extra tooltip lines below the
-// reason text for the 'active' and 'no-schedule' variants, matching the
-// day-cell chips' own tooltip. The two actual-pause variants ('system',
-// 'manual') deliberately drop these three in favor of pausedBy — see the
-// content-building logic in ScheduleStatusIcon below for why.
+// agent: same brand-level value as ScheduleCell's own prop (see its doc
+// comment above) — shown as an extra tooltip line below the reason text.
+// Deliberately just Agent, not Country/Account too: per direct user request,
+// this icon's tooltip is reasoning + Agent only, since it's a per-week
+// control rather than a claim about one specific day's posting account (the
+// day-cell chip's own tooltip is where Country/Account belong, gated on that
+// exact day having real evidence — see ScheduleCellProps' doc comment).
 // pausedBy: who forced the pause, resolved from brand_platform_override.set_by
 // — only meaningful (and only ever passed) for the 'system' variant when its
-// pause.reason is PERSISTENT_PAUSE_REASONS.manual; undefined otherwise.
+// pause.reason is PERSISTENT_PAUSE_REASONS.manual; undefined otherwise. Shown
+// alongside the reason lines (see ScheduleStatusIcon below) since "who forced
+// it" is part of the reasoning, not a separate detail.
 // onClick/clickable: every variant (including 'active', a platform with no
 // paused days at all) opens the same PauseDaysModal, pre-checked to that
 // platform's current effectivePauseDays — this is the Schedule Status
@@ -334,7 +337,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // clickable is gated the same way ScheduleCell's chips already are
 // (isApproved && not a legacy week), so a read-only view never renders a
 // button here.
-type ScheduleStatusIconProps = { agent?: string; country?: string; account?: string; pausedBy?: string; clickable: boolean; onClick: () => void } & (
+type ScheduleStatusIconProps = { agent?: string; pausedBy?: string; clickable: boolean; onClick: () => void } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
   | { platform: Platform; source: 'no-schedule' }
@@ -381,28 +384,23 @@ function titleFor(props: ScheduleStatusIconProps): string {
 // focusable trigger, so wrapping it in Tooltip's own extra <span> would add
 // a redundant tab stop.
 export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
-  const { platform, agent, country, account, pausedBy, clickable, onClick } = props;
+  const { platform, agent, pausedBy, clickable, onClick } = props;
   const [line1, line2] = titleFor(props).split('\n');
   const isPaused = props.source !== 'active';
-  // 'no-schedule' isn't an actual pause — it's just that nothing has been
-  // scheduled yet this week, which is why it still shows Agent/Country/
-  // Account (the plan may be un-executed, but the brand's account/country
-  // already exist and aren't vague). 'system'/'manual' ARE real pauses, so
-  // their tooltip drops those three lines for the pause's own reason (+ who
-  // forced it, for 'system' when known) instead — a paused platform isn't
-  // "about to post as this account," so those lines would be misleading
-  // clutter rather than useful context.
+  // Deliberately terse, per direct user request: reasoning + Agent only —
+  // no Country/Account (this icon is a per-week control, not a claim about a
+  // specific day's posting account the way a day-cell chip's tooltip is).
+  // "Paused by" is treated as part of the reasoning (who forced it, for a
+  // manual/forced 'system' pause), not a separate detail, so it's kept
+  // alongside the reason lines rather than dropped.
   const isActualPause = props.source === 'system' || props.source === 'manual';
   const actionLine = clickable ? (isPaused ? 'Click to manage pause days' : 'Click to pause days') : null;
   const content = (
     <div>
       <div>{line1}</div>
       {line2 && <div>{line2}</div>}
-      {isActualPause ? (
-        pausedBy && <div>Paused by: {pausedBy}</div>
-      ) : (
-        <AgentCountryLines agent={agent} country={country} account={account} />
-      )}
+      {isActualPause && pausedBy && <div>Paused by: {pausedBy}</div>}
+      {agent && <div>Agent: {agent}</div>}
       {actionLine && <div>{actionLine}</div>}
     </div>
   );

@@ -6382,3 +6382,32 @@ gate to a week-level icon would need an additional "any evidence this week" comp
 requested or evidenced here; left as a candidate follow-up if the user flags it separately. Tier 1
 (fast path) — a two-line change inside `ScheduleCell`'s existing `PlatformChip` call, no new props,
 no other importers of this component. Full suite (2093 tests) and build both pass.
+
+---
+
+## Task 275: Schedule Status Icon Tooltip — Reasoning + Agent Only, Drop Country/Account
+
+**Date:** August 26, 2026
+
+Follow-up to Task 274's own candidate-follow-up note directly above, requested by the user right
+after: the Schedule Status column icon (`ScheduleStatusIcon`) should show only the reasoning text
+plus Agent — no Country, no Account, in any of its four variants (`active`/`no-schedule`/`system`/
+`manual`). Confirmed via `AskUserQuestion` whether the "Paused by: `<email>`" line added the same
+session (Task 273) should also go, since a strict "reasoning + Agent only" reading could be taken
+either way — user chose to keep it, treating "who forced this pause" as part of the reasoning rather
+than a separate detail.
+
+`ScheduleStatusIcon` (`src/lib/scheduler/calendarRenderer.tsx`) no longer destructures or renders
+`country`/`account` at all; its content is now unconditionally reason line(s), then `Paused by:
+<email>` (only for the two actual-pause variants, when known), then `Agent: <name>` (all four
+variants, unconditionally), then the existing action line. `ScheduleStatusIconProps` dropped
+`country`/`account` from its shared prop type entirely (was: `{ agent, country, account, pausedBy,
+clickable, onClick }`), and all 4 call sites in `TabScheduleSection.tsx` stopped passing them —
+`country`/`account` are still computed there (`countryIndex.get(brandKey)`/`accountIndex.get(
+brandKey)`) since `ScheduleCell`'s day-cell chips still need them for Task 274's evidence-gated
+display; only this icon's own props were trimmed. `PlatformChip`/`ScheduleCell` (the day-cell chip,
+Tasks 269/274) are unaffected — this is scoped to the Schedule Status column icon only, a distinct
+component the two tasks above never touched.
+
+Tier 1 (fast path) — confined to `ScheduleStatusIcon` and its one call site; no other importers.
+Full suite (2093 tests) and build both pass.
