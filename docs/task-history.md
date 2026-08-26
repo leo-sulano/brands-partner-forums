@@ -6350,3 +6350,35 @@ spec/plan doc. New `buildOverrideSetByMap` test coverage in `scheduleOverrides.t
 (2093 tests) and build both pass; `deno check` on `generate-weekly-schedule/index.ts` (the one
 deployed function that imports `scheduleOverrides.ts` transitively via `schedulerService.ts`) stays
 clean. No migration needed (`set_by` already existed); no deploy needed (frontend-only change).
+
+---
+
+## Task 274: Schedule Planner — Fix Task 273's Misread; Day-Cell Chips Hide Country/Account Until Real Evidence Exists
+
+**Date:** August 26, 2026
+
+Corrects a misread in Task 273 directly above, caught by the user off a screenshot of a plan-only
+"AskGamblers: Scheduled" chip (Wed Aug 26, no entry/review added yet) still showing
+`Country: Australia` / `Account: 1826 | Test | Australia`. Task 273 had read the user's original
+report backwards — treating the already-shipped "unexecuted plan still shows Account/Country" state
+(Task 269) as the correct, unchanged half of the request, when the user's actual point (stated both
+times) was the opposite: Country/Account should only appear once a day is confirmed backed by a real
+status — Published, Removed, Pending, or Done — never for a plan-only "Scheduled" chip with no
+add-date evidence yet.
+
+Fixed narrowly in `ScheduleCell` (`src/lib/scheduler/calendarRenderer.tsx`), the exact component the
+screenshot's chip renders from: `country`/`account` are now only passed down to `PlatformChip` when
+`hasEvidence` (`isConfirmed || isRemoved || isPending || isDone`) is true for that exact day;
+otherwise `undefined`, so `AgentCountryLines` simply omits those two lines. Agent is unaffected and
+still always shows — it answers "who owns this brand," a fact that doesn't depend on whether a
+specific day has posted yet, unlike Country/Account which describe a specific account's real
+activity. `PlatformChipProps`' doc comment now states the caller-gating contract explicitly (the
+component itself has no evidence concept — it renders whatever `country`/`account` it's handed).
+
+Deliberately scoped to the day-cell chip only, not the separate Schedule Status column icon
+(`ScheduleStatusIcon`'s `'no-schedule'`/`'active'` variants, Task 269) — the user's screenshot and
+wording ("the schedule for tomorrow") both point at a single day's chip, and generalizing the same
+gate to a week-level icon would need an additional "any evidence this week" computation not
+requested or evidenced here; left as a candidate follow-up if the user flags it separately. Tier 1
+(fast path) — a two-line change inside `ScheduleCell`'s existing `PlatformChip` call, no new props,
+no other importers of this component. Full suite (2093 tests) and build both pass.

@@ -45,13 +45,17 @@ interface ScheduleCellProps {
   confirmedByPlatform: Partial<Record<Platform, boolean>>;
   pendingByPlatform: Partial<Record<Platform, boolean>>;
   doneByPlatform: Partial<Record<Platform, boolean>>;
-  // Brand-level Agent/Country (most-recently-updated entry, same resolution
-  // rule buildAgentIndex/buildCountryIndex use for PMS assignment) shown as
-  // extra tooltip lines below the existing status text — Agent doubles as
-  // "who this would be assigned to in PMS", so it deliberately isn't paired
-  // with a separate PMS-reported assignee name (redundant, and can disagree
-  // with Agent when a task predates the current Agent value). Not
-  // per-platform or per-day — a brand has one Agent/Country/Account
+  // Brand-level Agent/Country/Account (most-recently-updated entry, same
+  // resolution rule buildAgentIndex/buildCountryIndex/buildAccountIndex use
+  // for PMS assignment). Agent is shown unconditionally — it doubles as "who
+  // this would be assigned to in PMS" regardless of whether the day has
+  // happened yet. Country/Account are different: they describe a specific
+  // account's real posting activity, so ScheduleCell only ever passes them
+  // down to a chip once that exact day has real add-date evidence (Published/
+  // Removed/Pending/Done) — a plan-only "Scheduled" chip has no proof this
+  // brand's most-recently-updated entry is even the account that will end up
+  // posting that day, so showing Country/Account there would assert a fact
+  // that isn't settled yet. Not per-platform — a brand has one Agent
   // regardless of which platform's chip is hovered.
   agent?: string;
   country?: string;
@@ -84,6 +88,10 @@ interface PlatformChipProps {
   planUnverified: boolean;
   label: string;
   agent?: string;
+  // Caller-gated (ScheduleCell only passes these when this exact day has real
+  // add-date evidence — see the doc comment on ScheduleCellProps) — this
+  // component just renders whatever it's given, it doesn't know about
+  // evidence itself.
   country?: string;
   account?: string;
   // True whenever this chip represents an actual pause (scheduler-level or a
@@ -281,8 +289,12 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
             planUnverified={planUnverified}
             label={label}
             agent={agent}
-            country={country}
-            account={account}
+            // Country/Account only once this exact day has real add-date
+            // evidence — see the doc comment on ScheduleCellProps' own
+            // agent/country/account fields above for why a plan-only
+            // "Scheduled" chip (hasEvidence false) must not show them.
+            country={hasEvidence ? country : undefined}
+            account={hasEvidence ? account : undefined}
             isPausedState={isPausedState}
             pauseReason={pauseReason}
             pausedBy={pausedBy}
