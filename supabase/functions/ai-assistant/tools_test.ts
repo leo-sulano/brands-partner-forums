@@ -1650,3 +1650,43 @@ Deno.test('get_score_summary reports dateRange as null when no date filter is pa
   assertEquals(result.dateRange, null);
   assertEquals(result.excludedRows, 0);
 });
+
+Deno.test('successRateByField applies a date range with the same lenient (undated-always-counts) gate as scoreSummary', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published', 'Trust Pilot': '2026-05-15' } }, // in range
+    { id: '2', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Removed', 'Trust Pilot': '2026-04-01' } }, // out of range, excluded
+    { id: '3', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Removed' } }, // undated, always counts
+  ];
+  const out = successRateByField(entries, 'proxy', ['tp'], new Set(), undefined, { from: '2026-05-01', to: '2026-05-31' });
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.removed, 1);
+  assertEquals(enigma.total, 2);
+});
+
+Deno.test('successRateByField with no range behaves exactly as before (regression lock)', () => {
+  const entries: EntryRow[] = [
+    { id: '1', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Published', 'Trust Pilot': '2026-05-15' } },
+    { id: '2', tab: 't', data: { 'Proxy Used': 'Enigma', 'Review Status': 'Removed', 'Trust Pilot': '2026-04-01' } },
+  ];
+  const out = successRateByField(entries, 'proxy');
+  const enigma = out.find((r) => r.value === 'Enigma')!;
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.removed, 1);
+});
+
+Deno.test('get_success_rate_by_field end-to-end applies date_from/date_to', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'A', 'Proxy Used': 'Enigma', 'Review Status': 'Published', 'Trust Pilot': '2026-05-15' } },
+      { id: '2', tab: 't', data: { Brand: 'A', 'Proxy Used': 'Enigma', 'Review Status': 'Removed', 'Trust Pilot': '2026-04-01' } },
+    ],
+    removed_platform_brands: [],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_success_rate_by_field', {
+    field: 'proxy', date_from: '2026-05-01', date_to: '2026-05-31',
+  });
+  const enigma = result.results.find((r: any) => r.value === 'Enigma');
+  assertEquals(enigma.live, 1);
+  assertEquals(enigma.removed, 0);
+});

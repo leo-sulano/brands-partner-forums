@@ -535,6 +535,7 @@ export function successRateByField(
   platforms: Platform[] = ['tp'],
   removedPlatformBrands: Set<string> = new Set(),
   resolvedAgentLabels?: Map<string, string>,
+  range: DateRangeArgs = {},
 ): FieldSuccessRate[] {
   const resolved = platforms.length === 0 ? (['tp', 'ag', 'cg', 'wo'] as Platform[]) : platforms;
   const fieldKeys = FIELD_KEYS[field];
@@ -558,6 +559,7 @@ export function successRateByField(
       if (brand && removedPlatformBrands.has(platformRemovedKey(e.tab, brand, platform))) continue;
       const status = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
       if (!status) continue;
+      if (!passesPlatformDateFilter(e.data, platform, range.from, range.to)) continue;
       matchedAny = true;
       if (isLiveStatus(status)) matchedLive = true;
       else if (isRemovedStatus(status)) matchedRemoved = true;
@@ -940,13 +942,18 @@ export const TOOL_DEFS = [
         'Planner does (an authoritative brand-agent mapping first, falling back to each ' +
         'account\'s own recorded Agent value only when that mapping has no answer for the ' +
         'brand), so it agrees with what Schedule Planner shows even for tabs whose accounts ' +
-        'have no Agent field recorded at all.',
+        'have no Agent field recorded at all. ' +
+        'date_from/date_to (YYYY-MM-DD, inclusive) narrow the live/removed counts to that ' +
+        'period — a row with no parseable date for a checked platform still counts (never ' +
+        'silently excluded by the range, same as every other date-filtered tool here).',
       parameters: {
         type: 'object',
         properties: {
           field: { type: 'string', enum: ['proxy', 'agent', 'country'] },
           platform: { type: 'array', items: { type: 'string', enum: ['tp', 'ag', 'cg', 'wo'] }, description: 'One or more platforms. Passing multiple platforms combines their live/removed counts into one total (OR semantics — a brand counts as live if ANY listed platform says so, not an intersection). Omitting this parameter defaults to TrustPilot only, matching this tool\'s existing single-platform behavior — explicitly list platforms (including all 4) to get a combined total.' },
           tab: { type: 'string', description: 'optional: restrict to one tab (exact name from list_tabs)' },
+          date_from: { type: 'string', description: 'YYYY-MM-DD, inclusive start of a date range' },
+          date_to: { type: 'string', description: 'YYYY-MM-DD, inclusive end of a date range' },
         },
         required: ['field'],
       },
@@ -1227,7 +1234,8 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const agentLabels = args?.field === 'agent'
       ? resolveAgentLabels(data as (EntryRow & { updated_at: string })[], assignmentRows)
       : undefined;
-    return { results: successRateByField(data ?? [], args?.field, platforms, removedSet, agentLabels) };
+    const range: DateRangeArgs = { from: args?.date_from, to: args?.date_to };
+    return { results: successRateByField(data ?? [], args?.field, platforms, removedSet, agentLabels, range) };
   }
   if (name === 'get_schedule') {
     if (!args?.tab || !args?.week_start) {
