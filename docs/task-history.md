@@ -6611,3 +6611,12 @@ live-browsing a real entry after the "static" fix looked complete; neither would
 unit tests, the build, or a `tab_schemas` sweep alone. The lesson generalizes past this task: for any
 change to how existing data is read back, spot-check the real UI against a row with real data,
 specifically on the largest tab in scope, not just a build/test pass.
+
+**Same-session correction, no action taken:** while discussing follow-ups, flagged 10 Trybet rows
+with a real value under the old wrong `Brands` key (from the config bug this same task fixed) as
+apparently orphaned/invisible. A direct query before acting on it found all 10 already carry the
+*identical* value under the correct `Brand Name` key too (`select count(*) ... where Brands is
+distinct from "Brand Name"` returned 0) — they display correctly today, and `Brands` is harmless,
+functionally-unused leftover data, not a bug. User confirmed skipping the cleanup rather than
+writing an unnecessary production data change. Recorded so this isn't mistakenly treated as a real
+open item later.
