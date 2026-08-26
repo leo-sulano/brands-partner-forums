@@ -787,13 +787,24 @@ export const TOOL_DEFS = [
         'tab-scoped query returns nothing, say the tab may have been archived or paused rather ' +
         'than concluding it doesn\'t exist. ' +
         'IMPORTANT: when user says "approved", "live", or "active" use status="Published". ' +
-        'IMPORTANT: always pass month as "may 2026" style when user mentions a month.',
+        'IMPORTANT: always pass month as "may 2026" style when user mentions a month. ' +
+        'For anything broader than one calendar month — a week, a year, a quarter, or a ' +
+        'custom range — use date_from/date_to (YYYY-MM-DD, inclusive) instead of month. ' +
+        'When tab is also given, only that tab\'s own active platform(s) are checked; ' +
+        'otherwise all 4 platforms are checked, but only the ones a given row actually has ' +
+        'a status recorded for — a row counts if ANY of ITS applicable platforms\' dates is ' +
+        'in range. A row with no parseable date for an applicable platform still counts ' +
+        '(never silently excluded by the range, same as every other date-filtered tool here). ' +
+        'month and date_from/date_to can be combined (both must pass) but this is rarely ' +
+        'useful — prefer one or the other.',
       parameters: {
         type: 'object',
         properties: {
           tab: { type: 'string' },
           status: { type: 'string' },
           month: { type: 'string', description: 'filter by month, e.g. "may 2026" or "2026-05"' },
+          date_from: { type: 'string', description: 'YYYY-MM-DD, inclusive start of a date range — use for a week/year/quarter/custom range instead of month' },
+          date_to: { type: 'string', description: 'YYYY-MM-DD, inclusive end of a date range' },
           contains: { type: 'string' },
           field_filters: {
             type: 'object',
@@ -1074,6 +1085,23 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     let rows: EntryRow[] = (data ?? []).filter((e: EntryRow) => !archivedSet.has(e.tab) && !pausedSet.has(e.tab));
     if (args?.status) rows = rows.filter((e) => matchesStatus(e, args.status));
     if (args?.month) rows = rows.filter((e) => matchesMonth(e, args.month));
+    if (args?.date_from || args?.date_to) {
+      const tabPlatforms = args?.tab ? getTabPlatforms(args.tab) : [];
+      const platformsToCheck: Platform[] = tabPlatforms.length > 0 ? tabPlatforms : (['tp', 'ag', 'cg', 'wo'] as Platform[]);
+      rows = rows.filter((e) => {
+        // Only check a platform's date if the row actually has a status
+        // recorded for it — otherwise an irrelevant platform's simply-absent
+        // date key would trigger passesPlatformDateFilter's "undated ->
+        // always true" bias and silently defeat the range for almost every
+        // row (most rows only ever populate 1-2 of the 4 platforms' fields).
+        // If the row has no status for ANY checked platform, fall back to
+        // checking them all anyway — same "unsure, include" bias as the rest
+        // of this file, just applied one level up.
+        const applicable = platformsToCheck.filter((p) => !!pick(e.data, PLATFORM_STATUS_KEYS[p]));
+        const checkPlatforms = applicable.length > 0 ? applicable : platformsToCheck;
+        return checkPlatforms.some((p) => passesPlatformDateFilter(e.data, p, args.date_from, args.date_to));
+      });
+    }
     if (args?.contains) rows = rows.filter((e) => entryMatches(e, args.contains));
     if (args?.field_filters) rows = rows.filter((e) => matchesFieldFilters(e, args.field_filters));
     const limit = Math.min(Number(args?.limit) || 25, 50);

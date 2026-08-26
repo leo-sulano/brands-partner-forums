@@ -1523,3 +1523,57 @@ Deno.test('get_review_analyses rejects an invalid platform value', async () => {
   const result: any = await runTool(mockSupabaseTables(tables), 'get_review_analyses', { platform: 'nonsense' });
   assertEquals(typeof result.error, 'string');
 });
+
+Deno.test('query_entries date_from/date_to filters by the tab\'s own active platform(s) when tab is given', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'TP Brand Injection', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-05-15' } },
+      { id: '2', tab: 'TP Brand Injection', data: { Brand: 'Zeta', 'Review Status': 'Published', 'Trust Pilot': '2026-04-01' } },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {
+    tab: 'TP Brand Injection', date_from: '2026-05-01', date_to: '2026-05-31',
+  });
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].data.Brand, 'Acme');
+});
+
+Deno.test('query_entries date_from/date_to with no tab given ORs across all 4 platforms, checking only platforms the row has a status for', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 't', data: { Brand: 'Acme', 'AG Review Status': 'Published', 'Ask Gambler review added': '2026-05-15' } }, // in range on ag
+      { id: '2', tab: 't', data: { Brand: 'Zeta', 'CG Review Status': 'Published', 'Casino Guru review added': '2026-04-01' } }, // out of range on cg, no other platform status
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {
+    date_from: '2026-05-01', date_to: '2026-05-31',
+  });
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].data.Brand, 'Acme');
+});
+
+Deno.test('query_entries date_from/date_to includes a row with a status but no date at all (undated bias matches passesPlatformDateFilter)', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'TP Brand Injection', data: { Brand: 'Acme', 'Review Status': 'Published' } }, // status present, no date field at all
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {
+    tab: 'TP Brand Injection', date_from: '2026-05-01', date_to: '2026-05-31',
+  });
+  assertEquals(result.total, 1);
+});
+
+Deno.test('query_entries combines date_from/date_to with month (both must pass)', async () => {
+  const tables = {
+    entries: [
+      { id: '1', tab: 'TP Brand Injection', data: { Brand: 'Acme', 'Review Status': 'Published', 'Trust Pilot': '2026-05-15' } }, // passes both
+      { id: '2', tab: 'TP Brand Injection', data: { Brand: 'Zeta', 'Review Status': 'Published', 'Trust Pilot': '2026-06-01' } }, // fails date_to (and month)
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'query_entries', {
+    tab: 'TP Brand Injection', month: 'may 2026', date_from: '2026-05-01', date_to: '2026-05-31',
+  });
+  assertEquals(result.total, 1);
+  assertEquals(result.rows[0].data.Brand, 'Acme');
+});
