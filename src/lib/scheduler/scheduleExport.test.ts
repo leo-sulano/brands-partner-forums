@@ -23,9 +23,10 @@ function makePause(): BrandPlatformPause {
 }
 
 describe('SCHEDULE_EXPORT_HEADERS', () => {
-  it('has one column per weekday plus brand/platform/paused/removed', () => {
+  it('has one column per weekday plus brand/platform/paused/removed/evidence', () => {
     expect(SCHEDULE_EXPORT_HEADERS).toEqual([
       'Brand', 'Platform', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Paused This Week', 'Page Removed',
+      'Mon Evidence', 'Tue Evidence', 'Wed Evidence', 'Thu Evidence', 'Fri Evidence',
     ]);
   });
 });
@@ -40,7 +41,7 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: [],
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'Trustpilot', 'Active', '', 'Paused', '', '', 'N', 'N'],
+      ['Acme', 'Trustpilot', 'Active', '', 'Paused', '', '', 'N', 'N', '', '', '', '', ''],
     ]);
   });
 
@@ -53,7 +54,7 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: ['tp'],
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'Trustpilot', '', '', '', '', '', 'Y', 'Y'],
+      ['Acme', 'Trustpilot', '', '', '', '', '', 'Y', 'Y', '', '', '', '', ''],
     ]);
   });
 
@@ -80,5 +81,22 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: ['tp'],
     }];
     expect(buildScheduleExportRows(data)).toEqual([]);
+  });
+
+  it('surfaces per-weekday evidence independently of the plan columns', () => {
+    const data: ScheduleExportBrandData[] = [{
+      brand: 'Acme',
+      platforms: ['tp'],
+      // A past day the plan never covered (no brand_schedule row) but a real
+      // post happened anyway — exactly the plan-vs-evidence divergence the
+      // calendar's own overlay renders and this export previously dropped.
+      rowsByPlatform: {},
+      pausesByPlatform: {},
+      removedPlatforms: [],
+      evidenceByPlatform: { tp: { monday: 'confirmed', tuesday: 'removed', wednesday: 'pending', thursday: 'done', friday: null } },
+    }];
+    expect(buildScheduleExportRows(data)).toEqual([
+      ['Acme', 'Trustpilot', '', '', '', '', '', 'N', 'N', 'Confirmed', 'Removed', 'Pending', 'Done', ''],
+    ]);
   });
 });

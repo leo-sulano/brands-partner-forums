@@ -9,7 +9,6 @@ import GoogleAuthButton from '../components/GoogleAuthButton';
 export default function Login() {
   const { session } = useAuth();
   const navigate = useNavigate();
-  if (session) return <Navigate to="/" replace />;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +71,8 @@ export default function Login() {
       setResetSent(true);
     }
   }
+
+  if (session) return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">

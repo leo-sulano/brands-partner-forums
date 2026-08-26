@@ -15,6 +15,7 @@ import type { BrandEntry, TabKpis, BrandKpis, CountBreakdown } from '../types/br
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
+import { extractCredentials, type EntryCredentials } from './entryCredentials.ts';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -831,6 +832,38 @@ async function logChange(
   if (error) throw error;
 }
 
+// Upserts whichever credential fields are actually present in `credentials`
+// (a field is absent, not merely null, when that tab has no header for it at
+// all — see extractCredentials) — columns omitted from the upsert payload
+// keep their existing stored value rather than being reset, so a save on one
+// tab can never wipe a concept only some other tab's entries carry.
+async function upsertEntryCredentials(
+  entryId: string,
+  tab: string,
+  credentials: EntryCredentials,
+  client: SupabaseClient = supabase,
+): Promise<void> {
+  if (Object.keys(credentials).length === 0) return;
+  const { error } = await client
+    .from('entry_credentials')
+    .upsert({ entry_id: entryId, tab, ...credentials, updated_at: new Date().toISOString() }, { onConflict: 'entry_id' });
+  if (error) throw error;
+}
+
+export async function fetchEntryCredentials(tab: string, client: SupabaseClient = supabase): Promise<Record<string, EntryCredentials>> {
+  const { data, error } = await client
+    .from('entry_credentials')
+    .select('entry_id, password, casino_password, backup_codes, authenticator_backup')
+    .eq('tab', tab);
+  if (error) throw error;
+  const byEntryId: Record<string, EntryCredentials> = {};
+  for (const row of data ?? []) {
+    const { entry_id, ...rest } = row as EntryCredentials & { entry_id: string };
+    byEntryId[entry_id] = rest;
+  }
+  return byEntryId;
+}
+
 export async function updateEntryData(
   id: string,
   tab: string,
@@ -847,7 +880,13 @@ export async function updateEntryData(
   const actor = await currentActor();
   await logChange('edit_log', 'entry', id, existing, actor, existing.tab as string);
 
-  const mergedData = { ...(existing.data as Record<string, string | null>), ...fields };
+  // Credential-shaped fields never reach entries.data (public via the anon
+  // key) — they're upserted into entry_credentials instead. Without this,
+  // every Edit Entry save (which resends the full form, including whatever
+  // the credential inputs currently hold) would write them straight back
+  // into the public table on the very next edit.
+  const { credentials, rest } = extractCredentials(fields);
+  const mergedData = { ...(existing.data as Record<string, string | null>), ...rest };
   const syncTag = crypto.randomUUID();
   const { error: upErr } = await supabase
     .from('entries')
@@ -855,6 +894,7 @@ export async function updateEntryData(
     .eq('id', id);
   if (upErr) throw upErr;
 
+  await upsertEntryCredentials(id, tab, credentials);
   invalidateTabCache(tab);
 }
 
@@ -934,17 +974,23 @@ export async function insertEntry(
 ): Promise<void> {
   const sheetRowId = `dashboard-${crypto.randomUUID()}`;
   const syncTag = crypto.randomUUID();
-  const { error } = await supabase
+  // See updateEntryData's matching comment — credential-shaped fields go to
+  // entry_credentials, never into entries.data.
+  const { credentials, rest } = extractCredentials(fields);
+  const { data: inserted, error } = await supabase
     .from('entries')
     .insert({
       tab,
       sheet_row_id: sheetRowId,
-      data: fields,
+      data: rest,
       last_edited_by: 'dashboard',
       last_edited_email: await currentUserEmail(),
       last_sync_tag: syncTag,
-    });
+    })
+    .select('id')
+    .single();
   if (error) throw error;
+  await upsertEntryCredentials(inserted.id, tab, credentials);
   invalidateTabCache(tab);
 }
 
@@ -989,6 +1035,10 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
 
   const { error } = await supabase.from('entries').update({ tab: newTab }).eq('id', id);
   if (error) throw error;
+  // Keep entry_credentials.tab (denormalized for fetchEntryCredentials'
+  // per-tab lookup) from silently going stale — a no-op if this entry has no
+  // credentials row at all.
+  await supabase.from('entry_credentials').update({ tab: newTab }).eq('entry_id', id);
   invalidateTabCache(oldTab);
   invalidateTabCache(newTab);
 }

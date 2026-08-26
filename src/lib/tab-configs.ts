@@ -85,7 +85,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Country',
     'Proxy Used',
     'Account Name',
-    'Brands',
+    'Brand Name',
     'Brand Link',
     'Trust Pilot',
     'Link to the profile',

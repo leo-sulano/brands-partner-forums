@@ -18,7 +18,8 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow } from '../lib/queries';
+import { mergeCredentialsIntoData, type EntryCredentials } from '../lib/entryCredentials';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
@@ -844,12 +845,25 @@ export default function BrandGroup() {
 
     (async () => {
       try {
-        const [rawEntries, tabHeaders, analysisRows] = await Promise.all([
+        const [entriesBeforeCredentials, tabHeaders, analysisRows, credentialsByEntryId] = await Promise.all([
           fetchRawEntriesByTab(decodedTab),
           fetchTabHeaders(decodedTab),
           fetchEntryReviewAnalyses(decodedTab).catch(() => [] as EntryReviewAnalysisRow[]),
+          // Credential-shaped fields (Password, Backup Codes, Authenticator
+          // Backup, Casino Password) no longer live in entries.data — merge
+          // them back in here, under whichever header spelling this tab's
+          // real headers use, so every downstream consumer of `rawEntries`
+          // below (visible-column detection, brand filter, the modals) keeps
+          // working exactly as before. Fails open like fetchEntryReviewAnalyses
+          // above: a transient failure shows blank credential fields rather
+          // than breaking the whole tab load.
+          fetchEntryCredentials(decodedTab).catch(() => ({}) as Record<string, EntryCredentials>),
         ]);
         if (canceled) return;
+        const rawEntries = entriesBeforeCredentials.map((e) => ({
+          ...e,
+          data: mergeCredentialsIntoData(e.data, credentialsByEntryId[e.id], tabHeaders),
+        }));
         const configCols = getTabColumns(decodedTab);
         const visible = configCols
           ? configCols
@@ -1494,6 +1508,26 @@ export default function BrandGroup() {
     return isNotDone(v);
   }
 
+  // When one or more brands are explicitly selected via the Brand filter
+  // (or the ?brand= deep link, which sets the same state), the user is
+  // deliberately looking at that brand's own page — show its real
+  // historical counts/rows on a flagged-removed platform instead of
+  // excluding them, same as the rest of the app already does for an
+  // unfiltered/global view. Also true when the tab has exactly one brand
+  // (uniqueBrands.length === 1): the whole-tab view already IS that one
+  // brand's page, and the Brand filter dropdown itself only renders for
+  // uniqueBrands.length > 1 (see ~line 1962), so a single-brand tab could
+  // otherwise never reach brandScoped through the filter at all. The moment
+  // a second brand appears, this auto-trigger turns off and reverts to
+  // requiring an explicit Brand filter selection, matching the multi-brand
+  // behavior below. Empty brandFilter on a multi-brand tab (default
+  // whole-tab view) keeps today's exclusion behavior unchanged. Shared by
+  // matchesPlatform, displayKpis, and displayTotals below — the same flag
+  // gates the same exclusion everywhere, so the table and the KPI cards
+  // above it can no longer disagree on a flagged brand/platform (Task 214
+  // left this asymmetric; closed here).
+  const brandScoped = brandFilter.length > 0 || uniqueBrands.length === 1;
+
   // A row matches if ANY relevant platform's own status+date state satisfies
   // the current filters — status and date are checked against the SAME
   // platform, not independently. Multi-select only widens WHICH platforms
@@ -1502,7 +1536,7 @@ export default function BrandGroup() {
   function matchesPlatform(e: { data: Record<string, string | null> }, platform: Platform): boolean {
     if (dateActive && !passesPlatformDateFilter(e.data, platform, dateFrom, dateTo)) return false;
     if (statusFilter.length === 0) return true;
-    if (brandCol && isPlatformRemoved(e.data[brandCol], platform)) return false;
+    if (!brandScoped && brandCol && isPlatformRemoved(e.data[brandCol], platform)) return false;
     const col = platformStatusCol(headers, platform);
     if (!col) return false;
     const v = (e.data[col] ?? '').toLowerCase();
@@ -1510,28 +1544,6 @@ export default function BrandGroup() {
   }
 
   const filtered = ratingFiltered.filter((e) => relevantPlatforms.some((p) => matchesPlatform(e, p)));
-
-  // Platform card counts — computed from ratingFiltered with each platform's
-  // own date-range check (passesPlatformDateFilter) so they always reflect
-  // active filters without double-applying a second, coarser date filter.
-  // When one or more brands are explicitly selected via the Brand filter
-  // (or the ?brand= deep link, which sets the same state), the user is
-  // deliberately looking at that brand's own page — show its real
-  // historical counts on a flagged-removed platform instead of excluding
-  // it, same as the rest of the app already does for an unfiltered/global
-  // view. Also true when the tab has exactly one brand (uniqueBrands.length
-  // === 1): the whole-tab view already IS that one brand's page, and the
-  // Brand filter dropdown itself only renders for uniqueBrands.length > 1
-  // (see ~line 1962), so a single-brand tab could otherwise never reach
-  // brandScoped through the filter at all. The moment a second brand
-  // appears, this auto-trigger turns off and reverts to requiring an
-  // explicit Brand filter selection, matching the multi-brand behavior
-  // below. Empty brandFilter on a multi-brand tab (default whole-tab view)
-  // keeps today's exclusion behavior unchanged. Shared by displayKpis and
-  // displayTotals below — matchesPlatform's own exclusion (line ~1397)
-  // deliberately does NOT read this flag, which is the source of the
-  // divergence noted in the comment above displayTotals.
-  const brandScoped = brandFilter.length > 0 || uniqueBrands.length === 1;
 
   const displayKpis = (() => {
     function countPlatform(key: Platform) {
@@ -1584,10 +1596,10 @@ export default function BrandGroup() {
   // Summary's combined totals) — never summed per platform, which would double-count
   // a single row that's e.g. Live on both TP and AG when both are selected. This is
   // the same OR-across-selected-platforms rule `filtered`/`matchesPlatform` above
-  // already apply to the table itself, so the cards can no longer disagree with it.
-  // Exception: when brandScoped is true, these cards' numbers and the table's visible
-  // rows below CAN diverge on a flagged brand/platform, since matchesPlatform's own
-  // exclusion (line ~1397) is deliberately unchanged.
+  // already apply to the table itself, so the cards can no longer disagree with it —
+  // including on a flagged brand/platform, since matchesPlatform now shares the same
+  // brandScoped exception these cards use (see the comment above brandScoped's own
+  // definition; this used to diverge, closed as part of Task 214's follow-up).
   const displayTotals = (() => {
     // Local `activePlatforms` only ever tracks tp/ag/cg (never 'wo') and is empty for
     // the Wizard of Odds tab specifically — use the shared getTabPlatforms(tab) helper

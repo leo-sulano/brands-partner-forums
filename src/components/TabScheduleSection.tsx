@@ -26,7 +26,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
 import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -362,11 +362,20 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       try {
         const { drifted, deleted } = await pullScheduleDrift(tab);
         if (canceled) return;
+        // Skip applying a drift/deletion to brand_schedule for a combo that's
+        // currently hidden/restricted/flagged-removed -- the calendar itself
+        // never renders anything for that combo (brandPlatforms), so writing
+        // an 'active' day for it here would only leave an orphaned, invisible
+        // row. schedule_pms_links itself was already reconciled server-side
+        // inside pullScheduleDrift regardless -- this only guards the
+        // brand_schedule write.
         for (const d of deleted) {
+          if (!brandPlatforms(d.brand).includes(d.platform)) continue;
           const loc = weekdayAndWeekStartFor(d.date);
           if (loc) await setBrandScheduleDay(d.tab, d.brand, loc.weekStart, d.platform, loc.day, null);
         }
         for (const d of drifted) {
+          if (!brandPlatforms(d.brand).includes(d.platform)) continue;
           const oldLoc = weekdayAndWeekStartFor(d.oldDate);
           const newLoc = weekdayAndWeekStartFor(d.newDate);
           if (oldLoc) await setBrandScheduleDay(d.tab, d.brand, oldLoc.weekStart, d.platform, oldLoc.day, null);
@@ -847,12 +856,22 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 getRows={() => buildScheduleExportRows(
                   filteredBrands.map((brand) => {
                     const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
+                    const brandKey = normalizeBrandKey(brand);
+                    const evidenceByPlatform: Partial<Record<Platform, Partial<Record<Weekday, ReturnType<typeof resolveDateEvidenceKind>>>>> = {};
+                    for (const platform of brandPlatforms(brand)) {
+                      const byWeekday: Partial<Record<Weekday, ReturnType<typeof resolveDateEvidenceKind>>> = {};
+                      for (const col of columnsForWeek(weekStart)) {
+                        byWeekday[col.weekday] = resolveDateEvidenceKind(dateStatusIndex, brandKey, platform, col.iso);
+                      }
+                      evidenceByPlatform[platform] = byWeekday;
+                    }
                     return {
                       brand,
                       platforms: brandPlatforms(brand),
                       rowsByPlatform,
                       pausesByPlatform,
                       removedPlatforms: flaggedRemovedPlatforms(brand),
+                      evidenceByPlatform,
                     };
                   }),
                 )}

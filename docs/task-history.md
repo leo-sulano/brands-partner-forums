@@ -6460,3 +6460,103 @@ into this fix wave, flagged instead as a separate future task per the reviewer's
 `get_success_rate_by_field` still returns an unrounded rate while the other 2 date-scoped tools
 floor to a whole percent — pre-existing (Task 220's rounding fix only covered one of the two), not
 introduced by this branch.
+
+---
+
+## Task 277: Documented-Gaps Fix Wave (6 findings)
+
+**Date:** August 26, 2026
+
+User asked for a general health audit of the dashboard, then to work through the gaps found.
+Grounded all 6 documented Known Issues candidates in the actual current code (and live Supabase
+data via the anon key) before touching anything — 2 turned out stale, 1 turned out worse than
+documented, 3 were confirmed real and fixed as designed.
+
+**Confirmed stale, no code change (doc correction only):** the "Brand Tabs table still uses the old
+cross-platform date-fallback" gap no longer exists — the multi-select filters rewrite already
+unified table rows and KPI cards onto one `passesPlatformDateFilter`-per-platform check. The
+"unverified WO header names" gap is also resolved — queried live `tab_schemas` directly and
+confirmed the Wizard of Odds tab's real headers (`WoO Review Status`, `Wizard of Odds`) match
+`scoreSummary.ts`'s keys exactly.
+
+**Trybet Brands column (root-caused further than the original ledger entry):** live `tab_schemas`
+query showed Trybet's real header is `Brand Name`, not `Brands` — but `TAB_COLUMN_CONFIGS['Trybet']`
+(`src/lib/tab-configs.ts`) whitelisted `'Brands'`, a column that has never existed in Trybet's real
+data. That made every Trybet row's brand read as empty, not just newly-added ones. Fixed by
+correcting the one config entry to `'Brand Name'`.
+
+**Login.tsx Rules-of-Hooks violation:** the early `if (session) return <Navigate .../>` ran before 7
+hook declarations, reproducible via a persisted-session re-render. Moved below all hooks.
+
+**Schedule Planner export evidence gap:** CSV/Excel export never reflected the confirmed/removed/
+pending/done overlay the calendar itself renders. Added 5 new `<Day> Evidence` columns to
+`buildScheduleExportRows` (`src/lib/scheduler/scheduleExport.ts`), populated via the same
+`resolveDateEvidenceKind` the grid uses, for the same 5 weekday dates already exported — additive,
+the existing plan columns are untouched.
+
+**PMS pull-reconciliation exclusion gap:** the push-direction status-sync effect already guarded
+with `brandPlatforms(link.brand).includes(link.platform)`; the original pull-direction effect
+(`TabScheduleSection.tsx`, reconciles a PMS due-date edit back onto the calendar) had no equivalent
+guard, so a drifted/deleted item for a hidden/restricted/flagged-removed combo could write an
+orphaned `active` day into `brand_schedule`. Added the same guard before each `setBrandScheduleDay`
+call in that effect.
+
+**Brand Tabs KPI-vs-table mismatch (Task 214 follow-up, confirmed by user decision):** `matchesPlatform`
+(`BrandGroup.tsx`) excluded flagged-removed rows from the table unconditionally, while
+`displayKpis`/`displayTotals` already skip that exclusion once `brandScoped` (viewing one brand) —
+a KPI card could show a real count above a table saying "No entries match." Hoisted `brandScoped`
+above `matchesPlatform` and gated its exclusion on the same flag, so all three call sites can no
+longer disagree.
+
+**`entries` table security (the big one — confirmed live, scope expanded mid-investigation):**
+`entries` has `using (true)` on SELECT — genuinely public via the anon key, needed for the external
+BIF Dashboard's `postgres_changes` subscription (Realtime can't target a view). Its `data` jsonb
+carried real credential fields. Initial scoping assumed the existing 6-name `SENSITIVE_KEYS` list
+(from the Ask AI edge function) was the real footprint; querying live `tab_schemas` across all 33
+tabs found **8 real header spellings** instead (`Password`, `Casino Password`, `Backup Code`,
+`Backup Codes`, `Authenticator`, `Authenticator Backup`, `Authenticator\nBackup` — literal embedded
+newline, `Authenticator\n`) — the same per-tab spelling inconsistency `Account Surname ` (trailing
+space) already had, and a gap the Ask AI redaction list didn't even fully cover. Confirmed with the
+user before proceeding at the larger scope.
+
+New `src/lib/entryCredentials.ts` normalizes all 8 variants into 4 canonical fields (`password`,
+`casino_password` — Rooster Partners' distinct in-casino password, `backup_codes`,
+`authenticator_backup`): `extractCredentials` splits them out of a write payload before it reaches
+`entries.data`, `mergeCredentialsIntoData` puts a fetched value back under whichever spelling a
+given tab's real headers use, so every existing UI call site (`AddReviewAccountModal`,
+`EditEntryModal`, `BrandGroup.tsx`'s table) keeps reading/writing `entry.data[header]` with zero
+changes. New `entry_credentials` table (migration `20260826150000_add_entry_credentials.sql`,
+approved-users-only RLS — deliberately not "anyone can read") backfills every existing value and
+strips the 8 keys from `entries.data`. `queries.ts`'s `insertEntry`/`updateEntryData` now route
+credential-shaped fields there instead of merging them back into `entries.data` — without this,
+resaving any entry through the (previously) live code would have written credentials straight back
+into the public table on the very next edit. `moveEntryToTab` keeps `entry_credentials.tab`
+(denormalized, same pattern as `entry_review_analyses`) from going stale. `BrandGroup.tsx`'s entry
+load now also fetches `fetchEntryCredentials(tab)` and merges it into `data` before any other
+per-tab computation reads it (visible-column detection would otherwise have silently dropped a
+credential-only column for unconfigured tabs).
+
+Migration applied live (`supabase db push`), then verified directly against the live database
+(`supabase db query --linked`), not assumed: `entries` row count unchanged (13,888 before and
+after — no data loss), `entry_credentials` backfilled 11,116 rows (9,384 passwords, 5,591
+authenticator values, 5,589 backup codes, 2 casino passwords), and the anon key can no longer read
+`entry_credentials` at all (empty/blocked) while a sampled `entries` row confirmed the 3 credential
+keys are gone from its `data`. The verification pass caught a real anomaly the backfill's own INSERT
+had handled correctly but its UPDATE (the actual strip) had missed: 2 Revolution Casino rows, last
+edited 2026-08-18 (long before this migration, ruling out a live-edit race with the still-deployed
+old code), kept all 3 keys in `entries.data` despite matching the UPDATE's WHERE clause and despite
+`entry_credentials` already holding their correct values from the INSERT step — root cause not
+identified. Fixed with a second, targeted UPDATE scoped to those 2 IDs (safe, since their values
+were already durably captured in `entry_credentials` first); re-verified zero remaining leaked keys
+across all of `entries` afterward. Worth a repeat full-table scan after the frontend deploys, in
+case the same unexplained gap affected a row this session's checks didn't happen to query.
+
+Full suite (2104 tests, 10 new in `entryCredentials.test.ts`) and build both pass. Tiered per file:
+gaps #2/#6c were doc-only; Trybet/Login.tsx/export/PMS-pull were Tier 1-2 (confined, one self-review
+pass each); the `matchesPlatform` fix and the `entries` credentials migration were treated at Tier 3
+rigor (shared filtering logic and cross-cutting data-model change respectively) given the standing
+cross-dashboard-consistency and blast-radius rules. **Not yet deployed to the frontend** — the
+migration is live, but `insertEntry`/`updateEntryData`/`BrandGroup.tsx` are only fixed locally until
+`git push origin main` + a fresh Vercel deploy; until then, any live edit through the currently-
+deployed dashboard still writes credentials straight into the public `entries.data`, re-opening the
+exact gap this migration just closed for that one row. Deploying promptly is the priority follow-up.

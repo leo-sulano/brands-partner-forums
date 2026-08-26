@@ -61,7 +61,27 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-26 (newest):* The dashboard's Date From/To toolbar filter is now a real Check Status
+- *2026-08-26 (newest):* User-requested audit of documented Known Issues/gaps, then a fix wave over
+  the 6 confirmed as real (2 turned out already stale, 1 worse than documented — see Task 277 in
+  `docs/task-history.md` for the full grounding). Fixed: Trybet's Brands-column display bug (root
+  cause was a stale `TAB_COLUMN_CONFIGS['Trybet']` entry, `'Brands'` vs. the real live header
+  `'Brand Name'`); `Login.tsx`'s Rules-of-Hooks violation; Schedule Planner's CSV/Excel export now
+  carries 5 new evidence columns (Confirmed/Removed/Pending/Done per weekday) matching the
+  calendar's own overlay; the PMS pull-reconciliation effect now excludes hidden/restricted/
+  flagged-removed combos, matching the push-direction effect's existing guard; Brand Tabs'
+  `matchesPlatform` now shares the same `brandScoped` exception `displayKpis`/`displayTotals`
+  already had, closing the Task 214 KPI-vs-table divergence. The big one: `entries`' `data` jsonb
+  had real credential fields (`Password`/`Casino Password`/`Backup Code(s)`/`Authenticator*` — 8
+  real header-spelling variants across the 33 tabs, confirmed via a live `tab_schemas` query, not
+  the 6 names originally assumed) sitting in a table that's fully public-readable via the anon key
+  (kept that way deliberately for BIF Dashboard's realtime subscription). New
+  `src/lib/entryCredentials.ts` normalizes every variant; new `entry_credentials` table
+  (approved-users-only RLS) holds them now, migrated live and verified (`entries` row count
+  unchanged, zero credential keys left in `data`, anon key can no longer read the new table).
+  **Not yet deployed to the frontend** — see the Known Issues entry above for the active exposure
+  window until `git push origin main` + a Vercel redeploy ship the fixed `insertEntry`/
+  `updateEntryData`. Full suite (2104 tests) and build pass.
+- *2026-08-26 (prior):* The dashboard's Date From/To toolbar filter is now a real Check Status
   scope, alongside the existing Status/Brand/Agent/Proxy/Country five — closing a gap flagged
   earlier the same session (date range narrowed the visible table but was silently ignored by the
   actual Check Status request). New shared `passes_date_filter()`/`_parse_post_date()`
@@ -1275,18 +1295,9 @@ Brands Partner Forum/
   alone since the user's Task 267 request only covered "manually paused"/"forced paused", not the
   blank state. Fix direction if ever needed: treat a link whose day resolves to `null` (no row, or a
   row with that weekday `null`) the same as `'paused'` in the resolver.
-- **`Login.tsx` has a real Rules-of-Hooks violation (found 2026-08-18, Task 233's live-verification
-  pass, not fixed — unrelated to that task's actual scope).** Line 12,
-  `if (session) return <Navigate to="/" replace />;`, runs before 7 more `useState`/`useEffect`
-  calls below it. On first mount with no session this is harmless (the condition is false, every
-  hook still runs), but the moment `AuthContext` resolves an already-persisted session (any browser
-  profile that was previously logged in) and `Login` re-renders, it now takes the early return and
-  skips those hooks entirely — a genuine "Rendered fewer hooks than expected" React error,
-  reproduced live via Playwright by simply navigating to `/login` in a signed-in profile. Low
-  real-world impact (the page still redirects to `/` correctly a moment later, and a fresh/signed-out
-  visit never hits it), but it's a real bug, not a fluke of dev-mode Fast Refresh — worth a small
-  follow-up fix (move the `if (session)` check after all hook declarations, or into a `useEffect` +
-  `useNavigate`).
+- **Resolved (2026-08-26, Task 277).** `Login.tsx`'s Rules-of-Hooks violation (found 2026-08-18,
+  Task 233) is fixed — the `if (session) return <Navigate .../>` early return now runs after all
+  hook declarations, so a persisted-session re-render no longer skips hooks.
 - **Self-service Brand Tab creation was never live-browser-verified end to end (Task 232).** No
   browser-automation tool was available in any implementer's or reviewer's environment for the whole
   duration of that plan, so the full create → sidebar-appears → reload-persists → delete-blocked-
@@ -1361,22 +1372,10 @@ Brands Partner Forum/
      delete), and confirming it still appears in the list response. If the endpoint is paginated or
      excludes Done/archived tasks, a normal "mark as done" action would incorrectly read as
      "deleted" and silently clear a real, still-valid schedule day.
-- **Schedule Planner ↔ PMS pull reconciliation doesn't check hidden/restricted/removed-brand
-  exclusion sets before applying drift (Task 231 final review, not yet fixed).**
-  `pullScheduleFromPms` (`src/lib/scheduler/pmsSync.ts`) reconciles every `schedule_pms_links` row
-  for a tab against live PMS state without checking `schedule_hidden_brands`,
-  `schedule_platform_restrictions`, or `removed_platform_brands`. If a brand+platform combo becomes
-  hidden, restricted, or flagged-removed *after* its PMS task was linked, and someone later edits
-  that task's due date in PMS, the pull effect will still write an 'active' day into
-  `brand_schedule` for that now-excluded combo. Practical impact is narrower than it sounds:
-  `TabScheduleSection.tsx`'s `brandPlatforms()`/`resolveBrandPlatforms()` already filter excluded
-  combos out of what actually renders regardless of what's sitting in `brand_schedule` (the same
-  exclusion-filtering logic used everywhere else on this page), so the real effect is an orphaned,
-  invisible `brand_schedule` row — not an incorrect number or chip shown anywhere. Still worth
-  fixing properly per this project's standing cross-dashboard-consistency rule, by threading the
-  same hidden/restricted/removed sets `TabScheduleSection.tsx` already computes into the pull call
-  (or having `pullScheduleFromPms` resolve them itself, the way `generateForTab`'s `buildTabContext`
-  already does) and skipping any drift/deletion whose combo is currently excluded.
+- **Resolved (2026-08-26, Task 277).** The PMS pull-reconciliation effect (`TabScheduleSection.tsx`)
+  now guards each drifted/deleted item with the same `brandPlatforms(brand).includes(platform)`
+  check the push-direction status-sync effect already had, so a hidden/restricted/flagged-removed
+  combo can no longer get an orphaned `active` day written into `brand_schedule`.
 - **Schedule Planner ↔ PMS pull-reconciliation can silently desync on a partial write failure
   (accepted v1 limitation, Task 231).** `TabScheduleSection.tsx`'s pull effect applies its
   `schedule_pms_links` correction via the Edge Function (server-side, unconditional) *before* the
@@ -1435,34 +1434,17 @@ Brands Partner Forum/
   WO ever actually delists a published review either. Decision: do not build detection for any of the
   3 on this evidence. Revisit only if/when a real removed example turns up on one of them (naturally,
   or if someone already knows of one) — do not re-derive a signature from a fabricated 404 alone.
-- **Brand Tabs' KPI cards can disagree with the table when brand-filtered + status-filtered (Task 214).**
-  Task 214 made `displayKpis`/`displayTotals` (`BrandGroup.tsx`) show real non-zero Live/Removed
-  counts for a flagged-removed brand/platform whenever the Brand filter is non-empty. `matchesPlatform`
-  (`BrandGroup.tsx:~1397`), which gates which rows the table shows, was deliberately left unchanged
-  and still excludes those same rows whenever a status filter is also active. Concretely: a KPI card
-  can show a non-zero count directly above a table reading "No entries match your filters." — reachable
-  via Score Summary's own brand/status deep links (`?platform=<p>&brand=<brand>&status=live` or
-  `&status=removed`, `ScoreSummaryPanel.tsx:~621`/`~633`) or via this page's own KPI-click-through
-  (`TotalBreakdownModal`, `BrandGroup.tsx:~2703-2704`, which sets `statusFilter` from a card click). A
-  fix would mean symmetrically guarding `matchesPlatform` with the same `brandScoped` condition, which
-  needs a product decision first — it changes what scoping `matchesPlatform` was deliberately never
-  given, and was explicitly out of scope for Task 214.
-- Schedule Planner's CSV/Excel export (`src/lib/scheduler/scheduleExport.ts`) reads each day's status
-  only from the `brand_schedule` plan row (`rowsByPlatform[platform]?.[day]`), not from the same
-  confirmed/removed real-evidence overlay or past-day "ghosting" the calendar grid itself displays on
-  top of that plan (Tasks 165/168/173). A day can therefore show a confirmed ✓ or a removed ✕ chip on
-  screen while exporting as blank, or export a confident `Active` for a past day the grid itself
-  ghosts as unverified. This is spec-sanctioned (the design spec explicitly scopes the day columns to
-  the plan lookup) but breaks that same spec's own "what you see is what you get" framing, and is the
-  same class of plan-vs-evidence divergence Task 173 fixed on the calendar itself. Task 243's
-  Pending/Done overlay (amber "P"/blue "D" badges) has the same gap — the export has no equivalent
-  column for either, so a cell showing a Pending or Done badge on screen exports with no visual
-  distinction at all; not a new gap, just two more states joining this one. Task 250's landing-grid
-  "missed" marker (a distinct greyed chip for a past day whose plan wasn't confirmed) is a fourth
-  state with no export equivalent, for the same reason — it's a preview/summary-only computation, not
-  part of this export's own `rowsByPlatform` lookup at all. Fix direction: add
-  two more export columns (`Confirmed Days`, `Removed Days`) built from the `dateStatusIndex`
-  `SchedulePlanner.tsx` already computes via `computeConfirmedByPlatform`/`computeRemovedByPlatform`.
+- **Resolved (2026-08-26, Task 277).** `matchesPlatform` (`BrandGroup.tsx`) now shares the same
+  `brandScoped` guard `displayKpis`/`displayTotals` already used, so the table and the KPI cards
+  above it can no longer disagree on a flagged brand/platform.
+- **Resolved (2026-08-26, Task 277) for Confirmed/Removed/Pending/Done — the landing-grid "missed"
+  marker gap remains.** Schedule Planner's CSV/Excel export (`src/lib/scheduler/scheduleExport.ts`)
+  now has 5 new `<Day> Evidence` columns (Removed/Confirmed/Pending/Done, or blank), built from the
+  same `resolveDateEvidenceKind`/`dateStatusIndex` the calendar's own overlay uses — closing the gap
+  where a confirmed ✓ or removed ✕ chip on screen exported as blank. The existing Mon-Fri plan
+  columns are untouched. Task 250's landing-grid "missed" marker (a distinct greyed chip for a past
+  day whose plan wasn't confirmed) still has no export equivalent — it's a preview/summary-only
+  computation, not part of this export's per-tab `rowsByPlatform`/evidence lookup at all.
 - **Schedule Planner's per-tab platform-count strip can now disagree with its own grid for past days
   (2026-08-24, Task 250).** `countActivePlatformSlots` (`src/lib/scheduler/scheduleUtils.ts`) now
   gates a past day's count on real evidence (`hasDateEvidence`) rather than the raw plan, and this
@@ -1565,17 +1547,23 @@ Brands Partner Forum/
   including Task 262's accuracy overhaul) is fully live end to end; the "🤖 Analyze Review" button
   in Edit Entry works. See the correction note near the top of this section for the exact
   verification. Task 225 / Task 262.
-- `entries` is fully public-readable via the `anon` key across **all** tabs, not just TP Brand
-  Injection, and its `data` jsonb contains credential fields (`Password`, `Backup Codes`,
-  `Authenticator Backup` — see `AddReviewAccountModal.tsx`). This is a pre-existing condition,
-  not something the 2026-08-03 `bif_review_accounts` view created — but that view's design
-  relies on it (it inherits `entries`' policy via `security_invoker` rather than defining a
-  narrower one), and BIF Dashboard's live-update design (a raw `postgres_changes` subscription
-  on `entries` itself, per its spec) receives this same full raw payload, including credential
-  fields, for every row it's subscribed to. Now operationally relevant to a second, external
-  consumer — worth a deliberate future decision (tightening `entries`' RLS policy, or a
-  column-filtered publication) rather than staying an implicit side effect. Not fixed as part
-  of that task; documentation only.
+- **`entries` is still fully public-readable via the `anon` key across all tabs (`using (true)`)
+  — deliberately kept, since BIF Dashboard's `postgres_changes` subscription needs it (Realtime
+  can't target a view) — but the credential fields that used to live in its `data` jsonb are gone
+  as of 2026-08-26 (Task 277).** `Password`/`Casino Password`/`Backup Code(s)`/`Authenticator*`
+  (8 real header-spelling variants across the 33 tabs) were migrated into a new `entry_credentials`
+  table with approved-users-only RLS (migration `20260826150000_add_entry_credentials.sql`, applied
+  live and verified: `entries` row count unchanged, `entry_credentials` backfilled 11,116 rows, the
+  anon key can no longer read `entry_credentials` at all). `src/lib/entryCredentials.ts` is the one
+  place that resolves every variant, on both the write path (`queries.ts`'s `insertEntry`/
+  `updateEntryData`) and the read path (`BrandGroup.tsx` merges credentials back into `entry.data`
+  under whichever spelling that tab's real headers use, so every existing UI call site is
+  unchanged). **Not yet deployed to the frontend as of this writing** — until `git push origin main`
+  + a Vercel redeploy ship the code fix, any live edit through the still-deployed old code writes
+  credentials straight back into the public `entries.data` for that one row; see Task 277 in
+  `docs/task-history.md` for the exact verification steps and one unexplained anomaly (2 rows the
+  migration's own UPDATE missed, fixed with a targeted follow-up, root cause not identified) worth
+  a repeat full-table scan after deploying.
 - The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
   in `src/lib/scheduler/schedulerRules.ts`) now windows the rate to a rolling 30 days ending on
   `weekStart` (`recalculatePauses`' `last30DaysRange` in `schedulerService.ts`), not all-time —
@@ -1597,31 +1585,21 @@ Brands Partner Forum/
   formula as originally specified compounds unbounded (see 2026-07-31 entry above). Needs a
   redesign (time-scoped completion, capped/remainder-based carryover count) validated
   against at least one real platform-generated week before re-enabling.
-- Confirm the live `WoO Review Status`/`Wizard of Odds` header names on a Wizard of Odds
-  brand tab against `scoreSummary.ts`'s `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS`
-  (`pick()` does an exact string match, not case-insensitive) — never verified live, no
-  Supabase DB credential was available in the session that shipped WO pause detection.
-  Narrower than it used to be: the Schedule Planner grid itself no longer depends on this
-  (2026-08-03, Task 166, now uses the static `getTabPlatforms` instead of a live header
-  check), but WO pause detection and the removed-post indicator's date-matching (Task 165)
-  both still read actual status/date *values* through these same two keys, so a real
-  mismatch there would still silently make both features inert for WO specifically.
-  `get_review_texts` (Task 223) is a third dependent, and the AI Review Removal Assessment feature's
-  WO framing (Task 225, `supabase/functions/review-removal-assessment/`) is now a fourth dependent on
-  this same unverified key.
+- **Resolved (2026-08-26, Task 277) — confirmed correct, not a bug.** Queried live `tab_schemas`
+  directly for the Wizard of Odds tab: its real headers are exactly `WoO Review Status` and
+  `Wizard of Odds`, matching `scoreSummary.ts`'s `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS` for
+  `wo` character-for-character. WO pause detection, the removed-post indicator, `get_review_texts`,
+  and the AI Review Removal Assessment's WO framing were never actually at risk from this.
 - Recharts pinned to v2; revisit if a major upgrade is available at install time.
 - No dedicated `/mentions` list view — Overview's recent-mentions table is the only path to detail. Revisit if filtering needs grow.
 - Sentiment column is passthrough; classification deferred.
 - The Google Sheet disconnect (2026-07-07) deliberately left `check-review-status` untouched: it still pushes changed rows to the Sheet via the Apps Script web app (`APPS_SCRIPT_URL`/`APPS_SCRIPT_SECRET` Supabase secrets) whenever a Check Status run detects a change. Revisit if a truly Sheet-free dashboard is required — either remove that push call or unset those two secrets on the function.
-- Trybet's table view shows "—" in its "Brands" column even when an entry's brand value is
-  correctly saved (confirmed 2026-07-10 via the raw Supabase insert payload — the value is
-  genuinely persisted, this is a read/display-only issue). Likely a key mismatch between the
-  column `getBrandNameCol()` resolves for writes (`'Brands'`, from the `TAB_COLUMN_CONFIGS`
-  whitelist) and whatever `BrandGroup.tsx` resolves for the rendered header/cell from
-  `tab_schemas` (`BrandGroup.tsx:948-952,2216`) — not yet root-caused further. Pre-existing;
-  unrelated to the 2026-07-10 manual-brand-entry change (reproduces via the old plain-input
-  fallback too). Worth a follow-up look since it makes a correctly-saved new brand look like
-  the save silently failed.
+- **Resolved (2026-08-26, Task 277) — fully root-caused.** Live `tab_schemas` query confirmed
+  Trybet's real header is `Brand Name`, not `Brands` — but `TAB_COLUMN_CONFIGS['Trybet']`
+  (`src/lib/tab-configs.ts`) whitelisted `'Brands'`, a column that never existed in Trybet's real
+  data, so `getBrandNameCol('Trybet')` wrote new brands to a key `BrandGroup.tsx`'s live-header-based
+  resolution could never find — every Trybet row's brand read as empty, not just newly-added ones.
+  Fixed by correcting the one config entry to `'Brand Name'`.
 - Supabase Auth still uses the default built-in email sender, which caps auth emails (signup confirmation, password reset, magic link) project-wide at a few per hour. Hit in practice 2026-07-08 trying to recover the `sandbox@optinetsolutions.com` account — both signup and password-reset threw "email rate limit exceeded" back to back. Fix: wire up a free custom SMTP provider (e.g. Resend, free tier, no card required) under Authentication → Emails / SMTP Settings to remove the cap. Immediate unblock without waiting: Authentication → Users → select user → Reset Password sets a new password directly, no email sent.
 - **All of Ask AI's known drift/parity gaps were closed in code as of Task 220 and its
   same-day follow-up fixes** (2026-08-14) — `get_schedule`/`get_paused_combos`
