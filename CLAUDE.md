@@ -78,9 +78,14 @@ Brands Partner Forum/
   `src/lib/entryCredentials.ts` normalizes every variant; new `entry_credentials` table
   (approved-users-only RLS) holds them now, migrated live and verified (`entries` row count
   unchanged, zero credential keys left in `data`, anon key can no longer read the new table).
-  **Not yet deployed to the frontend** — see the Known Issues entry above for the active exposure
-  window until `git push origin main` + a Vercel redeploy ship the fixed `insertEntry`/
-  `updateEntryData`. Full suite (2104 tests) and build pass.
+  Migration applied live and verified (no data loss, credentials unreadable via anon key), frontend
+  committed and pushed to `origin/main` (Vercel Production redeploy confirmed). A recurring
+  verification anomaly (4 pre-existing rows across 2 checks that the migration's own strip silently
+  missed, root cause unidentified) was closed properly with a second migration adding a hard
+  Postgres CHECK constraint rejecting all 8 keys from `entries.data` outright — applying it
+  validated every existing row with zero violations, and any future write path that tries to
+  reintroduce one now fails loudly instead of silently leaking. Full suite (2104 tests) and build
+  pass. See Known Issues above and Task 277 in `docs/task-history.md` for the full detail.
 - *2026-08-26 (prior):* The dashboard's Date From/To toolbar filter is now a real Check Status
   scope, alongside the existing Status/Brand/Agent/Proxy/Country five — closing a gap flagged
   earlier the same session (date range narrowed the visible table but was silently ignored by the
@@ -1547,23 +1552,24 @@ Brands Partner Forum/
   including Task 262's accuracy overhaul) is fully live end to end; the "🤖 Analyze Review" button
   in Edit Entry works. See the correction note near the top of this section for the exact
   verification. Task 225 / Task 262.
-- **`entries` is still fully public-readable via the `anon` key across all tabs (`using (true)`)
-  — deliberately kept, since BIF Dashboard's `postgres_changes` subscription needs it (Realtime
-  can't target a view) — but the credential fields that used to live in its `data` jsonb are gone
-  as of 2026-08-26 (Task 277).** `Password`/`Casino Password`/`Backup Code(s)`/`Authenticator*`
-  (8 real header-spelling variants across the 33 tabs) were migrated into a new `entry_credentials`
-  table with approved-users-only RLS (migration `20260826150000_add_entry_credentials.sql`, applied
-  live and verified: `entries` row count unchanged, `entry_credentials` backfilled 11,116 rows, the
-  anon key can no longer read `entry_credentials` at all). `src/lib/entryCredentials.ts` is the one
-  place that resolves every variant, on both the write path (`queries.ts`'s `insertEntry`/
-  `updateEntryData`) and the read path (`BrandGroup.tsx` merges credentials back into `entry.data`
-  under whichever spelling that tab's real headers use, so every existing UI call site is
-  unchanged). **Not yet deployed to the frontend as of this writing** — until `git push origin main`
-  + a Vercel redeploy ship the code fix, any live edit through the still-deployed old code writes
-  credentials straight back into the public `entries.data` for that one row; see Task 277 in
-  `docs/task-history.md` for the exact verification steps and one unexplained anomaly (2 rows the
-  migration's own UPDATE missed, fixed with a targeted follow-up, root cause not identified) worth
-  a repeat full-table scan after deploying.
+- **Resolved (2026-08-26, Task 277) — `entries` stays fully public-readable via the `anon` key
+  across all tabs (`using (true)`, deliberately kept for BIF Dashboard's `postgres_changes`
+  subscription, which can't target a view), but the credential fields that used to live in its
+  `data` jsonb are gone, both migrated out and now hard-blocked from ever returning.**
+  `Password`/`Casino Password`/`Backup Code(s)`/`Authenticator*` (8 real header-spelling variants
+  across the 33 tabs) moved into a new `entry_credentials` table with approved-users-only RLS
+  (`20260826150000_add_entry_credentials.sql`), via `src/lib/entryCredentials.ts` (the one place
+  that resolves every variant, on both `queries.ts`'s `insertEntry`/`updateEntryData` and
+  `BrandGroup.tsx`'s read-side merge — every existing UI call site unchanged). A second migration
+  (`20260826160000_add_entries_no_credential_keys_check.sql`) added a hard Postgres CHECK
+  constraint rejecting all 8 keys from `entries.data` outright — applying it validated every
+  existing row and found zero violations (definitive, not a manual spot-check), and any future
+  write path (frontend, the EC2 `check_review_status.py` scraper, or anything unaudited) that
+  tries to reintroduce one now fails loudly instead of silently leaking. Frontend deployed to
+  Vercel Production the same session. See Task 277 in `docs/task-history.md` for a real, recurring
+  anomaly the verification pass caught (4 pre-existing rows the original migration's UPDATE
+  silently missed across 2 checks, root cause never identified) — the CHECK constraint is exactly
+  the reason it no longer matters whether that class of gap is fully understood.
 - The success-rate pause trigger (`PAUSE_RULES.successRateThreshold`/`minDecidedPostsForRateCheck`
   in `src/lib/scheduler/schedulerRules.ts`) now windows the rate to a rolling 30 days ending on
   `weekStart` (`recalculatePauses`' `last30DaysRange` in `schedulerService.ts`), not all-time —

@@ -6541,22 +6541,29 @@ Migration applied live (`supabase db push`), then verified directly against the 
 after — no data loss), `entry_credentials` backfilled 11,116 rows (9,384 passwords, 5,591
 authenticator values, 5,589 backup codes, 2 casino passwords), and the anon key can no longer read
 `entry_credentials` at all (empty/blocked) while a sampled `entries` row confirmed the 3 credential
-keys are gone from its `data`. The verification pass caught a real anomaly the backfill's own INSERT
-had handled correctly but its UPDATE (the actual strip) had missed: 2 Revolution Casino rows, last
-edited 2026-08-18 (long before this migration, ruling out a live-edit race with the still-deployed
-old code), kept all 3 keys in `entries.data` despite matching the UPDATE's WHERE clause and despite
-`entry_credentials` already holding their correct values from the INSERT step — root cause not
-identified. Fixed with a second, targeted UPDATE scoped to those 2 IDs (safe, since their values
-were already durably captured in `entry_credentials` first); re-verified zero remaining leaked keys
-across all of `entries` afterward. Worth a repeat full-table scan after the frontend deploys, in
-case the same unexplained gap affected a row this session's checks didn't happen to query.
+keys are gone from its `data`. The frontend code was then committed and pushed to `origin/main`
+(Vercel Production redeploy confirmed via `vercel ls`), closing the window where a live edit through
+the old code could have written credentials straight back into the public `entries.data`.
+
+The verification pass caught a real, recurring anomaly: across 2 separate full-table checks (before
+and after the frontend deploy), a total of 4 pre-existing rows (2 on Revolution Casino, then 2 more
+on Rooster Partners, all last-edited days before this migration — ruling out a live-edit race)
+turned up still carrying credential keys in `entries.data`, despite each one already having its
+value correctly captured in `entry_credentials` by the migration's own INSERT step, and despite each
+one matching the strip UPDATE's WHERE clause. Root cause never identified — 3 repeated checks
+immediately after a corrective re-run all showed zero, but the same pattern had already reappeared
+once before. Rather than keep chasing individual stragglers, closed this properly with a second
+migration (`20260826160000_add_entries_no_credential_keys_check.sql`): a hard Postgres CHECK
+constraint on `entries.data` rejecting all 8 known key spellings outright. Applying a CHECK
+constraint validates every existing row against it, so its clean application (`convalidated: true`,
+confirmed via `pg_constraint`) is definitive proof — stronger than any manual re-query — that zero
+rows carried a leaked key at that moment, and any future write path (the frontend, the EC2
+`check_review_status.py` scraper's direct REST PATCH, or anything not yet audited) that tries to
+reintroduce one now fails loudly with a constraint violation instead of silently leaking.
 
 Full suite (2104 tests, 10 new in `entryCredentials.test.ts`) and build both pass. Tiered per file:
 gaps #2/#6c were doc-only; Trybet/Login.tsx/export/PMS-pull were Tier 1-2 (confined, one self-review
 pass each); the `matchesPlatform` fix and the `entries` credentials migration were treated at Tier 3
 rigor (shared filtering logic and cross-cutting data-model change respectively) given the standing
-cross-dashboard-consistency and blast-radius rules. **Not yet deployed to the frontend** — the
-migration is live, but `insertEntry`/`updateEntryData`/`BrandGroup.tsx` are only fixed locally until
-`git push origin main` + a fresh Vercel deploy; until then, any live edit through the currently-
-deployed dashboard still writes credentials straight into the public `entries.data`, re-opening the
-exact gap this migration just closed for that one row. Deploying promptly is the priority follow-up.
+cross-dashboard-consistency and blast-radius rules. Fully deployed and closed: migration applied,
+frontend pushed and live on Vercel Production, CHECK constraint enforced.
