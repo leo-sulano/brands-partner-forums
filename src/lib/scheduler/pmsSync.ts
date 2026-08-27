@@ -300,7 +300,9 @@ function computeGroupedInsertPosition(
 
 // Moves each linked task's PMS column to match its resolved dashboard status
 // (see resolvePmsSyncStatus in scheduleUtils.ts for how targetStatus is
-// derived client-side) -- one-way, dashboard -> PMS only, never the reverse.
+// derived -- resolution now happens entirely server-side, in
+// resolveAndSyncTabStatuses below, which calls this function internally)
+// -- one-way, dashboard -> PMS only, never the reverse.
 // Per-item try/catch mirrors pushScheduleToPms's existing batch resilience:
 // one failed move never blocks the rest. schedule_pms_links.synced_status is
 // only updated on a successful move, so a failed item is naturally retried on
@@ -373,9 +375,7 @@ export async function resolveAndSyncTabStatuses(
     fetchActiveBrandPlatformPauses(tab, client),
   ]);
   const dateStatusIndex = buildDateStatusIndex(entries);
-  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(
-    removedPlatformBrandRows as { tab: string; brand: string; platform: Platform }[],
-  );
+  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
   const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
   const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
   const tabPlatforms = getTabPlatforms(tab);
@@ -398,7 +398,7 @@ export async function resolveAndSyncTabStatuses(
     const isPaused = autoPaused || manuallyPaused;
     const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
     if (targetStatus !== link.synced_status) {
-      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(tab), date: link.date });
+      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date });
     }
   }
   if (items.length === 0) return { synced: [], failed: [] };

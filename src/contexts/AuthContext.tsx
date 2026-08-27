@@ -79,6 +79,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // renders isApproved=false against the stale profile for the duration
         // of this fetch, flashing "Pending Approval" even for approved users.
         setLoading(true);
+        // Intentionally separate from bootstrapTabRegistries
+        // (src/lib/tabRegistryBootstrap.ts), which Edge Function isolates use
+        // for the same four registries plus this one's extra fifth (toolbar
+        // filters, no server-side reader). No resets here -- a fresh page
+        // load has nothing stale to clear, unlike a reused Deno isolate. Kept
+        // as two hand-written sequences on purpose; check the other one for
+        // drift before changing either.
         Promise.all([
           fetchProfile(s.user.id),
           fetchCustomTabs().catch((err) => {

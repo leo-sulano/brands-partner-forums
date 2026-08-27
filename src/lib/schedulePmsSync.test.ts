@@ -89,4 +89,22 @@ describe('syncTabStatusToPms', () => {
     (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({ ok: false, json: async () => ({}) });
     await expect(syncTabStatusToPms('BITP')).rejects.toThrow('Failed to sync schedule status to PMS.');
   });
+
+  it('throws when the 200 response reports this tab as an error result', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: { BITP: 'error: 2 link(s) failed to move' } }),
+    });
+    await expect(syncTabStatusToPms('BITP')).rejects.toThrow(
+      'Failed to sync schedule status to PMS: 2 link(s) failed to move',
+    );
+  });
+
+  it('does not throw when the 200 response reports a different tab as an error', async () => {
+    (fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({ results: { Hanan: 'error: boom' } }),
+    });
+    await expect(syncTabStatusToPms('BITP')).resolves.toBeUndefined();
+  });
 });

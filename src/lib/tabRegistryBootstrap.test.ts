@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { bootstrapTabRegistries } from './tabRegistryBootstrap';
 import { isTabPaused, getActiveOperationalTabs, resetPausedTabs } from './pausedTabRegistry';
 import { getTabPlatforms, resetHiddenTabPlatforms } from './tab-configs';
@@ -15,6 +15,16 @@ function fakeClient(tables: Record<string, unknown[]>) {
 }
 
 describe('bootstrapTabRegistries', () => {
+  // These tests pause a real tab ('TP Brand Injection') and hide a real
+  // platform ('ag' on 'Rooster Partners') via module-global registries --
+  // reset after every test (not just relying on Vitest's default per-file
+  // process isolation) so this file can never leak that state into another
+  // test file that happens to share the same worker process.
+  afterEach(() => {
+    resetPausedTabs();
+    resetHiddenTabPlatforms();
+  });
+
   it('applies fetched rows to all four registries', async () => {
     resetPausedTabs();
     resetHiddenTabPlatforms();
@@ -46,7 +56,7 @@ describe('bootstrapTabRegistries', () => {
           select: () => ({
             eq: () => ({ then: (r: any) => Promise.resolve({ data: [], error: null }).then(r) }),
             is: () => ({ then: (r: any) => Promise.resolve({ data: [], error: null }).then(r) }),
-            then: (r: any) => Promise.resolve({ data: table === 'paused_tabs' ? [] : [], error: null }).then(r) as any,
+            then: (r: any) => Promise.resolve({ data: [], error: null }).then(r) as any,
           }),
         };
       },

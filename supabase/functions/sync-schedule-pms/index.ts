@@ -53,6 +53,32 @@ export async function syncAllTabStatuses(
   return results;
 }
 
+// Extracted so the handler's own routing logic -- bootstrap unconditionally,
+// then select which tab(s) to sync -- is directly testable without a real
+// Supabase client or PMS API, mirroring how syncAllTabStatuses above was
+// already extracted for the same reason. A requested body.tab that isn't a
+// real, currently-active tab (a stale/bogus name) falls back to an empty
+// tab list rather than being passed through unvalidated -- resolveFn/
+// resolveAndSyncTabStatuses already no-ops safely on an unknown tab (its
+// fetchSchedulePmsLinks lookup just returns zero links), but validating here
+// means an invalid tab produces an explicit empty `results` rather than a
+// silent no-op indistinguishable from "nothing needed syncing".
+export async function handleSyncAllStatuses(
+  body: { tab?: unknown },
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
+  getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
+): Promise<Record<string, string>> {
+  await bootstrapFn(client, 'sync-schedule-pms');
+  const activeTabs = getActiveTabsFn();
+  const tabs = typeof body.tab === 'string' && body.tab
+    ? (activeTabs.includes(body.tab) ? [body.tab] : [])
+    : activeTabs;
+  return syncAllTabStatuses(tabs, client, credentials, fetchFn);
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (!req.headers.get('authorization')) return jsonResponse({ error: 'Unauthorized' }, 401);
@@ -81,9 +107,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse(result);
     }
     if (body?.action === 'syncAllStatuses') {
-      await bootstrapTabRegistries(client, 'sync-schedule-pms');
-      const tabs = typeof body.tab === 'string' && body.tab ? [body.tab] : getActiveOperationalTabs();
-      const results = await syncAllTabStatuses(tabs, client, credentials, fetch);
+      const results = await handleSyncAllStatuses(body, client, credentials, fetch);
       return jsonResponse({ results });
     }
     return jsonResponse({ error: 'Unknown action' }, 400);

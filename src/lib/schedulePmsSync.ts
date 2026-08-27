@@ -93,6 +93,17 @@ export async function pullScheduleDrift(tab: string): Promise<{ drifted: PmsDrif
 // resolveAndSyncTabStatuses (src/lib/scheduler/pmsSync.ts) -- this file no
 // longer builds a PmsStatusSyncItem[] itself, since the PMS API token those
 // items would eventually need never reaches the browser anyway.
+//
+// The Edge Function's syncAllStatuses handler catches every per-tab
+// exception internally (see syncAllTabStatuses in
+// supabase/functions/sync-schedule-pms/index.ts) and always responds 200
+// with `{ results }`, so a whole-tab resolution failure no longer surfaces
+// as a non-OK response -- it shows up as `results[tab]` starting with
+// 'error:' instead. Checking `res.ok` alone would silently swallow that
+// failure, defeating the whole point of this feature (built specifically
+// because a prior silent-sync-failure incident left a real PMS card stuck on
+// a stale status for hours) -- so this also inspects the parsed body and
+// throws when this tab's own result reports an error.
 export async function syncTabStatusToPms(tab: string): Promise<void> {
   if (!SYNC_SCHEDULE_PMS_URL) return;
   const res = await fetch(SYNC_SCHEDULE_PMS_URL, {
@@ -101,4 +112,9 @@ export async function syncTabStatusToPms(tab: string): Promise<void> {
     body: JSON.stringify({ action: 'syncAllStatuses', tab }),
   });
   if (!res.ok) throw new Error('Failed to sync schedule status to PMS.');
+  const body = (await res.json()) as { results?: Record<string, string> };
+  const outcome = body.results?.[tab];
+  if (outcome && outcome.startsWith('error:')) {
+    throw new Error(`Failed to sync schedule status to PMS: ${outcome.slice(7)}`);
+  }
 }
