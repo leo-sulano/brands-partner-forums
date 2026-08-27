@@ -69,25 +69,51 @@ mirroring `TabScheduleSection.tsx`'s effect exactly:
 6. Batch the diffs through the existing `syncScheduleStatusToPms()` (unchanged — already handles
    the PMS move + `synced_status` write + per-item isolation + Task 278's grouped positioning).
 
-`TabScheduleSection.tsx`'s own effect is refactored to call this same function instead of
-duplicating the logic inline — so the on-visit path and the new cron path can never independently
-drift out of agreement with each other (this project has hit that exact class of bug — two
-independently-written copies of one rule silently diverging — more than once; see CLAUDE.md's
-cross-dashboard-consistency note).
+**Correction from the version reviewed in chat:** `TabScheduleSection.tsx` cannot call
+`resolveAndSyncTabStatuses` directly — it takes `credentials: PmsCredentials` (the raw PMS API
+token), which is a server-only secret (`pmsSync.ts`'s own header comment: "the browser never sees
+it"). So both triggers reach this one function over HTTP, through the Edge Function — the browser
+never gets a second, parallel implementation of the resolution rules:
+
+- **Cron trigger** → `action: 'syncAllStatuses'` with no `tab` → server loops over every active tab.
+- **On-visit trigger** (replaces today's `pushScheduleStatusSync(items)` call) → same
+  `action: 'syncAllStatuses'` with `{ tab }` → server resolves just that one tab.
+
+Either way, `resolveAndSyncTabStatuses` is the only place the resolution rules are implemented —
+there is exactly one implementation, not "one the browser computes and one the cron computes that
+happen to agree." The existing per-item `action: 'syncStatus'` (and its now-unused browser wrapper
+`pushScheduleStatusSync`/`PmsStatusSyncItem` in `schedulePmsSync.ts`) are removed as dead code once
+nothing calls them anymore — `syncScheduleStatusToPms` itself (the "move a pre-resolved batch"
+primitive) stays, now called internally by `resolveAndSyncTabStatuses` instead of reached directly
+over HTTP.
 
 ### 3. New Edge Function action + cron
 
-`supabase/functions/sync-schedule-pms/index.ts` gains a new `action: 'syncAllStatuses'` branch
-(no request body needed beyond the action). It must bootstrap the same tab-registry state
-`generate-weekly-schedule/index.ts` already bootstraps per invocation (dynamic tabs, archived tabs,
-**paused tabs** — `resetPausedTabs()` + `applyPausedTabs(rows)` before calling
-`getActiveOperationalTabs()`), since this is a fresh Edge Function isolate that starts with no
-registry state. Skipping this would either crash on an incomplete dynamic-tab list or silently
-include tabs that are currently paused at the Brand-Tab level (a different, existing "paused" concept
-from Schedule Planner's own auto/manual pause — see `pausedTabRegistry.ts`).
+`supabase/functions/sync-schedule-pms/index.ts` gains a new `action: 'syncAllStatuses'` branch,
+accepting an optional `body.tab?: string`. It must bootstrap the same tab-registry state
+`generate-weekly-schedule/index.ts` already bootstraps per invocation — **four** registries, not
+three: dynamic (custom) tabs, **hidden tab platforms** (`getTabPlatforms(tab)` reads this — easy to
+miss, since it's a separate registry from the hidden-*brand* set `resolveBrandPlatforms` reads),
+archived tabs, and paused tabs (`resetPausedTabs()` + `applyPausedTabs(rows)` before calling
+`getActiveOperationalTabs()`). This is needed even when `tab` is explicitly provided (a single
+dynamically-created tab's own column/platform config still depends on the dynamic-tab and
+hidden-platform registries being populated first).
 
-For each tab in `getActiveOperationalTabs()`: call `resolveAndSyncTabStatuses(tab, ...)` inside its
-own `try/catch` — one tab's failure (e.g. a transient PMS API error) must never block the rest.
+This exact 4-registry sequence is currently hand-copied inline in `generate-weekly-schedule/index.ts`
+(lines 142–190) — this spec extracts it into a new shared `bootstrapTabRegistries(client, logPrefix)`
+in a new `src/lib/tabRegistryBootstrap.ts`, used by both Edge Functions, so this second copy can't
+drift from the first the way this project's Known Issues have repeatedly flagged for other
+duplicated-logic classes. `generate-weekly-schedule/index.ts` is refactored to call it too
+(behavior-preserving — same calls, same order, just no longer inlined).
+
+For each tab in scope (either just `body.tab`, or every `getActiveOperationalTabs()` tab when
+omitted): call `resolveAndSyncTabStatuses(tab, ...)` inside its own `try/catch` — one tab's failure
+(e.g. a transient PMS API error) must never block the rest. After each tab, call
+`invalidateTabCache(tab)` (`src/lib/queries.ts`) — `fetchRawEntriesByTab` caches a tab's full entry
+list (heavy `data` jsonb, 1,700+ rows on the largest tabs) in a module-level Map with no write-side
+eviction; `generateAllTabs` already evicts per-tab for exactly this reason (Edge isolates are reused
+across invocations, and this cron runs every minute — far more often than the weekly job — so
+skipping this would accumulate every active tab's full entry set in memory indefinitely).
 
 New migration adds the cron job, same `net.http_post` shape and the same real anon-key JWT already
 inlined in the existing `generate-weekly-schedule-monday` job's migration (`20260805100000_add_
@@ -135,12 +161,23 @@ select cron.schedule(
 - Unit tests for `resolveAndSyncTabStatuses` in `pmsSync.test.ts` (mocked client/fetch): a
   Done/Pending/Published/Removed entry moves its link to the right column; an active
   scheduler-paused or manually-paused combo is skipped; a hidden/restricted/removed-flagged
-  combo is skipped; a link already matching its resolved status makes no API call; multiple tabs
-  processed independently (one tab's fetch failure doesn't affect another's result).
-- `deno check` on the updated `sync-schedule-pms/index.ts` and `pmsSync.ts`.
-- `TabScheduleSection.tsx`'s existing behavior is unchanged from a user's perspective — verified by
-  the full frontend suite passing after the refactor (no new component-level test needed; the
-  extracted logic is now covered directly in `pmsSync.test.ts`).
+  combo is skipped; a link already matching its resolved status makes no API call; empty-links
+  short-circuit with no other calls made.
+- Unit tests for `bootstrapTabRegistries` in a new `tabRegistryBootstrap.test.ts` (mocked client):
+  populates all four registries from table rows; a failed fetch for one registry degrades to empty
+  (fail-open) without blocking the others.
+- New `supabase/functions/sync-schedule-pms/index_test.ts` (this function has no test file today):
+  `syncAllStatuses` with no `tab` processes every `getActiveOperationalTabs()` tab, isolates one
+  tab's failure from the rest, and calls `invalidateTabCache` per tab; with `tab` set, processes
+  only that one tab.
+- `deno check` on both edge functions (`sync-schedule-pms`, `generate-weekly-schedule`) and on
+  `pmsSync.ts`/`tabRegistryBootstrap.ts`.
+- `TabScheduleSection.tsx`'s on-visit behavior is unchanged from a user's perspective (still syncs
+  that tab immediately on visit, just via one HTTP call instead of client-side resolution) —
+  verified by the full frontend suite passing after the refactor; `pushScheduleStatusSync`/
+  `PmsStatusSyncItem` are removed from `schedulePmsSync.ts` along with their tests, replaced by a
+  new `syncTabStatusToPms(tab: string)` wrapper with its own tests mirroring
+  `pushScheduleActivations`'s existing shape.
 - Live verification after deploy: change a real entry's status via the dashboard (or wait for a
   scraper run), confirm the linked PMS card moves within ~60 seconds without opening that tab's
-  Schedule Planner page.
+  Schedule Planner page; also confirm opening a tab still syncs it immediately (on-visit path).
