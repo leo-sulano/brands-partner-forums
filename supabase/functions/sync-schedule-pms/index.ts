@@ -2,10 +2,13 @@
 // supabase/functions/sync-schedule-pms/index.ts
 // Thin HTTP wrapper: all real logic lives in src/lib/scheduler/pmsSync.ts,
 // shared with generate-weekly-schedule so the two never implement the push/
-// pull logic twice. Holds PMS_API_TOKEN as a Supabase secret -- the browser
-// never sees it.
-import { createClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, syncScheduleStatusToPms, type PmsSyncItem, type PmsStatusSyncItem } from '../../../src/lib/scheduler/pmsSync.ts';
+// pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
+// secret -- the browser never sees it.
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, type PmsSyncItem, type PmsCredentials, type PmsStatusSyncResult } from '../../../src/lib/scheduler/pmsSync.ts';
+import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
+import { getActiveOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
+import { invalidateTabCache } from '../../../src/lib/queries.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -18,6 +21,36 @@ const CORS_HEADERS = {
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } });
+}
+
+// Mirrors generate-weekly-schedule/index.ts's generateAllTabs exactly: one
+// tab's failure (a transient PMS API error, a malformed entry) must never
+// block the rest. invalidateTabCache runs after every tab, success or
+// failure, for the same reason generateAllTabs already evicts per-tab --
+// fetchRawEntriesByTab caches a tab's full entry list with no write-side
+// eviction, and this action can run every minute across every active tab.
+// resolveFn is injectable so tests can verify this loop's isolation/eviction
+// behavior without a real Supabase client or PMS API.
+export async function syncAllTabStatuses(
+  tabs: readonly string[],
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch) => Promise<PmsStatusSyncResult> = resolveAndSyncTabStatuses,
+): Promise<Record<string, string>> {
+  const results: Record<string, string> = {};
+  for (const tab of tabs) {
+    try {
+      const result = await resolveFn(tab, client, credentials, fetchFn);
+      results[tab] = result.failed.length > 0 ? `error: ${result.failed.length} link(s) failed to move` : 'ok';
+    } catch (err) {
+      console.error(`[sync-schedule-pms] syncAllStatuses ${tab} failed:`, err);
+      results[tab] = `error: ${err instanceof Error ? err.message : String(err)}`;
+    } finally {
+      invalidateTabCache(tab);
+    }
+  }
+  return results;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -47,10 +80,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const result = await pullScheduleFromPms(body.tab, client, credentials);
       return jsonResponse(result);
     }
-    if (body?.action === 'syncStatus') {
-      if (!Array.isArray(body.items)) return jsonResponse({ error: 'items must be an array' }, 400);
-      const result = await syncScheduleStatusToPms(body.items as PmsStatusSyncItem[], client, credentials);
-      return jsonResponse(result);
+    if (body?.action === 'syncAllStatuses') {
+      await bootstrapTabRegistries(client, 'sync-schedule-pms');
+      const tabs = typeof body.tab === 'string' && body.tab ? [body.tab] : getActiveOperationalTabs();
+      const results = await syncAllTabStatuses(tabs, client, credentials, fetch);
+      return jsonResponse({ results });
     }
     return jsonResponse({ error: 'Unknown action' }, 400);
   } catch (e) {
