@@ -235,6 +235,12 @@ export interface PmsStatusSyncItem {
   linkId: string;
   pmsTaskId: string;
   targetStatus: PmsSyncStatus;
+  // tabLabel/date are the same values the task was created with (see
+  // PmsSyncItem above) -- needed here so computeGroupedInsertPosition can
+  // place the moved task among its actual due-date/brand-tab peers instead
+  // of always landing at the top of the target column.
+  tabLabel: string;
+  date: string;
 }
 
 export interface PmsStatusSyncResult {
@@ -242,13 +248,50 @@ export interface PmsStatusSyncResult {
   failed: { item: PmsStatusSyncItem; error: string }[];
 }
 
-async function movePmsTask(taskId: string, columnId: string, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
+async function movePmsTask(taskId: string, columnId: string, position: number, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
   const res = await fetchFn(`${PMS_BASE_URL}/tasks/${taskId}/move`, {
     method: 'PATCH',
     headers: pmsHeaders(credentials),
-    body: JSON.stringify({ columnId, position: 0 }),
+    body: JSON.stringify({ columnId, position }),
   });
   if (!res.ok) throw new Error(`PMS task move failed: ${res.status}`);
+}
+
+// A task's title is always "<tabLabel> | <brand>" (see createPmsTask above) --
+// this pulls just the tabLabel back out so a card already sitting in a target
+// column can be grouped against without needing its own PmsSyncItem.
+function tabLabelFromTitle(title: string): string {
+  const sep = title.indexOf(' | ');
+  return sep === -1 ? title : title.slice(0, sep);
+}
+
+function dueDateSortKey(dueDate: string | null | undefined): string {
+  return dueDate ? dueDate.slice(0, 10) : '';
+}
+
+// Confirmed live against the real "Forum Team" project (2026-08-27): each
+// column holds a dense, zero-based `position` per task, and moving a task to
+// position N there shifts every task at/after N down by one -- so computing
+// "how many peers in the target column already sort at-or-before this item"
+// and moving to that index reproduces a stable insertion sort, one move at a
+// time. Grouping key is (due date, tab label) per an explicit user request:
+// cards should read date-27 Hanan/Hanan/Hanan, date-27 BITP/BITP/BITP, not
+// interleaved by whichever tab's status happened to change most recently.
+// Ties (same date + tab) sort the new/moved item after its existing peers
+// (`<=`), so it joins the tail of its own cluster instead of splitting it.
+function computeGroupedInsertPosition(
+  tasks: PmsTaskListed[],
+  columnId: string,
+  dueDate: string,
+  tabLabel: string,
+  excludeTaskId: string,
+): number {
+  const newKey = `${dueDateSortKey(dueDate)} ${tabLabel.toLowerCase()}`;
+  return tasks.filter((t) => {
+    if (t.columnId !== columnId || t.id === excludeTaskId) return false;
+    const key = `${dueDateSortKey(t.dueDate)} ${tabLabelFromTitle(t.title).toLowerCase()}`;
+    return key <= newKey;
+  }).length;
 }
 
 // Moves each linked task's PMS column to match its resolved dashboard status
@@ -267,10 +310,32 @@ export async function syncScheduleStatusToPms(
 ): Promise<PmsStatusSyncResult> {
   const synced: PmsStatusSyncItem[] = [];
   const failed: { item: PmsStatusSyncItem; error: string }[] = [];
+  if (items.length === 0) return { synced, failed };
+
+  // Read once and kept in sync locally as items in this batch are moved (see
+  // the tasks.filter/tasks.push pair below), so a later item's grouping
+  // calculation sees an earlier item's new placement in this same batch
+  // instead of stale pre-batch data -- same "reflect the write back into the
+  // in-memory cache" shape pushScheduleToPms already uses for its links
+  // cache. A failed fetch here degrades to ungrouped inserts (position 0,
+  // this function's pre-existing behavior) rather than failing every item in
+  // the batch -- a move must never be skipped just because the extra
+  // grouping lookup didn't succeed.
+  let tasks: PmsTaskListed[] = [];
+  try {
+    tasks = await fetchPmsProjectTasks(credentials, fetchFn);
+  } catch {
+    tasks = [];
+  }
+
   for (const item of items) {
     try {
-      await movePmsTask(item.pmsTaskId, PMS_STATUS_COLUMN_IDS[item.targetStatus], credentials, fetchFn);
+      const columnId = PMS_STATUS_COLUMN_IDS[item.targetStatus];
+      const position = computeGroupedInsertPosition(tasks, columnId, item.date, item.tabLabel, item.pmsTaskId);
+      await movePmsTask(item.pmsTaskId, columnId, position, credentials, fetchFn);
       await updateSchedulePmsLinkStatus(item.linkId, item.targetStatus, client);
+      tasks = tasks.filter((t) => t.id !== item.pmsTaskId);
+      tasks.push({ id: item.pmsTaskId, title: `${item.tabLabel} | `, columnId, position, dueDate: item.date, assignees: [] });
       synced.push(item);
     } catch (err) {
       failed.push({ item, error: err instanceof Error ? err.message : String(err) });
@@ -316,6 +381,13 @@ export interface PmsPullResult {
 
 interface PmsTaskListed {
   id: string;
+  // Present on every real API response. syncScheduleStatusToPms's in-memory
+  // cache synthesizes a partial title ("<tabLabel> | ") for a just-moved
+  // task, where the real brand segment isn't known/needed --
+  // computeGroupedInsertPosition only ever reads the tabLabel prefix back out.
+  title: string;
+  columnId: string;
+  position: number;
   // Typed nullable even though the PMS API's normal shape always includes a
   // due date -- a task whose due date was cleared via a one-click PMS UI
   // action comes back with dueDate null/undefined at runtime. See the

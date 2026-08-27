@@ -91,6 +91,11 @@ export interface PmsStatusSyncItem {
   linkId: string;
   pmsTaskId: string;
   targetStatus: PmsSyncStatus;
+  // tabLabel/date let the server group the moved card with its actual
+  // due-date/brand-tab peers in the target column instead of always landing
+  // at the top -- see computeGroupedInsertPosition in pmsSync.ts.
+  tabLabel: string;
+  date: string;
 }
 
 // Best-effort, mirrors pushScheduleActivations exactly -- the caller has

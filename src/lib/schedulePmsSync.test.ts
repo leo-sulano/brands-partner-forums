@@ -72,7 +72,7 @@ describe('pushScheduleStatusSync', () => {
     mockGetSession.mockResolvedValue({ data: { session: null } });
   });
 
-  const STATUS_ITEM = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published' as const };
+  const STATUS_ITEM = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published' as const, tabLabel: 'TP Brand Injection', date: '2026-08-20' };
 
   it('does nothing for an empty item list', async () => {
     await pushScheduleStatusSync([]);

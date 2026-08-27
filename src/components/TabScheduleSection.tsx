@@ -515,7 +515,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           const isPaused = autoPaused || manuallyPaused;
           const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
           if (targetStatus !== link.synced_status) {
-            items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus });
+            items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date });
           }
         }
         if (!canceled && items.length > 0) {

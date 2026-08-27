@@ -347,9 +347,10 @@ describe('syncScheduleStatusToPms', () => {
   it('moves the task to the mapped column and records the new synced_status on success', async () => {
     const { client, updated } = fakeSupabaseForStatusUpdate();
     const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
       { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
     ]);
-    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published' };
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', date: '2026-08-20' };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
     expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
@@ -357,9 +358,10 @@ describe('syncScheduleStatusToPms', () => {
 
   it('records a per-item failure without aborting the rest of the batch, and never updates synced_status for the failed item', async () => {
     const { client, updated } = fakeSupabaseForStatusUpdate();
-    const badItem: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-bad', targetStatus: 'removed' };
-    const okItem: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-ok', targetStatus: 'active' };
+    const badItem: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-bad', targetStatus: 'removed', tabLabel: 'BITP', date: '2026-08-20' };
+    const okItem: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-ok', targetStatus: 'active', tabLabel: 'BITP', date: '2026-08-20' };
     const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
       { url: /\/tasks\/task-bad\/move$/, method: 'PATCH', body: {}, status: 500 },
       { url: /\/tasks\/task-ok\/move$/, method: 'PATCH', body: {} },
     ]);
@@ -380,16 +382,84 @@ describe('syncScheduleStatusToPms', () => {
   ])('maps target status "%s" to column %s', async (targetStatus, columnId) => {
     const { client } = fakeSupabaseForStatusUpdate();
     let movedBody: unknown;
-    const fetchFn = vi.fn(async (_url: string, init: RequestInit) => {
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
       movedBody = JSON.parse(init.body as string);
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     await syncScheduleStatusToPms(
-      [{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: targetStatus as PmsStatusSyncItem['targetStatus'] }],
+      [{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: targetStatus as PmsStatusSyncItem['targetStatus'], tabLabel: 'BITP', date: '2026-08-20' }],
       client,
       CREDENTIALS,
       fetchFn,
     );
     expect(movedBody).toEqual({ columnId, position: 0 });
+  });
+
+  it('returns immediately with no API calls for an empty item list', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
+    const fetchFn = vi.fn();
+    const result = await syncScheduleStatusToPms([], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ synced: [], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('groups a moved card by (due date, brand tab): it lands after the last existing peer with an equal-or-earlier date+tab key, not at position 0', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
+    const DONE_COLUMN = 'cmsoh1uxz000604l4j5loen7g';
+    const existingTasks = [
+      { id: 'existing-1', title: 'BITP | Alf Casino', columnId: DONE_COLUMN, position: 0, dueDate: '2026-08-27T00:00:00.000Z', assignees: [] },
+      { id: 'existing-2', title: 'BITP | Big Pirate Casino', columnId: DONE_COLUMN, position: 1, dueDate: '2026-08-27T00:00:00.000Z', assignees: [] },
+      { id: 'existing-3', title: 'Hanan | ZodiacBet.com', columnId: DONE_COLUMN, position: 2, dueDate: '2026-08-27T00:00:00.000Z', assignees: [] },
+      { id: 'existing-4', title: 'Rooster Partners | Spinjo', columnId: DONE_COLUMN, position: 3, dueDate: '2026-08-28T00:00:00.000Z', assignees: [] },
+      // A different column's tasks must never affect the count.
+      { id: 'other-column', title: 'BITP | Nomini Kasino', columnId: 'some-other-column', position: 0, dueDate: '2026-08-01T00:00:00.000Z', assignees: [] },
+    ];
+    let movedBody: unknown;
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => existingTasks };
+      movedBody = JSON.parse(init.body as string);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    // A second Hanan card due the same date should slot in right after
+    // existing-3 (the current lone Hanan/08-27 card), i.e. position 3 --
+    // after both BITP cards and the existing Hanan card, before the 08-28 item.
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-new', targetStatus: 'published', tabLabel: 'Hanan', date: '2026-08-27' };
+    await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
+    expect(movedBody).toEqual({ columnId: DONE_COLUMN, position: 3 });
+  });
+
+  it('computes each later item in a batch against the earlier items\' new placements, not stale pre-batch data', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
+    const DONE_COLUMN = 'cmsoh1uxz000604l4j5loen7g';
+    const existingTasks = [
+      { id: 'existing-1', title: 'BITP | Alf Casino', columnId: DONE_COLUMN, position: 0, dueDate: '2026-08-27T00:00:00.000Z', assignees: [] },
+    ];
+    const movedBodies: unknown[] = [];
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => existingTasks };
+      movedBodies.push(JSON.parse(init.body as string));
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    // Two Hanan/08-27 cards moving in the same batch: the first joins after
+    // the existing BITP card (position 1); the second must see the first
+    // one's new placement and join after it too (position 2), not recompute
+    // against the stale pre-batch list and also land at position 1.
+    const item1: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-a', targetStatus: 'published', tabLabel: 'Hanan', date: '2026-08-27' };
+    const item2: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-b', targetStatus: 'published', tabLabel: 'Hanan', date: '2026-08-27' };
+    await syncScheduleStatusToPms([item1, item2], client, CREDENTIALS, fetchFn);
+    expect(movedBodies).toEqual([{ columnId: DONE_COLUMN, position: 1 }, { columnId: DONE_COLUMN, position: 2 }]);
+  });
+
+  it('falls back to position 0 (ungrouped) rather than failing every item when the project-tasks lookup fails', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: false, status: 500, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', date: '2026-08-20' };
+    const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ synced: [item], failed: [] });
+    expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
   });
 });

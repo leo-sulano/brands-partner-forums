@@ -6620,3 +6620,69 @@ distinct from "Brand Name"` returned 0) — they display correctly today, and `B
 functionally-unused leftover data, not a bug. User confirmed skipping the cleanup rather than
 writing an unnecessary production data change. Recorded so this isn't mistakenly treated as a real
 open item later.
+
+---
+
+## Task 278: Schedule Planner → PMS Status Sync — Group Moved Cards by Due Date, Then Brand Tab
+
+**Date:** August 27, 2026
+
+Fixes a real, user-reported ordering bug on the live "Forum Team" PMS board: cards for the same due
+date were landing in the In Progress/Done/Project Paused columns interleaved across brand tabs
+(e.g. Hanan, SilverPlay, BITP, Rooster Partners, Trybet all mixed together for the same Aug 27 due
+date) instead of grouped — the user's explicit ask was "due-27 Hanan/Hanan/Hanan, due-27
+BITP/BITP/BITP", i.e. group by due date first, then keep each brand tab's cards consecutive within
+that date.
+
+Root-caused by reading the live board directly (`GET /api/projects/{id}/tasks` against the real
+project, via the `PMS_API_TOKEN` already in `.env`): `position` is a dense, zero-based per-column
+index, and `movePmsTask` (`src/lib/scheduler/pmsSync.ts`, called from `syncScheduleStatusToPms`
+whenever a linked card's resolved dashboard status changes) always moved a task to `position: 0`
+(top of the target column) — since different brand tabs' statuses change independently over time
+(each tab's own page-visit effect, not one coordinated batch), their cards kept landing at the top
+in whatever order they happened to be touched, destroying any prior grouping. Task *creation*
+(`createPmsTask`, in `pushScheduleToPms`) was untouched and needed no fix — it doesn't set an
+explicit position (append-to-end), and since each push batch is already scoped to one tab at a
+time (`ensureWeekGenerated` runs per-tab), newly created same-tab cards already land adjacent to
+each other; live data confirmed the To Do column's creation order was already correctly grouped,
+unlike In Progress/Done/Project Paused.
+
+Fix: `syncScheduleStatusToPms` now fetches the live project task list once per batch (via the
+existing `fetchPmsProjectTasks`, extended with `title`/`columnId`/`position` fields the real API
+already returns but the old type didn't declare) and a new `computeGroupedInsertPosition` counts
+how many existing tasks in the *target* column already sort at-or-before the moving item under a
+(due date, tab label) key — parsing the tab label back out of each existing task's own title
+(`"<tabLabel> | <brand>"`, the same format `createPmsTask` already writes) rather than needing a
+second source of truth. That count becomes the `position` sent to the move endpoint, replacing the
+hardcoded `0`; ties (same date + tab) sort the moved card after its existing peers, joining the
+tail of its own cluster instead of splitting it. The in-memory task list is updated after each
+successful move (drop the stale entry, re-insert at its new column/position) so a later item in the
+*same* batch computes against the earlier item's new placement, not stale pre-batch data — same
+"reflect the write back into the local cache" shape `pushScheduleToPms` already uses for its own
+links cache. `PmsStatusSyncItem` gained `tabLabel`/`date` fields (both already known by the caller,
+`TabScheduleSection.tsx`, via `link.tab`/`link.date`) so the grouping key is available without a
+second query; the browser-side duplicate interface in `schedulePmsSync.ts` was updated to match
+(same hand-kept-in-sync pattern this file's own comment already documents for
+`notify-brand-removed`'s payload type). A failed project-tasks fetch degrades to the old ungrouped
+`position: 0` behavior for that batch rather than failing every move in it — a card must still get
+moved to the right column even if the extra grouping lookup can't be made.
+
+6 new/updated tests in `pmsSync.test.ts` (grouping against a realistic mixed-tab column, same-batch
+ordering, graceful fallback on a failed lookup) plus a `schedulePmsSync.test.ts` type-shape update;
+full suite (2110 tests) and build both pass; `deno check` clean on both Deno consumers
+(`sync-schedule-pms`, `generate-weekly-schedule`).
+
+**Deployed and live-applied the same session, both confirmed via user follow-up decisions (not
+assumed):** `supabase functions deploy sync-schedule-pms` (confirmed `ACTIVE`, version 15, via
+`supabase functions list`) — future status-change moves now group by (due date, brand tab)
+automatically. Additionally ran a one-time script (ad hoc, not part of the repo — plain Python
+against the live PMS API using the `PMS_API_TOKEN` already in `.env`, same base URL/project ID as
+`pmsSync.ts`) to re-sort all 298 existing cards already on the board (the exact chaos shown in the
+user's original screenshot) into the same (due date, brand tab) order, replaying each column's full
+desired sequence via the move endpoint. Hit one transient connection error partway through (56 of
+298 moves done — To Do/In Progress/Blocked columns fully sorted, Done column ~16 moves in); the
+script is idempotent (recomputes desired order from live state every run, and a second version added
+per-call retries plus a skip for already-correctly-ordered columns), so re-running it to completion
+was safe and required no manual cleanup. Final verification pass (`already-correct=True` on the
+live board for all 5 columns) confirms convergence: every column now reads grouped by due date,
+then by brand tab within that date, matching the user's exact stated example.
