@@ -1,6 +1,5 @@
 import { supabase, SUPABASE_ANON_KEY, SYNC_SCHEDULE_PMS_URL } from './supabase';
 import type { Platform } from './removedPlatformBrands';
-import type { PmsSyncStatus } from './scheduler/scheduleUtils';
 
 // PmsSyncItem/PmsDriftedItem/PmsDeletedItem below are deliberately redeclared
 // here rather than imported from src/lib/scheduler/pmsSync.ts -- that module
@@ -87,28 +86,19 @@ export async function pullScheduleDrift(tab: string): Promise<{ drifted: PmsDrif
   return (await res.json()) as { drifted: PmsDriftedItem[]; deleted: PmsDeletedItem[]; assignees: PmsAssigneeInfo[] };
 }
 
-export interface PmsStatusSyncItem {
-  linkId: string;
-  pmsTaskId: string;
-  targetStatus: PmsSyncStatus;
-  // tabLabel/date let the server group the moved card with its actual
-  // due-date/brand-tab peers in the target column instead of always landing
-  // at the top -- see computeGroupedInsertPosition in pmsSync.ts.
-  tabLabel: string;
-  date: string;
-}
-
-// Best-effort, mirrors pushScheduleActivations exactly -- the caller has
-// already resolved which links changed status; a failure here must never be
-// mistaken for a dashboard write failing. Per-item success/failure detail
-// stays server-side (see syncScheduleStatusToPms's PmsStatusSyncResult) --
-// nothing here consumes it, so it isn't parsed or surfaced.
-export async function pushScheduleStatusSync(items: PmsStatusSyncItem[]): Promise<void> {
-  if (items.length === 0 || !SYNC_SCHEDULE_PMS_URL) return;
+// Best-effort, mirrors pushScheduleActivations exactly -- posts action:
+// syncAllStatuses scoped to one tab, the on-visit trigger's call shape (the
+// cron's own call, made server-side from a pg_cron job, never goes through
+// this browser-only wrapper). All resolution logic now lives server-side in
+// resolveAndSyncTabStatuses (src/lib/scheduler/pmsSync.ts) -- this file no
+// longer builds a PmsStatusSyncItem[] itself, since the PMS API token those
+// items would eventually need never reaches the browser anyway.
+export async function syncTabStatusToPms(tab: string): Promise<void> {
+  if (!SYNC_SCHEDULE_PMS_URL) return;
   const res = await fetch(SYNC_SCHEDULE_PMS_URL, {
     method: 'POST',
     headers: await authHeaders(),
-    body: JSON.stringify({ action: 'syncStatus', items }),
+    body: JSON.stringify({ action: 'syncAllStatuses', tab }),
   });
   if (!res.ok) throw new Error('Failed to sync schedule status to PMS.');
 }
