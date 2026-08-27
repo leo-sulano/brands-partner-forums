@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
 import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
-import { buildDateStatusIndex, resolvePmsSyncStatus, type PmsSyncStatus } from './scheduleUtils.ts';
+import { buildDateStatusIndex, resolvePmsSyncStatus, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
 import { weekdayAndWeekStartFor, scheduleFor, type BrandScheduleRow } from '../scheduleBrands.ts';
@@ -245,6 +245,11 @@ export interface PmsStatusSyncItem {
   // of always landing at the top of the target column.
   tabLabel: string;
   date: string;
+  // Set only when targetStatus resolved from real evidence (done/pending/
+  // published/removed) -- see buildTaskDescription below. Undefined for
+  // active/paused, which stay title+due-date only, matching a plan-only slot
+  // having nothing yet to report.
+  description?: string;
 }
 
 export interface PmsStatusSyncResult {
@@ -259,6 +264,30 @@ async function movePmsTask(taskId: string, columnId: string, position: number, c
     body: JSON.stringify({ columnId, position }),
   });
   if (!res.ok) throw new Error(`PMS task move failed: ${res.status}`);
+}
+
+// Confirmed live against the real "Forum Team" project (2026-08-27): the
+// general task PATCH endpoint (distinct from /tasks/:id/move above, which
+// only accepts columnId/position) accepts a plain `description` field.
+async function setPmsTaskDescription(taskId: string, description: string, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
+  const res = await fetchFn(`${PMS_BASE_URL}/tasks/${taskId}`, {
+    method: 'PATCH',
+    headers: pmsHeaders(credentials),
+    body: JSON.stringify({ description }),
+  });
+  if (!res.ok) throw new Error(`PMS task description update failed: ${res.status}`);
+}
+
+// Renders the matched entry's Account/Country/Proxy Used as a fixed
+// three-line details block, then -- only when review-text content exists --
+// a blank line followed by the content itself. A blank Account/Country/Proxy
+// still gets its own line with nothing after the label, so the block's shape
+// never changes based on which fields happen to be filled in; a blank
+// content is simply omitted rather than leaving a trailing blank line.
+export function buildTaskDescription(details: EntryDetails): string {
+  const lines = [`Account: ${details.account}`, `Country: ${details.country}`, `Proxy: ${details.proxy}`];
+  if (details.content) lines.push('', details.content);
+  return lines.join('\n');
 }
 
 // A task's title is always "<tabLabel> | <brand>" (see createPmsTask above) --
@@ -339,6 +368,13 @@ export async function syncScheduleStatusToPms(
       const columnId = PMS_STATUS_COLUMN_IDS[item.targetStatus];
       const position = computeGroupedInsertPosition(tasks, columnId, item.date, item.tabLabel, item.pmsTaskId);
       await movePmsTask(item.pmsTaskId, columnId, position, credentials, fetchFn);
+      // A description-write failure here fails the whole item (same catch as
+      // the move above) rather than being swallowed -- the move already
+      // succeeded, but synced_status is deliberately not updated until
+      // both writes land, so a description failure is naturally retried on
+      // the next sync pass (the resolved status still won't match the stale
+      // synced_status) instead of silently never getting a description.
+      if (item.description != null) await setPmsTaskDescription(item.pmsTaskId, item.description, credentials, fetchFn);
       await updateSchedulePmsLinkStatus(item.linkId, item.targetStatus, client);
       tasks = tasks.filter((t) => t.id !== item.pmsTaskId);
       tasks.push({ id: item.pmsTaskId, title: `${item.tabLabel} | `, columnId, position, dueDate: item.date, assignees: [] });
@@ -421,7 +457,10 @@ export async function resolveAndSyncTabStatuses(
     const isPaused = autoPaused || manuallyPaused;
     const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
     if (targetStatus !== link.synced_status) {
-      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date });
+      const detailsKey = `${link.brand_key}::${link.platform}::${link.date}`;
+      const details = dateStatusIndex.details.get(detailsKey);
+      const description = details ? buildTaskDescription(details) : undefined;
+      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date, description });
     }
   }
   // Only recorded once we know the tab's real state as of currentWatermark

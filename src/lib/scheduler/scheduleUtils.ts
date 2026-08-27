@@ -1,6 +1,6 @@
 import { WEEKDAYS, toISODate, mondayOf, addDays, scheduleFor, type Weekday, type BrandScheduleRow } from '../scheduleBrands.ts';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
-import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, isPendingStatus, isDoneStatus, parsePostDate } from '../scoreSummary.ts';
+import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, isPendingStatus, isDoneStatus, parsePostDate, getReviewText } from '../scoreSummary.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import type { Entry } from '../../types/entry.ts';
 
@@ -124,6 +124,21 @@ export interface DateStatusIndex {
   // brandKey::platform::date keys of posts whose recorded status is
   // Done on that exact date.
   done: Set<string>;
+  // Same brandKey::platform::date keys as the four sets above (a details
+  // entry exists if and only if the key landed in one of them), mapped to
+  // the specific matched entry's Account/Country/Proxy Used/review-text
+  // content -- the raw dashboard values shown on a linked PMS task's
+  // description once a status stops being plan-only. Populated at the same
+  // point a key is added to one of the four sets, so it can never disagree
+  // about which entries counted as evidence.
+  details: Map<string, EntryDetails>;
+}
+
+export interface EntryDetails {
+  account: string;
+  country: string;
+  proxy: string;
+  content: string;
 }
 
 // A brand+platform+exact-date lookup, in both directions, of what a real
@@ -141,6 +156,7 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   const confirmed = new Set<string>();
   const pending = new Set<string>();
   const done = new Set<string>();
+  const details = new Map<string, EntryDetails>();
   for (const entry of entries) {
     const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
     if (!brand) continue;
@@ -162,9 +178,15 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
       if (!date) continue;
       const key = `${brandKey}::${platform}::${toISODate(date)}`;
       target.add(key);
+      details.set(key, {
+        account: (entry.data.Account ?? '').trim(),
+        country: (entry.data.Country ?? '').trim(),
+        proxy: (entry.data['Proxy Used'] ?? '').trim(),
+        content: (getReviewText(entry.data, platform) ?? '').trim(),
+      });
     }
   }
-  return { removed, confirmed, pending, done };
+  return { removed, confirmed, pending, done, details };
 }
 
 export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';

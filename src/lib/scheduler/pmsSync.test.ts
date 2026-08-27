@@ -464,6 +464,58 @@ describe('syncScheduleStatusToPms', () => {
     expect(result).toEqual({ synced: [item], failed: [] });
     expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
   });
+
+  it('PATCHes the task description after a successful move when the item carries one', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const item: PmsStatusSyncItem = {
+      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-20',
+      description: 'Account: agent@example.com\nCountry: Germany\nProxy: SpyderProxy\n\nGreat service.',
+    };
+    const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ synced: [item], failed: [] });
+    expect(updated).toEqual([{ id: 'link-1', synced_status: 'done' }]);
+    const descriptionCall = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([url, init]) => /\/tasks\/task-1$/.test(url as string) && init?.method === 'PATCH',
+    );
+    expect(descriptionCall).toBeDefined();
+    expect(JSON.parse(descriptionCall![1].body as string)).toEqual({ description: item.description });
+  });
+
+  it('never calls the description PATCH when the item has no description', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
+    // fakeFetchSequence throws on any unexpected call -- only listing the move
+    // call here proves no /tasks/:id PATCH (description) call was made.
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
+    ]);
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'active', tabLabel: 'BITP', date: '2026-08-20' };
+    const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ synced: [item], failed: [] });
+  });
+
+  it('fails the whole item (and never updates synced_status) when the description PATCH fails, even though the move already succeeded', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {}, status: 500 },
+    ]);
+    const item: PmsStatusSyncItem = {
+      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-20',
+      description: 'Account: x\nCountry: y\nProxy: z',
+    };
+    const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
+    expect(result.synced).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].item).toEqual(item);
+    expect(updated).toEqual([]);
+  });
 });
 
 // Generic multi-table fake for resolveAndSyncTabStatuses's tests -- it reads
@@ -531,10 +583,10 @@ describe('resolveAndSyncTabStatuses', () => {
       brand_platform_pause: [],
       brand_schedule: [],
     });
-    let movedBody: unknown;
-    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+    const calls: { url: string; body: unknown }[] = [];
+    const fetchFn = vi.fn(async (url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
-      movedBody = JSON.parse(init.body as string);
+      calls.push({ url, body: JSON.parse(init.body as string) });
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     // 'TP Brand Injection' is this tab's real identifier (TAB_COLUMN_CONFIGS'
@@ -543,8 +595,65 @@ describe('resolveAndSyncTabStatuses', () => {
     // (tabDisplayName('TP Brand Injection') === 'BITP', asserted below via
     // tabLabel, matching tabs.test.ts's own coverage of that mapping).
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-27' }]);
-    expect(movedBody).toEqual({ columnId: 'cmsoh1uxz000604l4j5loen7g', position: 0 });
+    // The entry has no Account/Country/Proxy Used/TP Review Text -- the
+    // details block still renders with each label blank, per the "always
+    // show the details block, only the content line is conditional" design.
+    expect(result.synced).toEqual([{
+      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-27',
+      description: 'Account: \nCountry: \nProxy: ',
+    }]);
+    const moveCall = calls.find((c) => c.url.endsWith('/move'));
+    expect(moveCall?.body).toEqual({ columnId: 'cmsoh1uxz000604l4j5loen7g', position: 0 });
+    const descriptionCall = calls.find((c) => !c.url.endsWith('/move'));
+    expect(descriptionCall?.body).toEqual({ description: 'Account: \nCountry: \nProxy: ' });
+  });
+
+  it('builds the description with the matched entry\'s Account/Country/Proxy Used/review-text content, content appended after a blank line', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [entry('TP Brand Injection', 'e1', {
+        Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '27/08/2026',
+        Account: 'agent@example.com', Country: 'Germany', 'Proxy Used': 'SpyderProxy', 'TP Review Text': 'Great service.',
+      })],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    });
+    const calls: { url: string; body: unknown }[] = [];
+    const fetchFn = vi.fn(async (url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      calls.push({ url, body: JSON.parse(init.body as string) });
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced[0]?.description).toBe(
+      'Account: agent@example.com\nCountry: Germany\nProxy: SpyderProxy\n\nGreat service.',
+    );
+  });
+
+  it('leaves description undefined for a combo resolving to paused (no evidence, plan/title-only)', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-24', reason: 'low success rate' }],
+      brand_schedule: [],
+    });
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced[0]?.targetStatus).toBe('paused');
+    expect(result.synced[0]?.description).toBeUndefined();
   });
 
   it('returns immediately with no fetches beyond links when the tab has no linked PMS tasks', async () => {
