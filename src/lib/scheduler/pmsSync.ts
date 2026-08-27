@@ -4,9 +4,13 @@
 // token never reaches the browser. Same "one src/lib module, multiple
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, type SchedulePmsLink } from '../queries.ts';
-import type { PmsSyncStatus } from './scheduleUtils.ts';
+import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, type SchedulePmsLink } from '../queries.ts';
+import { buildDateStatusIndex, resolvePmsSyncStatus, type PmsSyncStatus } from './scheduleUtils.ts';
+import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
+import { getTabPlatforms } from '../tab-configs.ts';
+import { weekdayAndWeekStartFor, scheduleFor, type BrandScheduleRow } from '../scheduleBrands.ts';
+import { tabDisplayName } from '../tabs.ts';
 
 // Confirmed live against the real "Forum Team" PMS project while writing
 // this spec (a throwaway test label/task was created via these exact
@@ -342,6 +346,63 @@ export async function syncScheduleStatusToPms(
     }
   }
   return { synced, failed };
+}
+
+// The one place the full dashboard -> PMS status resolution rules are
+// implemented (evidence precedence, pause exclusion, hidden/restricted/
+// removed-platform exclusion) -- both the on-visit browser trigger and the
+// 1-minute cron reach this same function over HTTP through
+// sync-schedule-pms's syncAllStatuses action (see that Edge Function's
+// index.ts), never a second independently-written copy of these rules.
+// Mirrors what TabScheduleSection.tsx's status-sync effect used to compute
+// inline before this extraction.
+export async function resolveAndSyncTabStatuses(
+  tab: string,
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsStatusSyncResult> {
+  const links = await fetchSchedulePmsLinks(tab, client);
+  if (links.length === 0) return { synced: [], failed: [] };
+
+  const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
+    fetchRawEntriesByTab(tab, client),
+    fetchRemovedPlatformBrands(client),
+    fetchScheduleHiddenBrands(tab, client),
+    fetchScheduleRestrictedBrands(tab, client),
+    fetchActiveBrandPlatformPauses(tab, client),
+  ]);
+  const dateStatusIndex = buildDateStatusIndex(entries);
+  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(
+    removedPlatformBrandRows as { tab: string; brand: string; platform: Platform }[],
+  );
+  const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
+  const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
+  const tabPlatforms = getTabPlatforms(tab);
+
+  const distinctWeeks = [...new Set(
+    links.map((l) => weekdayAndWeekStartFor(l.date)?.weekStart).filter((w): w is string => w != null),
+  )];
+  const rowsPerWeek = await Promise.all(
+    distinctWeeks.map((w) => fetchBrandSchedule(tab, w, client).catch(() => [] as BrandScheduleRow[])),
+  );
+  const manualPauseRows = rowsPerWeek.flat();
+
+  const items: PmsStatusSyncItem[] = [];
+  for (const link of links) {
+    const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
+    if (!allowedPlatforms.includes(link.platform)) continue;
+    const loc = weekdayAndWeekStartFor(link.date);
+    const autoPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === loc?.weekStart);
+    const manuallyPaused = loc != null && scheduleFor(manualPauseRows, tab, link.brand, loc.weekStart, link.platform)?.[loc.day] === 'paused';
+    const isPaused = autoPaused || manuallyPaused;
+    const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
+    if (targetStatus !== link.synced_status) {
+      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(tab), date: link.date });
+    }
+  }
+  if (items.length === 0) return { synced: [], failed: [] };
+  return syncScheduleStatusToPms(items, client, credentials, fetchFn);
 }
 
 export interface PmsDriftedItem {

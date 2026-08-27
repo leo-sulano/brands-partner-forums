@@ -1,7 +1,9 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { pushScheduleToPms, type PmsSyncItem } from './pmsSync';
 import { pullScheduleFromPms } from './pmsSync';
 import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
+import { resolveAndSyncTabStatuses } from './pmsSync';
+import { invalidateTabCache } from '../queries';
 
 const CREDENTIALS = { apiToken: 'test-token' };
 
@@ -461,5 +463,147 @@ describe('syncScheduleStatusToPms', () => {
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
     expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
+  });
+});
+
+// Generic multi-table fake for resolveAndSyncTabStatuses's tests -- it reads
+// six different tables per call (schedule_pms_links, entries,
+// removed_platform_brands, schedule_hidden_brands,
+// schedule_platform_restrictions, brand_platform_pause, brand_schedule),
+// unlike this file's other fakes which are scoped to one or two tables.
+// Beyond the brief's original select/eq/then shape, this also answers
+// .order()/.range() -- fetchRawEntriesByTab's real implementation
+// (fetchAllTabEntries in src/lib/queries.ts) chains
+// .select().eq().order().range(), not just .select().eq() -- and .update()
+// -- updateSchedulePmsLinkStatus's real implementation does
+// .update({synced_status}).eq('id', id), reached whenever
+// syncScheduleStatusToPms actually moves a link. Both gaps were found by
+// reading the real queries.ts functions against this fake, not assumed.
+function fakeMultiTableClient(tables: Record<string, unknown[]>) {
+  function builder(rows: unknown[]) {
+    return {
+      select: () => builder(rows),
+      eq: () => builder(rows),
+      order: () => builder(rows),
+      range: () => builder(rows),
+      update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
+        Promise.resolve({ data: rows, error: null }).then(resolve),
+    };
+  }
+  return { from: (table: string) => builder(tables[table] ?? []) } as any;
+}
+
+function entry(tab: string, id: string, data: Record<string, string | null>) {
+  return { id, tab, sheet_row_id: id, data, updated_at: '', last_edited_by: 'dashboard' as const, last_sync_tag: null };
+}
+
+describe('resolveAndSyncTabStatuses', () => {
+  // fetchRawEntriesByTab (via fetchAllTabEntries in src/lib/queries.ts)
+  // caches entries per tab name for 60s regardless of which client fetched
+  // them. Two cases below reuse the 'TP Brand Injection' tab name -- clear
+  // the cache before each test so one test's fixture can never leak into
+  // another's via a stale cache hit.
+  beforeEach(() => {
+    invalidateTabCache('TP Brand Injection');
+    invalidateTabCache('Trybet');
+    invalidateTabCache('Rooster Partners');
+  });
+
+  it('moves a link whose entry status resolves to Done, and leaves synced_status current on success', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    });
+    let movedBody: unknown;
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      movedBody = JSON.parse(init.body as string);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    // 'TP Brand Injection' is this tab's real identifier (TAB_COLUMN_CONFIGS'
+    // key in src/lib/tab-configs.ts) -- getTabPlatforms/fetchRawEntriesByTab/
+    // etc. all key off this exact value, not the 'BITP' display abbreviation
+    // (tabDisplayName('TP Brand Injection') === 'BITP', asserted below via
+    // tabLabel, matching tabs.test.ts's own coverage of that mapping).
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-27' }]);
+    expect(movedBody).toEqual({ columnId: 'cmsoh1uxz000604l4j5loen7g', position: 0 });
+  });
+
+  it('returns immediately with no fetches beyond links when the tab has no linked PMS tasks', async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => {
+        calls.push(table);
+        return { select: () => ({ eq: () => ({ then: (r: any) => Promise.resolve({ data: [], error: null }).then(r) }) }) };
+      },
+    } as any;
+    const result = await resolveAndSyncTabStatuses('Empty Tab', client, { apiToken: 'test-token' });
+    expect(result).toEqual({ synced: [], failed: [] });
+    expect(calls).toEqual(['schedule_pms_links']);
+  });
+
+  it('resolves an evidence-free but scheduler-paused combo to paused, not active', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-24', reason: 'low success rate' }],
+      brand_schedule: [],
+    });
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced[0]?.targetStatus).toBe('paused');
+  });
+
+  it('skips a link whose platform is currently hidden for that brand, never syncing it', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Novadreams2', brand_key: 'novadreams2', platform: 'ag', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [entry('Rooster Partners', 'e1', { Brands: 'Novadreams2', 'AG Review Status': 'Done', 'Ask Gambler review added': '27/08/2026' })],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [{ tab: 'Rooster Partners', brand: 'Novadreams2' }],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    });
+    const fetchFn = vi.fn();
+    const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
+    expect(result).toEqual({ synced: [], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('makes no move call when the resolved status already matches synced_status', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done' },
+      ],
+      entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    });
+    const fetchFn = vi.fn();
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
+    expect(result).toEqual({ synced: [], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });
