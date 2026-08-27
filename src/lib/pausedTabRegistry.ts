@@ -60,3 +60,11 @@ export function isTabPaused(tab: string): boolean {
 export function getActiveOperationalTabs(): string[] {
   return OPERATIONAL_TABS.filter((t) => !isTabPaused(t));
 }
+
+// The complement of getActiveOperationalTabs -- used by the PMS status-sync
+// cron to also force-pause a whole-tab-paused tab's already-linked PMS tasks
+// (see resolveAndSyncTabStatuses's isTabPaused param in scheduler/pmsSync.ts),
+// since those tabs are otherwise excluded from every normal sync pass.
+export function getPausedOperationalTabs(): string[] {
+  return OPERATIONAL_TABS.filter((t) => isTabPaused(t));
+}

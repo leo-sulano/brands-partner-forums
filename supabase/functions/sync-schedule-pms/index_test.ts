@@ -10,7 +10,7 @@ Deno.test('syncAllTabStatuses processes every given tab independently, isolating
     return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   };
   const results = await syncAllTabStatuses(
-    ['BITP', 'Trybet', 'Hanan'],
+    [{ tab: 'BITP', paused: false }, { tab: 'Trybet', paused: false }, { tab: 'Hanan', paused: false }],
     {} as SupabaseClient,
     { apiToken: 'test-token' },
     fetch,
@@ -29,7 +29,7 @@ Deno.test('syncAllTabStatuses reports both move and cancel failure counts in one
     cancelled: [],
     cancelFailed: [{ item: {} as any, error: 'cancel boom' }, { item: {} as any, error: 'cancel boom 2' }],
   });
-  const results = await syncAllTabStatuses(['BITP'], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'error: 1 link(s) failed to move, 2 link(s) failed to cancel');
 });
 
@@ -40,7 +40,7 @@ Deno.test('syncAllTabStatuses reports ok when only cancelled items are non-empty
     cancelled: [{ tab: 'BITP', brand: 'X', platform: 'tp' as const, date: '2026-08-27' }],
     cancelFailed: [],
   });
-  const results = await syncAllTabStatuses(['BITP'], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'ok');
 });
 
@@ -50,9 +50,25 @@ Deno.test('syncAllTabStatuses processes only the given tab when the list has one
     calls.push(tab);
     return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   };
-  const results = await syncAllTabStatuses(['Wizard of Odds'], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  const results = await syncAllTabStatuses([{ tab: 'Wizard of Odds', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(calls, ['Wizard of Odds']);
   assertEquals(Object.keys(results), ['Wizard of Odds']);
+});
+
+Deno.test('syncAllTabStatuses passes each tab\'s paused flag through to resolveFn as the 5th argument', async () => {
+  const calls: { tab: string; paused: unknown }[] = [];
+  const fakeResolve = async (tab: string, _c: unknown, _cr: unknown, _f: unknown, paused: unknown) => {
+    calls.push({ tab, paused });
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+  };
+  await syncAllTabStatuses(
+    [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }],
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    fakeResolve as any,
+  );
+  assertEquals(calls, [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }]);
 });
 
 // handleSyncAllStatuses tests below cover the Deno.serve handler's own
@@ -81,6 +97,7 @@ Deno.test('handleSyncAllStatuses runs bootstrap even when body.tab names a real 
       bootstrapCalls++;
     },
     () => ['BITP', 'Hanan'],
+    () => [],
   );
   assertEquals(bootstrapCalls, 1);
   assertEquals(Object.keys(results), ['BITP']);
@@ -94,6 +111,7 @@ Deno.test('handleSyncAllStatuses processes only the requested tab, not every act
     fetch,
     async () => {},
     () => ['BITP', 'Hanan', 'Trybet'],
+    () => [],
   );
   assertEquals(Object.keys(results), ['Hanan']);
 });
@@ -106,11 +124,12 @@ Deno.test('handleSyncAllStatuses processes every active tab when body.tab is omi
     fetch,
     async () => {},
     () => ['BITP', 'Hanan', 'Trybet'],
+    () => [],
   );
   assertEquals(Object.keys(results).sort(), ['BITP', 'Hanan', 'Trybet']);
 });
 
-Deno.test('handleSyncAllStatuses falls back to zero tabs when body.tab is not a real active tab', async () => {
+Deno.test('handleSyncAllStatuses falls back to zero tabs when body.tab is neither an active nor a paused tab', async () => {
   const results = await handleSyncAllStatuses(
     { tab: 'Not A Real Tab' },
     {} as SupabaseClient,
@@ -118,6 +137,7 @@ Deno.test('handleSyncAllStatuses falls back to zero tabs when body.tab is not a 
     fetch,
     async () => {},
     () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
   );
   assertEquals(results, {});
 });
@@ -133,6 +153,7 @@ Deno.test('handleSyncAllStatuses still isolates one tab failure from the rest vi
     fetch,
     async () => {},
     () => ['BITP', 'Trybet'],
+    () => [],
   );
   assertEquals(Object.keys(results).sort(), ['BITP', 'Trybet']);
   // Both fail (fake client has no .from), but neither failure crashes the
@@ -142,6 +163,38 @@ Deno.test('handleSyncAllStatuses still isolates one tab failure from the rest vi
   assertEquals(results['BITP'].startsWith('error:'), true);
   assertEquals(results['Trybet'].startsWith('error:'), true);
 });
+
+// Whole-Brand-Tab pause cascade: a paused tab is excluded from
+// getActiveOperationalTabs but must still be swept so its already-linked PMS
+// tasks get force-moved to Project Paused (see resolveAndSyncTabStatuses's
+// isTabPaused param in src/lib/scheduler/pmsSync.ts).
+
+Deno.test('handleSyncAllStatuses includes paused tabs alongside active ones in a full sweep', async () => {
+  const results = await handleSyncAllStatuses(
+    {},
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+  );
+  assertEquals(Object.keys(results).sort(), ['BITP', 'GRG - Gulf Recovery Group', 'Hanan']);
+});
+
+Deno.test('handleSyncAllStatuses resolves a requested body.tab that is currently paused, not treating it as unknown', async () => {
+  const results = await handleSyncAllStatuses(
+    { tab: 'GRG - Gulf Recovery Group' },
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+  );
+  assertEquals(Object.keys(results), ['GRG - Gulf Recovery Group']);
+});
+
 
 // handleReconcileColumns tests: the column-drift reconcile is a separate
 // action ('reconcileColumns') from the per-tab status sweep. It bootstraps

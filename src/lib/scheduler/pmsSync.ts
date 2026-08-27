@@ -483,9 +483,54 @@ export async function resolveAndSyncTabStatuses(
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch = fetch,
+  isTabPaused = false,
 ): Promise<PmsResolveResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
   if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+
+  // Whole-Brand-Tab pause (paused_tabs, see pausedTabRegistry.ts) forces every
+  // still-eligible link straight to 'paused', bypassing the entries watermark
+  // (a tab pause isn't reflected in entries.updated_at, so the short-circuit
+  // below would otherwise wrongly skip a just-paused tab) and the
+  // cancellation-detection block (a paused tab's held slots are deliberately
+  // parked, not stale). The hidden/restricted/removed-platform-brand
+  // eligibility filter still applies -- an already-excluded combo is left
+  // alone here too, so it isn't force-paused and then stuck unable to resolve
+  // back out once the tab unpauses (that combo was already excluded from the
+  // normal resolve path below, for the same reason). PMS-side only: this
+  // never touches brand_schedule -- the calendar itself is unaffected by a
+  // tab pause, per the feature's design.
+  if (isTabPaused) {
+    const [removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+      fetchRemovedPlatformBrands(client),
+      fetchScheduleHiddenBrands(tab, client),
+      fetchScheduleRestrictedBrands(tab, client),
+    ]);
+    const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
+    const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
+    const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
+    const tabPlatforms = getTabPlatforms(tab);
+
+    const items: PmsStatusSyncItem[] = [];
+    for (const link of links) {
+      if (link.synced_status === 'paused') continue;
+      const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
+      if (!allowedPlatforms.includes(link.platform)) continue;
+      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), date: link.date });
+    }
+    // Unconditionally invalidates this tab's recorded watermark (an empty
+    // string can never equal a real entries.updated_at timestamp, nor the
+    // null a tab with no entries produces). While paused, synced_status is
+    // being force-managed independent of entries -- without this, the normal
+    // path's watermark short-circuit below would see an unchanged watermark
+    // the next time this tab goes active again (nothing about unpausing
+    // touches entries.updated_at) and skip resolving anything, leaving every
+    // link stuck on 'paused' forever unless entries happen to change first.
+    await upsertSyncWatermark(tab, '', client).catch(() => {});
+    if (items.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+    const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
+    return { ...result, cancelled: [], cancelFailed: [] };
+  }
 
   const [currentWatermark, storedWatermark] = await Promise.all([
     fetchTabEntriesWatermark(tab, client),

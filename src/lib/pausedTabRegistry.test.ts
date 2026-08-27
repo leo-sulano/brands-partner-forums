@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { OPERATIONAL_TABS } from './tabs';
 import {
   pauseTabLocally, unpauseTabLocally, applyPausedTabs, resetPausedTabs, isTabPaused,
-  getActiveOperationalTabs,
+  getActiveOperationalTabs, getPausedOperationalTabs,
 } from './pausedTabRegistry';
 
 describe('pausedTabRegistry', () => {
@@ -44,5 +44,16 @@ describe('pausedTabRegistry', () => {
     expect(active).toContain('Wizard of Odds');
     expect(active.length).toBe(OPERATIONAL_TABS.length - 1);
     expect(OPERATIONAL_TABS).toContain('Hanan');
+  });
+
+  it('getPausedOperationalTabs returns exactly the currently-paused tabs', () => {
+    pauseTabLocally('Hanan');
+    pauseTabLocally('Wizard of Odds');
+    const paused = getPausedOperationalTabs();
+    expect(paused.sort()).toEqual(['Hanan', 'Wizard of Odds'].sort());
+  });
+
+  it('getPausedOperationalTabs returns an empty array when nothing is paused', () => {
+    expect(getPausedOperationalTabs()).toEqual([]);
   });
 });

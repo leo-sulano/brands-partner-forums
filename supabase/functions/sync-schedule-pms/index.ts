@@ -7,7 +7,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
-import { getActiveOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
+import { getActiveOperationalTabs, getPausedOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { fetchAllSchedulePmsLinks, invalidateTabCache } from '../../../src/lib/queries.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
@@ -32,16 +32,16 @@ function jsonResponse(body: unknown, status = 200): Response {
 // resolveFn is injectable so tests can verify this loop's isolation/eviction
 // behavior without a real Supabase client or PMS API.
 export async function syncAllTabStatuses(
-  tabs: readonly string[],
+  tabs: readonly { tab: string; paused: boolean }[],
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
-  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
+  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch, isTabPaused?: boolean) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
-  for (const tab of tabs) {
+  for (const { tab, paused } of tabs) {
     try {
-      const result = await resolveFn(tab, client, credentials, fetchFn);
+      const result = await resolveFn(tab, client, credentials, fetchFn, paused);
       const failures: string[] = [];
       if (result.failed.length > 0) failures.push(`${result.failed.length} link(s) failed to move`);
       if (result.cancelFailed.length > 0) failures.push(`${result.cancelFailed.length} link(s) failed to cancel`);
@@ -59,13 +59,19 @@ export async function syncAllTabStatuses(
 // Extracted so the handler's own routing logic -- bootstrap unconditionally,
 // then select which tab(s) to sync -- is directly testable without a real
 // Supabase client or PMS API, mirroring how syncAllTabStatuses above was
-// already extracted for the same reason. A requested body.tab that isn't a
-// real, currently-active tab (a stale/bogus name) falls back to an empty
-// tab list rather than being passed through unvalidated -- resolveFn/
-// resolveAndSyncTabStatuses already no-ops safely on an unknown tab (its
-// fetchSchedulePmsLinks lookup just returns zero links), but validating here
-// means an invalid tab produces an explicit empty `results` rather than a
-// silent no-op indistinguishable from "nothing needed syncing".
+// already extracted for the same reason. A requested body.tab that is
+// neither a currently-active nor a currently-paused tab (a stale/bogus name,
+// or an archived tab) falls back to an empty tab list rather than being
+// passed through unvalidated -- resolveFn/resolveAndSyncTabStatuses already
+// no-ops safely on an unknown tab (its fetchSchedulePmsLinks lookup just
+// returns zero links), but validating here means an invalid tab produces an
+// explicit empty `results` rather than a silent no-op indistinguishable from
+// "nothing needed syncing". A paused tab is included alongside active ones
+// (with paused: true) rather than filtered out, so a whole-Brand-Tab pause
+// (paused_tabs, see pausedTabRegistry.ts) still gets its already-linked PMS
+// tasks force-moved to Project Paused via resolveAndSyncTabStatuses's
+// isTabPaused param -- getActiveOperationalTabs alone would otherwise exclude
+// it from every sync pass, leaving those tasks frozen wherever they were.
 export async function handleSyncAllStatuses(
   body: { tab?: unknown },
   client: SupabaseClient,
@@ -73,12 +79,22 @@ export async function handleSyncAllStatuses(
   fetchFn: typeof fetch,
   bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
   getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
+  getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
 ): Promise<Record<string, string>> {
   await bootstrapFn(client, 'sync-schedule-pms');
   const activeTabs = getActiveTabsFn();
-  const tabs = typeof body.tab === 'string' && body.tab
-    ? (activeTabs.includes(body.tab) ? [body.tab] : [])
-    : activeTabs;
+  const pausedTabs = getPausedTabsFn();
+  let tabs: { tab: string; paused: boolean }[];
+  if (typeof body.tab === 'string' && body.tab) {
+    if (activeTabs.includes(body.tab)) tabs = [{ tab: body.tab, paused: false }];
+    else if (pausedTabs.includes(body.tab)) tabs = [{ tab: body.tab, paused: true }];
+    else tabs = [];
+  } else {
+    tabs = [
+      ...activeTabs.map((tab) => ({ tab, paused: false })),
+      ...pausedTabs.map((tab) => ({ tab, paused: true })),
+    ];
+  }
   return syncAllTabStatuses(tabs, client, credentials, fetchFn);
 }
 

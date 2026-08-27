@@ -6975,3 +6975,55 @@ point at PMS-deleted tasks, correctly skipped — `pull` owns those; 1 unrelated
 the old column, not linked).
 
 Spec: `docs/superpowers/specs/2026-08-27-pms-column-drift-reconcile-design.md`.
+
+---
+
+## Task 283: Whole-Brand-Tab Pause Now Force-Moves Its Linked PMS Tasks to Project Paused
+
+**Date:** August 27, 2026
+
+User handed over a full spec for "Schedule Planner → PMS Automatic Task Synchronization" — Done/
+Pending/Removed/Published → Done, manual day-cell pause → Project Paused, cancel → delete, and
+whole-Brand-Tab pause cascading to Project Paused for every linked task. Investigation before
+writing any code found 3 of the 4 requirements already fully shipped and live from the same day's
+earlier work (Tasks 267/280/281/282: status→Done mapping, per-day manual pause, self-healing
+cancellation). The one real gap: pausing an entire Brand Tab (the existing `paused_tabs`/Task 246
+feature) only removed it from `getActiveOperationalTabs()` — excluded from every PMS sync pass
+entirely — so its already-linked PMS tasks froze wherever they were instead of moving to Project
+Paused. Confirmed with the user up front (PMS-only cascade — the Schedule Planner calendar itself
+stays untouched; only the linked PMS tasks move) before implementing.
+
+`resolveAndSyncTabStatuses` (`src/lib/scheduler/pmsSync.ts`) gained an `isTabPaused` param: when
+true, it force-targets `'paused'` for every link not already synced as paused, still applying the
+existing hidden/restricted/removed-platform-brand eligibility filter (so an already-excluded combo
+isn't force-paused and left stuck once the tab unpauses), skipping the cancellation-detection block
+entirely (a paused tab's held slots are deliberately parked, not stale). New
+`getPausedOperationalTabs()` (`pausedTabRegistry.ts`) mirrors the existing
+`getActiveOperationalTabs()`. `sync-schedule-pms/index.ts`'s cron sweep and on-visit trigger
+(`syncAllTabStatuses`/`handleSyncAllStatuses`) now include paused tabs alongside active ones,
+passing the flag through — covering both the 1-minute cron and a user opening a paused tab's own
+Schedule Planner page (Brand Tab Pause keeps that page fully functional per Task 246).
+
+**A live-verification round caught a real bug in the first version, before it shipped.** Pausing
+"Wizard of Odds" correctly force-moved all 12 linked tasks to Project Paused (confirmed via direct
+PMS API calls, not just the DB), but unpausing did **not** self-heal — every link stayed stuck on
+`'paused'` in `schedule_pms_links` and in PMS. Root cause: the normal (non-paused) resolve path's
+entries-watermark short-circuit had nothing to invalidate it — a tab pause never touches
+`entries.updated_at`, so the next resolve after unpausing saw the same still-matching watermark
+recorded before the pause and skipped resolving anything at all. Fixed by having the paused branch
+unconditionally invalidate the tab's `schedule_pms_sync_watermarks` row (set to `''`, which can
+never equal a real timestamp or the `null` an entry-less tab produces) every time it runs, so the
+first resolve after unpausing is always guaranteed to run for real. TDD throughout (5 new tests
+for the pause-cascade behavior, 2 more for the watermark-invalidation fix, plus updated
+`syncAllTabStatuses`/`handleSyncAllStatuses` Deno tests for the new `{tab, paused}` call shape).
+Full suite 2162 passed, build clean, `deno check` clean on both Edge Function consumers.
+
+**Deployed twice this session** (`supabase functions deploy sync-schedule-pms`, v22 then v23 after
+the watermark fix) and live-verified end to end against real production data and the real PMS API,
+not just the DB: paused "Wizard of Odds" via the real admin session (RLS-respecting insert into
+`paused_tabs`) → triggered the deployed function scoped to that tab → confirmed via direct PMS API
+calls that both a To-Do task and a Done task moved to the real Project Paused column → unpaused →
+triggered the function again → confirmed every link resolved back to its correct real status
+(`active`/`published`/`removed`) both in `schedule_pms_links` and via direct PMS API calls showing
+tasks back in the correct To Do/Done columns. No spec/plan doc — bounded path per the brainstorming
+skill, approved in chat.
