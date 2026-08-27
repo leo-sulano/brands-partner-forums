@@ -620,8 +620,15 @@ describe('syncScheduleStatusToPms', () => {
 // upsertCapture, when passed, records every { table, row } an .upsert() call
 // on this fake client makes -- used by the watermark tests below to assert
 // what resolveAndSyncTabStatuses actually wrote, without changing the
-// signature callers that don't care about upserts already use.
-function fakeMultiTableClient(tables: Record<string, unknown[]>, upsertCapture?: { table: string; row: unknown }[]) {
+// signature callers that don't care about upserts already use. deleteCapture,
+// when passed, records every deleted id from a .delete().eq('id', id) call --
+// deleteSchedulePmsLink's real shape, reached by the self-healing
+// cancellation tests below.
+function fakeMultiTableClient(
+  tables: Record<string, unknown[]>,
+  upsertCapture?: { table: string; row: unknown }[],
+  deleteCapture?: { table: string; id: string }[],
+) {
   function builder(rows: unknown[], tableName: string) {
     return {
       select: () => builder(rows, tableName),
@@ -633,6 +640,12 @@ function fakeMultiTableClient(tables: Record<string, unknown[]>, upsertCapture?:
         upsertCapture?.push({ table: tableName, row });
         return Promise.resolve({ error: null });
       },
+      delete: () => ({
+        eq: (_col: string, id: string) => {
+          deleteCapture?.push({ table: tableName, id });
+          return Promise.resolve({ error: null });
+        },
+      }),
       maybeSingle: () => Promise.resolve({ data: rows[0] ?? null, error: null }),
       then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
         Promise.resolve({ data: rows, error: null }).then(resolve),
@@ -751,7 +764,7 @@ describe('resolveAndSyncTabStatuses', () => {
       },
     } as any;
     const result = await resolveAndSyncTabStatuses('Empty Tab', client, { apiToken: 'test-token' });
-    expect(result).toEqual({ synced: [], failed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
     expect(calls).toEqual(['schedule_pms_links']);
   });
 
@@ -775,6 +788,136 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(result.synced[0]?.targetStatus).toBe('paused');
   });
 
+  it('cancels a link whose day is genuinely blank in brand_schedule, has no evidence, and is not paused -- the self-healing backstop for a cancellation whose client-side cleanup never ran', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [
+        { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
+      ],
+    }, undefined, deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([{ tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'cg', date: '2026-08-27' }]);
+    expect(result.cancelFailed).toEqual([]);
+    expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+  });
+
+  it('does not cancel a link whose day is still active in brand_schedule -- only resolves it normally', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [
+        { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: 'active', friday: null },
+      ],
+    }, undefined, deletes);
+    const fetchFn = vi.fn();
+    const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
+    // 2026-08-27 is a Thursday -- still 'active' in brand_schedule, so this
+    // resolves to 'active' (already matches synced_status: no move needed)
+    // rather than being cancelled.
+    expect(result.cancelled).toEqual([]);
+    expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([]);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('does not cancel a link that is currently paused, even with a genuinely blank day and no evidence', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-24', reason: 'low success rate' }],
+      brand_schedule: [],
+    }, undefined, deletes);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([]);
+    expect(deletes).toEqual([]);
+  });
+
+  it('does not cancel a link when real evidence exists, even though brand_schedule is blank', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [
+        { tab: 'TP Brand Injection', brand_key: 'winmega', week_start: '2026-08-24', platform: 'tp', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
+      ],
+    }, undefined, deletes);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([]);
+    expect(deletes).toEqual([]);
+    expect(result.synced[0]?.targetStatus).toBe('done');
+  });
+
+  it('records a per-link cancellation failure without blocking others, and does not record the watermark', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const upserts: { table: string; row: unknown }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-bad', synced_status: 'active' },
+        { id: 'link-2', tab: 'Rooster Partners', brand: 'Rocketspin', brand_key: 'rocketspin', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-ok', synced_status: 'active' },
+      ],
+      entries: [
+        { ...entry('Rooster Partners', 'e1', { Brands: 'Lucky7even', 'CG Review Status': '', 'Casino Guru review added': '' }), updated_at: '2026-08-27T12:00:00Z' },
+      ],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [
+        { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
+        { tab: 'Rooster Partners', brand_key: 'rocketspin', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
+      ],
+    }, upserts, deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-bad$/, method: 'DELETE', body: {}, status: 500 },
+      { url: /\/tasks\/task-ok$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([{ tab: 'Rooster Partners', brand: 'Rocketspin', platform: 'cg', date: '2026-08-27' }]);
+    expect(result.cancelFailed).toHaveLength(1);
+    expect(result.cancelFailed[0].item).toEqual({ tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'cg', date: '2026-08-27' });
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-2' }]);
+    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([]);
+  });
+
   it('skips a link whose platform is currently hidden for that brand, never syncing it', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
@@ -789,7 +932,7 @@ describe('resolveAndSyncTabStatuses', () => {
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result).toEqual({ synced: [], failed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -807,7 +950,7 @@ describe('resolveAndSyncTabStatuses', () => {
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result).toEqual({ synced: [], failed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -821,7 +964,7 @@ describe('resolveAndSyncTabStatuses', () => {
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result).toEqual({ synced: [], failed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 

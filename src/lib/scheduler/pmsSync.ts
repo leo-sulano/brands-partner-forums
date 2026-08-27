@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
 import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
-import { buildDateStatusIndex, resolvePmsSyncStatus, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
+import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
 import { weekdayAndWeekStartFor, scheduleFor, type BrandScheduleRow } from '../scheduleBrands.ts';
@@ -257,6 +257,17 @@ export interface PmsStatusSyncResult {
   failed: { item: PmsStatusSyncItem; error: string }[];
 }
 
+// resolveAndSyncTabStatuses's own return type -- a superset of
+// PmsStatusSyncResult (syncScheduleStatusToPms's plain result type, kept
+// unchanged so its own tests/callers are untouched) adding the self-healing
+// cancellation outcome. cancelled/cancelFailed mirror PmsCancelResult's own
+// deleted/failed shape (see cancelScheduleInPms further below), just named
+// to match this function's own synced/failed pair.
+export interface PmsResolveResult extends PmsStatusSyncResult {
+  cancelled: PmsCancelItem[];
+  cancelFailed: { item: PmsCancelItem; error: string }[];
+}
+
 async function movePmsTask(taskId: string, columnId: string, position: number, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
   const res = await fetchFn(`${PMS_BASE_URL}/tasks/${taskId}/move`, {
     method: 'PATCH',
@@ -414,16 +425,16 @@ export async function resolveAndSyncTabStatuses(
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch = fetch,
-): Promise<PmsStatusSyncResult> {
+): Promise<PmsResolveResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
-  if (links.length === 0) return { synced: [], failed: [] };
+  if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
 
   const [currentWatermark, storedWatermark] = await Promise.all([
     fetchTabEntriesWatermark(tab, client),
     fetchSyncWatermark(tab, client),
   ]);
   if (currentWatermark !== null && currentWatermark === storedWatermark) {
-    return { synced: [], failed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   }
 
   const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
@@ -448,13 +459,40 @@ export async function resolveAndSyncTabStatuses(
   const manualPauseRows = rowsPerWeek.flat();
 
   const items: PmsStatusSyncItem[] = [];
+  const cancelled: PmsCancelItem[] = [];
+  const cancelFailed: { item: PmsCancelItem; error: string }[] = [];
   for (const link of links) {
     const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
     if (!allowedPlatforms.includes(link.platform)) continue;
     const loc = weekdayAndWeekStartFor(link.date);
     const autoPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === loc?.weekStart);
-    const manuallyPaused = loc != null && scheduleFor(manualPauseRows, tab, link.brand, loc.weekStart, link.platform)?.[loc.day] === 'paused';
+    const dayStatus = loc != null ? (scheduleFor(manualPauseRows, tab, link.brand, loc.weekStart, link.platform)?.[loc.day] ?? null) : null;
+    const manuallyPaused = dayStatus === 'paused';
     const isPaused = autoPaused || manuallyPaused;
+
+    // A link whose day is genuinely blank in brand_schedule (not active, not
+    // paused), with no real evidence backing it either, has nothing left to
+    // sync -- most likely a cancelled slot whose client-side cleanup never
+    // ran (a stale browser tab still on an older bundle, a network blip, a
+    // closed page mid-click). Clean it up here instead of falling into
+    // resolvePmsSyncStatus's 'active' fallback, which can't otherwise tell
+    // "never scheduled" apart from "scheduled, then cancelled" -- this is
+    // what makes cancellation self-healing the same way status moves already
+    // are via this same cron. Requires a parseable date (loc != null); an
+    // unparseable link.date falls through to the normal resolve path below,
+    // unchanged from before this check existed.
+    if (loc != null && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
+      const cancelItem: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
+      try {
+        await deletePmsTask(link.pms_task_id, credentials, fetchFn);
+        await deleteSchedulePmsLink(link.id, client);
+        cancelled.push(cancelItem);
+      } catch (err) {
+        cancelFailed.push({ item: cancelItem, error: err instanceof Error ? err.message : String(err) });
+      }
+      continue;
+    }
+
     const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
     if (targetStatus !== link.synced_status) {
       const detailsKey = `${link.brand_key}::${link.platform}::${link.date}`;
@@ -466,9 +504,9 @@ export async function resolveAndSyncTabStatuses(
   // Only recorded once we know the tab's real state as of currentWatermark
   // has been fully accounted for -- a null currentWatermark (a tab with no
   // entries at all) has nothing meaningful to record, and a partial failure
-  // must NOT record it, so the next tick's watermark check still sees a
-  // mismatch and retries the still-failing item(s) instead of silently
-  // skipping them forever.
+  // (a status move OR a cancellation) must NOT record it, so the next tick's
+  // watermark check still sees a mismatch and retries the still-failing
+  // item(s) instead of silently skipping them forever.
   const recordWatermark = async (): Promise<void> => {
     if (currentWatermark !== null) {
       await upsertSyncWatermark(tab, currentWatermark, client).catch(() => {});
@@ -476,12 +514,12 @@ export async function resolveAndSyncTabStatuses(
   };
 
   if (items.length === 0) {
-    await recordWatermark();
-    return { synced: [], failed: [] };
+    if (cancelFailed.length === 0) await recordWatermark();
+    return { synced: [], failed: [], cancelled, cancelFailed };
   }
   const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-  if (result.failed.length === 0) await recordWatermark();
-  return result;
+  if (result.failed.length === 0 && cancelFailed.length === 0) await recordWatermark();
+  return { ...result, cancelled, cancelFailed };
 }
 
 export interface PmsDriftedItem {

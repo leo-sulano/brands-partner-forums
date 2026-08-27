@@ -5,7 +5,7 @@
 // pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
 // secret -- the browser never sees it.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsStatusSyncResult } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
 import { getActiveOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { invalidateTabCache } from '../../../src/lib/queries.ts';
@@ -36,13 +36,16 @@ export async function syncAllTabStatuses(
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
-  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch) => Promise<PmsStatusSyncResult> = resolveAndSyncTabStatuses,
+  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
   for (const tab of tabs) {
     try {
       const result = await resolveFn(tab, client, credentials, fetchFn);
-      results[tab] = result.failed.length > 0 ? `error: ${result.failed.length} link(s) failed to move` : 'ok';
+      const failures: string[] = [];
+      if (result.failed.length > 0) failures.push(`${result.failed.length} link(s) failed to move`);
+      if (result.cancelFailed.length > 0) failures.push(`${result.cancelFailed.length} link(s) failed to cancel`);
+      results[tab] = failures.length > 0 ? `error: ${failures.join(', ')}` : 'ok';
     } catch (err) {
       console.error(`[sync-schedule-pms] syncAllStatuses ${tab} failed:`, err);
       results[tab] = `error: ${err instanceof Error ? err.message : String(err)}`;

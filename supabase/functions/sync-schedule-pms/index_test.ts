@@ -7,7 +7,7 @@ Deno.test('syncAllTabStatuses processes every given tab independently, isolating
   const fakeResolve = async (tab: string) => {
     calls.push(tab);
     if (tab === 'Trybet') throw new Error('boom');
-    return { synced: [], failed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   };
   const results = await syncAllTabStatuses(
     ['BITP', 'Trybet', 'Hanan'],
@@ -22,11 +22,33 @@ Deno.test('syncAllTabStatuses processes every given tab independently, isolating
   assertEquals(results['Hanan'], 'ok');
 });
 
+Deno.test('syncAllTabStatuses reports both move and cancel failure counts in one error string', async () => {
+  const fakeResolve = async () => ({
+    synced: [],
+    failed: [{ item: {} as any, error: 'move boom' }],
+    cancelled: [],
+    cancelFailed: [{ item: {} as any, error: 'cancel boom' }, { item: {} as any, error: 'cancel boom 2' }],
+  });
+  const results = await syncAllTabStatuses(['BITP'], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  assertEquals(results['BITP'], 'error: 1 link(s) failed to move, 2 link(s) failed to cancel');
+});
+
+Deno.test('syncAllTabStatuses reports ok when only cancelled items are non-empty, with zero failures', async () => {
+  const fakeResolve = async () => ({
+    synced: [],
+    failed: [],
+    cancelled: [{ tab: 'BITP', brand: 'X', platform: 'tp' as const, date: '2026-08-27' }],
+    cancelFailed: [],
+  });
+  const results = await syncAllTabStatuses(['BITP'], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  assertEquals(results['BITP'], 'ok');
+});
+
 Deno.test('syncAllTabStatuses processes only the given tab when the list has one entry', async () => {
   const calls: string[] = [];
   const fakeResolve = async (tab: string) => {
     calls.push(tab);
-    return { synced: [], failed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   };
   const results = await syncAllTabStatuses(['Wizard of Odds'], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(calls, ['Wizard of Odds']);
