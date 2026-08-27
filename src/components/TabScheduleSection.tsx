@@ -468,18 +468,32 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // itself still applies the same week-scoped pause matching and
   // hidden/restricted/removed-platform exclusion this tab's calendar cells
   // already respect.
+  //
+  // Debounced 500ms: dateStatusIndex changes once per realtime entry update
+  // (see liveEntries above), and a Check Status scraper run can PATCH 50+
+  // entries on one tab in quick succession -- without this, an open tab
+  // would fire 50 back-to-back resolves, each one a real server-side
+  // fetchRawEntriesByTab pull, during a single scraper run. The cleanup
+  // function clears the pending timer on every dep change, so only the
+  // *last* change in a burst actually triggers a sync, ~500ms after the
+  // burst settles -- not a missed update, just a coalesced one, and
+  // resolveAndSyncTabStatuses's own watermark check (pmsSync.ts) makes a
+  // slightly-stale entries snapshot harmless either way.
   useEffect(() => {
     if (!isApproved || !tabCtx || tabCtx.tab !== tab || scheduleLoading) return;
     let canceled = false;
-    (async () => {
-      try {
-        await syncTabStatusToPms(tab);
-      } catch (err) {
-        if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to sync schedule status to PMS', kind: 'error' });
-      }
-    })();
+    const timer = setTimeout(() => {
+      (async () => {
+        try {
+          await syncTabStatusToPms(tab);
+        } catch (err) {
+          if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to sync schedule status to PMS', kind: 'error' });
+        }
+      })();
+    }, 500);
     return () => {
       canceled = true;
+      clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, dateStatusIndex, pauses, isApproved, scheduleLoading]);

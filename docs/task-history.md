@@ -6860,3 +6860,50 @@ folded into the fix wave.
 
 Spec: `docs/superpowers/specs/2026-08-27-schedule-pms-automatic-status-sync-design.md`.
 Plan: `docs/superpowers/plans/2026-08-27-schedule-pms-automatic-status-sync.md`.
+
+---
+
+## Task 281: PMS Auto-Sync Follow-Up — Watermark Skip + On-Visit Debounce
+
+**Date:** August 27, 2026
+
+Closes both Important findings Task 280's final whole-branch review deliberately parked as v1
+resource-cost trade-offs rather than fixed, per direct user follow-up request the same session.
+
+**Watermark short-circuit** (the bigger of the two): the 1-minute cron was re-pulling every active
+tab's *entire* entries table (some tabs 1,700+ rows of heavy jsonb) every minute, forever, whether
+or not anything had changed — the original spec's "cheap" reasoning measured query count, not data
+volume. New `schedule_pms_sync_watermarks` table (migration
+`20260827140000_add_schedule_pms_sync_watermarks.sql`, same 4-policy RLS shape as the sibling
+`schedule_pms_links`) holds one row per tab: the `entries.updated_at` value in effect the last time
+that tab fully resolved with zero failures. `resolveAndSyncTabStatuses`
+(`src/lib/scheduler/pmsSync.ts`) now does one cheap, index-backed check first (new
+`fetchTabEntriesWatermark`, `src/lib/queries.ts` — `select updated_at ... order by updated_at desc
+limit 1`, riding the pre-existing `entries_tab_updated_idx`) — if it matches the stored watermark,
+the whole resolve is skipped before the expensive `fetchRawEntriesByTab` pull ever runs. The
+watermark is only recorded after a resolve that both completed and had zero failures — a partial
+failure deliberately leaves it stale, so the next tick's mismatch naturally retries the still-failing
+link(s) instead of silently giving up on them. Deliberately scoped to `entries.updated_at` only, not
+the five exclusion-config tables (removed-platform, hidden-brand, platform-restriction, auto-pause,
+manual-pause) — those change far less often, and a config-only change with no entries write is still
+caught by the next real entries change or by the on-visit trigger.
+
+**On-visit debounce**: `TabScheduleSection.tsx`'s status-sync effect now debounces `syncTabStatusToPms`
+by 500ms via a `setTimeout` cleared on every dependency change, so a Check Status scraper burst
+(50+ entry PATCHes on one open tab in quick succession) collapses into one sync call instead of
+firing once per realtime update. Same dependency array and gating conditions as before — this only
+changes *when within a burst* the call fires, not *whether* it fires.
+
+5 new tests in `pmsSync.test.ts` (skip-when-watermark-matches, record-on-full-success,
+no-record-on-partial-failure — plus extending the shared `fakeMultiTableClient` fake with
+`.maybeSingle()`/`.upsert()` and upsert-call capturing, verified not to change any of the 5
+pre-existing tests' behavior). No dedicated test for the debounce (`TabScheduleSection.tsx` has no
+test file, matching this project's established precedent for this exact file — Task 280's own
+Task 6 followed the same pattern). Full suite and build pass; `deno check` clean on both real Edge
+Function consumers (`sync-schedule-pms`, `generate-weekly-schedule`, since `queries.ts`/`pmsSync.ts`
+are shared by both).
+
+Tier 2 (light path) — implemented directly with one self-review pass, no spec/plan doc, no
+subagent fan-out, per this project's CLAUDE.md tiering rules (scoped follow-up with one clear root
+cause per finding, touching shared logic but not `queries.ts`'s date/status/platform filtering
+semantics).

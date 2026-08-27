@@ -5,7 +5,7 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, type SchedulePmsLink } from '../queries.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
 import { buildDateStatusIndex, resolvePmsSyncStatus, type PmsSyncStatus } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
@@ -358,6 +358,21 @@ export async function syncScheduleStatusToPms(
 // index.ts), never a second independently-written copy of these rules.
 // Mirrors what TabScheduleSection.tsx's status-sync effect used to compute
 // inline before this extraction.
+//
+// Watermark short-circuit: the 1-minute cron calls this for every active tab
+// every tick, whether or not anything actually changed -- without this
+// check, that means a full fetchRawEntriesByTab pull (some tabs 1,700+ rows
+// of heavy jsonb) every minute forever, even for a tab nobody has touched in
+// weeks. fetchTabEntriesWatermark is a cheap, index-backed "what's the
+// newest entries.updated_at for this tab right now" check; if it matches
+// what was recorded the last time this tab fully resolved with no failures,
+// nothing could have changed since, so the whole resolve is skipped. Scoped
+// deliberately to entries.updated_at only, not the exclusion-config tables
+// (removed_platform_brands, schedule_hidden_brands,
+// schedule_platform_restrictions, brand_platform_pause, brand_schedule) --
+// those change far less often, and a config-only change with no entries
+// write is still caught by the next entries change on that tab, or by the
+// on-visit trigger the next time someone opens it.
 export async function resolveAndSyncTabStatuses(
   tab: string,
   client: SupabaseClient,
@@ -366,6 +381,14 @@ export async function resolveAndSyncTabStatuses(
 ): Promise<PmsStatusSyncResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
   if (links.length === 0) return { synced: [], failed: [] };
+
+  const [currentWatermark, storedWatermark] = await Promise.all([
+    fetchTabEntriesWatermark(tab, client),
+    fetchSyncWatermark(tab, client),
+  ]);
+  if (currentWatermark !== null && currentWatermark === storedWatermark) {
+    return { synced: [], failed: [] };
+  }
 
   const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
     fetchRawEntriesByTab(tab, client),
@@ -401,8 +424,25 @@ export async function resolveAndSyncTabStatuses(
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date });
     }
   }
-  if (items.length === 0) return { synced: [], failed: [] };
-  return syncScheduleStatusToPms(items, client, credentials, fetchFn);
+  // Only recorded once we know the tab's real state as of currentWatermark
+  // has been fully accounted for -- a null currentWatermark (a tab with no
+  // entries at all) has nothing meaningful to record, and a partial failure
+  // must NOT record it, so the next tick's watermark check still sees a
+  // mismatch and retries the still-failing item(s) instead of silently
+  // skipping them forever.
+  const recordWatermark = async (): Promise<void> => {
+    if (currentWatermark !== null) {
+      await upsertSyncWatermark(tab, currentWatermark, client).catch(() => {});
+    }
+  };
+
+  if (items.length === 0) {
+    await recordWatermark();
+    return { synced: [], failed: [] };
+  }
+  const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
+  if (result.failed.length === 0) await recordWatermark();
+  return result;
 }
 
 export interface PmsDriftedItem {

@@ -479,19 +479,28 @@ describe('syncScheduleStatusToPms', () => {
 // .update({synced_status}).eq('id', id), reached whenever
 // syncScheduleStatusToPms actually moves a link. Both gaps were found by
 // reading the real queries.ts functions against this fake, not assumed.
-function fakeMultiTableClient(tables: Record<string, unknown[]>) {
-  function builder(rows: unknown[]) {
+// upsertCapture, when passed, records every { table, row } an .upsert() call
+// on this fake client makes -- used by the watermark tests below to assert
+// what resolveAndSyncTabStatuses actually wrote, without changing the
+// signature callers that don't care about upserts already use.
+function fakeMultiTableClient(tables: Record<string, unknown[]>, upsertCapture?: { table: string; row: unknown }[]) {
+  function builder(rows: unknown[], tableName: string) {
     return {
-      select: () => builder(rows),
-      eq: () => builder(rows),
-      order: () => builder(rows),
-      range: () => builder(rows),
+      select: () => builder(rows, tableName),
+      eq: () => builder(rows, tableName),
+      order: () => builder(rows, tableName),
+      range: () => builder(rows, tableName),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      upsert: (row: unknown) => {
+        upsertCapture?.push({ table: tableName, row });
+        return Promise.resolve({ error: null });
+      },
+      maybeSingle: () => Promise.resolve({ data: rows[0] ?? null, error: null }),
       then: (resolve: (v: { data: unknown[]; error: null }) => unknown) =>
         Promise.resolve({ data: rows, error: null }).then(resolve),
     };
   }
-  return { from: (table: string) => builder(tables[table] ?? []) } as any;
+  return { from: (table: string) => builder(tables[table] ?? [], table) } as any;
 }
 
 function entry(tab: string, id: string, data: Record<string, string | null>) {
@@ -605,5 +614,55 @@ describe('resolveAndSyncTabStatuses', () => {
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
     expect(result).toEqual({ synced: [], failed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('skips the whole resolve (no PMS calls at all) when the tab watermark matches the last successful sync', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T10:00:00Z' }],
+      schedule_pms_sync_watermarks: [{ tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' }],
+    });
+    const fetchFn = vi.fn();
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
+    expect(result).toEqual({ synced: [], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('records the new tab watermark after a fully successful resolve, so the next tick can skip it', async () => {
+    const upserts: { table: string; row: unknown }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T11:00:00Z' }],
+    }, upserts);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced).toHaveLength(1);
+    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
+      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T11:00:00Z' } },
+    ]);
+  });
+
+  it('does not record a new tab watermark when a link fails to sync, so the next tick retries it', async () => {
+    const upserts: { table: string; row: unknown }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T12:00:00Z' }],
+    }, upserts);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: false, status: 500, json: async () => ({}) }; // the PMS move itself fails
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.failed).toHaveLength(1);
+    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([]);
   });
 });
