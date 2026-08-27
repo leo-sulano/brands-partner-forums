@@ -6686,3 +6686,65 @@ per-call retries plus a skip for already-correctly-ordered columns), so re-runni
 was safe and required no manual cleanup. Final verification pass (`already-correct=True` on the
 live board for all 5 columns) confirms convergence: every column now reads grouped by due date,
 then by brand tab within that date, matching the user's exact stated example.
+
+---
+
+## Task 279: PMS Card Stuck on an Old Status — Root-Caused and Live-Fixed via a Real Browser Walkthrough
+
+**Date:** August 27, 2026
+
+Follow-up the same session: user flagged a specific live example (screenshot) — the Wizard of Odds
+tab's "Lucky7even" card for Aug 27 was sitting in the PMS board's In Progress column, despite that
+exact brand/platform/date already showing a real `WoO Review Status: Done` in the dashboard's own
+entry data. Not an ordering bug (Task 278, directly above) — a separate root cause: the dashboard →
+PMS status sync (`syncScheduleStatusToPms`, called from `TabScheduleSection.tsx`'s status-sync
+effect) only ever runs when an approved user actually opens that tab's Schedule Planner page; it is
+not a background/periodic job. `schedule_pms_links.synced_status` for this exact link was confirmed
+via a live query still `'active'` (i.e. never updated) — nobody had opened the Wizard of Odds tab
+since the entry's status flipped to Done, so the card just sat wherever it was last (manually moved
+to In Progress by a person, a column the automated sync never targets on its own).
+
+Rather than hand-replicate `resolvePmsSyncStatus`/`buildDateStatusIndex`'s real business rules in an
+external script (risking a result that could disagree with what the real app would compute),
+confirmed and fixed this the faithful way: ran the actual dev server and a disposable Playwright
+script (using the real `CAPTURE_EMAIL`/`CAPTURE_PASSWORD` already in `.env`) that logs in and selects
+Brand Tabs on the real Schedule Planner page, letting each tab's real effects fire exactly as a human
+browsing the page would. First run correctly synced only the exact flagged link (`targetStatus:
+'done'`) — confirmed live via both a direct `schedule_pms_links` query (`synced_status` now `'done'`)
+and a direct PMS API check (`Wizard of Odds | Lucky7even` now sits at position 156 in the Done column,
+correctly grouped right after the other 2026-08-27 cards per Task 278's fix, immediately proving both
+fixes compose correctly). A second pass selected every currently-selectable tab at once (Schedule
+Planner mounts one independent `TabScheduleSection` per selected tab, so this exercises all of them
+in parallel, same as a user browsing with several tabs open) and found 2 more, unrelated stale Hanan
+links, which synced cleanly the same way; a third confirmation pass across the same tabs found zero
+remaining drift, confirming full convergence. 4 tabs (Revolution Casino, SuprPlay Limited, HazEmirates
+UAE, GRG - Gulf Recovery Group) weren't in the tab picker at all — they're currently schedule-paused,
+a pre-existing, unrelated state; not part of this fix.
+
+One real local-environment gap found and fixed along the way, worth remembering: local `.env` never
+had `VITE_SYNC_SCHEDULE_PMS_URL` set at all, so every push/pull/status-sync call silently no-ops on
+`npm run dev` (`if (... || !SYNC_SCHEDULE_PMS_URL) return;` in `schedulePmsSync.ts`) — this is why the
+first attempt to trigger the real sync locally produced zero API calls. Added it temporarily for this
+verification, then deliberately removed it again afterward rather than leaving it in local `.env`:
+unlike the other Edge Function URLs already there, this one writes to a live, shared, external board
+on every relevant page visit, so a future local `npm run dev` session testing Schedule Planner should
+not silently start moving real PMS cards around — that's very likely why it was never added to local
+`.env` in the first place, not an oversight to "fix" permanently. (No code or `.env` change is part of
+this task's commit — `.env` is gitignored and was restored to its prior state.)
+
+Also corrects a stale claim in the "Correction (2026-08-20)" note near the top of Known Issues: it
+reported `VITE_SYNC_SCHEDULE_PMS_URL` as still unset in **Vercel** production. That must have been
+stale even before today — 298 real PMS tasks already existed on the live board with real
+dashboard-matching titles/dates before this session touched anything, which is only possible if the
+push path has been live in production for some time. Not re-verified against the Vercel dashboard
+directly this session (no Vercel CLI/API access), but the live PMS board data is itself strong,
+direct evidence the var is set there; flagged so a future session doesn't re-trust the old claim
+without checking.
+
+No code changes in this task — purely a live investigation + a live data fix (3 stale PMS cards
+moved to their correct column) using the real app's own code path. Worth flagging as a known
+characteristic (not necessarily something to fix) for a future task if the user wants it: this
+lazy, on-visit-only sync means any brand tab nobody opens for a while can carry stale PMS card
+state indefinitely — a scheduled/periodic sync (e.g. extending the existing `generate-weekly-schedule`
+cron, or a new dedicated cron) would close that gap structurally instead of relying on someone
+opening every tab regularly.
