@@ -7,7 +7,6 @@ import {
   fetchRawEntriesByTab,
   fetchTabHeaders,
   fetchBrandSchedule,
-  fetchSchedulePmsLinks,
   setBrandScheduleDay,
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
@@ -24,9 +23,9 @@ import { buildOverrideMap, buildOverrideSetByMap, overrideKey, type OverrideStat
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
-import { pushScheduleActivations, pullScheduleDrift, pushScheduleStatusSync, type PmsStatusSyncItem } from '../lib/schedulePmsSync';
+import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -449,78 +448,32 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [liveEntries],
   );
 
-  // Reflects each linked task's current calendar-cell status (Removed >
-  // Confirmed/Published > Pending > Done > Paused > Active) onto its PMS
-  // task's column, so someone working the PMS board can see status without
-  // opening the dashboard. One-way (dashboard -> PMS only; a manual PMS
-  // column move never writes back here) and best-effort, same fire-and-
-  // forget/toast-on-failure shape as pushScheduleActivations/pullScheduleDrift
-  // above. Keyed on dateStatusIndex (not just `tab`) so it reruns once this
-  // tab's real entry evidence has actually loaded/changed, not on a stale
-  // prior tab's data — see the tabCtx.tab === tab guard below, same pattern
-  // the pull-drift effect uses. A currently-paused (brand, platform, date)
-  // combo now moves its task to the real "Project Paused" PMS column
-  // (resolvePmsSyncStatus returns 'paused') rather than being left untouched
-  // — isPaused below folds together every way a combo can be paused: a
-  // scheduler auto-pause or brand+platform override (both already reflected
-  // in `pauses`, week-scoped) OR that exact day cell having been manually
-  // cycled to Paused in brand_schedule (closing the gap the original v1
-  // design deliberately left open — see the "only recognizes scheduler
-  // auto-pause" Known Issue this fixes).
-  //
-  // Four correctness guards, added across this feature's original review and
-  // this fix:
-  // - Also waits on `!scheduleLoading`: `pauses` is reset to [] at the start
-  //   of every tab load and only populated once the slower
-  //   recalculatePauses -> ensureWeekGenerated -> fetch chain above finishes
-  //   (see setScheduleLoading in the scheduling effect). Without this guard,
-  //   this effect fires as soon as tabCtx is set and almost always reads a
-  //   stale, empty pauses array, silently treating every actually-paused
-  //   combo as unpaused.
-  // - Pause matching is week-scoped (`p.paused_week_start === linkWeekStart`,
-  //   via weekdayAndWeekStartFor(link.date)), matching how the calendar
-  //   itself matches pauses elsewhere in this file (see paused_week_start
-  //   below). A pause only ever covers the one week it was recorded for; a
-  //   bare brand_key+platform match would incorrectly suppress sync for
-  //   every week that combo has a link in, not just the paused one.
-  // - Skips any link whose platform isn't in that brand's currently-allowed
-  //   platform list (`brandPlatforms`, the same hidden/restricted/
-  //   flagged-removed-platform filter the calendar itself renders through)
-  //   so a combo the dashboard deliberately shows nothing for never has its
-  //   linked PMS card moved.
-  // - The manual per-day check reads brand_schedule directly for each link's
-  //   own week (via fetchBrandSchedule, not the `scheduleRows` state, which
-  //   only ever holds the currently-displayed date range's weeks) — a link
-  //   can point at a week far outside what's on screen right now, and this
-  //   effect must still see that week's real day status to detect a manual
-  //   pause on it.
+  // Moves this tab's linked PMS tasks to match their calendar cells' real
+  // status (Removed/Confirmed/Pending/Done -> Done; Paused -> Project
+  // Paused; otherwise To Do) -- one-way, dashboard -> PMS only, a manual PMS
+  // column move never writes back here. As of the automatic-sync feature
+  // (docs/superpowers/specs/2026-08-27-schedule-pms-automatic-status-sync-design.md),
+  // the actual resolution (which links moved, to what) happens entirely
+  // server-side in resolveAndSyncTabStatuses (src/lib/scheduler/pmsSync.ts)
+  // -- this effect's only job is to ask the server to resolve+sync THIS tab
+  // right now, on the same triggers as before (tab load, and any later
+  // change to dateStatusIndex/pauses while the tab stays open, e.g. a live
+  // realtime entry update), so a status change made while someone is
+  // actively looking at this tab still reflects immediately rather than
+  // waiting for the next cron tick (up to ~60s later). The 1-minute cron
+  // (`sync-schedule-pms-status-minutely`) covers every tab whether or not
+  // anyone has it open. See the same four correctness guards documented in
+  // the effect this replaced: waits on !scheduleLoading, is keyed on
+  // dateStatusIndex/pauses (not just tab), and the server-side resolution
+  // itself still applies the same week-scoped pause matching and
+  // hidden/restricted/removed-platform exclusion this tab's calendar cells
+  // already respect.
   useEffect(() => {
     if (!isApproved || !tabCtx || tabCtx.tab !== tab || scheduleLoading) return;
     let canceled = false;
     (async () => {
       try {
-        const links = await fetchSchedulePmsLinks(tab);
-        if (canceled || links.length === 0) return;
-
-        const distinctWeeks = [...new Set(links.map((l) => weekdayAndWeekStartFor(l.date)?.weekStart).filter((w): w is string => w != null))];
-        const rowsPerWeek = await Promise.all(distinctWeeks.map((w) => fetchBrandSchedule(tab, w).catch(() => [] as BrandScheduleRow[])));
-        const manualPauseRows = rowsPerWeek.flat();
-
-        const items: PmsStatusSyncItem[] = [];
-        for (const link of links) {
-          if (!brandPlatforms(link.brand).includes(link.platform)) continue;
-          const loc = weekdayAndWeekStartFor(link.date);
-          const autoPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === loc?.weekStart);
-          const manuallyPaused = loc != null && scheduleFor(manualPauseRows, tab, link.brand, loc.weekStart, link.platform)?.[loc.day] === 'paused';
-          const isPaused = autoPaused || manuallyPaused;
-          const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
-          if (targetStatus !== link.synced_status) {
-            items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date });
-          }
-        }
-        if (!canceled && items.length > 0) {
-          await pushScheduleStatusSync(items);
-        }
+        await syncTabStatusToPms(tab);
       } catch (err) {
         if (!canceled) setToast({ message: err instanceof Error ? err.message : 'Failed to sync schedule status to PMS', kind: 'error' });
       }
