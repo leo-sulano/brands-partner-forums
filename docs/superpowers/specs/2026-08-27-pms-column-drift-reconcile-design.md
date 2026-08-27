@@ -1,7 +1,10 @@
 # PMS Column-Drift Reconcile — Design
 
 **Date:** 2026-08-27
-**Status:** implemented (pending deploy)
+**Status:** implemented + deployed 2026-08-27 (migration applied, `sync-schedule-pms`
+redeployed, cron `sync-schedule-pms-column-reconcile-minutely` active and confirmed
+firing; a manual invoke moved 42 stragglers then converged to 0, board-wide column
+mismatch count 0)
 
 ## Problem
 

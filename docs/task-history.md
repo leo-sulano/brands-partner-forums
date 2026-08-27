@@ -6965,9 +6965,13 @@ Deno tests (`sync-schedule-pms/index_test.ts`). Full suite **2153 passed**, buil
 Done as a direct Tier-3 implementation (brainstorming design was fully specified and approved; no
 separate plan doc / SDD fan-out).
 
-**Pending manual deploy:** `supabase db push` (cron migration), then `supabase functions deploy
-sync-schedule-pms` (adds the `reconcileColumns` action), then confirm the job in `cron.job` and
-watch one clean run in `cron.job_run_details`. The 33 stranded schedule-paused-tab cards get
-swept to To Do by the first reconcile pass — no extra step.
+**Deployed 2026-08-27, same session.** `git push origin main`, `supabase db push` (migration
+`20260827160000` applied), `supabase functions deploy sync-schedule-pms` (`reconcileColumns`
+action live). Cron `sync-schedule-pms-column-reconcile-minutely` confirmed `active` and firing
+(`cron.job_run_details` shows a succeeded auto-run). A manual invoke returned `{moved: 42,
+failed: 0}` (the 33 schedule-paused stragglers + a few fresh drifters) then `{moved: 0}` on a
+second pass — converged. Full board recheck: 0 column mismatches across all 290 links (6 links
+point at PMS-deleted tasks, correctly skipped — `pull` owns those; 1 unrelated orphan task in
+the old column, not linked).
 
 Spec: `docs/superpowers/specs/2026-08-27-pms-column-drift-reconcile-design.md`.
