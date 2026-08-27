@@ -1,6 +1,6 @@
-import { assertEquals } from 'https://deno.land/std@0.224.0/assert/mod.ts';
+import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { syncAllTabStatuses, handleSyncAllStatuses } from './index.ts';
+import { syncAllTabStatuses, handleSyncAllStatuses, handleReconcileColumns } from './index.ts';
 
 Deno.test('syncAllTabStatuses processes every given tab independently, isolating one failure', async () => {
   const calls: string[] = [];
@@ -141,4 +141,78 @@ Deno.test('handleSyncAllStatuses still isolates one tab failure from the rest vi
   // through this wrapper too.
   assertEquals(results['BITP'].startsWith('error:'), true);
   assertEquals(results['Trybet'].startsWith('error:'), true);
+});
+
+// handleReconcileColumns tests: the column-drift reconcile is a separate
+// action ('reconcileColumns') from the per-tab status sweep. It bootstraps
+// the tab registries (tabDisplayName needs them for dynamic tabs), fetches
+// every link across every tab, and delegates the actual PMS moves to
+// enforcePmsColumns. bootstrapFn / fetchLinksFn / enforceFn are injectable
+// so this handler's own orchestration is testable without a real Supabase
+// client or PMS API, mirroring handleSyncAllStatuses above.
+
+Deno.test('handleReconcileColumns bootstraps, then reports the enforce move/fail counts', async () => {
+  let bootstrapCalls = 0;
+  const result = await handleReconcileColumns(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {
+      bootstrapCalls++;
+    },
+    async () => [{ id: 'link-1' }, { id: 'link-2' }] as any,
+    async () => ({ moved: [{ linkId: 'link-1', pmsTaskId: 't1', from: 'a', to: 'b' }], failed: [] }),
+  );
+  assertEquals(bootstrapCalls, 1);
+  assertEquals(result, { moved: 1, failed: 0, errors: [] });
+});
+
+Deno.test('handleReconcileColumns surfaces enforce failures in the count and error list', async () => {
+  const result = await handleReconcileColumns(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    async () => [] as any,
+    async () => ({
+      moved: [],
+      failed: [
+        { linkId: 'l1', pmsTaskId: 't1', error: 'move boom' },
+        { linkId: 'l2', pmsTaskId: 't2', error: 'move boom 2' },
+      ],
+    }),
+  );
+  assertEquals(result, { moved: 0, failed: 2, errors: ['move boom', 'move boom 2'] });
+});
+
+Deno.test('handleReconcileColumns caps the reported error list at 5 while still counting all failures', async () => {
+  const failed = Array.from({ length: 7 }, (_, i) => ({ linkId: `l${i}`, pmsTaskId: `t${i}`, error: `err ${i}` }));
+  const result = await handleReconcileColumns(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    async () => [] as any,
+    async () => ({ moved: [], failed }),
+  );
+  assertEquals(result.failed, 7);
+  assertEquals(result.errors.length, 5);
+});
+
+Deno.test('handleReconcileColumns propagates a links-fetch failure (handler-level, becomes a 500)', async () => {
+  await assertRejects(
+    () =>
+      handleReconcileColumns(
+        {} as SupabaseClient,
+        { apiToken: 'test-token' },
+        fetch,
+        async () => {},
+        async () => {
+          throw new Error('links fetch boom');
+        },
+        async () => ({ moved: [], failed: [] }),
+      ),
+    Error,
+    'links fetch boom',
+  );
 });

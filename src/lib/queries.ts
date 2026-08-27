@@ -1238,6 +1238,29 @@ export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient 
   return (data ?? []) as SchedulePmsLink[];
 }
 
+// Every link, all tabs -- used by the column-drift reconcile
+// (enforcePmsColumns, src/lib/scheduler/pmsSync.ts), which must also correct
+// cards on schedule-paused/archived tabs the per-tab status sweep never
+// touches. Paginated for the same reason fetchEntryCredentials is: an
+// unpaginated select silently caps at PostgREST's 1,000-row default, and
+// this table grows one row per scheduled (tab, brand, platform, date).
+export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
+  const PAGE = 1000;
+  const all: SchedulePmsLink[] = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await client
+      .from('schedule_pms_links')
+      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status')
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    all.push(...((data ?? []) as SchedulePmsLink[]));
+    if ((data ?? []).length < PAGE) break;
+    from += PAGE;
+  }
+  return all;
+}
+
 export async function insertSchedulePmsLink(
   tab: string,
   brand: string,

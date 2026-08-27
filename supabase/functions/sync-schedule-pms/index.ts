@@ -5,10 +5,10 @@
 // pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
 // secret -- the browser never sees it.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
 import { getActiveOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
-import { invalidateTabCache } from '../../../src/lib/queries.ts';
+import { fetchAllSchedulePmsLinks, invalidateTabCache } from '../../../src/lib/queries.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -82,6 +82,30 @@ export async function handleSyncAllStatuses(
   return syncAllTabStatuses(tabs, client, credentials, fetchFn);
 }
 
+// The 'reconcileColumns' action (its own 1-minute pg_cron job, separate from
+// syncAllStatuses). Unlike resolveAndSyncTabStatuses, this does NOT look at
+// entries/evidence or the watermark -- it just makes every linked PMS card
+// obey the column its schedule_pms_links.synced_status already maps to. That
+// covers the two drift classes the watermark-gated per-tab sweep can't: a
+// PMS_STATUS_COLUMN_IDS remap (synced_status unchanged, so nothing is ever
+// queued) and a human dragging a card in PMS. Runs over EVERY link, every
+// tab, including schedule-paused/archived ones. bootstrapFn/fetchLinksFn/
+// enforceFn are injectable so this orchestration is unit-testable without a
+// real Supabase client or PMS API, same pattern as handleSyncAllStatuses.
+export async function handleReconcileColumns(
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
+  fetchLinksFn: typeof fetchAllSchedulePmsLinks = fetchAllSchedulePmsLinks,
+  enforceFn: typeof enforcePmsColumns = enforcePmsColumns,
+): Promise<{ moved: number; failed: number; errors: string[] }> {
+  await bootstrapFn(client, 'sync-schedule-pms');
+  const links = await fetchLinksFn(client);
+  const { moved, failed } = await enforceFn(links, credentials, fetchFn);
+  return { moved: moved.length, failed: failed.length, errors: failed.slice(0, 5).map((f) => f.error) };
+}
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
   if (!req.headers.get('authorization')) return jsonResponse({ error: 'Unauthorized' }, 401);
@@ -117,6 +141,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (body?.action === 'syncAllStatuses') {
       const results = await handleSyncAllStatuses(body, client, credentials, fetch);
       return jsonResponse({ results });
+    }
+    if (body?.action === 'reconcileColumns') {
+      const result = await handleReconcileColumns(client, credentials, fetch);
+      return jsonResponse(result);
     }
     return jsonResponse({ error: 'Unknown action' }, 400);
   } catch (e) {

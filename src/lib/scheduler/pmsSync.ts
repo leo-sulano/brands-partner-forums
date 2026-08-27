@@ -397,6 +397,64 @@ export async function syncScheduleStatusToPms(
   return { synced, failed };
 }
 
+export interface PmsColumnEnforceResult {
+  moved: { linkId: string; pmsTaskId: string; from: string; to: string }[];
+  failed: { linkId: string; pmsTaskId: string; error: string }[];
+}
+
+// Column-drift reconcile: makes every linked PMS task sit in the column its
+// schedule_pms_links.synced_status already maps to. It does NOT re-derive
+// status from evidence -- resolveAndSyncTabStatuses owns that (watermark-
+// gated). This is the cheap, watermark-independent half that corrects the
+// two drift classes resolveAndSyncTabStatuses structurally cannot: a
+// PMS_STATUS_COLUMN_IDS remap (synced_status unchanged, mapped column
+// changed -- e.g. Task 267 moving pending/done from In Progress to Done
+// left every already-synced card stranded, since targetStatus still equalled
+// synced_status so nothing was queued) and a human dragging a card in the
+// PMS UI (dashboard -> PMS is one-way; an unauthorised move is reverted on
+// the next pass). Runs across ALL links every tick, including schedule-
+// paused/archived tabs, since a mapping change strands their cards too and
+// those tabs are never resolved. One GET /tasks per call; a PATCH only for a
+// link whose card is actually in the wrong column. A link whose task is gone
+// from PMS is skipped (pullScheduleFromPms owns stale-link deletion). Same
+// per-item try/catch and in-memory task-list bookkeeping as
+// syncScheduleStatusToPms so grouped inserts stay correct across a batch.
+export async function enforcePmsColumns(
+  links: SchedulePmsLink[],
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsColumnEnforceResult> {
+  const moved: PmsColumnEnforceResult['moved'] = [];
+  const failed: PmsColumnEnforceResult['failed'] = [];
+  if (links.length === 0) return { moved, failed };
+
+  // No try/catch here: a failed task-list fetch means nothing can be
+  // reconciled this tick, and the caller (handleReconcileColumns) turns the
+  // throw into one visible 'error: ...' string rather than it being swallowed
+  // into a silent no-op -- the exact failure mode this whole feature exists
+  // to prevent (Task 279).
+  let tasks = await fetchPmsProjectTasks(credentials, fetchFn);
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+
+  for (const link of links) {
+    const task = byId.get(link.pms_task_id);
+    if (!task) continue;
+    const want = PMS_STATUS_COLUMN_IDS[link.synced_status as PmsSyncStatus];
+    if (!want || task.columnId === want) continue;
+    const tabLabel = tabDisplayName(link.tab);
+    try {
+      const position = computeGroupedInsertPosition(tasks, want, link.date, tabLabel, link.pms_task_id);
+      await movePmsTask(link.pms_task_id, want, position, credentials, fetchFn);
+      tasks = tasks.filter((t) => t.id !== link.pms_task_id);
+      tasks.push({ id: link.pms_task_id, title: `${tabLabel} | `, columnId: want, position, dueDate: link.date, assignees: [] });
+      moved.push({ linkId: link.id, pmsTaskId: link.pms_task_id, from: task.columnId, to: want });
+    } catch (err) {
+      failed.push({ linkId: link.id, pmsTaskId: link.pms_task_id, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { moved, failed };
+}
+
 // The one place the full dashboard -> PMS status resolution rules are
 // implemented (evidence precedence, pause exclusion, hidden/restricted/
 // removed-platform exclusion) -- both the on-visit browser trigger and the

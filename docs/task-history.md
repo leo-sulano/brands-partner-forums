@@ -6907,3 +6907,67 @@ Tier 2 (light path) — implemented directly with one self-review pass, no spec/
 subagent fan-out, per this project's CLAUDE.md tiering rules (scoped follow-up with one clear root
 cause per finding, touching shared logic but not `queries.ts`'s date/status/platform filtering
 semantics).
+
+---
+
+## Task 282: PMS Column-Drift Reconcile — Durable Fix for Stranded Cards
+
+**Date:** August 27, 2026
+
+Follow-up to a live incident the same session. User flagged (screenshots) many Schedule
+Planner slots showing Done while their linked PMS cards still sat in the board's **In Progress**
+column. Root cause: `resolveAndSyncTabStatuses` (`src/lib/scheduler/pmsSync.ts`) queues a PMS
+column move ONLY when `targetStatus !== link.synced_status` and never checks the task's actual
+`columnId`. Task 267 (2026-08-26) repointed `PMS_STATUS_COLUMN_IDS` (pending/done from "In
+Progress" and published/removed from "Review/QA" to a single "Done" column; paused to "Project
+Paused") but shipped **"No migration/schema change"** — no re-sync of existing
+`schedule_pms_links`. Every already-settled link had `targetStatus === synced_status`, so nothing
+was ever queued, and its card stayed stranded in the pre-267 column. Task 281's watermark
+short-circuit then froze the affected tabs. Same visible symptom as Task 279 but a distinct
+mechanism (279 = never-visited links, `synced_status='active'`).
+
+**Live one-time reconcile (no code), verified end to end:** via `supabase db query --linked`
+(Management API — no DB password needed) `update schedule_pms_links set synced_status='active'
+where synced_status<>'active'` (192 rows) + `delete from schedule_pms_sync_watermarks` (7 rows).
+The 1-minute status cron then re-resolved all 7 active tabs against live evidence and moved every
+settled card to the Done column — all 7 re-recorded watermarks with zero failures. Spot-checked
+6/6 sample tasks physically in the Done column with descriptions (Hanan/Pribet, Hanan/OlympusBet,
+Rooster/Spinsup, Rooster/Rooster.bet, BITP/7Bit, Trybet/Trybet.com); board Done column ~145 to
+166. The reset left 80 links reading `active` whose card was not in To Do; moved the 47 on
+cron-swept active tabs to To Do via `PATCH /api/tasks/:id/move` (47/47 ok, scratchpad script),
+left 33 on schedule-paused tabs (Revolution Casino / SuprPlay Limited / HazEmirates UAE / GRG)
+for the new cron to sweep.
+
+**Durable fix (this task's code):** a **separate** 1-minute `pg_cron` job
+(`sync-schedule-pms-column-reconcile-minutely`, migration
+`20260827160000_add_pms_column_reconcile_cron.sql`) hitting a new `reconcileColumns` action on
+`sync-schedule-pms`. New pure `enforcePmsColumns` (`src/lib/scheduler/pmsSync.ts`) makes every
+linked PMS card obey `PMS_STATUS_COLUMN_IDS[link.synced_status]` — one `GET /tasks`, a `PATCH`
+only per drifted card, per-item try/catch, same `computeGroupedInsertPosition` grouping as
+`syncScheduleStatusToPms`. It does NOT re-derive status from evidence (the watermark-gated status
+cron owns `synced_status`); it just fixes card placement, and it runs over EVERY link, every tab,
+including schedule-paused/archived ones the per-tab status sweep never reaches. New
+`fetchAllSchedulePmsLinks` (`src/lib/queries.ts`, paginated like `fetchEntryCredentials`). New
+`handleReconcileColumns` (`supabase/functions/sync-schedule-pms/index.ts`, bootstrap +
+fetch-all-links + enforce, injectable seams, mirrors `handleSyncAllStatuses`). Kept separate from
+`syncAllStatuses` deliberately: zero churn to the status sweep and its tests, independently
+observable in `cron.job_run_details`, clean division of labor.
+
+Deliberately dropped from the approved design (YAGNI): an on-visit enforce pass in
+`TabScheduleSection.tsx` — the 1-minute cron reconciles every tab (including the one just opened)
+within ~60s. Known accepted interaction: both minute-crons can transiently disagree for one tick
+if they race on the same link's `synced_status`; both are idempotent column moves and converge
+next tick.
+
+TDD throughout: 12 new `enforcePmsColumns` tests (`pmsSync.test.ts`), 4 new `handleReconcileColumns`
+Deno tests (`sync-schedule-pms/index_test.ts`). Full suite **2153 passed**, build clean,
+`deno check` clean on both Edge Functions, `generate-weekly-schedule` Deno suite (7) unaffected.
+Done as a direct Tier-3 implementation (brainstorming design was fully specified and approved; no
+separate plan doc / SDD fan-out).
+
+**Pending manual deploy:** `supabase db push` (cron migration), then `supabase functions deploy
+sync-schedule-pms` (adds the `reconcileColumns` action), then confirm the job in `cron.job` and
+watch one clean run in `cron.job_run_details`. The 33 stranded schedule-paused-tab cards get
+swept to To Do by the first reconcile pass — no extra step.
+
+Spec: `docs/superpowers/specs/2026-08-27-pms-column-drift-reconcile-design.md`.
