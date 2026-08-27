@@ -23,7 +23,7 @@ import { buildOverrideMap, buildOverrideSetByMap, overrideKey, type OverrideStat
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
-import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms } from '../lib/schedulePmsSync';
+import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
@@ -708,6 +708,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       if (next === 'active') {
         pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
+        });
+      } else if (next === null) {
+        // The only way a cell reaches null is the paused -> blank leg of the
+        // cycle (see nextStatus in scheduleBrands.ts) -- that's a deliberate
+        // cancellation, so any PMS task already created for this exact combo
+        // is deleted too, not just left to re-resolve back to active on the
+        // next status sync.
+        cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
+          setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
         });
       }
     } catch (err) {

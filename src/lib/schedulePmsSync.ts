@@ -23,6 +23,13 @@ export interface PmsSyncItem {
   agent?: string | null;
 }
 
+export interface PmsCancelItem {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  date: string;
+}
+
 export interface PmsDriftedItem {
   tab: string;
   brand: string;
@@ -73,6 +80,21 @@ export async function pushScheduleActivations(items: PmsSyncItem[]): Promise<voi
     body: JSON.stringify({ action: 'push', items }),
   });
   if (!res.ok) throw new Error('Failed to sync schedule to PMS.');
+}
+
+// Best-effort, mirrors pushScheduleActivations exactly -- the caller has
+// already written the brand_schedule cancellation (the cell cycled back to
+// blank) before calling this, so a PMS cleanup failure here must never be
+// mistaken for the cancellation itself failing; the caller catches and
+// toasts.
+export async function cancelScheduleActivations(items: PmsCancelItem[]): Promise<void> {
+  if (items.length === 0 || !SYNC_SCHEDULE_PMS_URL) return;
+  const res = await fetch(SYNC_SCHEDULE_PMS_URL, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ action: 'cancelSchedule', items }),
+  });
+  if (!res.ok) throw new Error('Failed to cancel schedule in PMS.');
 }
 
 export async function pullScheduleDrift(tab: string): Promise<{ drifted: PmsDriftedItem[]; deleted: PmsDeletedItem[]; assignees: PmsAssigneeInfo[] }> {

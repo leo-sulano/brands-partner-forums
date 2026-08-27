@@ -3,6 +3,7 @@ import { pushScheduleToPms, type PmsSyncItem } from './pmsSync';
 import { pullScheduleFromPms } from './pmsSync';
 import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 import { resolveAndSyncTabStatuses } from './pmsSync';
+import { cancelScheduleInPms, type PmsCancelItem } from './pmsSync';
 import { invalidateTabCache } from '../queries';
 
 const CREDENTIALS = { apiToken: 'test-token' };
@@ -322,6 +323,91 @@ describe('pullScheduleFromPms', () => {
     });
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
     expect(result.assignees).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Ann' }]);
+  });
+});
+
+const CANCEL_ITEM: PmsCancelItem = { tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20' };
+
+describe('cancelScheduleInPms', () => {
+  it('deletes the PMS task and the link when a matching link exists', async () => {
+    const { client, deletedIds } = fakeSupabaseWithLinks([LINK]);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await cancelScheduleInPms([CANCEL_ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ deleted: [CANCEL_ITEM], skipped: [], failed: [] });
+    expect(deletedIds).toEqual(['link-1']);
+  });
+
+  it('skips an item with no matching link, making no PMS API calls', async () => {
+    const { client, deletedIds } = fakeSupabaseWithLinks([]);
+    const fetchFn = vi.fn();
+    const result = await cancelScheduleInPms([CANCEL_ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ deleted: [], skipped: [CANCEL_ITEM], failed: [] });
+    expect(deletedIds).toEqual([]);
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('records a per-item failure without aborting the batch, and never deletes that link', async () => {
+    const { client, deletedIds } = fakeSupabaseWithLinks([
+      LINK,
+      { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-21', pms_task_id: 'task-2' },
+    ]);
+    const badItem: PmsCancelItem = CANCEL_ITEM;
+    const okItem: PmsCancelItem = { tab: 'BITP', brand: 'OtherBrand', platform: 'tp', date: '2026-08-21' };
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: {}, status: 500 },
+      { url: /\/tasks\/task-2$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await cancelScheduleInPms([badItem, okItem], client, CREDENTIALS, fetchFn);
+    expect(result.deleted).toEqual([okItem]);
+    expect(result.failed).toHaveLength(1);
+    expect(result.failed[0].item).toEqual(badItem);
+    expect(deletedIds).toEqual(['link-2']);
+  });
+
+  it('treats a 404 delete response as the task already being gone, and still deletes the link', async () => {
+    const { client, deletedIds } = fakeSupabaseWithLinks([LINK]);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: {}, status: 404 },
+    ]);
+    const result = await cancelScheduleInPms([CANCEL_ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ deleted: [CANCEL_ITEM], skipped: [], failed: [] });
+    expect(deletedIds).toEqual(['link-1']);
+  });
+
+  it('returns immediately with no API calls for an empty item list', async () => {
+    const { client } = fakeSupabaseWithLinks([]);
+    const fetchFn = vi.fn();
+    const result = await cancelScheduleInPms([], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ deleted: [], skipped: [], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  it('reuses the per-tab links fetch across a batch, fetching schedule_pms_links only once', async () => {
+    const item2: PmsCancelItem = { tab: 'BITP', brand: 'OtherBrand', platform: 'tp', date: '2026-08-21' };
+    const link2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-21', pms_task_id: 'task-2' };
+    let selectCalls = 0;
+    const deletedIds: string[] = [];
+    const client = {
+      from: (table: string) => {
+        if (table !== 'schedule_pms_links') throw new Error(`unexpected table ${table}`);
+        return {
+          select: () => {
+            selectCalls++;
+            return { eq: () => Promise.resolve({ data: [LINK, link2], error: null }) };
+          },
+          delete: () => ({ eq: (_col: string, id: string) => { deletedIds.push(id); return Promise.resolve({ error: null }); } }),
+        };
+      },
+    } as any;
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+      { url: /\/tasks\/task-2$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    await cancelScheduleInPms([CANCEL_ITEM, item2], client, CREDENTIALS, fetchFn);
+    expect(selectCalls).toBe(1);
+    expect(deletedIds).toEqual(['link-1', 'link-2']);
   });
 });
 

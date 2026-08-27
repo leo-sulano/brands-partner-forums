@@ -542,6 +542,79 @@ async function fetchPmsProjectTasks(credentials: PmsCredentials, fetchFn: typeof
   return (await res.json()) as PmsTaskListed[];
 }
 
+export interface PmsCancelItem {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  date: string;
+}
+
+export interface PmsCancelResult {
+  deleted: PmsCancelItem[];
+  // No linked PMS task for this exact combo -- nothing to cancel. Covers a
+  // cell that was never activated (or never pushed, e.g. a legacy week) and
+  // a cell whose task was already deleted by an earlier cancel/pull.
+  skipped: PmsCancelItem[];
+  failed: { item: PmsCancelItem; error: string }[];
+}
+
+// Confirmed live against the real "Forum Team" project (2026-08-27): DELETE
+// /api/tasks/:id returns 204 and the task is gone. A 404 is treated as
+// success too -- the goal state (task doesn't exist) is already achieved,
+// most likely because a human already deleted it directly in the PMS UI --
+// so cancelling from the dashboard still proceeds to clean up the link
+// rather than leaving it stuck failing forever.
+async function deletePmsTask(taskId: string, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
+  const res = await fetchFn(`${PMS_BASE_URL}/tasks/${taskId}`, { method: 'DELETE', headers: pmsHeaders(credentials) });
+  if (!res.ok && res.status !== 404) throw new Error(`PMS task delete failed: ${res.status}`);
+}
+
+// A day cell cycled back to blank (Schedule Planner's active -> paused ->
+// blank cycle) cancels its plan entirely -- this deletes the linked PMS
+// task (if one exists) and its schedule_pms_links row, unconditionally,
+// regardless of whether real evidence already backs that date (an explicit
+// choice: cancelling is a direct, deliberate user action). Per-item
+// try/catch mirrors pushScheduleToPms's existing batch resilience. A link
+// delete failure after a successful task delete isn't specially handled --
+// the next pullScheduleFromPms run for this tab will find the task gone and
+// clean up the stale link itself, the same self-healing path an externally
+// (PMS-UI) deleted task already goes through.
+export async function cancelScheduleInPms(
+  items: PmsCancelItem[],
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsCancelResult> {
+  const deleted: PmsCancelItem[] = [];
+  const skipped: PmsCancelItem[] = [];
+  const failed: { item: PmsCancelItem; error: string }[] = [];
+  if (items.length === 0) return { deleted, skipped, failed };
+
+  const linksByTab = new Map<string, SchedulePmsLink[]>();
+  for (const item of items) {
+    try {
+      const brandKey = normalizeBrandKey(item.brand);
+      let links = linksByTab.get(item.tab);
+      if (!links) {
+        links = await fetchSchedulePmsLinks(item.tab, client);
+        linksByTab.set(item.tab, links);
+      }
+      const link = links.find((l) => l.brand_key === brandKey && l.platform === item.platform && l.date === item.date);
+      if (!link) {
+        skipped.push(item);
+        continue;
+      }
+      await deletePmsTask(link.pms_task_id, credentials, fetchFn);
+      await deleteSchedulePmsLink(link.id, client);
+      linksByTab.set(item.tab, links.filter((l) => l.id !== link.id));
+      deleted.push(item);
+    } catch (err) {
+      failed.push({ item, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { deleted, skipped, failed };
+}
+
 // schedule_pms_links writes here (not brand_schedule) -- this table is the
 // only thing the service-role Edge Function is allowed to touch under RLS.
 // The caller (TabScheduleSection.tsx) is responsible for applying the

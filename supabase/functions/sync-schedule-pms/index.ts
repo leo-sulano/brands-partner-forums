@@ -5,7 +5,7 @@
 // pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
 // secret -- the browser never sees it.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, type PmsSyncItem, type PmsCredentials, type PmsStatusSyncResult } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsStatusSyncResult } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
 import { getActiveOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { invalidateTabCache } from '../../../src/lib/queries.ts';
@@ -104,6 +104,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (body?.action === 'pull') {
       if (typeof body.tab !== 'string' || !body.tab) return jsonResponse({ error: 'Missing tab' }, 400);
       const result = await pullScheduleFromPms(body.tab, client, credentials);
+      return jsonResponse(result);
+    }
+    if (body?.action === 'cancelSchedule') {
+      if (!Array.isArray(body.items)) return jsonResponse({ error: 'items must be an array' }, 400);
+      const result = await cancelScheduleInPms(body.items as PmsCancelItem[], client, credentials);
       return jsonResponse(result);
     }
     if (body?.action === 'syncAllStatuses') {
