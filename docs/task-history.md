@@ -6748,3 +6748,115 @@ lazy, on-visit-only sync means any brand tab nobody opens for a while can carry 
 state indefinitely — a scheduled/periodic sync (e.g. extending the existing `generate-weekly-schedule`
 cron, or a new dedicated cron) would close that gap structurally instead of relying on someone
 opening every tab regularly.
+
+---
+
+## Task 280: Schedule Planner → PMS Status Sync Goes Fully Automatic (1-Minute Cron)
+
+**Date:** August 27, 2026
+
+Closes the exact gap Task 279 flagged as a known limitation the same day: the dashboard → PMS
+status sync (Task 247/267) only ever ran when a human opened a tab's Schedule Planner page. This
+task makes it run on its own, catching up any tab within ~60 seconds of a real status change,
+whether or not anyone has that tab open — while keeping it safe against the EC2 Check Status
+scraper's write pattern (one `PATCH` per entry, so a single run can touch 50+ rows on one tab in
+quick succession).
+
+**Architecture:** extracted the entire resolve-and-sync computation that used to live inline in
+`TabScheduleSection.tsx`'s status-sync effect into one new server-side function,
+`resolveAndSyncTabStatuses` (`src/lib/scheduler/pmsSync.ts`) — the single place the dashboard → PMS
+resolution rules (evidence precedence, pause exclusion, hidden/restricted/removed-platform
+exclusion) are implemented. Both triggers now reach this one function over HTTP through a new
+`syncAllStatuses` action on the existing `sync-schedule-pms` Edge Function (optional `tab` field:
+omitted = a new 1-minute `pg_cron` job sweeps every currently-active tab; present = the browser's
+on-visit trigger, via a new tab-scoped `syncTabStatusToPms(tab)` replacing the old
+`pushScheduleStatusSync`, syncs just that one tab) — never two independently-written copies of the
+same rule, the drift class this project's CLAUDE.md flags as its most frequently recurring bug
+source. A second, smaller extraction (`bootstrapTabRegistries`, `src/lib/tabRegistryBootstrap.ts`)
+removed a pre-existing hand-duplicated isolate-registry bootstrap sequence between
+`generate-weekly-schedule` and this new cron-target function, so a second Edge Function copying it
+by hand couldn't drift from the first.
+
+A **1-minute cron sweep** was chosen over a Postgres `AFTER UPDATE` trigger after weighing both:
+a trigger would fire once per row (50+ near-simultaneous whole-tab resyncs per scraper run), while
+a minutely sweep naturally coalesces any burst within that window into one resync per tab, at the
+cost of ~60s worst-case latency — judged close enough to "real time" for a Kanban board a human is
+glancing at, confirmed with the user directly before building.
+
+Built via `superpowers:brainstorming` → written spec
+(`docs/superpowers/specs/2026-08-27-schedule-pms-automatic-status-sync-design.md`, corrected once
+mid-review: the browser can't call `resolveAndSyncTabStatuses` directly since it needs the
+server-only PMS API token, so both triggers route through HTTP instead) → `superpowers:writing-plans`
+(`docs/superpowers/plans/2026-08-27-schedule-pms-automatic-status-sync.md`) → 6-task
+Subagent-Driven Development, each task independently reviewed clean (spec ✅, 0 Critical/Important
+per task, a handful of deferred Minors) → a final whole-branch review (opus) that found 4 Important
+issues no single task's scoped diff could see:
+1. The minutely sweep re-downloads every active tab's **entire** entries table (some tabs 1,700+
+   rows) every minute forever with no watermark — the spec's "cheap" reasoning measured query count,
+   not data volume. **Parked as an accepted v1 tradeoff**, not fixed this round: properly fixing it
+   needs either a new watermark table or renegotiating the already-user-approved 1-minute cadence,
+   out of proportion for a fix-wave dispatch. Flagged for Task 7's live measurement and a future
+   revisit with real numbers.
+2. The on-visit path's toast-on-error handler had gone silently dead — `syncAllStatuses` always
+   returns HTTP 200 with per-tab error strings embedded in a `results` object, so
+   `syncTabStatusToPms` never threw on a whole-tab failure anymore. Fixed: it now parses the
+   response and throws when the requested tab's own result indicates failure — ironic and
+   important to close, since this whole branch exists *because of* a prior silent-failure incident
+   (Task 279).
+3. Zero test coverage on the actual `Deno.serve` routing branch (bootstrap-unconditional claim,
+   tab-selection logic) — the single most important new integration point. Fixed: extracted into a
+   directly-testable `handleSyncAllStatuses`, 5 new Deno tests.
+4. The on-visit trigger had no debounce/in-flight guard against a scraper burst. **Parked**
+   alongside #1 — same resource-cost class, a debounce alone only partially addresses the
+   underlying cost #1 already covers holistically.
+Plus 7 Minor findings (a stale doc comment, missing cross-reference comments between the two
+registry-bootstrap sequences, a fail-open/fail-closed asymmetry note, unvalidated `tab` field
+tightened to intersect against real active tabs, a redundant cast, test-isolation cleanup, and
+`tabLabel` correctness) — all fixed in the same combined fix-wave dispatch, verified clean by a
+scoped re-review (all 9 findings ADDRESSED, no new breakage).
+
+**Deployed and live-verified the same session** (migration, both Edge Functions
+`sync-schedule-pms`/`generate-weekly-schedule`, cron confirmed firing every ~60s via
+`cron.job_run_details`). **Live verification caught a second real, pre-existing production bug**,
+not introduced by this branch: manually invoking the deployed function showed 3 of 7 active tabs
+failing (`Hanan: 25`, `Rooster Partners: 7`, `TP Brand Injection: 2` "link(s) failed to move").
+Investigated via direct PMS API checks rather than guessing — all task IDs existed and were
+reachable, a same-column no-op move succeeded 71/71 for Hanan (rules out PMS rate-limiting), a real
+cross-column move succeeded standalone, and a read-only replica of the resolution logic (anon-key
+reads only) showed exactly 25 Hanan items resolving `active → paused`, matching the failure count
+precisely — a direct PMS API check then confirmed those exact task IDs were **already sitting in
+the real Project Paused column**: the PMS move had genuinely succeeded, but the follow-up DB write
+was failing silently, swallowed by the existing per-item catch into a generic "N failed" count with
+no visible reason. Root cause: `schedule_pms_links_synced_status_check` (Task 247's original
+migration, `20260820130000`) only ever allowed `'active'|'pending'|'done'|'published'|'removed'` —
+Task 267 (2026-08-26, three weeks earlier) shipped writing `synced_status='paused'` without ever
+widening this constraint, so every such write has been silently rejected at the DB layer since Task
+267 shipped, invisible because the PMS-side move always succeeded (the board looked correct) and
+the old sync's error handling gave no visibility into *why* a write failed. Fixed with a new
+migration (`20260827130000_add_paused_to_schedule_pms_links_synced_status.sql`, added directly
+during Task 7's live verification, outside the original 6-task plan), applied live, re-verified —
+all 7 active tabs now return `"ok"`, Hanan's 25 previously-stuck links now correctly read
+`synced_status='paused'`. On-visit path independently live-verified too, via a real Playwright
+browser walkthrough against the (not-yet-deployed-to-Vercel) frontend code hitting the live
+backend: opening the Hanan tab correctly fired `{"action":"syncAllStatuses","tab":"Hanan"}` and
+received `{"results":{"Hanan":"ok"}}`, with the pre-existing `pull` (due-date/assignee drift) action
+confirmed still firing normally and unaffected.
+
+This is the second time in this project's history a live-verification pass — not the automated
+test suite, not either code review — caught a real, previously-invisible bug (see Task 277's
+AG/CG Password + pagination precedent for the first). Full suite (725 tests) and build pass
+throughout; `deno check`/`deno test` clean on both Edge Functions. Not yet pushed to `origin/main`
+— frontend code is complete and live-verified against the deployed backend but the Vercel deploy
+itself is a separate, later step per this project's usual pattern.
+
+Rulings made during the SDD run (recorded in the plan's own execution ledger,
+`.superpowers/sdd/2026-08-27-schedule-pms-automatic-status-sync/progress.md`, deleted after this
+branch merges): the `deno check` bare-command failure on `pmsSync.ts` was confirmed pre-existing on
+`main` (unrelated ambient-typing quirk, not a regression); two Task 2/6 "transient duplicated
+logic"/"expected intermediate build breakage" states flagged during multi-task sequencing were
+confirmed correct, not defects; and the two Important findings above (#1 minutely full-table sweep,
+#4 no on-visit debounce) were deliberately parked as accepted v1 resource-cost tradeoffs rather than
+folded into the fix wave.
+
+Spec: `docs/superpowers/specs/2026-08-27-schedule-pms-automatic-status-sync-design.md`.
+Plan: `docs/superpowers/plans/2026-08-27-schedule-pms-automatic-status-sync.md`.
