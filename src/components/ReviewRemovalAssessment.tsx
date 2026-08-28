@@ -31,10 +31,10 @@ interface Props {
 }
 
 const OVERALL_META: Record<ReviewRemovalAssessmentResult['overall_result'], { emoji: string; label: string }> = {
-  likely_publishable: { emoji: '🟢', label: 'Likely Publishable' },
+  likely_compliant: { emoji: '🟢', label: 'Likely Compliant' },
   uncertain: { emoji: '🟡', label: 'Uncertain / Insufficient Evidence' },
-  likely_removal_risk: { emoji: '🔴', label: 'Likely Removal Risk' },
-  no_clear_removal_reason: { emoji: '⚪', label: 'No Clear Removal Reason' },
+  at_risk: { emoji: '🔴', label: 'At Risk' },
+  no_clear_concern: { emoji: '⚪', label: 'No Clear Concern' },
 };
 
 const CONTENT_STATUS_META: Record<ReviewRemovalAssessmentResult['content_assessment']['status'], { emoji: string; label: string }> = {
@@ -79,6 +79,10 @@ function evidenceSummaryLine(evidence: ReturnType<typeof computeRemovalEvidence>
 }
 
 const SEVERITY_RANK: Record<AssessmentSignal['severity'], number> = { high: 0, medium: 1, low: 2 };
+
+function isRemovedLikeStatus(status: string): boolean {
+  return /remov|refus|reject/i.test(status);
+}
 
 function SignalBadge({ signal }: { signal: AssessmentSignal }) {
   const icon = signal.severity === 'low' ? '✓' : '⚠';
@@ -150,7 +154,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
   return (
     <div className="mt-3 rounded-md border border-slate-200 p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-slate-500">AI Review Removal Assessment</span>
+        <span className="text-xs font-medium text-slate-500">AI Review Assessment</span>
         <button
           type="button"
           onClick={handleAnalyze}
@@ -187,7 +191,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
           </div>
 
           <div className="text-xs text-slate-600">
-            <div><span className="font-medium text-slate-700">Root Cause:</span> {result.root_cause.label || '—'} <span className="text-slate-400">({result.root_cause.confidence} confidence)</span></div>
+            <div><span className="font-medium text-slate-700">Key Finding:</span> {result.key_finding.label || '—'} <span className="text-slate-400">({result.key_finding.confidence} confidence)</span></div>
           </div>
 
           {(result.content_assessment.signals.length > 0 || result.behavioral_assessment.signals.length > 0) && (
@@ -233,32 +237,32 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
                 </span>{' '}
                 {result.behavioral_assessment.summary}
               </div>
-              {result.root_cause.alternative_causes.length > 0 && (
+              {result.key_finding.alternatives.length > 0 && (
                 <div>
-                  <span className="font-medium text-slate-700">Alternative Causes:</span>
+                  <span className="font-medium text-slate-700">Alternatives:</span>
                   <ul className="mt-0.5 list-disc pl-4">
-                    {result.root_cause.alternative_causes.map((c, i) => <li key={i}>{c.label} <span className="text-slate-400">({c.likelihood})</span></li>)}
+                    {result.key_finding.alternatives.map((c, i) => <li key={i}>{c.label} <span className="text-slate-400">({c.likelihood})</span></li>)}
                   </ul>
                 </div>
               )}
-              {result.evidence_for_removal.length > 0 && (
+              {result.supporting_evidence.length > 0 && (
                 <div>
-                  <span className="font-medium text-slate-700">Evidence For Removal:</span>
+                  <span className="font-medium text-slate-700">{isRemovedLikeStatus(status) ? 'Evidence For Removal:' : 'Risk Factors:'}</span>
                   <ul className="mt-0.5 list-disc pl-4">
-                    {result.evidence_for_removal.map((e, i) => <li key={i}>{e}</li>)}
+                    {result.supporting_evidence.map((e, i) => <li key={i}>{e}</li>)}
                   </ul>
                 </div>
               )}
-              {result.evidence_against_removal.length > 0 && (
+              {result.contrary_evidence.length > 0 && (
                 <div>
-                  <span className="font-medium text-slate-700">Evidence Against Removal:</span>
+                  <span className="font-medium text-slate-700">{isRemovedLikeStatus(status) ? 'Evidence Against Removal:' : 'Content Strengths:'}</span>
                   <ul className="mt-0.5 list-disc pl-4">
-                    {result.evidence_against_removal.map((e, i) => <li key={i}>{e}</li>)}
+                    {result.contrary_evidence.map((e, i) => <li key={i}>{e}</li>)}
                   </ul>
                 </div>
               )}
               <div><span className="font-medium text-slate-700">Policy Category:</span> {result.policy_category || '—'}</div>
-              <div><span className="font-medium text-slate-700">Why:</span> {result.why_it_may_have_been_removed || '—'}</div>
+              <div><span className="font-medium text-slate-700">{isRemovedLikeStatus(status) ? 'Why It May Have Been Removed:' : 'Risk Read:'}</span> {result.risk_or_removal_explanation || '—'}</div>
               <div><span className="font-medium text-slate-700">Evidence:</span> {result.evidence_summary || '—'}</div>
               <div><span className="font-medium text-slate-700">Alternative Explanation:</span> {result.alternative_explanation || '—'}</div>
               <div><span className="font-medium text-slate-700">Recommendation:</span> {result.recommendation || '—'}</div>
