@@ -7139,3 +7139,67 @@ sitting in Blocked after both, confirmed `schedule_pms_links` recorded no change
 To Do to leave the board as found. A final full-board query confirmed all 257 links'
 `synced_column_id` still agree with their current mapping (0 drift introduced by the migration
 backfill itself). No spec/plan doc — bounded fix confirmed in chat, TDD throughout.
+
+---
+
+## Task 286: AI Review Assessment Generalized From Removal-Only to Status-Neutral
+
+**Date:** August 28, 2026
+
+User reported (from two live screenshots, one Removed review and one Published review) that the
+AI Review Removal Assessment feature showed identically removal-flavored labels regardless of
+status — "Evidence For Removal" on a review that was never removed. Investigation found the
+backend (`review-removal-assessment` edge function) already branched its prompt by status
+(removed vs. not), but every JSON field name, enum value, and UI label was still hard-wired to
+removal language, and the non-removed prompt path only ever asked for a risk read, never a
+positive content read.
+
+Generalized end to end via 5 subagent-driven-development tasks plus a final whole-branch review.
+Schema renamed to status-neutral names/values (`root_cause` → `key_finding`, with
+`alternative_causes` → `alternatives`; `evidence_for_removal`/`evidence_against_removal` →
+`supporting_evidence`/`contrary_evidence`; `why_it_may_have_been_removed` →
+`risk_or_removal_explanation`; `overall_result` enum `likely_publishable`/`likely_removal_risk`/
+`no_clear_removal_reason` → `likely_compliant`/`at_risk`/`no_clear_concern`) across the edge
+function (`supabase/functions/review-removal-assessment/index.ts`), the frontend type/validator
+(`src/lib/reviewRemovalAssessment.ts`, `ReviewRemovalAssessmentResult` kept its exported name —
+only its fields changed), the frontend component (`src/components/ReviewRemovalAssessment.tsx`,
+header renamed "AI Review Removal Assessment" → "AI Review Assessment", evidence/why labels now
+branch on status: removed-like shows "Evidence For/Against Removal"/"Why It May Have Been
+Removed", non-removed shows "Risk Factors"/"Content Strengths"/"Risk Read"), and Ask AI's
+`get_review_analyses` tool (`ai-assistant/tools.ts`), per this project's standing cross-dashboard
+consistency rule — updated in the same branch, not deferred. The edge function's non-removed
+prompt path was strengthened per direct user request (confirmed via `AskUserQuestion` before
+implementing) to give a genuinely two-sided read for a live review: the existing forward-looking
+risk read, plus a new requirement to name concrete, specific things in the review's own text that
+support it reading as genuine and compliant — not just "no risk found." No DB migration: an old
+cached `entry_review_analyses` row under the old field names simply fails the new
+`isValidAssessmentResult` validator and stops rendering as cached, the same precedent this
+feature's own history already established (Task 262).
+
+**Final whole-branch review caught 2 real cross-task gaps no per-task review could have seen**,
+both fixed in one consolidated fix wave before shipping: (1) `src/pages/HowItWorks.tsx` — the
+page whose entire purpose is documenting this feature to users — still described it in
+removal-only language at 6 sites (none of the 5 tasks' file lists ever touched it, since the
+plan's own verification grep only covered snake_case JSON identifiers, not prose); (2) Task 3's
+new status-conditional UI labels created a real regression against an existing, deliberate design
+decision — `hashAssessmentInput`'s staleness hash had always excluded `status` entirely (so a
+pure status change wouldn't discard a still-valid cached assessment), but once labels started
+reading from live `status`, a review analyzed while Published and later flipped to Removed would
+render its old two-sided cached text under "Why It May Have Been Removed" with no staleness
+warning. Fixed by revising the hash to include only the removed-like *bucket* (new exported
+`isRemovedLikeStatus` in `src/lib/reviewRemovalAssessment.ts`, mirroring the edge function's own
+`removedLike` regex) rather than the raw status string — preserves the original "no invalidation
+on a cosmetic status change" intent (Removed↔Refused, Published↔Pending) while correctly
+invalidating exactly when the bucket crosses (Published↔Removed), which is exactly when the
+prompt's framing — and therefore the cached content's actual meaning — changes. Also closed a
+Minor as part of the same fix wave: the edge function's system-prompt persona line still framed
+the whole job as removal-only; added one clause naming the positive-compliance read.
+
+TDD throughout every task; full suite **2170 passed**, build clean, `deno check` clean on both
+edge functions, full Deno suite passing. **Not yet deployed** — `supabase functions deploy
+review-removal-assessment` and `supabase functions deploy ai-assistant` are both still pending;
+deploy back-to-back (edge function first, frontend already live) since the frontend's validator
+would reject the still-old function's response shape and vice versa, producing a brief
+"Unable to generate an AI assessment" window either way. Spec:
+`docs/superpowers/specs/2026-08-28-generic-ai-review-assessment-design.md`. Plan:
+`docs/superpowers/plans/2026-08-28-generic-ai-review-assessment.md`.
