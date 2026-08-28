@@ -315,7 +315,15 @@ export function invalidateTabCache(tab: string) {
   tabEntryCache.delete(tab);
 }
 
-// Fetches all rows for a tab, paginating in 1 000-row batches to bypass Supabase's default limit.
+// Fetches all rows for a tab, paginating in 1 000-row batches to bypass
+// Supabase's default limit. Ordered by the immutable primary key, not
+// updated_at -- a mutable sort column lets a row change rank mid-pagination
+// (a status write landing between the page-1 and page-2 requests), which can
+// shift it out of every page's window and drop it from the result entirely.
+// Confirmed live (2026-08-28): this is exactly how a just-updated "Done"
+// status silently vanished from a resolve pass despite the pass's own
+// watermark showing it had scanned right up to that write. Same fix
+// fetchAllEntries below already uses, for the same reason.
 async function fetchAllTabEntries(tab: string, client: SupabaseClient = supabase): Promise<Entry[]> {
   const cached = tabEntryCache.get(tab);
   if (cached && Date.now() - cached.ts < TAB_CACHE_TTL) return cached.entries;
@@ -328,7 +336,7 @@ async function fetchAllTabEntries(tab: string, client: SupabaseClient = supabase
       .from('entries')
       .select('*')
       .eq('tab', tab)
-      .order('updated_at', { ascending: false })
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw error;
     all.push(...((data ?? []) as Entry[]));

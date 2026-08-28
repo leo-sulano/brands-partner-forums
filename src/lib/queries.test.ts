@@ -58,6 +58,8 @@ import {
   fetchRecentTabCreations,
   restoreDeletedEntity,
   statusCheckTabKeys,
+  fetchRawEntriesByTab,
+  invalidateTabCache,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -84,6 +86,48 @@ function chain(result: { data: unknown; error: null; count?: number }) {
 describe('queries.ts injectable Supabase client', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('fetchRawEntriesByTab pagination is stable under a concurrent status write (orders by id, not the mutable updated_at)', async () => {
+    // Reproduces a real live incident (2026-08-28): a tab with >1000 rows
+    // pages in two round trips. If the query orders by updated_at (mutable —
+    // changed by every status write), a row updated between the two page
+    // requests jumps rank mid-fetch and can fall through the gap between
+    // pages, silently vanishing from the result even though it exists in the
+    // table. Ordering by the immutable primary key instead (matching
+    // fetchAllEntries's existing "order by id" pattern) means no row's rank
+    // can ever shift mid-pagination.
+    invalidateTabCache('Rooster Partners');
+    const TOTAL = 1200;
+    const idOrder = Array.from({ length: TOTAL }, (_, i) => `id-${i}`);
+    let mutableRankOrder = [...idOrder];
+    const byId = new Map(idOrder.map((id) => [id, { id, tab: 'Rooster Partners', data: {} } as unknown as { id: string; tab: string; data: unknown }]));
+
+    let pageCount = 0;
+    singletonFrom.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          order: (col: string) => ({
+            range: (from: number, to: number) => {
+              pageCount++;
+              if (pageCount === 2) {
+                // The concurrent write: a row that would have landed in page
+                // 2 (under updated_at ordering) gets updated right after page
+                // 1 was already fetched, jumping it to the front of the rank.
+                const movedId = mutableRankOrder[1150];
+                mutableRankOrder = [movedId, ...mutableRankOrder.filter((id) => id !== movedId)];
+              }
+              const source = col === 'id' ? idOrder : mutableRankOrder;
+              const page = source.slice(from, to + 1).map((id) => byId.get(id));
+              return Promise.resolve({ data: page, error: null });
+            },
+          }),
+        }),
+      }),
+    });
+
+    const entries = await fetchRawEntriesByTab('Rooster Partners');
+    expect(new Set(entries.map((e) => e.id)).size).toBe(TOTAL);
   });
 
   it('fetchBrandSchedule uses the passed-in client, not the singleton', async () => {

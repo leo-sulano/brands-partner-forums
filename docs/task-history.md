@@ -7202,3 +7202,48 @@ deploy review-removal-assessment` (now `ACTIVE` v7) then `supabase functions dep
 `supabase functions list`. The generic status-neutral schema is fully live end to end. Spec:
 `docs/superpowers/specs/2026-08-28-generic-ai-review-assessment-design.md`. Plan:
 `docs/superpowers/plans/2026-08-28-generic-ai-review-assessment.md`.
+---
+
+## Task 287: Rooster Partners PMS Cards Stuck at Old Status — Fixed the Actual Root Cause (Unstable Entries Pagination)
+
+**Date:** August 28, 2026
+
+User reported a live symptom: Schedule Planner showed Done status for both Rooster Partners and
+Hanan on Friday (2026-08-28), but only Hanan's linked PMS cards actually moved to the Done column —
+Rooster Partners' 4 combos (Play Mojo/Rocketspin/Rooster.bet on AG, Spinsup on CG) stayed in In
+Progress. Confirmed live: entries genuinely had Done status for all 4 dated today, but
+schedule_pms_links.synced_status was still 'active', even though the tab's own recorded watermark
+showed the last resolve had already scanned data including those writes — meaning Task 284's
+watermark-recording fix (see below) was working correctly, but the thing it was faithfully
+recording was itself incomplete.
+
+**Real root cause, one layer deeper than Task 284: fetchAllTabEntries (src/lib/queries.ts)
+paginates a tab's rows in 1,000-row batches ordered by updated_at DESC — a mutable column.** A
+status write landing on a row between the page-1 and page-2 requests (routine given the EC2
+scraper writes continuously) changes that row's rank mid-fetch, which can shift it out of every
+page's window entirely — silently dropping it from the result even though it exists in the table.
+fetchAllEntries right below it already avoided this by ordering on the immutable id primary key
+(its own comment even says why); fetchAllTabEntries never got the same treatment. This means
+resolveAndSyncTabStatuses could compute against an entries array missing exactly the row that just
+changed, while its own watermark (correctly, per Task 284's fix) recorded the true max updated_at
+of whatever *was* fetched — which can still equal the real global max if a different row's write
+landed safely, masking that a different row near the page boundary was dropped.
+
+Fix: fetchAllTabEntries now orders by id ASC instead of updated_at DESC — matching fetchAllEntries's
+existing pattern exactly. No consumer relied on fetch-order-as-recency (every "most recent entry"
+resolution in this codebase — buildAgentIndex, buildCountryIndex, buildDateStatusIndex, etc. —
+already does an explicit updated_at comparison, never assumes array order), so this is a pure
+stability fix with no behavior change elsewhere. New regression test in queries.test.ts reproduces
+the exact race with a 1,200-row mock tab and a row that jumps rank between the two page requests —
+fails against the old updated_at-ordered query (1,199 of 1,200 rows returned) and passes after the
+fix. Full suite (2,171 tests) and build both pass.
+
+**Live remediation, same session:** cleared schedule_pms_sync_watermarks for all 11 tracked tabs
+and re-ran sync-schedule-pms's syncAllStatuses action with no tab filter, forcing a full fresh
+resolve everywhere — all 11 tabs returned clean with zero failures. Verified directly via the PMS
+API that all 4 previously-stuck Rooster Partners cards are now genuinely in the Done column.
+
+**Deployed the same session:** sync-schedule-pms (now ACTIVE, confirmed via supabase functions
+list) and generate-weekly-schedule (both import queries.ts and therefore fetchAllTabEntries
+transitively). No spec/plan doc — a live-symptom investigation and bounded fix, self-reviewed,
+following on directly from Task 284/285's work in the same subsystem.
