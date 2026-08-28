@@ -20,7 +20,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const OUTPUT_SCHEMA = `{
-  "overall_result": "likely_publishable | uncertain | likely_removal_risk | no_clear_removal_reason",
+  "overall_result": "likely_compliant | uncertain | at_risk | no_clear_concern",
   "risk_score": <integer 0-100, higher = more risk>,
   "confidence": "low | medium | high",
   "content_assessment": {
@@ -33,15 +33,15 @@ const OUTPUT_SCHEMA = `{
     "summary": "<1-3 sentences>",
     "signals": [{ "name": "<short label>", "severity": "low | medium | high", "evidence": "<which field/value supports this>" }]
   },
-  "root_cause": {
-    "label": "<one concrete, specific sentence naming the single most likely trigger — never a vague category alone>",
+  "key_finding": {
+    "label": "<one concrete, specific sentence naming the single most decisive factor — never a vague category alone>",
     "confidence": "low | medium | high",
-    "alternative_causes": [{ "label": "<specific alternative>", "likelihood": "low | medium | high" }]
+    "alternatives": [{ "label": "<specific alternative>", "likelihood": "low | medium | high" }]
   },
-  "evidence_for_removal": ["<concrete point>"],
-  "evidence_against_removal": ["<concrete point>"],
+  "supporting_evidence": ["<concrete point>"],
+  "contrary_evidence": ["<concrete point>"],
   "policy_category": "<one category from the list provided above, or the WO caveat text, or empty string if none applies>",
-  "why_it_may_have_been_removed": "<1-3 sentences>",
+  "risk_or_removal_explanation": "<1-3 sentences>",
   "evidence_summary": "<1-3 sentences summarizing all evidence considered, including what was NOT available>",
   "alternative_explanation": "<1-2 sentences on a non-policy explanation, e.g. platform moderation error>",
   "recommendation": "<1-2 sentences, actionable>",
@@ -166,10 +166,10 @@ Rules you MUST follow:
   are indicators only, weigh them alongside the content.
 - Give every signal an explicit severity (low/medium/high) and evidence.
 - Always state an overall confidence level (low/medium/high).
-- You MUST populate both "evidence_for_removal" and "evidence_against_removal" — a
+- You MUST populate both "supporting_evidence" and "contrary_evidence" — a
   real assessment always has something on both sides, even if one side is thin
   (e.g. "no positive evidence beyond the review's polite tone").
-- "root_cause.label" must name a specific, concrete trigger, not a bare category —
+- "key_finding.label" must name a specific, concrete factor, not a bare category —
   "possible coordinated review activity" alone is not acceptable; name what
   specifically suggests it (e.g. "posted 4 minutes after a welcome-email redirect,
   from a proxy already tied to 2 other removed reviews for different brands").
@@ -180,8 +180,8 @@ Rules you MUST follow:
   adjust, or re-derive these numbers; reason from them, don't reinterpret them.
 - If evidence.hardSignals.duplicateReviewTextFound or
   evidence.hardSignals.proxyTiedToOtherRemoval is true, that signal MUST appear as
-  your top-ranked "root_cause" candidate unless you explicitly explain in
-  "evidence_against_removal" why it does not apply to this specific case.
+  your top-ranked "key_finding" candidate unless you explicitly explain in
+  "contrary_evidence" why it does not apply to this specific case.
   Note: "proxyTiedToOtherRemoval" means the proxy was tied to a removal on ANY
   platform this tab tracks, not necessarily the platform you are currently
   assessing — state which platform(s) the removal(s) were actually on if you
@@ -215,8 +215,8 @@ const ASSESSMENT_NOTE_BY_PLATFORM: Record<Platform, string> = {
 function buildSystemPrompt(platform: Platform, status: string): string {
   const removedLike = /remov|refus|reject/i.test(status);
   const framing = removedLike
-    ? `This review's current recorded status is "${status || 'unknown'}" (a removed/refused-type status). Frame "root_cause" and "why_it_may_have_been_removed" as explaining why the review may have been removed — or state plainly that no clear reason is evident.`
-    : `This review's current recorded status is "${status || 'unknown'}" (not a removed/refused-type status). Frame "root_cause" and "why_it_may_have_been_removed" as a forward-looking risk read — what WOULD put this review at risk if it were reviewed today — or state that no meaningful risk is evident. Do not claim the review was actually removed.`;
+    ? `This review's current recorded status is "${status || 'unknown'}" (a removed/refused-type status). Frame "key_finding" and "risk_or_removal_explanation" as explaining why the review may have been removed — or state plainly that no clear reason is evident.`
+    : `This review's current recorded status is "${status || 'unknown'}" (not a removed/refused-type status). This is a live/pending review, not a removed one — give a two-sided read, not just risk avoidance. First, the forward-looking risk read: what WOULD put this review at risk if it were reviewed today, framed in "risk_or_removal_explanation" — or state that no meaningful risk is evident. Second, and just as important: use "contrary_evidence" and "content_assessment.summary" to name concrete, specific things in the review's own text (word choice, specificity of detail, plausibility, consistency with the account's other behavior) that support it reading as genuine and compliant — do not limit this to "no risk found," actually point to what's good about it. Set "key_finding" to whichever of the two is more decisive for this review — a real risk factor if one clearly exists, or its standout strength if the evidence leans compliant. Do not claim the review was actually removed.`;
 
   const platformLabel = PLATFORM_LABEL[platform];
 
