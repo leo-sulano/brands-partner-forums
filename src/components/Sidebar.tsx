@@ -9,7 +9,7 @@ import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
 import { isTabPaused } from '../lib/pausedTabRegistry';
-import { resolveTabIcon } from '../lib/tabIcons';
+import TabIcon from './TabIcon';
 import { prefetchRoute } from '../lib/routeChunks';
 import { useAuth } from '../contexts/AuthContext';
 import AddBrandTabModal from './AddBrandTabModal';
@@ -212,7 +212,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             {[...OPERATIONAL_TABS]
               .sort((a, b) => Number(isTabPaused(a)) - Number(isTabPaused(b)))
               .map((tab) => {
-              const Icon = resolveTabIcon(tab);
               const platforms = getTabPlatforms(tab);
               return (
                 <div key={tab} className="group relative flex items-center">
@@ -225,7 +224,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                       className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
                     >
                       <span className="relative shrink-0">
-                        <Icon className="size-4" />
+                        <TabIcon tab={tab} className="size-4" />
                         {isTabPaused(tab) && (
                           <PausedBadgeIcon className="absolute -bottom-1.5 -right-1.5 size-3.5" />
                         )}

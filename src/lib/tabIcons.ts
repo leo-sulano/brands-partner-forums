@@ -10,13 +10,23 @@
 // adding an icon for a new Brand Tab is optional, not required to register it
 // (see TAB_COLUMN_CONFIGS in tab-configs.ts for the one required step for a
 // hardcoded tab, or the `custom_tabs` table / src/lib/dynamicTabRegistry.ts
-// for a tab created in-app with no code change at all — a dynamic tab always
-// uses DEFAULT_TAB_ICON, since there is no icon picker in that flow).
+// for a tab created in-app with no code change at all).
+//
+// Kept JSX-free on purpose (this project has no @testing-library/react
+// dependency, so component-rendering tests aren't a pattern here) —
+// src/components/TabIcon.tsx turns resolveTabIconKind()'s result into actual
+// JSX. A dynamically-chosen icon can't be exposed as a plain component
+// reference the way the hardcoded TAB_ICONS map is: it must render through
+// lucide's own <DynamicIcon name=.../> (lucide-react/dynamic), which
+// lazy-loads that one icon's SVG as its own chunk instead of bundling
+// lucide's full ~1,960-icon set into whatever chunk this file ends up in —
+// Sidebar.tsx, which loads on every page, pulls this in transitively via
+// AddBrandTabModal/EditBrandTabModal.
 import {
   Syringe, Link2, Handshake, RotateCcw, Dices, Medal, Gamepad2, Plane, Heart, Star, LifeBuoy,
-  Shield, Rocket, Crown, Gem, Anchor, Compass, Flag, Zap, Globe, Trophy, Target, Sparkles,
   type LucideIcon,
 } from 'lucide-react';
+import { iconNames } from 'lucide-react/dynamic';
 import { getDynamicTabIcon } from './dynamicTabRegistry';
 
 export const TAB_ICONS: Record<string, LucideIcon> = {
@@ -36,43 +46,50 @@ export const TAB_ICONS: Record<string, LucideIcon> = {
 export const DEFAULT_TAB_ICON: LucideIcon = Syringe;
 
 // The self-service "+ Add Brand Tab" flow (AddBrandTabModal/EditBrandTabModal)
-// lets the creator pick one of these for a dynamic tab, stored by `key` on
-// `custom_tabs.icon` (dynamicTabRegistry.ts's `dynamicTabIcons` map holds the
-// live in-session copy) — deliberately a fixed set rather than free text, and
-// deliberately distinct from every icon already used in TAB_ICONS above so a
-// new tab can't visually collide with an existing hardcoded one.
-export interface TabIconOption {
-  key: string;
-  label: string;
-  Icon: LucideIcon;
+// lets the creator search and pick any of lucide's icons for a dynamic tab,
+// stored by kebab-case `name` on `custom_tabs.icon`
+// (dynamicTabRegistry.ts's `dynamicTabIcons` map holds the live in-session
+// copy).
+export type TabIconName = (typeof iconNames)[number];
+
+export const ALL_DYNAMIC_ICON_NAMES: readonly TabIconName[] = iconNames;
+
+const DYNAMIC_ICON_NAME_SET: ReadonlySet<string> = new Set(iconNames);
+
+export function isKnownDynamicIconName(name: string): name is TabIconName {
+  return DYNAMIC_ICON_NAME_SET.has(name);
 }
 
-export const ICON_OPTIONS: TabIconOption[] = [
-  { key: 'shield',   label: 'Shield',    Icon: Shield },
-  { key: 'rocket',   label: 'Rocket',    Icon: Rocket },
-  { key: 'crown',    label: 'Crown',     Icon: Crown },
-  { key: 'gem',      label: 'Gem',       Icon: Gem },
-  { key: 'anchor',   label: 'Anchor',    Icon: Anchor },
-  { key: 'compass',  label: 'Compass',   Icon: Compass },
-  { key: 'flag',     label: 'Flag',      Icon: Flag },
-  { key: 'zap',      label: 'Lightning', Icon: Zap },
-  { key: 'globe',    label: 'Globe',     Icon: Globe },
-  { key: 'trophy',   label: 'Trophy',    Icon: Trophy },
-  { key: 'target',   label: 'Target',    Icon: Target },
-  { key: 'sparkles', label: 'Sparkles',  Icon: Sparkles },
+// Shown by IconPicker before the creator types a search query — a handful of
+// icons that plausibly fit a brand/casino/business tab, not an exhaustive or
+// otherwise special set (every other lucide icon is equally choosable via
+// search). Deliberately distinct from every icon already used in TAB_ICONS
+// above so a new tab doesn't default to visually colliding with a hardcoded
+// one.
+export const POPULAR_ICON_NAMES: TabIconName[] = [
+  'shield', 'rocket', 'crown', 'gem', 'anchor', 'compass', 'flag', 'zap',
+  'globe', 'trophy', 'target', 'sparkles', 'store', 'tag', 'ticket', 'gift',
+  'coins', 'dice-5',
 ];
 
-export const DEFAULT_ICON_OPTION_KEY: string = ICON_OPTIONS[0].key;
+export const DEFAULT_ICON_NAME: TabIconName = POPULAR_ICON_NAMES[0];
 
-// Single resolver every render call site should use instead of the raw
+export type ResolvedTabIcon =
+  | { kind: 'static'; Icon: LucideIcon }
+  | { kind: 'dynamic'; name: TabIconName };
+
+// Single resolver every render call site should go through (via
+// src/components/TabIcon.tsx) instead of the raw
 // `TAB_ICONS[tab] ?? DEFAULT_TAB_ICON` pattern — hardcoded tabs resolve
-// exactly as before, a dynamic tab with a chosen icon resolves it via
-// ICON_OPTIONS, and anything else (a dynamic tab that never had one set,
-// or an unrecognized/stale key) falls back to DEFAULT_TAB_ICON.
-export function resolveTabIcon(tab: string): LucideIcon {
+// exactly as before, a dynamic tab with a chosen icon resolves to that
+// lucide icon name, and anything else (a dynamic tab that never had one set,
+// or an unrecognized/stale name) falls back to DEFAULT_TAB_ICON.
+export function resolveTabIconKind(tab: string): ResolvedTabIcon {
   const hardcoded = TAB_ICONS[tab];
-  if (hardcoded) return hardcoded;
-  const dynamicKey = getDynamicTabIcon(tab);
-  const match = dynamicKey ? ICON_OPTIONS.find((o) => o.key === dynamicKey) : undefined;
-  return match ? match.Icon : DEFAULT_TAB_ICON;
+  if (hardcoded) return { kind: 'static', Icon: hardcoded };
+  const dynamicName = getDynamicTabIcon(tab);
+  if (dynamicName && isKnownDynamicIconName(dynamicName)) {
+    return { kind: 'dynamic', name: dynamicName };
+  }
+  return { kind: 'static', Icon: DEFAULT_TAB_ICON };
 }

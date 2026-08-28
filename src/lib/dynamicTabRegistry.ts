@@ -53,11 +53,11 @@ export function buildDynamicTabColumns(platforms: DynamicTabPlatform[]): string[
 
 const dynamicTabColumns: Record<string, string[]> = {};
 
-// Parallel to dynamicTabColumns: holds the chosen ICON_OPTIONS `key`
-// (src/lib/tabIcons.ts) for a dynamic tab, if one was ever set. Kept here
-// rather than in tabIcons.ts because this module must stay Deno-safe (no
-// lucide-react import) — tabIcons.ts imports getDynamicTabIcon from here
-// instead, not the other way around.
+// Parallel to dynamicTabColumns: holds the chosen lucide icon `name`
+// (src/lib/tabIcons.ts's TabIconName) for a dynamic tab, if one was ever
+// set. Kept here rather than in tabIcons.ts because this module must stay
+// Deno-safe (no lucide-react import) — tabIcons.ts imports
+// getDynamicTabIcon from here instead, not the other way around.
 const dynamicTabIcons: Record<string, string> = {};
 
 // Notifies any mounted component that reads OPERATIONAL_TABS/dynamicTabColumns

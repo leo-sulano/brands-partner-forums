@@ -11,7 +11,7 @@ import {
   getEnabledToolbarFilters, registerToolbarFilters,
   TOOLBAR_FILTER_LIST, type ToolbarFilterKey,
 } from '../lib/tab-configs';
-import { DEFAULT_ICON_OPTION_KEY } from '../lib/tabIcons';
+import { DEFAULT_ICON_NAME } from '../lib/tabIcons';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
 import { useAuth } from '../contexts/AuthContext';
@@ -45,7 +45,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
     () => getEnabledToolbarFilters(tabName),
   );
   const [icon, setIcon] = useState<string>(
-    () => getDynamicTabIcon(tabName) ?? DEFAULT_ICON_OPTION_KEY,
+    () => getDynamicTabIcon(tabName) ?? DEFAULT_ICON_NAME,
   );
   const [status, setStatus] = useState<'active' | 'paused'>(initialPaused ? 'paused' : 'active');
   const [submitting, setSubmitting] = useState(false);

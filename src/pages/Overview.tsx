@@ -21,7 +21,7 @@ import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatf
 import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import { getTabPlatforms } from '../lib/tab-configs';
-import { resolveTabIcon } from '../lib/tabIcons';
+import TabIcon from '../components/TabIcon';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
 import type { TabKpis, BrandKpis } from '../types/brand-entry';
 
@@ -878,7 +878,6 @@ export default function Overview() {
                 <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
               ))
             : visibleTabs.map(({ tab, kpis }) => {
-                const TabIcon = resolveTabIcon(tab);
                 const tabHref = `/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`;
                 const isHovered = hoveredTabCard === tab;
                 const isDimmed = hoveredTabCard !== null && !isHovered;
@@ -900,7 +899,7 @@ export default function Overview() {
                     <Link to={tabHref} className="group flex items-center justify-between gap-2 rounded">
                       <div className="flex min-w-0 items-center gap-2">
                         <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-blue-100">
-                          <TabIcon className="size-3.5 text-blue-500" />
+                          <TabIcon tab={tab} className="size-3.5 text-blue-500" />
                         </div>
                         <p className="truncate text-sm font-semibold text-slate-800 group-hover:text-blue-600">{tabDisplayName(tab)}</p>
                       </div>
@@ -942,7 +941,6 @@ export default function Overview() {
           ) : (
             <div className="space-y-4">
               {visibleBrandGroups.map(({ tab, brands }) => {
-                const TabIcon = resolveTabIcon(tab);
                 // Reuses the tab-level kpis the "Brand Tabs" view already fetched
                 // (same fetchTabKpis/classifyEntry pipeline as fetchBrandKpis) rather
                 // than re-summing this tab's brand cards, so the two views can't drift.
@@ -953,7 +951,7 @@ export default function Overview() {
                       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
                         <div className="flex items-center gap-2">
                           <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-blue-100">
-                            <TabIcon className="size-3 text-blue-500" />
+                            <TabIcon tab={tab} className="size-3 text-blue-500" />
                           </div>
                           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{tabDisplayName(tab)}</h3>
                         </div>

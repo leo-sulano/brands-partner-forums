@@ -4,7 +4,7 @@ import { X, Loader2 } from 'lucide-react';
 import { createCustomTab } from '../lib/queries';
 import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import { TOOLBAR_FILTER_LIST, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from '../lib/tab-configs';
-import { DEFAULT_ICON_OPTION_KEY } from '../lib/tabIcons';
+import { DEFAULT_ICON_NAME } from '../lib/tabIcons';
 import { validateNewTabName } from '../lib/tabValidation';
 import IconPicker from './IconPicker';
 
@@ -22,7 +22,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   const [name, setName] = useState('');
   const [platforms, setPlatforms] = useState<DynamicTabPlatform[]>([]);
   const [filters, setFilters] = useState<ToolbarFilterKey[]>(() => [...ALL_TOOLBAR_FILTERS]);
-  const [icon, setIcon] = useState<string>(DEFAULT_ICON_OPTION_KEY);
+  const [icon, setIcon] = useState<string>(DEFAULT_ICON_NAME);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

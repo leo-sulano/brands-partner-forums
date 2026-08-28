@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { tabDisplayName } from '../lib/tabs';
 import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
-import { resolveTabIcon } from '../lib/tabIcons';
+import TabIcon from '../components/TabIcon';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
@@ -621,7 +621,6 @@ export default function SchedulePlanner() {
       {showGrid ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {getActiveOperationalTabs().map((t) => {
-            const Icon = resolveTabIcon(t);
             const preview = previewByTab[t] ?? EMPTY_PREVIEW;
             const previewBrands = previewBrandsFor(t);
             return (
@@ -640,7 +639,7 @@ export default function SchedulePlanner() {
               >
                 <span className="flex items-center justify-between gap-2">
                   <span className="flex items-center gap-2">
-                    <Icon className="size-4 shrink-0 text-blue-500" />
+                    <TabIcon tab={t} className="size-4 shrink-0 text-blue-500" />
                     <span className="text-sm font-medium text-slate-800">{tabDisplayName(t)}</span>
                   </span>
                   <ChevronRight className="size-4 shrink-0 text-slate-400" />
