@@ -1777,10 +1777,11 @@ export async function restoreEditedEntity(logId: string): Promise<void> {
 export interface CustomTabRow {
   name: string;
   platforms: DynamicTabPlatform[];
+  icon: string | null;
 }
 
 export async function fetchCustomTabs(client: SupabaseClient = supabase): Promise<CustomTabRow[]> {
-  const { data, error } = await client.from('custom_tabs').select('name, platforms');
+  const { data, error } = await client.from('custom_tabs').select('name, platforms, icon');
   if (error) throw error;
   return (data ?? []) as CustomTabRow[];
 }
@@ -1789,11 +1790,12 @@ export async function createCustomTab(
   name: string,
   platforms: DynamicTabPlatform[],
   enabledFilters?: ToolbarFilterKey[],
+  icon?: string | null,
 ): Promise<void> {
   const actor = await currentActor();
   const { error } = await supabase
     .from('custom_tabs')
-    .insert({ name, platforms, created_by: actor.email });
+    .insert({ name, platforms, created_by: actor.email, icon: icon ?? null });
   if (error) {
     if (error.code === '23505') throw new Error(`A tab named "${name}" already exists.`);
     throw error;
@@ -1823,6 +1825,17 @@ export async function updateCustomTabPlatforms(name: string, platforms: DynamicT
   const { error } = await supabase
     .from('custom_tabs')
     .update({ platforms })
+    .eq('name', name);
+  if (error) throw error;
+}
+
+// Same "callers must also refresh the in-memory registry" contract as
+// updateCustomTabPlatforms above — callers must also call
+// registerDynamicTabs([{ name, platforms, icon }]) afterward.
+export async function updateCustomTabIcon(name: string, icon: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('custom_tabs')
+    .update({ icon })
     .eq('name', name);
   if (error) throw error;
 }

@@ -21,7 +21,7 @@ import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatf
 import { tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import { getTabPlatforms } from '../lib/tab-configs';
-import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
+import { resolveTabIcon } from '../lib/tabIcons';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
 import type { TabKpis, BrandKpis } from '../types/brand-entry';
 
@@ -878,7 +878,7 @@ export default function Overview() {
                 <div key={i} className="animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
               ))
             : visibleTabs.map(({ tab, kpis }) => {
-                const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+                const TabIcon = resolveTabIcon(tab);
                 const tabHref = `/brands/${tabToSlug(tab)}${platformFilter.length > 0 ? `?platform=${platformFilter.join(',')}` : ''}`;
                 const isHovered = hoveredTabCard === tab;
                 const isDimmed = hoveredTabCard !== null && !isHovered;
@@ -942,7 +942,7 @@ export default function Overview() {
           ) : (
             <div className="space-y-4">
               {visibleBrandGroups.map(({ tab, brands }) => {
-                const TabIcon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+                const TabIcon = resolveTabIcon(tab);
                 // Reuses the tab-level kpis the "Brand Tabs" view already fetched
                 // (same fetchTabKpis/classifyEntry pipeline as fetchBrandKpis) rather
                 // than re-summing this tab's brand cards, so the two views can't drift.

@@ -9,7 +9,7 @@ import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
 import { isTabPaused } from '../lib/pausedTabRegistry';
-import { TAB_ICONS, DEFAULT_TAB_ICON } from '../lib/tabIcons';
+import { resolveTabIcon } from '../lib/tabIcons';
 import { prefetchRoute } from '../lib/routeChunks';
 import { useAuth } from '../contexts/AuthContext';
 import AddBrandTabModal from './AddBrandTabModal';
@@ -98,8 +98,13 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     return () => window.removeEventListener('tab-platforms-changed', handleChange);
   }, []);
 
-  function handleTabCreated(name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) {
-    registerDynamicTabs([{ name, platforms }]);
+  function handleTabCreated(
+    name: string,
+    platforms: DynamicTabPlatform[],
+    enabledFilters: ToolbarFilterKey[],
+    icon: string,
+  ) {
+    registerDynamicTabs([{ name, platforms, icon }]);
     registerToolbarFilters([{ tab: name, enabled_filters: enabledFilters }]);
     setShowAddTab(false);
     navigate(`/brands/${tabToSlug(name)}`);
@@ -207,7 +212,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             {[...OPERATIONAL_TABS]
               .sort((a, b) => Number(isTabPaused(a)) - Number(isTabPaused(b)))
               .map((tab) => {
-              const Icon = TAB_ICONS[tab] ?? DEFAULT_TAB_ICON;
+              const Icon = resolveTabIcon(tab);
               const platforms = getTabPlatforms(tab);
               return (
                 <div key={tab} className="group relative flex items-center">

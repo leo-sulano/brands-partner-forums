@@ -1,9 +1,9 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
+import { updateCustomTabPlatforms, updateCustomTabIcon, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
 import {
-  PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
+  PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, getDynamicTabIcon, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
 import {
   getTabPlatforms, getTabPlatformsUnfiltered,
@@ -11,9 +11,11 @@ import {
   getEnabledToolbarFilters, registerToolbarFilters,
   TOOLBAR_FILTER_LIST, type ToolbarFilterKey,
 } from '../lib/tab-configs';
+import { DEFAULT_ICON_OPTION_KEY } from '../lib/tabIcons';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
 import { useAuth } from '../contexts/AuthContext';
+import IconPicker from './IconPicker';
 
 interface Props {
   tabName: string;
@@ -41,6 +43,9 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
   );
   const [filters, setFilters] = useState<ToolbarFilterKey[]>(
     () => getEnabledToolbarFilters(tabName),
+  );
+  const [icon, setIcon] = useState<string>(
+    () => getDynamicTabIcon(tabName) ?? DEFAULT_ICON_OPTION_KEY,
   );
   const [status, setStatus] = useState<'active' | 'paused'>(initialPaused ? 'paused' : 'active');
   const [submitting, setSubmitting] = useState(false);
@@ -96,7 +101,8 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
       }
       if (dynamic) {
         await updateCustomTabPlatforms(currentTabName, platforms);
-        registerDynamicTabs([{ name: currentTabName, platforms }]);
+        await updateCustomTabIcon(currentTabName, icon);
+        registerDynamicTabs([{ name: currentTabName, platforms, icon }]);
       } else {
         const before = new Set(getTabPlatforms(currentTabName));
         const after = new Set(platforms);
@@ -178,6 +184,8 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
               Unchecking a platform hides its columns and data — nothing is deleted, and re-checking it brings everything back.
             </p>
           </div>
+
+          {dynamic && <IconPicker value={icon} onChange={setIcon} />}
 
           {isAdmin && (
             <div>

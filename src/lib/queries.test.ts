@@ -43,6 +43,7 @@ import {
   fetchCustomTabs,
   createCustomTab,
   updateCustomTabPlatforms,
+  updateCustomTabIcon,
   archiveTab,
   unarchiveTab,
   fetchArchivedTabs,
@@ -980,12 +981,12 @@ describe('fetchEntryReviewAnalyses', () => {
 });
 
 describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
-  it('fetchCustomTabs maps rows to name/platforms', async () => {
+  it('fetchCustomTabs maps rows to name/platforms/icon', async () => {
     singletonFrom.mockReturnValue(
-      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'] }], error: null }),
+      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket' }], error: null }),
     );
     const rows = await fetchCustomTabs();
-    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'] }]);
+    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket' }]);
   });
 
   it('createCustomTab inserts with the current actor email', async () => {
@@ -993,7 +994,16 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     singletonFrom.mockReturnValue({ insert });
     await createCustomTab('Acme Tab', ['tp']);
     expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'] }),
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: null }),
+    );
+  });
+
+  it('createCustomTab inserts the given icon key', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    singletonFrom.mockReturnValue({ insert });
+    await createCustomTab('Acme Tab', ['tp'], undefined, 'rocket');
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: 'rocket' }),
     );
   });
 
@@ -1020,6 +1030,22 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     const update = vi.fn().mockReturnValue({ eq });
     singletonFrom.mockReturnValue({ update });
     await expect(updateCustomTabPlatforms('Acme Tab', ['tp'])).rejects.toThrow('db down');
+  });
+
+  it('updateCustomTabIcon updates the row by name', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await updateCustomTabIcon('Acme Tab', 'rocket');
+    expect(update).toHaveBeenCalledWith({ icon: 'rocket' });
+    expect(eq).toHaveBeenCalledWith('name', 'Acme Tab');
+  });
+
+  it('updateCustomTabIcon throws on error', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await expect(updateCustomTabIcon('Acme Tab', 'rocket')).rejects.toThrow('db down');
   });
 
 });

@@ -5,6 +5,7 @@ import {
   unregisterDynamicTab,
   resetDynamicTabs,
   getDynamicTabColumns,
+  getDynamicTabIcon,
   isDynamicTab,
   renameDynamicTab,
 } from './dynamicTabRegistry';
@@ -201,5 +202,46 @@ describe('renameDynamicTab', () => {
     renameDynamicTab('Hanan', 'Hanan Renamed', ['tp']);
     expect(OPERATIONAL_TABS).toEqual(before);
     expect(isDynamicTab('Hanan Renamed')).toBe(false);
+  });
+});
+
+describe('getDynamicTabIcon', () => {
+  beforeEach(() => {
+    unregisterDynamicTab('Test Dynamic Tab');
+    unregisterDynamicTab('Renamed Dynamic Tab');
+  });
+
+  it('is null before registration', () => {
+    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
+  });
+
+  it('registerDynamicTabs sets the icon when provided', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
+    expect(getDynamicTabIcon('Test Dynamic Tab')).toBe('rocket');
+  });
+
+  it('re-registering without an icon field preserves the previously set icon', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] }]);
+    expect(getDynamicTabIcon('Test Dynamic Tab')).toBe('rocket');
+  });
+
+  it('re-registering with icon: null clears a previously set icon', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: null }]);
+    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
+  });
+
+  it('unregisterDynamicTab clears the icon', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
+    unregisterDynamicTab('Test Dynamic Tab');
+    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
+  });
+
+  it('renameDynamicTab carries the icon over to the new name', () => {
+    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
+    renameDynamicTab('Test Dynamic Tab', 'Renamed Dynamic Tab', ['tp']);
+    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
+    expect(getDynamicTabIcon('Renamed Dynamic Tab')).toBe('rocket');
   });
 });

@@ -1,0 +1,12 @@
+-- supabase/migrations/20260828120000_add_custom_tabs_icon.sql
+-- Adds an optional icon selection to dynamically-created Brand Tabs, closing
+-- the "no icon picker in that flow" gap documented in src/lib/tabIcons.ts —
+-- a dynamic tab always rendered DEFAULT_TAB_ICON everywhere (Sidebar,
+-- Overview, Schedule Planner) with no way to pick something more fitting.
+--
+-- Stores a key into the fixed ICON_OPTIONS list (src/lib/tabIcons.ts), not a
+-- free string — same "validated set, not open text" shape `platforms`
+-- already has. Existing rows get icon = null, which resolveTabIcon()
+-- (tabIcons.ts) treats exactly like a tab that never had this column at all
+-- (falls back to DEFAULT_TAB_ICON) — no backfill needed.
+alter table public.custom_tabs add column icon text;
