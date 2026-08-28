@@ -867,7 +867,7 @@ describe('computeBrandKpisFromEntries', () => {
   });
 });
 
-const SAMPLE_ANALYSIS = { overall_result: 'no_clear_removal_reason' } as unknown as ReviewRemovalAssessmentResult;
+const SAMPLE_ANALYSIS = { overall_result: 'no_clear_concern' } as unknown as ReviewRemovalAssessmentResult;
 const SAMPLE_EVIDENCE = {
   crossEntry: { sameProxyCount: 0, sameProxyRemovedCount: 0, sameProxySameCountryCount: 0, exampleBrands: [] },
   brandHistory: { totalReviews: 0, liveCount: 0, removedCount: 0, successRatePct: null },
