@@ -118,7 +118,7 @@ export async function handleReconcileColumns(
 ): Promise<{ moved: number; failed: number; errors: string[] }> {
   await bootstrapFn(client, 'sync-schedule-pms');
   const links = await fetchLinksFn(client);
-  const { moved, failed } = await enforceFn(links, credentials, fetchFn);
+  const { moved, failed } = await enforceFn(links, client, credentials, fetchFn);
   return { moved: moved.length, failed: failed.length, errors: failed.slice(0, 5).map((f) => f.error) };
 }
 

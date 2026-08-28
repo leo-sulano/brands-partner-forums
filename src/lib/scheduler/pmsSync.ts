@@ -5,7 +5,7 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
 import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
@@ -201,7 +201,7 @@ export async function pushScheduleToPms(
 
       const task = await createPmsTask(`${item.tabLabel} | ${item.brand}`, item.date, credentials, fetchFn);
       await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
-      await insertSchedulePmsLink(item.tab, item.brand, item.platform, item.date, task.id, client);
+      await insertSchedulePmsLink(item.tab, item.brand, item.platform, item.date, task.id, PMS_TODO_COLUMN_ID, client);
       // Reflect the just-created link back into this tab's in-memory `links`
       // array so a later item in the SAME batch that repeats this exact combo
       // (e.g. rapid re-cycling of one cell while a prior push is in flight)
@@ -209,7 +209,7 @@ export async function pushScheduleToPms(
       // attempting a second PMS task create that would then fail
       // insertSchedulePmsLink on the table's (tab, brand_key, platform, date)
       // unique constraint and leave an orphaned PMS task with no link at all.
-      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id, synced_status: 'active' });
+      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID });
       created.push(item);
     } catch (err) {
       failed.push({ item, error: err instanceof Error ? err.message : String(err) });
@@ -386,7 +386,7 @@ export async function syncScheduleStatusToPms(
       // the next sync pass (the resolved status still won't match the stale
       // synced_status) instead of silently never getting a description.
       if (item.description != null) await setPmsTaskDescription(item.pmsTaskId, item.description, credentials, fetchFn);
-      await updateSchedulePmsLinkStatus(item.linkId, item.targetStatus, client);
+      await updateSchedulePmsLinkStatus(item.linkId, item.targetStatus, columnId, client);
       tasks = tasks.filter((t) => t.id !== item.pmsTaskId);
       tasks.push({ id: item.pmsTaskId, title: `${item.tabLabel} | `, columnId, position, dueDate: item.date, assignees: [] });
       synced.push(item);
@@ -402,25 +402,30 @@ export interface PmsColumnEnforceResult {
   failed: { linkId: string; pmsTaskId: string; error: string }[];
 }
 
-// Column-drift reconcile: makes every linked PMS task sit in the column its
-// schedule_pms_links.synced_status already maps to. It does NOT re-derive
-// status from evidence -- resolveAndSyncTabStatuses owns that (watermark-
-// gated). This is the cheap, watermark-independent half that corrects the
-// two drift classes resolveAndSyncTabStatuses structurally cannot: a
-// PMS_STATUS_COLUMN_IDS remap (synced_status unchanged, mapped column
-// changed -- e.g. Task 267 moving pending/done from In Progress to Done
-// left every already-synced card stranded, since targetStatus still equalled
-// synced_status so nothing was queued) and a human dragging a card in the
-// PMS UI (dashboard -> PMS is one-way; an unauthorised move is reverted on
-// the next pass). Runs across ALL links every tick, including schedule-
-// paused/archived tabs, since a mapping change strands their cards too and
-// those tabs are never resolved. One GET /tasks per call; a PATCH only for a
-// link whose card is actually in the wrong column. A link whose task is gone
-// from PMS is skipped (pullScheduleFromPms owns stale-link deletion). Same
-// per-item try/catch and in-memory task-list bookkeeping as
-// syncScheduleStatusToPms so grouped inserts stay correct across a batch.
+// Column-drift reconcile: corrects a linked PMS task's column only when the
+// system's OWN intended column for its synced_status has itself drifted --
+// i.e. link.synced_column_id (what PMS_STATUS_COLUMN_IDS[synced_status]
+// mapped to the last time this link was written) no longer matches what that
+// same mapping computes now. That can only happen from a PMS_STATUS_COLUMN_IDS
+// remap in this file's own code (e.g. Task 267 moving pending/done from In
+// Progress to Done left every already-synced card stranded, since
+// targetStatus still equalled synced_status so nothing was queued) -- never
+// from ordinary use, since syncScheduleStatusToPms/pushScheduleToPms always
+// keep synced_column_id in lockstep with wherever they actually place a card.
+// A card sitting somewhere else because a human dragged it in the PMS UI
+// (synced_column_id still matches the current mapping; only the real
+// task.columnId differs) is deliberately left alone -- per an explicit user
+// request, this is no longer "corrected" back. Runs across ALL links every
+// tick, including schedule-paused/archived tabs, since a mapping change
+// strands their cards too and those tabs are never resolved. One GET /tasks
+// per call; a PATCH only for a link undergoing a genuine remap correction. A
+// link whose task is gone from PMS is skipped (pullScheduleFromPms owns
+// stale-link deletion). Same per-item try/catch and in-memory task-list
+// bookkeeping as syncScheduleStatusToPms so grouped inserts stay correct
+// across a batch.
 export async function enforcePmsColumns(
   links: SchedulePmsLink[],
+  client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch = fetch,
 ): Promise<PmsColumnEnforceResult> {
@@ -440,11 +445,14 @@ export async function enforcePmsColumns(
     const task = byId.get(link.pms_task_id);
     if (!task) continue;
     const want = PMS_STATUS_COLUMN_IDS[link.synced_status as PmsSyncStatus];
-    if (!want || task.columnId === want) continue;
+    if (!want) continue;
+    if (task.columnId === want) continue;
+    if (link.synced_column_id === want) continue; // human moved it; respect it
     const tabLabel = tabDisplayName(link.tab);
     try {
       const position = computeGroupedInsertPosition(tasks, want, link.date, tabLabel, link.pms_task_id);
       await movePmsTask(link.pms_task_id, want, position, credentials, fetchFn);
+      await updateSchedulePmsLinkColumn(link.id, want, client);
       tasks = tasks.filter((t) => t.id !== link.pms_task_id);
       tasks.push({ id: link.pms_task_id, title: `${tabLabel} | `, columnId: want, position, dueDate: link.date, assignees: [] });
       moved.push({ linkId: link.id, pmsTaskId: link.pms_task_id, from: task.columnId, to: want });

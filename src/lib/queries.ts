@@ -1227,12 +1227,21 @@ export interface SchedulePmsLink {
   date: string;
   pms_task_id: string;
   synced_status: string;
+  // The PMS column id the system itself last intentionally placed this
+  // task's card in (i.e. what PMS_STATUS_COLUMN_IDS[synced_status] mapped
+  // to at write time) -- distinct from wherever the card actually sits in
+  // PMS right now. Lets enforcePmsColumns (src/lib/scheduler/pmsSync.ts)
+  // tell a human's manual drag (task.columnId differs from this, but our
+  // mapping for the status hasn't changed) apart from a real drift class (a
+  // PMS_STATUS_COLUMN_IDS remap, where this value itself is now stale
+  // relative to the current mapping) -- only the latter gets corrected.
+  synced_column_id: string;
 }
 
 export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
   const { data, error } = await client
     .from('schedule_pms_links')
-    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status')
+    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as SchedulePmsLink[];
@@ -1251,7 +1260,7 @@ export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase
   while (true) {
     const { data, error } = await client
       .from('schedule_pms_links')
-      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status')
+      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id')
       .range(from, from + PAGE - 1);
     if (error) throw error;
     all.push(...((data ?? []) as SchedulePmsLink[]));
@@ -1267,11 +1276,12 @@ export async function insertSchedulePmsLink(
   platform: Platform,
   date: string,
   pmsTaskId: string,
+  columnId: string,
   client: SupabaseClient = supabase,
 ): Promise<void> {
   const { error } = await client
     .from('schedule_pms_links')
-    .insert({ tab, brand, platform, date, pms_task_id: pmsTaskId });
+    .insert({ tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId });
   if (error) throw error;
 }
 
@@ -1280,8 +1290,17 @@ export async function updateSchedulePmsLinkDate(id: string, date: string, client
   if (error) throw error;
 }
 
-export async function updateSchedulePmsLinkStatus(id: string, status: string, client: SupabaseClient = supabase): Promise<void> {
-  const { error } = await client.from('schedule_pms_links').update({ synced_status: status }).eq('id', id);
+export async function updateSchedulePmsLinkStatus(id: string, status: string, columnId: string, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client.from('schedule_pms_links').update({ synced_status: status, synced_column_id: columnId }).eq('id', id);
+  if (error) throw error;
+}
+
+// enforcePmsColumns-only: records where a card now actually sits without
+// touching synced_status -- used when a human's manual move is being
+// accepted as-is, or when a genuine PMS_STATUS_COLUMN_IDS remap is being
+// corrected (the status itself hasn't changed in either case).
+export async function updateSchedulePmsLinkColumn(id: string, columnId: string, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client.from('schedule_pms_links').update({ synced_column_id: columnId }).eq('id', id);
   if (error) throw error;
 }
 

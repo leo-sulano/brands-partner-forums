@@ -38,6 +38,7 @@ import {
   insertSchedulePmsLink,
   updateSchedulePmsLinkDate,
   updateSchedulePmsLinkStatus,
+  updateSchedulePmsLinkColumn,
   deleteSchedulePmsLink,
   fetchCustomTabs,
   createCustomTab,
@@ -213,12 +214,12 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).toHaveBeenCalledWith('schedule_pms_links');
   });
 
-  it('insertSchedulePmsLink uses the passed-in client for the insert', async () => {
+  it('insertSchedulePmsLink uses the passed-in client for the insert, recording the created column', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ insert });
-    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', { from: fakeFrom } as any);
+    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-todo', { from: fakeFrom } as any);
     expect(fakeFrom).toHaveBeenCalledWith('schedule_pms_links');
-    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' });
+    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-todo' });
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
@@ -232,12 +233,22 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
-  it('updateSchedulePmsLinkStatus uses the passed-in client and filters by id', async () => {
+  it('updateSchedulePmsLinkStatus uses the passed-in client, filters by id, and records the column it moved to', async () => {
     const eq = vi.fn().mockResolvedValue({ error: null });
     const update = vi.fn().mockReturnValue({ eq });
     const fakeFrom = vi.fn().mockReturnValue({ update });
-    await updateSchedulePmsLinkStatus('link-1', 'published', { from: fakeFrom } as any);
-    expect(update).toHaveBeenCalledWith({ synced_status: 'published' });
+    await updateSchedulePmsLinkStatus('link-1', 'published', 'col-done', { from: fakeFrom } as any);
+    expect(update).toHaveBeenCalledWith({ synced_status: 'published', synced_column_id: 'col-done' });
+    expect(eq).toHaveBeenCalledWith('id', 'link-1');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('updateSchedulePmsLinkColumn uses the passed-in client, filters by id, and writes only the column', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    const fakeFrom = vi.fn().mockReturnValue({ update });
+    await updateSchedulePmsLinkColumn('link-1', 'col-done', { from: fakeFrom } as any);
+    expect(update).toHaveBeenCalledWith({ synced_column_id: 'col-done' });
     expect(eq).toHaveBeenCalledWith('id', 'link-1');
     expect(singletonFrom).not.toHaveBeenCalled();
   });

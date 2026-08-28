@@ -7084,3 +7084,58 @@ mismatches across all 257 links on the entire live board**.
 **Deployed 3 times this session**: v24 (the fix), v25 (a diagnostic-only build, never left mid-deploy
 for more than the one verification call), v26 (the real fix, diagnostic removed) — v26 is what's live.
 No spec/plan doc — a live-symptom investigation and bounded fix, self-reviewed throughout.
+
+---
+
+## Task 285: PMS Manual Card Moves Now Stick — Column-Drift Reconcile No Longer Fights Human Drags
+
+**Date:** August 28, 2026
+
+User reported (same session, same day as Task 284): dragging a PMS card to "Blocked" got silently
+reverted to To Do within a minute. Root cause: `enforcePmsColumns`'s column-drift reconcile (Task
+282) was deliberately built to force every linked card into whatever column its `synced_status`
+maps to, unconditionally — its own doc comment named "a human dragging a card in the PMS UI" as one
+of the two drift classes it corrects. That was the right call when it shipped (op process assumed
+PMS card position was purely a dashboard mirror); the user now wants PMS to double as an ops board
+where cards can be manually triaged (e.g. flagged Blocked) without the dashboard fighting back.
+
+Design (confirmed with the user before implementing): the *other* mechanism,
+`resolveAndSyncTabStatuses`, only reacts to the schedule's real status changing — it never looks at
+a card's current column — so it was never the problem, and still correctly overrides a human's
+placement the moment a real status change happens (e.g. a slot that was manually parked in Blocked
+still snaps to Done once it's actually confirmed Done). Only the reconcile job needed to change.
+
+New `schedule_pms_links.synced_column_id` column (migration
+`20260828100000_add_schedule_pms_links_synced_column_id.sql`, backfilled from each row's existing
+`synced_status` via the current `PMS_STATUS_COLUMN_IDS` mapping — safe because Task 284's same-day
+full-board sweep had just confirmed 0 drift across all 257 links) records the PMS column the system
+itself last *intentionally* placed a card in — distinct from wherever it actually sits now.
+`pushScheduleToPms`/`syncScheduleStatusToPms` (`src/lib/scheduler/pmsSync.ts`) now write it
+alongside every card creation/move they make. `enforcePmsColumns` (the reconcile job) now compares
+three values instead of two: if the real column already matches the mapped column, nothing to do;
+if the *recorded* `synced_column_id` still matches the current mapping, the divergence is a human
+move — respected, zero writes, zero API calls; only when `synced_column_id` itself has drifted from
+the current mapping (meaning `PMS_STATUS_COLUMN_IDS`'s own constants changed in a future deploy,
+the actual class of bug Task 282 was built to catch) does it correct the card. New
+`updateSchedulePmsLinkColumn` (`src/lib/queries.ts`) is the column-only write used for that
+correction; `updateSchedulePmsLinkStatus` gained a `columnId` param so it always keeps
+`synced_column_id` in lockstep with real moves. `enforcePmsColumns` itself gained a required
+`client` param (it previously made no DB writes at all).
+
+TDD throughout: 13 `enforcePmsColumns` tests rewritten/added (3 new: respects a human move with
+zero writes when the mapping hasn't changed; still corrects a genuine remap; the parameterized
+per-status sweep now explicitly simulates a stale recorded mapping), plus updated
+`pushScheduleToPms`/`syncScheduleStatusToPms`/`queries.ts` assertions for the new field. Full suite
+**2165 passed**, build clean, `deno check` clean on both Edge Function consumers.
+
+**Deployed and live-verified against the real PMS project, not just the DB.** Migration applied
+(`supabase db push`) before the function deploy (v27) — required ordering, since the new code
+selects a column that wouldn't exist yet otherwise. Live check: manually dragged a real live card
+(TP Brand Injection | Casino Magius, previously in To Do) to the real "Blocked" column via the PMS
+API directly (simulating a human drag) — then ran both the `reconcileColumns` action (`{moved: 0,
+failed: 0}`) and the normal `syncAllStatuses` sweep for its tab, confirmed the card was still
+sitting in Blocked after both, confirmed `schedule_pms_links` recorded no change
+(`synced_status`/`synced_column_id` both untouched, exactly as designed), then restored the card to
+To Do to leave the board as found. A final full-board query confirmed all 257 links'
+`synced_column_id` still agree with their current mapping (0 drift introduced by the migration
+backfill itself). No spec/plan doc — bounded fix confirmed in chat, TDD throughout.

@@ -9,6 +9,9 @@ import type { SchedulePmsLink } from '../queries';
 import { invalidateTabCache } from '../queries';
 
 const CREDENTIALS = { apiToken: 'test-token' };
+const TODO_COL = 'cmsoh1uxz000204l46gf88k3f';
+const DONE_COL = 'cmsoh1uxz000604l4j5loen7g';
+const PAUSED_COL = 'cmt8eih3x000004lazna3tbmz';
 
 function fakeSupabase(existingLinks: unknown[] = []) {
   const insertedRows: unknown[] = [];
@@ -54,7 +57,7 @@ describe('pushScheduleToPms', () => {
     ]);
     const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [ITEM], skipped: [], failed: [] });
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL }]);
   });
 
   it('skips an item that already has a link for that exact combo, making no PMS API calls', async () => {
@@ -124,7 +127,7 @@ describe('pushScheduleToPms', () => {
     expect(result.created).toEqual([ITEM]);
     expect(result.skipped).toEqual([{ ...ITEM }]);
     expect(result.failed).toEqual([]);
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL }]);
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
@@ -443,7 +446,7 @@ describe('syncScheduleStatusToPms', () => {
     const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', date: '2026-08-20' };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
-    expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
+    expect(updated).toEqual([{ id: 'link-1', synced_status: 'published', synced_column_id: DONE_COL }]);
   });
 
   it('records a per-item failure without aborting the rest of the batch, and never updates synced_status for the failed item', async () => {
@@ -459,7 +462,7 @@ describe('syncScheduleStatusToPms', () => {
     expect(result.synced).toEqual([okItem]);
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0].item).toEqual(badItem);
-    expect(updated).toEqual([{ id: 'link-2', synced_status: 'active' }]);
+    expect(updated).toEqual([{ id: 'link-2', synced_status: 'active', synced_column_id: TODO_COL }]);
   });
 
   it.each([
@@ -550,7 +553,7 @@ describe('syncScheduleStatusToPms', () => {
     const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', date: '2026-08-20' };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
-    expect(updated).toEqual([{ id: 'link-1', synced_status: 'published' }]);
+    expect(updated).toEqual([{ id: 'link-1', synced_status: 'published', synced_column_id: DONE_COL }]);
   });
 
   it('PATCHes the task description after a successful move when the item carries one', async () => {
@@ -566,7 +569,7 @@ describe('syncScheduleStatusToPms', () => {
     };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
-    expect(updated).toEqual([{ id: 'link-1', synced_status: 'done' }]);
+    expect(updated).toEqual([{ id: 'link-1', synced_status: 'done', synced_column_id: DONE_COL }]);
     const descriptionCall = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.find(
       ([url, init]) => /\/tasks\/task-1$/.test(url as string) && init?.method === 'PATCH',
     );
@@ -1219,18 +1222,16 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
 });
 
 // Column drift reconcile: makes every linked PMS task obey the column its
-// schedule_pms_links.synced_status maps to, without re-deriving status from
-// evidence. Catches drift resolveAndSyncTabStatuses structurally can't --
-// a PMS_STATUS_COLUMN_IDS remap (synced_status unchanged, mapped column
-// changed) or a human dragging a card in the PMS UI.
-const TODO_COL = 'cmsoh1uxz000204l46gf88k3f';
-const DONE_COL = 'cmsoh1uxz000604l4j5loen7g';
-const PAUSED_COL = 'cmt8eih3x000004lazna3tbmz';
-
+// schedule_pms_links.synced_status maps to -- but ONLY when the system's own
+// intended column for that status (synced_column_id) has itself drifted from
+// the current mapping (a PMS_STATUS_COLUMN_IDS remap). A card sitting
+// somewhere else because a human dragged it is deliberately left alone: the
+// dashboard->PMS sync direction still owns real status changes, but a human
+// reorganizing PMS is no longer fought every tick.
 function link(over: Partial<SchedulePmsLink> = {}): SchedulePmsLink {
   return {
     id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega',
-    platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done',
+    platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done', synced_column_id: DONE_COL,
     ...over,
   };
 }
@@ -1240,50 +1241,73 @@ function pmsTask(id: string, columnId: string, over: Record<string, unknown> = {
 }
 
 describe('enforcePmsColumns', () => {
-  it('moves a linked task whose column does not match its synced_status to the mapped column', async () => {
+  it('corrects a card whose recorded synced_column_id no longer matches the current status->column mapping (a real remap)', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-1', TODO_COL)] },
       { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
     ]);
-    const result = await enforcePmsColumns([link({ synced_status: 'done' })], CREDENTIALS, fetchFn);
+    const result = await enforcePmsColumns([link({ synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
     expect(result.moved).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', from: TODO_COL, to: DONE_COL }]);
     expect(result.failed).toEqual([]);
+    expect(updated).toEqual([{ id: 'link-1', synced_column_id: DONE_COL }]);
   });
 
-  it('leaves a task already in the right column untouched, making no move call', async () => {
+  it('leaves a task already in the right column untouched, making no move call and no DB write', async () => {
+    const { client, updated } = fakeSupabaseForStatusUpdate();
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-1', DONE_COL)] },
     ]);
-    const result = await enforcePmsColumns([link({ synced_status: 'published' })], CREDENTIALS, fetchFn);
+    const result = await enforcePmsColumns([link({ synced_status: 'published', synced_column_id: DONE_COL })], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ moved: [], failed: [] });
+    expect(updated).toEqual([]);
+  });
+
+  it('does not move a card back, and writes nothing, when a human dragged it away and the mapping has not changed', async () => {
+    // synced_column_id already equals what 'published' maps to (DONE_COL) --
+    // no remap happened -- yet the real card sits somewhere else entirely
+    // (an unmanaged column, e.g. a "Blocked" list a human moved it to).
+    // This must be respected, not reverted.
+    const { client, updated } = fakeSupabaseForStatusUpdate();
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-1', 'human-blocked-column')] },
+      // No /move or /update call expected -- fakeFetchSequence throws on any
+      // unexpected extra call, so a revert attempt would fail this test.
+    ]);
+    const result = await enforcePmsColumns([link({ synced_status: 'published', synced_column_id: DONE_COL })], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ moved: [], failed: [] });
+    expect(updated).toEqual([]);
   });
 
   it('skips a link whose PMS task is absent from the project task list (stale link owned by the pull action)', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('some-other-task', DONE_COL)] },
     ]);
-    const result = await enforcePmsColumns([link({ pms_task_id: 'task-gone', synced_status: 'done' })], CREDENTIALS, fetchFn);
+    const result = await enforcePmsColumns([link({ pms_task_id: 'task-gone', synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ moved: [], failed: [] });
   });
 
-  it('isolates a per-link move failure from the rest of the batch', async () => {
+  it('isolates a per-link remap-correction failure from the rest of the batch', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-bad', TODO_COL), pmsTask('task-ok', TODO_COL)] },
       { url: /\/tasks\/task-bad\/move$/, method: 'PATCH', body: {}, status: 500 },
       { url: /\/tasks\/task-ok\/move$/, method: 'PATCH', body: {} },
     ]);
     const result = await enforcePmsColumns([
-      link({ id: 'link-bad', pms_task_id: 'task-bad', synced_status: 'done' }),
-      link({ id: 'link-ok', pms_task_id: 'task-ok', synced_status: 'paused' }),
-    ], CREDENTIALS, fetchFn);
+      link({ id: 'link-bad', pms_task_id: 'task-bad', synced_status: 'done', synced_column_id: TODO_COL }),
+      link({ id: 'link-ok', pms_task_id: 'task-ok', synced_status: 'paused', synced_column_id: TODO_COL }),
+    ], client, CREDENTIALS, fetchFn);
     expect(result.moved).toEqual([{ linkId: 'link-ok', pmsTaskId: 'task-ok', from: TODO_COL, to: PAUSED_COL }]);
     expect(result.failed).toHaveLength(1);
     expect(result.failed[0]).toMatchObject({ linkId: 'link-bad', pmsTaskId: 'task-bad' });
   });
 
   it('makes no API calls for an empty link list', async () => {
+    const { client } = fakeSupabaseForStatusUpdate();
     const fetchFn = vi.fn();
-    const result = await enforcePmsColumns([], CREDENTIALS, fetchFn);
+    const result = await enforcePmsColumns([], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ moved: [], failed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
@@ -1295,18 +1319,21 @@ describe('enforcePmsColumns', () => {
     ['published', DONE_COL],
     ['removed', DONE_COL],
     ['paused', PAUSED_COL],
-  ])('enforces synced_status "%s" -> column %s', async (syncedStatus, columnId) => {
-    // Every case starts with the task in a column it is NOT supposed to be in,
-    // so a move is always expected. 'active' starts from PAUSED; everything
-    // else starts from TODO.
+  ])('corrects a remapped synced_status "%s" -> column %s', async (syncedStatus, columnId) => {
+    // Every case's synced_column_id (what we last recorded) differs from the
+    // current mapping's columnId, simulating a PMS_STATUS_COLUMN_IDS remap --
+    // and the real task sits at that same stale recorded column too, so a
+    // move is always expected. 'active' was recorded as PAUSED; everything
+    // else was recorded as TODO.
     const startCol = syncedStatus === 'active' ? PAUSED_COL : TODO_COL;
+    const { client } = fakeSupabaseForStatusUpdate();
     let movedBody: unknown;
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [pmsTask('task-1', startCol)] };
       movedBody = JSON.parse(init.body as string);
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    await enforcePmsColumns([link({ synced_status: syncedStatus })], CREDENTIALS, fetchFn);
+    await enforcePmsColumns([link({ synced_status: syncedStatus, synced_column_id: startCol })], client, CREDENTIALS, fetchFn);
     expect(movedBody).toEqual({ columnId, position: 0 });
   });
 
@@ -1320,6 +1347,7 @@ describe('enforcePmsColumns', () => {
       pmsTask('e3', DONE_COL, { title: 'Hanan | Later', position: 2, dueDate: '2026-08-28T00:00:00.000Z' }),
       pmsTask('mover', TODO_COL, { title: 'Hanan | WinMega' }),
     ];
+    const { client } = fakeSupabaseForStatusUpdate();
     let movedBody: unknown;
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => existing };
@@ -1328,7 +1356,7 @@ describe('enforcePmsColumns', () => {
     }) as unknown as typeof fetch;
     // mover key "2026-08-27 hanan" is <= both same-date Hanan peers (ties join
     // the tail) and < the 2026-08-28 peer -> lands at position 2.
-    await enforcePmsColumns([link({ tab: 'Hanan', pms_task_id: 'mover', date: '2026-08-27', synced_status: 'done' })], CREDENTIALS, fetchFn);
+    await enforcePmsColumns([link({ tab: 'Hanan', pms_task_id: 'mover', date: '2026-08-27', synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
     expect(movedBody).toEqual({ columnId: DONE_COL, position: 2 });
   });
 });
