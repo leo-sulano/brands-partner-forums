@@ -3,7 +3,7 @@ import { isYesNoCol, isBehaviorExtraCol } from './entryFieldSections.ts';
 import type { Platform } from './scoreSummary.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 
-export type OverallResult = 'likely_publishable' | 'uncertain' | 'likely_removal_risk' | 'no_clear_removal_reason';
+export type OverallResult = 'likely_compliant' | 'uncertain' | 'at_risk' | 'no_clear_concern';
 export type Confidence = 'low' | 'medium' | 'high';
 export type Severity = 'low' | 'medium' | 'high';
 export type ContentStatus = 'compliant' | 'potential_concern' | 'likely_violation';
@@ -15,15 +15,15 @@ export interface AssessmentSignal {
   evidence: string;
 }
 
-export interface RootCauseCandidate {
+export interface KeyFindingAlternative {
   label: string;
   likelihood: Severity;
 }
 
-export interface RootCause {
+export interface KeyFinding {
   label: string;
   confidence: Confidence;
-  alternative_causes: RootCauseCandidate[];
+  alternatives: KeyFindingAlternative[];
 }
 
 export interface AgentRecommendation {
@@ -37,11 +37,11 @@ export interface ReviewRemovalAssessmentResult {
   confidence: Confidence;
   content_assessment: { status: ContentStatus; summary: string; signals: AssessmentSignal[] };
   behavioral_assessment: { status: BehavioralStatus; summary: string; signals: AssessmentSignal[] };
-  root_cause: RootCause;
-  evidence_for_removal: string[];
-  evidence_against_removal: string[];
+  key_finding: KeyFinding;
+  supporting_evidence: string[];
+  contrary_evidence: string[];
   policy_category: string;
-  why_it_may_have_been_removed: string;
+  risk_or_removal_explanation: string;
   evidence_summary: string;
   alternative_explanation: string;
   recommendation: string;
@@ -126,13 +126,13 @@ export async function hashAssessmentInput(input: AssessmentInput): Promise<strin
   return sha256Hex(canonical);
 }
 
-const OVERALL_RESULTS = new Set<string>(['likely_publishable', 'uncertain', 'likely_removal_risk', 'no_clear_removal_reason']);
+const OVERALL_RESULTS = new Set<string>(['likely_compliant', 'uncertain', 'at_risk', 'no_clear_concern']);
 const CONFIDENCES = new Set<string>(['low', 'medium', 'high']);
 const SEVERITIES = new Set<string>(['low', 'medium', 'high']);
 const CONTENT_STATUSES = new Set<string>(['compliant', 'potential_concern', 'likely_violation']);
 const BEHAVIORAL_STATUSES = new Set<string>(['normal', 'potential_concern', 'high_risk', 'insufficient_data']);
 const REQUIRED_STRING_FIELDS = [
-  'policy_category', 'why_it_may_have_been_removed',
+  'policy_category', 'risk_or_removal_explanation',
   'evidence_summary', 'alternative_explanation', 'recommendation', 'assessment_note',
 ] as const;
 
@@ -155,19 +155,19 @@ function isStringArray(v: unknown): v is string[] {
   return Array.isArray(v) && v.every((s) => typeof s === 'string');
 }
 
-function isValidRootCauseCandidate(c: unknown): c is RootCauseCandidate {
+function isValidKeyFindingAlternative(c: unknown): c is KeyFindingAlternative {
   if (!c || typeof c !== 'object') return false;
   const cand = c as Record<string, unknown>;
   return typeof cand.label === 'string' && SEVERITIES.has(cand.likelihood as string);
 }
 
-function isValidRootCause(rc: unknown): rc is RootCause {
-  if (!rc || typeof rc !== 'object') return false;
-  const r = rc as Record<string, unknown>;
-  return typeof r.label === 'string'
-    && CONFIDENCES.has(r.confidence as string)
-    && Array.isArray(r.alternative_causes)
-    && r.alternative_causes.every(isValidRootCauseCandidate);
+function isValidKeyFinding(kf: unknown): kf is KeyFinding {
+  if (!kf || typeof kf !== 'object') return false;
+  const k = kf as Record<string, unknown>;
+  return typeof k.label === 'string'
+    && CONFIDENCES.has(k.confidence as string)
+    && Array.isArray(k.alternatives)
+    && k.alternatives.every(isValidKeyFindingAlternative);
 }
 
 function isValidAgentRecommendation(ar: unknown): ar is AgentRecommendation {
@@ -184,9 +184,9 @@ export function isValidAssessmentResult(data: unknown): data is ReviewRemovalAss
   if (!CONFIDENCES.has(d.confidence as string)) return false;
   if (!isValidSignalGroup(d.content_assessment, CONTENT_STATUSES)) return false;
   if (!isValidSignalGroup(d.behavioral_assessment, BEHAVIORAL_STATUSES)) return false;
-  if (!isValidRootCause(d.root_cause)) return false;
-  if (!isStringArray(d.evidence_for_removal)) return false;
-  if (!isStringArray(d.evidence_against_removal)) return false;
+  if (!isValidKeyFinding(d.key_finding)) return false;
+  if (!isStringArray(d.supporting_evidence)) return false;
+  if (!isStringArray(d.contrary_evidence)) return false;
   if (!isValidAgentRecommendation(d.agent_recommendation)) return false;
   return REQUIRED_STRING_FIELDS.every((k) => typeof d[k] === 'string');
 }

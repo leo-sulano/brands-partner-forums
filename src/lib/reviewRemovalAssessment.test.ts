@@ -27,7 +27,7 @@ const VALID_EVIDENCE: RemovalEvidence = {
 };
 
 const VALID_RESULT: ReviewRemovalAssessmentResult = {
-  overall_result: 'no_clear_removal_reason',
+  overall_result: 'no_clear_concern',
   risk_score: 10,
   confidence: 'medium',
   content_assessment: {
@@ -40,15 +40,15 @@ const VALID_RESULT: ReviewRemovalAssessmentResult = {
     summary: 'No unusual signals recorded.',
     signals: [],
   },
-  root_cause: {
+  key_finding: {
     label: 'No clear reason found.',
     confidence: 'medium',
-    alternative_causes: [],
+    alternatives: [],
   },
-  evidence_for_removal: ['Review text is specific and consistent with genuine use.'],
-  evidence_against_removal: ['No behavioral red flags recorded.'],
+  supporting_evidence: ['Review text is specific and consistent with genuine use.'],
+  contrary_evidence: ['No behavioral red flags recorded.'],
   policy_category: '',
-  why_it_may_have_been_removed: 'No evidence points to a specific cause.',
+  risk_or_removal_explanation: 'No evidence points to a specific cause.',
   evidence_summary: 'Content is compliant; behavioral data shows nothing unusual.',
   alternative_explanation: 'Could be an unrelated moderation error.',
   recommendation: 'No action needed based on available evidence.',
@@ -175,31 +175,31 @@ describe('isValidAssessmentResult', () => {
     expect(isValidAssessmentResult(null)).toBe(false);
   });
 
-  it('rejects a missing root_cause', () => {
-    const { root_cause, ...rest } = VALID_RESULT;
+  it('rejects a missing key_finding', () => {
+    const { key_finding, ...rest } = VALID_RESULT;
     expect(isValidAssessmentResult(rest)).toBe(false);
   });
 
-  it('rejects a root_cause with an invalid confidence value', () => {
+  it('rejects a key_finding with an invalid confidence value', () => {
     expect(isValidAssessmentResult({
       ...VALID_RESULT,
-      root_cause: { ...VALID_RESULT.root_cause, confidence: 'certain' },
+      key_finding: { ...VALID_RESULT.key_finding, confidence: 'certain' },
     })).toBe(false);
   });
 
-  it('rejects a root_cause with a malformed alternative_causes entry', () => {
+  it('rejects a key_finding with a malformed alternatives entry', () => {
     expect(isValidAssessmentResult({
       ...VALID_RESULT,
-      root_cause: { ...VALID_RESULT.root_cause, alternative_causes: [{ label: 'x', likelihood: 'extreme' }] },
+      key_finding: { ...VALID_RESULT.key_finding, alternatives: [{ label: 'x', likelihood: 'extreme' }] },
     })).toBe(false);
   });
 
-  it('rejects a non-array evidence_for_removal', () => {
-    expect(isValidAssessmentResult({ ...VALID_RESULT, evidence_for_removal: 'none' })).toBe(false);
+  it('rejects a non-array supporting_evidence', () => {
+    expect(isValidAssessmentResult({ ...VALID_RESULT, supporting_evidence: 'none' })).toBe(false);
   });
 
-  it('rejects a non-array evidence_against_removal', () => {
-    expect(isValidAssessmentResult({ ...VALID_RESULT, evidence_against_removal: 'none' })).toBe(false);
+  it('rejects a non-array contrary_evidence', () => {
+    expect(isValidAssessmentResult({ ...VALID_RESULT, contrary_evidence: 'none' })).toBe(false);
   });
 
   it('rejects a missing agent_recommendation', () => {
@@ -214,9 +214,9 @@ describe('isValidAssessmentResult', () => {
     })).toBe(false);
   });
 
-  it('rejects the old pre-overhaul shape (likely_reason present, root_cause/agent_recommendation absent)', () => {
-    const { root_cause, evidence_for_removal, evidence_against_removal, agent_recommendation, ...legacyRest } = VALID_RESULT;
-    const legacyShape = { ...legacyRest, likely_reason: 'No clear reason found.' };
+  it('rejects the pre-generalization shape (root_cause/evidence_for_removal present, key_finding/supporting_evidence absent)', () => {
+    const { key_finding, supporting_evidence, contrary_evidence, agent_recommendation, ...legacyRest } = VALID_RESULT;
+    const legacyShape = { ...legacyRest, root_cause: key_finding, evidence_for_removal: supporting_evidence, evidence_against_removal: contrary_evidence };
     expect(isValidAssessmentResult(legacyShape)).toBe(false);
   });
 });
