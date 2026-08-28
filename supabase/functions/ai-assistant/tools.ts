@@ -1215,15 +1215,15 @@ export const TOOL_DEFS = [
     function: {
       name: 'get_review_analyses',
       description:
-        'Returns AI-generated review-removal-risk assessments from the dashboard\'s per-entry ' +
+        'Returns AI-generated review-risk assessments from the dashboard\'s per-entry ' +
         '"🤖 Analyze Review" feature. Coverage is SPARSE and OPPORTUNISTIC: only entries someone ' +
         'has manually clicked "Analyze Review" on exist here — this is not run automatically or ' +
         'on every removed/refused review. An empty or small result means "not yet analyzed", ' +
-        'never "no removal-risk issues found" — do not imply broader coverage than what is ' +
+        'never "no risk issues found" — do not imply broader coverage than what is ' +
         'actually returned. Without group_by, returns individual analyzed entries (tab, brand, ' +
-        'agent, platform, overall_result, risk_score, confidence, root_cause, analyzed_at). With ' +
+        'agent, platform, overall_result, risk_score, confidence, key_finding, analyzed_at). With ' +
         'group_by ("agent", "brand", "platform", or "overall_result"), returns exact counts per ' +
-        'group plus how many were "likely_removal_risk", sorted most-common-first — prefer this ' +
+        'group plus how many were "at_risk", sorted most-common-first — prefer this ' +
         'over manually counting rows yourself for "which X has the most" questions. The "agent" ' +
         'field/group is resolved per-brand the same way get_success_rate_by_field and Schedule ' +
         'Planner do (an authoritative brand-agent mapping first, falling back to each entry\'s own ' +
@@ -1538,7 +1538,7 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
           overall_result: r.analysis?.overall_result ?? null,
           risk_score: r.analysis?.risk_score ?? null,
           confidence: r.analysis?.confidence ?? null,
-          root_cause: r.analysis?.root_cause?.label ?? null,
+          key_finding: r.analysis?.key_finding?.label ?? null,
           analyzed_at: r.analyzed_at,
         };
       })
@@ -1552,19 +1552,19 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
     const limit = Math.min(Number(args?.limit) || 25, 50);
 
     if (args?.group_by) {
-      const buckets = new Map<string, { value: string; count: number; likely_removal_risk_count: number }>();
+      const buckets = new Map<string, { value: string; count: number; at_risk_count: number }>();
       for (const row of combined) {
         const key = args.group_by === 'agent' ? (row.agent || '(unassigned)')
           : args.group_by === 'brand' ? (row.brand || '(unknown)')
           : args.group_by === 'platform' ? row.platform
           : (row.overall_result ?? '(unknown)');
-        const isRisk = row.overall_result === 'likely_removal_risk';
+        const isRisk = row.overall_result === 'at_risk';
         const existing = buckets.get(key);
         if (existing) {
           existing.count++;
-          if (isRisk) existing.likely_removal_risk_count++;
+          if (isRisk) existing.at_risk_count++;
         } else {
-          buckets.set(key, { value: key, count: 1, likely_removal_risk_count: isRisk ? 1 : 0 });
+          buckets.set(key, { value: key, count: 1, at_risk_count: isRisk ? 1 : 0 });
         }
       }
       const groups = [...buckets.values()].sort((a, b) => b.count - a.count);
