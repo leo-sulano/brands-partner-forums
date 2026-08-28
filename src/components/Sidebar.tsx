@@ -102,9 +102,10 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     name: string,
     platforms: DynamicTabPlatform[],
     enabledFilters: ToolbarFilterKey[],
-    icon: string,
+    icon: string | null,
+    faviconDomain: string | null,
   ) {
-    registerDynamicTabs([{ name, platforms, icon }]);
+    registerDynamicTabs([{ name, platforms, icon, faviconDomain }]);
     registerToolbarFilters([{ tab: name, enabled_filters: enabledFilters }]);
     setShowAddTab(false);
     navigate(`/brands/${tabToSlug(name)}`);

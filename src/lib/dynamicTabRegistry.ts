@@ -60,6 +60,13 @@ const dynamicTabColumns: Record<string, string[]> = {};
 // getDynamicTabIcon from here instead, not the other way around.
 const dynamicTabIcons: Record<string, string> = {};
 
+// Parallel to dynamicTabIcons: holds the chosen favicon-source domain (e.g.
+// 'trybet.com') for a dynamic tab, if one was ever set — mutually exclusive
+// with dynamicTabIcons at the application layer (AddBrandTabModal/
+// EditBrandTabModal's icon-source toggle clears the other on save), not
+// enforced here.
+const dynamicTabFavicons: Record<string, string> = {};
+
 // Notifies any mounted component that reads OPERATIONAL_TABS/dynamicTabColumns
 // inline (e.g. Sidebar's platform-icon list) that the tab/platform registry
 // changed, since mutating these module-level structures in place — by
@@ -84,7 +91,12 @@ function notifyTabPlatformsChanged(): void {
 // importers (Sidebar, Overview, Score Summary, Schedule Planner, both entry
 // modals, BrandGroup) picks up the new tab with zero call-site changes.
 export function registerDynamicTabs(
-  rows: { name: string; platforms: DynamicTabPlatform[]; icon?: string | null }[],
+  rows: {
+    name: string;
+    platforms: DynamicTabPlatform[];
+    icon?: string | null;
+    faviconDomain?: string | null;
+  }[],
 ): void {
   for (const row of rows) {
     // Never shadow one of the hardcoded tabs. AddBrandTabModal's collision
@@ -95,13 +107,18 @@ export function registerDynamicTabs(
     // hardcoded tab out of OPERATIONAL_TABS.
     if (row.name in TAB_COLUMN_CONFIGS) continue;
     dynamicTabColumns[row.name] = buildDynamicTabColumns(row.platforms);
-    // `icon` is optional so a caller that only touched platforms (e.g. the
-    // legacy registerDynamicTabs([{ name, platforms }]) call sites) doesn't
-    // wipe an icon it never meant to change — undefined means "leave it",
-    // not "clear it". A falsy string (or explicit null) does clear it.
+    // `icon`/`faviconDomain` are optional so a caller that only touched
+    // platforms (e.g. the legacy registerDynamicTabs([{ name, platforms }])
+    // call sites) doesn't wipe a value it never meant to change — undefined
+    // means "leave it", not "clear it". A falsy string (or explicit null)
+    // does clear it.
     if (row.icon !== undefined) {
       if (row.icon) dynamicTabIcons[row.name] = row.icon;
       else delete dynamicTabIcons[row.name];
+    }
+    if (row.faviconDomain !== undefined) {
+      if (row.faviconDomain) dynamicTabFavicons[row.name] = row.faviconDomain;
+      else delete dynamicTabFavicons[row.name];
     }
     if (!OPERATIONAL_TABS.includes(row.name)) OPERATIONAL_TABS.push(row.name);
   }
@@ -116,6 +133,7 @@ export function unregisterDynamicTab(name: string): void {
   if (name in TAB_COLUMN_CONFIGS) return;
   delete dynamicTabColumns[name];
   delete dynamicTabIcons[name];
+  delete dynamicTabFavicons[name];
   const idx = OPERATIONAL_TABS.indexOf(name);
   if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1);
   notifyTabPlatformsChanged();
@@ -136,6 +154,10 @@ export function renameDynamicTab(oldName: string, newName: string, platforms: Dy
   if (oldName in dynamicTabIcons) {
     dynamicTabIcons[newName] = dynamicTabIcons[oldName];
     delete dynamicTabIcons[oldName];
+  }
+  if (oldName in dynamicTabFavicons) {
+    dynamicTabFavicons[newName] = dynamicTabFavicons[oldName];
+    delete dynamicTabFavicons[oldName];
   }
   const idx = OPERATIONAL_TABS.indexOf(oldName);
   if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1, newName);
@@ -162,6 +184,10 @@ export function getDynamicTabColumns(tab: string): string[] | null {
 
 export function getDynamicTabIcon(tab: string): string | null {
   return dynamicTabIcons[tab] ?? null;
+}
+
+export function getDynamicTabFavicon(tab: string): string | null {
+  return dynamicTabFavicons[tab] ?? null;
 }
 
 export function isDynamicTab(tab: string): boolean {

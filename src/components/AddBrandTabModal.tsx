@@ -4,7 +4,7 @@ import { X, Loader2 } from 'lucide-react';
 import { createCustomTab } from '../lib/queries';
 import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import { TOOLBAR_FILTER_LIST, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from '../lib/tab-configs';
-import { DEFAULT_ICON_NAME } from '../lib/tabIcons';
+import { DEFAULT_ICON_NAME, type TabIconSelection } from '../lib/tabIcons';
 import { validateNewTabName } from '../lib/tabValidation';
 import IconPicker from './IconPicker';
 
@@ -13,7 +13,8 @@ interface Props {
     name: string,
     platforms: DynamicTabPlatform[],
     enabledFilters: ToolbarFilterKey[],
-    icon: string,
+    icon: string | null,
+    faviconDomain: string | null,
   ) => void;
   onClose: () => void;
 }
@@ -22,7 +23,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   const [name, setName] = useState('');
   const [platforms, setPlatforms] = useState<DynamicTabPlatform[]>([]);
   const [filters, setFilters] = useState<ToolbarFilterKey[]>(() => [...ALL_TOOLBAR_FILTERS]);
-  const [icon, setIcon] = useState<string>(DEFAULT_ICON_NAME);
+  const [iconSelection, setIconSelection] = useState<TabIconSelection>({ type: 'icon', value: DEFAULT_ICON_NAME });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,11 +63,17 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
       setError('Select at least one platform to track.');
       return;
     }
+    if (iconSelection.type === 'favicon' && !iconSelection.value.trim()) {
+      setError('Enter a website domain for the favicon, or switch to Search icon.');
+      return;
+    }
+    const icon = iconSelection.type === 'icon' ? iconSelection.value : null;
+    const faviconDomain = iconSelection.type === 'favicon' ? iconSelection.value.trim() : null;
     setSubmitting(true);
     setError(null);
     try {
-      await createCustomTab(trimmed, platforms, filters, icon);
-      onCreated(trimmed, platforms, filters, icon);
+      await createCustomTab(trimmed, platforms, filters, icon, faviconDomain);
+      onCreated(trimmed, platforms, filters, icon, faviconDomain);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create tab');
       setSubmitting(false);
@@ -119,7 +126,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
             ))}
           </div>
 
-          <IconPicker value={icon} onChange={setIcon} />
+          <IconPicker value={iconSelection} onChange={setIconSelection} />
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Toolbar Filters</label>

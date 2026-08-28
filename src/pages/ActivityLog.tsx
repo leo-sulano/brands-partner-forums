@@ -247,8 +247,13 @@ function AuditTab({ kind }: { kind: 'edits' | 'deletes' }) {
         // (queries.ts's restoreDeletedEntity only writes the DB row) — the
         // sidebar would otherwise not show the tab again until a reload.
         if (entry.entity_type === 'tab') {
-          const before = entry.before_data as { name: string; platforms: DynamicTabPlatform[]; icon?: string | null };
-          registerDynamicTabs([{ name: before.name, platforms: before.platforms, icon: before.icon ?? null }]);
+          const before = entry.before_data as {
+            name: string; platforms: DynamicTabPlatform[]; icon?: string | null; favicon_domain?: string | null;
+          };
+          registerDynamicTabs([{
+            name: before.name, platforms: before.platforms,
+            icon: before.icon ?? null, faviconDomain: before.favicon_domain ?? null,
+          }]);
         }
       }
       setEntries((prev) =>

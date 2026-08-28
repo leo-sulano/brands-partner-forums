@@ -1,0 +1,13 @@
+-- supabase/migrations/20260828130000_add_custom_tabs_favicon_domain.sql
+-- Lets a dynamically-created Brand Tab use its own website's favicon as its
+-- icon instead of picking a lucide icon — reuses the same Google favicon
+-- service (`google.com/s2/favicons?domain=...`) Sidebar.tsx's PLATFORM_FAVICON
+-- already relies on for TP/AG/CG/WO, so no new fetch/CORS/hotlinking concern.
+--
+-- Mutually exclusive with `icon` by construction at the application layer
+-- (the Add/Edit Brand Tab modal's icon-source toggle clears the other field
+-- on save) — not enforced by a DB constraint, since resolveTabIconKind()
+-- (src/lib/tabIcons.ts) simply checks favicon_domain before icon and either
+-- one being unexpectedly non-null alongside the other degrades safely (the
+-- favicon just wins, exactly like a plain priority order would).
+alter table public.custom_tabs add column favicon_domain text;

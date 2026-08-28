@@ -1795,12 +1795,18 @@ export interface CustomTabRow {
   name: string;
   platforms: DynamicTabPlatform[];
   icon: string | null;
+  faviconDomain: string | null;
 }
 
 export async function fetchCustomTabs(client: SupabaseClient = supabase): Promise<CustomTabRow[]> {
-  const { data, error } = await client.from('custom_tabs').select('name, platforms, icon');
+  const { data, error } = await client.from('custom_tabs').select('name, platforms, icon, favicon_domain');
   if (error) throw error;
-  return (data ?? []) as CustomTabRow[];
+  return (data ?? []).map((row) => ({
+    name: row.name as string,
+    platforms: row.platforms as DynamicTabPlatform[],
+    icon: (row.icon as string | null) ?? null,
+    faviconDomain: (row.favicon_domain as string | null) ?? null,
+  }));
 }
 
 export async function createCustomTab(
@@ -1808,11 +1814,16 @@ export async function createCustomTab(
   platforms: DynamicTabPlatform[],
   enabledFilters?: ToolbarFilterKey[],
   icon?: string | null,
+  faviconDomain?: string | null,
 ): Promise<void> {
   const actor = await currentActor();
   const { error } = await supabase
     .from('custom_tabs')
-    .insert({ name, platforms, created_by: actor.email, icon: icon ?? null });
+    .insert({
+      name, platforms, created_by: actor.email,
+      icon: icon ?? null,
+      favicon_domain: faviconDomain ?? null,
+    });
   if (error) {
     if (error.code === '23505') throw new Error(`A tab named "${name}" already exists.`);
     throw error;
@@ -1853,6 +1864,16 @@ export async function updateCustomTabIcon(name: string, icon: string | null): Pr
   const { error } = await supabase
     .from('custom_tabs')
     .update({ icon })
+    .eq('name', name);
+  if (error) throw error;
+}
+
+// Same contract as updateCustomTabIcon above — callers must also call
+// registerDynamicTabs([{ name, platforms, faviconDomain }]) afterward.
+export async function updateCustomTabFavicon(name: string, faviconDomain: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('custom_tabs')
+    .update({ favicon_domain: faviconDomain })
     .eq('name', name);
   if (error) throw error;
 }

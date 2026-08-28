@@ -44,6 +44,7 @@ import {
   createCustomTab,
   updateCustomTabPlatforms,
   updateCustomTabIcon,
+  updateCustomTabFavicon,
   archiveTab,
   unarchiveTab,
   fetchArchivedTabs,
@@ -1011,12 +1012,20 @@ describe('fetchEntryReviewAnalyses', () => {
 });
 
 describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
-  it('fetchCustomTabs maps rows to name/platforms/icon', async () => {
+  it('fetchCustomTabs maps rows to name/platforms/icon/faviconDomain', async () => {
     singletonFrom.mockReturnValue(
-      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket' }], error: null }),
+      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket', favicon_domain: null }], error: null }),
     );
     const rows = await fetchCustomTabs();
-    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket' }]);
+    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket', faviconDomain: null }]);
+  });
+
+  it('fetchCustomTabs maps a favicon_domain row', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ name: 'Acme Tab', platforms: ['tp'], icon: null, favicon_domain: 'acme.com' }], error: null }),
+    );
+    const rows = await fetchCustomTabs();
+    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp'], icon: null, faviconDomain: 'acme.com' }]);
   });
 
   it('createCustomTab inserts with the current actor email', async () => {
@@ -1024,7 +1033,7 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     singletonFrom.mockReturnValue({ insert });
     await createCustomTab('Acme Tab', ['tp']);
     expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: null }),
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: null, favicon_domain: null }),
     );
   });
 
@@ -1033,7 +1042,16 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     singletonFrom.mockReturnValue({ insert });
     await createCustomTab('Acme Tab', ['tp'], undefined, 'rocket');
     expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: 'rocket' }),
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: 'rocket', favicon_domain: null }),
+    );
+  });
+
+  it('createCustomTab inserts the given favicon domain', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    singletonFrom.mockReturnValue({ insert });
+    await createCustomTab('Acme Tab', ['tp'], undefined, null, 'acme.com');
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: null, favicon_domain: 'acme.com' }),
     );
   });
 
@@ -1076,6 +1094,22 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     const update = vi.fn().mockReturnValue({ eq });
     singletonFrom.mockReturnValue({ update });
     await expect(updateCustomTabIcon('Acme Tab', 'rocket')).rejects.toThrow('db down');
+  });
+
+  it('updateCustomTabFavicon updates the row by name', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await updateCustomTabFavicon('Acme Tab', 'acme.com');
+    expect(update).toHaveBeenCalledWith({ favicon_domain: 'acme.com' });
+    expect(eq).toHaveBeenCalledWith('name', 'Acme Tab');
+  });
+
+  it('updateCustomTabFavicon throws on error', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await expect(updateCustomTabFavicon('Acme Tab', 'acme.com')).rejects.toThrow('db down');
   });
 
 });

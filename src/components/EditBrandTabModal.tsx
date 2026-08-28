@@ -1,9 +1,9 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, updateCustomTabIcon, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
+import { updateCustomTabPlatforms, updateCustomTabIcon, updateCustomTabFavicon, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
 import {
-  PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, getDynamicTabIcon, type DynamicTabPlatform,
+  PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, getDynamicTabIcon, getDynamicTabFavicon, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
 import {
   getTabPlatforms, getTabPlatformsUnfiltered,
@@ -11,7 +11,7 @@ import {
   getEnabledToolbarFilters, registerToolbarFilters,
   TOOLBAR_FILTER_LIST, type ToolbarFilterKey,
 } from '../lib/tab-configs';
-import { DEFAULT_ICON_NAME } from '../lib/tabIcons';
+import { DEFAULT_ICON_NAME, type TabIconSelection } from '../lib/tabIcons';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,9 +44,11 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
   const [filters, setFilters] = useState<ToolbarFilterKey[]>(
     () => getEnabledToolbarFilters(tabName),
   );
-  const [icon, setIcon] = useState<string>(
-    () => getDynamicTabIcon(tabName) ?? DEFAULT_ICON_NAME,
-  );
+  const [iconSelection, setIconSelection] = useState<TabIconSelection>(() => {
+    const favicon = getDynamicTabFavicon(tabName);
+    if (favicon) return { type: 'favicon', value: favicon };
+    return { type: 'icon', value: getDynamicTabIcon(tabName) ?? DEFAULT_ICON_NAME };
+  });
   const [status, setStatus] = useState<'active' | 'paused'>(initialPaused ? 'paused' : 'active');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +88,10 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
       setError('Select at least one platform to track.');
       return;
     }
+    if (dynamic && iconSelection.type === 'favicon' && !iconSelection.value.trim()) {
+      setError('Enter a website domain for the favicon, or switch to Search icon.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -100,9 +106,12 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
         pauseTabLocally(currentTabName);
       }
       if (dynamic) {
+        const icon = iconSelection.type === 'icon' ? iconSelection.value : null;
+        const faviconDomain = iconSelection.type === 'favicon' ? iconSelection.value.trim() : null;
         await updateCustomTabPlatforms(currentTabName, platforms);
         await updateCustomTabIcon(currentTabName, icon);
-        registerDynamicTabs([{ name: currentTabName, platforms, icon }]);
+        await updateCustomTabFavicon(currentTabName, faviconDomain);
+        registerDynamicTabs([{ name: currentTabName, platforms, icon, faviconDomain }]);
       } else {
         const before = new Set(getTabPlatforms(currentTabName));
         const after = new Set(platforms);
@@ -185,7 +194,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
             </p>
           </div>
 
-          {dynamic && <IconPicker value={icon} onChange={setIcon} />}
+          {dynamic && <IconPicker value={iconSelection} onChange={setIconSelection} />}
 
           {isAdmin && (
             <div>

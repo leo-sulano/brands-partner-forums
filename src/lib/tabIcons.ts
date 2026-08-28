@@ -27,7 +27,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { iconNames } from 'lucide-react/dynamic';
-import { getDynamicTabIcon } from './dynamicTabRegistry';
+import { getDynamicTabIcon, getDynamicTabFavicon } from './dynamicTabRegistry';
 
 export const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection':        Syringe,
@@ -74,19 +74,39 @@ export const POPULAR_ICON_NAMES: TabIconName[] = [
 
 export const DEFAULT_ICON_NAME: TabIconName = POPULAR_ICON_NAMES[0];
 
+// Alternative to a lucide icon: a dynamic tab can instead use its own
+// website's favicon, fetched via the same Google favicon service
+// Sidebar.tsx's PLATFORM_FAVICON already relies on for TP/AG/CG/WO — no new
+// fetch/CORS/hotlinking concern, since it's just an <img src>.
+export function faviconUrl(domain: string, size = 32): string {
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
+}
+
+// The two exclusive ways AddBrandTabModal/EditBrandTabModal's icon-source
+// toggle lets a creator set a dynamic tab's icon — IconPicker is the single
+// controlled component for editing either.
+export type TabIconSelection =
+  | { type: 'icon'; value: string }
+  | { type: 'favicon'; value: string };
+
 export type ResolvedTabIcon =
   | { kind: 'static'; Icon: LucideIcon }
-  | { kind: 'dynamic'; name: TabIconName };
+  | { kind: 'dynamic'; name: TabIconName }
+  | { kind: 'favicon'; domain: string };
 
 // Single resolver every render call site should go through (via
 // src/components/TabIcon.tsx) instead of the raw
 // `TAB_ICONS[tab] ?? DEFAULT_TAB_ICON` pattern — hardcoded tabs resolve
-// exactly as before, a dynamic tab with a chosen icon resolves to that
-// lucide icon name, and anything else (a dynamic tab that never had one set,
-// or an unrecognized/stale name) falls back to DEFAULT_TAB_ICON.
+// exactly as before; a dynamic tab resolves to its favicon domain if one is
+// set (favicon and lucide-icon selection are mutually exclusive by
+// construction — see dynamicTabRegistry.ts), else to its chosen lucide icon
+// name; anything else (never set, or an unrecognized/stale name) falls back
+// to DEFAULT_TAB_ICON.
 export function resolveTabIconKind(tab: string): ResolvedTabIcon {
   const hardcoded = TAB_ICONS[tab];
   if (hardcoded) return { kind: 'static', Icon: hardcoded };
+  const faviconDomain = getDynamicTabFavicon(tab);
+  if (faviconDomain) return { kind: 'favicon', domain: faviconDomain };
   const dynamicName = getDynamicTabIcon(tab);
   if (dynamicName && isKnownDynamicIconName(dynamicName)) {
     return { kind: 'dynamic', name: dynamicName };
