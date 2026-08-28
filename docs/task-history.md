@@ -7348,3 +7348,53 @@ session:** `sync-schedule-pms` (v28→29) and `generate-weekly-schedule` (v12→
 via `supabase functions list`; a full `syncAllStatuses` + `reconcileColumns` sweep immediately
 after deploy confirmed zero failures and zero drift against the live board. No spec/plan doc —
 a small, well-scoped mechanical fix to one already-well-understood function.
+
+---
+
+## Task 290: Fixed Realtime Entries Updates Silently Wiping Credential Fields
+
+**Date:** August 28, 2026
+
+Since Task 277 moved `Password`/`Casino Password`/`Backup Code(s)`/`Authenticator*`/`AG Password`/
+`CG Password` out of `entries.data` into the restricted `entry_credentials` table,
+`BrandGroup.tsx`'s realtime `entries` UPDATE handler had a latent gap: a realtime UPDATE payload's
+`data` jsonb never carries those fields (they no longer live on the row), but the handler applied
+the payload wholesale over the entry already held in state — silently erasing whichever credential
+fields `entryCredentials.ts`'s earlier fetch had merged in. This fired on *any* later write to that
+row, not just the user's own edit — a status-check run or a different user's unrelated save on the
+same brand would just as easily blank out a credential field the viewing user's screen had
+correctly shown moments before.
+
+**Fix:** `preserveCredentialFields` (`src/lib/entryCredentials.ts`) now backfills the known
+credential keys from the entry's already-merged prior state before the realtime payload replaces
+it, called from `BrandGroup.tsx`'s subscription handler right where the incoming payload is
+applied. No schema change — this is purely a client-side state-merge fix, the same class of gap
+Task 277's own fix wave closed for the read/write paths but hadn't yet covered the realtime path.
+5 new tests in `entryCredentials.test.ts` cover the backfill (all 8 keys, partial-credential rows,
+and a payload that legitimately has no matching prior entry). Full suite and build pass.
+
+---
+
+## Task 291: Self-Service Brand Tabs Can Now Pick an Icon
+
+**Date:** August 28, 2026
+
+Dynamic tabs created via "+ Add Brand Tab" (Task 232) always rendered the generic
+`DEFAULT_TAB_ICON` everywhere — Sidebar, Overview, Schedule Planner — with no way to choose
+something more fitting, unlike the 11 hardcoded tabs which each have their own icon in
+`TAB_ICONS`. Added a curated 12-icon picker to both `AddBrandTabModal` (create) and
+`EditBrandTabModal` (edit, dynamic tabs only), backed by a new nullable `custom_tabs.icon` column
+(migration `20260828120000_add_custom_tabs_icon.sql`, storing a validated `ICON_OPTIONS` key, not
+free text — same pattern `platforms` already uses) and a `resolveTabIcon()` helper
+(`src/lib/tabIcons.ts`) that all three render sites now share instead of each reading
+`TAB_ICONS`/`DEFAULT_TAB_ICON` directly. New shared `IconPicker.tsx` component (used by both
+modals, so they can't drift the way the platform checkbox list used to before it was factored into
+`dynamicTabRegistry.ts`'s `PLATFORM_LIST`). `registerDynamicTabs`'s `icon` field is optional and
+`undefined`-means-"leave it" (not "clear it") so the many existing call sites that only touch
+platforms don't silently wipe a previously-chosen icon; an explicit falsy/`null` value does clear
+it. `renameDynamicTab` carries the icon over to the new name. Existing rows get `icon = null`,
+which `resolveTabIcon()` treats identically to a tab that never had the column at all (falls back
+to `DEFAULT_TAB_ICON`) — no backfill needed. New test coverage in `dynamicTabRegistry.test.ts` and
+`tabIcons.test.ts`; `queries.test.ts` updated for the new `icon` param on
+`fetchCustomTabs`/`createCustomTab`. Migration applied live (`supabase migration list` confirms
+`20260828120000` on both local and remote). Full suite and build pass.
