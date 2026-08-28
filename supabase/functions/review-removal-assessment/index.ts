@@ -133,7 +133,7 @@ ratings, review counts intact) — no delisted/removed state was found. This
 is not proof ${platformLabel} never removes a review, but it is real
 evidence that ${platformLabel} may not delist a page just because the
 underlying business closed or was flagged elsewhere — weigh this when
-deciding between "likely_removal_risk" and "no_clear_removal_reason" for
+deciding between "at_risk" and "no_clear_concern" for
 this platform specifically, and note it explicitly in "evidence_summary"
 or "alternative_explanation" when it's relevant to your conclusion.
 `;
@@ -153,7 +153,7 @@ Rules you MUST follow:
   reviews only — AskGamblers, Casino Guru, and Wizard of Odds have no
   confirmed public policy, so use their caveat text instead).
 - If evidence is genuinely insufficient or the review looks compliant, say
-  so plainly ("no_clear_removal_reason") — do not manufacture a
+  so plainly ("no_clear_concern") — do not manufacture a
   justification.
 - Never fabricate a Trustpilot, AskGamblers, Casino Guru, or Wizard of Odds
   policy beyond what is given to you above.
