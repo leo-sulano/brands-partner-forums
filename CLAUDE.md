@@ -61,7 +61,29 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-26 (newest):* User-requested audit of documented Known Issues/gaps, then a fix wave over
+- *2026-08-28 (newest):* AI Review Removal Assessment's Trustpilot policy prompt
+  (`supabase/functions/review-removal-assessment/index.ts`, `TP_GUIDELINE_CATEGORIES`) updated per
+  direct user request — the 7 categories in place since Task 262 were checked against Trustpilot's
+  actual live-published policy pages (`Guidelines for Reviewers`, June 2026 revision; `Action We
+  Take`, March 2026 revision, both fetched directly rather than assumed from training data) and
+  expanded to 10: added **No Incentivized Reviews** (a real gap — this dashboard exists specifically
+  to track brand-outreach review posting, so incentive risk is directly relevant and had no coverage
+  at all before this), **No Multiple Accounts** (maps to evidence this dashboard already computes,
+  `evidence.crossEntry.sameProxyCount`/`sameProxySameCountryCount` — a new `AI_RULES` bullet now
+  explicitly tells the model to cite the actual count against this category instead of leaving the
+  connection implicit), **Correct Business Targeting**, and **No Misinformation/AI-Generated or
+  Impersonated Content**; split the old single Genuine-Experience bullet to also name "No Fake
+  Reviews" (Trustpilot's own defined term) and widened the old Defamatory/Offensive/Illegal bullet to
+  explicitly name threats/violence and obscene content, matching the live wording. Also added one
+  paragraph distinguishing Trustpilot's two enforcement levels (single-review removal for a
+  content-specific violation vs. business-profile suspension for pattern-level misuse) so
+  `root_cause` framing can't conflate a single removed review with a whole-page removal. Scoped to
+  Trustpilot only — AG/CG/WO caveats, the output schema, and the frontend are all untouched; no test
+  file exists for this function (verified), so verification was `deno check` (clean) plus a manual
+  read of the rendered prompt. **Deployed the same session:** `supabase functions deploy
+  review-removal-assessment` (version 6, confirmed `ACTIVE` via `supabase functions list`) — the
+  10-category prompt is live.
+- *2026-08-26 (prior):* User-requested audit of documented Known Issues/gaps, then a fix wave over
   the 6 confirmed as real (2 turned out already stale, 1 worse than documented — see Task 277 in
   `docs/task-history.md` for the full grounding). Fixed: Trybet's Brands-column display bug (root
   cause was a stale `TAB_COLUMN_CONFIGS['Trybet']` entry, `'Brands'` vs. the real live header

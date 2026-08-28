@@ -53,24 +53,48 @@ const OUTPUT_SCHEMA = `{
 }`;
 
 const TP_GUIDELINE_CATEGORIES = `
-Trustpilot's real published Guidelines for Reviewers require a review to
-meet ALL of the following. Use ONLY these as "policy_category" values (or
-empty string if none apply) — do not invent others:
-- Genuine Experience: must be based on a real, first-hand purchase,
-  service, or interaction with the business.
-- Relevance: must relate to the reviewer's own experience with that
-  specific business, not a general or unrelated opinion.
+Trustpilot's real published Guidelines for Reviewers (June 2026 revision)
+and Action We Take policy (March 2026 revision) require a review to meet
+ALL of the following. Use ONLY these as "policy_category" values (or empty
+string if none apply) — do not invent others:
+- Genuine Experience / No Fake Reviews: must reflect a real, first-hand
+  purchase, service, or interaction with the business — not a fabricated,
+  exaggerated, or otherwise non-genuine account.
+- No Incentivized Reviews: the reviewer must not have received or been
+  offered any incentive (discount, promo code, refund, prize-draw entry,
+  freebie, or other benefit) in connection with writing or editing the
+  review.
+- No Conflict of Interest: not from the business's owner, employee,
+  immediate family member, shareholder, or a competitor.
+- No Multiple Accounts: one reviewer is limited to one verified account —
+  cross-reference this against the account-level evidence you're given
+  (e.g. the same proxy/IP used across multiple entries or brands) rather
+  than reasoning about it in the abstract.
+- No Personal/Private Data: must not expose another identifiable
+  individual's personal information (name, phone, email, photo/video).
 - No Promotional/Spam Content: must not exist mainly to advertise, contain
-  marketing language, links, contact details, or be posted for
-  compensation/incentive without clear disclosure.
-- No Conflict of Interest: not from a competitor, employee, or anyone with
-  an undisclosed business relationship to the company.
-- No Defamatory, Offensive, or Illegal Content: no hate speech, threats,
-  harassment, discrimination, or unlawful content.
-- No Personal/Private Data: must not expose private information about an
-  identifiable individual.
-- One Review Per Experience: a reviewer should not post multiple reviews
-  for the same single experience.
+  marketing language, links, contact details, or calls to action for other
+  products/services.
+- No Defamatory, Threatening, Hateful, or Obscene Content: no hate speech,
+  threats or incitement to harm, severe profanity, or explicit/illegal
+  content.
+- Correct Business Targeting: the review must be about the specific
+  business it's posted against, not a different or unrelated business.
+- No Misinformation or AI-Generated/Impersonated Content: must not spread
+  confirmed-false claims or be generated/posted to impersonate a genuine
+  reviewer.
+- One Review Per Unique Experience: a reviewer may only post more than one
+  review for the same business if each reflects a genuinely separate,
+  distinct experience.
+
+Trustpilot also enforces at two distinct levels — do not conflate them: a
+single review is removed for a content-specific violation (any category
+above), while a full business profile is suspended/restricted only for
+repeated or pattern-level misuse (e.g. many fake/incentivized reviews, a
+review-buying scheme). When assessing why one specific review was removed,
+reason about that review's own violation — do not imply the whole brand
+page was actioned unless the evidence you're given is actually about
+page-level removal.
 `;
 
 const WO_POLICY_CAVEAT = `
@@ -162,6 +186,11 @@ Rules you MUST follow:
   platform this tab tracks, not necessarily the platform you are currently
   assessing — state which platform(s) the removal(s) were actually on if you
   cite this signal, rather than implying it happened on the platform under review.
+- For Trustpilot specifically, if evidence.crossEntry.sameProxyCount or
+  evidence.crossEntry.sameProxySameCountryCount is greater than 0, weigh this
+  explicitly against the "No Multiple Accounts" guideline category — cite the
+  actual count in your reasoning rather than a vague reference to "shared
+  proxy activity."
 - "agent_recommendation.specific_actions" must be concrete and behavioral (things a
   human agent can change about how or when they act) — never a restatement of
   platform policy.
