@@ -158,7 +158,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
           className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-blue-50 disabled:opacity-50 transition-colors"
         >
           {loading ? <Loader2 className="size-3.5 animate-spin" /> : <Bot className="size-3.5" />}
-          {loading ? 'Analyzing…' : hasFreshResult ? '↻ Re-analyze' : '🤖 Analyze Review'}
+          {loading ? 'Analyzing…' : hasFreshResult ? 'Re-analyze' : 'Analyze Review'}
         </button>
       </div>
 
