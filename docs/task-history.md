@@ -7196,10 +7196,9 @@ Minor as part of the same fix wave: the edge function's system-prompt persona li
 the whole job as removal-only; added one clause naming the positive-compliance read.
 
 TDD throughout every task; full suite **2170 passed**, build clean, `deno check` clean on both
-edge functions, full Deno suite passing. **Not yet deployed** — `supabase functions deploy
-review-removal-assessment` and `supabase functions deploy ai-assistant` are both still pending;
-deploy back-to-back (edge function first, frontend already live) since the frontend's validator
-would reject the still-old function's response shape and vice versa, producing a brief
-"Unable to generate an AI assessment" window either way. Spec:
+edge functions, full Deno suite passing. **Deployed the same session:** `supabase functions
+deploy review-removal-assessment` (now `ACTIVE` v7) then `supabase functions deploy ai-assistant`
+(now `ACTIVE` v44), back-to-back in that order per the required ordering — confirmed both via
+`supabase functions list`. The generic status-neutral schema is fully live end to end. Spec:
 `docs/superpowers/specs/2026-08-28-generic-ai-review-assessment-design.md`. Plan:
 `docs/superpowers/plans/2026-08-28-generic-ai-review-assessment.md`.
