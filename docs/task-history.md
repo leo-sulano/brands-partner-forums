@@ -7027,3 +7027,60 @@ triggered the function again → confirmed every link resolved back to its corre
 (`active`/`published`/`removed`) both in `schedule_pms_links` and via direct PMS API calls showing
 tasks back in the correct To Do/Done columns. No spec/plan doc — bounded path per the brainstorming
 skill, approved in chat.
+
+---
+
+## Task 284: PMS Status Sync Watermark — Fixed the Real Root Cause of Stuck Cards, Full-Board Recovery
+
+**Date:** August 27, 2026
+
+User reported a live symptom (screenshot): SilverPlay's Silver Play/AskGamblers slot showed Done in
+the Schedule Planner but its linked PMS card sat stuck in To Do. Investigation (not a report of
+drift between the DB and PMS — those matched perfectly) found the real bug one layer deeper:
+`resolveAndSyncTabStatuses` (`src/lib/scheduler/pmsSync.ts`) recorded its "fully processed"
+watermark from `currentWatermark`, a *separate*, always-fresh `fetchTabEntriesWatermark` query —
+not from the `entries` array it actually used to compute statuses, which comes from
+`fetchRawEntriesByTab`'s up-to-60-second in-memory cache (`src/lib/queries.ts`). Whenever that cache
+returned a snapshot older than the fresh watermark query (any resolve running while a change landed
+within the prior 60s), the resolve would compute against stale data, find nothing to change, and
+then still record the *fresher* separately-fetched watermark as "fully seen" — permanently hiding
+the real change from every later resolve, since the recorded watermark would already match the true
+current DB state without ever having synced it. SilverPlay's entry sat Done for ~5.7 hours this
+exact way before this session's own earlier work (Task 283) coincidentally triggered a resolve that
+locked in the wrong state.
+
+Fix: `recordWatermark` now derives its value from `entries`' own actual max `updated_at` (a plain
+reduce, no new query) instead of the separately-fetched `currentWatermark` — that separate query is
+now used only for the cheap early-exit decision, never for what gets recorded. This means a resolve
+can now only ever under-report (fall one tick behind, self-corrects next resolve) and can never again
+falsely claim to be caught up. One new test proves the exact bug class: a fake client with genuinely
+divergent data behind `fetchTabEntriesWatermark`'s `select('updated_at')` query vs
+`fetchAllTabEntries`' `select('*')` query (the two real, distinct queries that can diverge via the
+cache) confirms the recorded watermark comes from the actually-processed data. Full suite (2163)
+passed, build clean, `deno check` clean on both Edge Function consumers.
+
+**Full-board recovery, live.** A sweep recomputing every one of 290 linked PMS tasks' real target
+status from scratch (deployed v24) found 35 links (12% of the board) stuck this same way, not just
+SilverPlay — spread across Rooster Partners, TP Brand Injection, TP Affiliate, Trybet, Hanan, and
+SilverPlay. Cleared their `schedule_pms_sync_watermarks` rows (needed the real admin session — the
+anon key's `DELETE` had been silently no-op'ing under this table's `is_approved()`-gated policy, the
+same class of gotcha this project has hit before) and re-triggered a resolve for each; a second sweep
+confirmed all 6 tabs fully clean (0 mismatches). SilverPlay's exact reported card was independently
+re-confirmed live via the PMS API itself, not just the DB.
+
+A remaining 12-mismatch cluster on Revolution Casino/HazEmirates UAE, which kept reproducing a `''`
+watermark no matter how many times it was cleared, turned out not to be a bug at all: those two tabs
+(plus GRG - Gulf Recovery Group and SuprPlay Limited) are genuinely paused right now via the
+whole-Brand-Tab pause feature (Task 246/283) — paused by a real team member
+(`padillokristilleann@optinetsolutions.com`) on 2026-08-25/26, invisible to every anon-key check this
+session ran because `paused_tabs`' select policy requires `is_approved()`, not `using(true)` (unlike
+`schedule_pms_sync_watermarks`, which is `using(true)`) — silently returning an empty list rather than
+an error. A throwaway `debugPauseState` diagnostic action (added, used once via the real admin
+session, then removed before the final deploy) confirmed the deployed function's own registry
+correctly resolved these 4 tabs as paused. The final sweep, corrected to treat a whole-tab-paused tab
+as always-paused (mirroring `resolveAndSyncTabStatuses`'s own `isTabPaused` branch), found **0
+mismatches across all 257 links on the entire live board**.
+
+**Deployed 3 times this session**: v24 (the fix), v25 (a diagnostic-only build, never left mid-deploy
+for more than the one verification call), v26 (the real fix, diagnostic removed) — v26 is what's live.
+No spec/plan doc — a live-symptom investigation and bounded fix, self-reviewed throughout.

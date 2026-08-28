@@ -604,15 +604,31 @@ export async function resolveAndSyncTabStatuses(
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date, description });
     }
   }
-  // Only recorded once we know the tab's real state as of currentWatermark
-  // has been fully accounted for -- a null currentWatermark (a tab with no
-  // entries at all) has nothing meaningful to record, and a partial failure
-  // (a status move OR a cancellation) must NOT record it, so the next tick's
-  // watermark check still sees a mismatch and retries the still-failing
-  // item(s) instead of silently skipping them forever.
+  // Deliberately NOT currentWatermark (the separate, uncached
+  // fetchTabEntriesWatermark query above) -- that value can be fresher than
+  // what `entries` actually reflects, since fetchRawEntriesByTab's
+  // fetchAllTabEntries caches a tab's full row list for up to 60s
+  // (src/lib/queries.ts). Recording the separately-fetched fresher value
+  // regardless of what data was actually processed was a real, live bug: a
+  // resolve could compute against a stale cached snapshot, find nothing to
+  // change, then permanently mark the freshest real change as "already
+  // seen" without ever having synced it -- confirmed live 2026-08-27 (a
+  // SilverPlay/Silver Play/AskGamblers entry sat Done for ~5.7 hours while
+  // its PMS task stayed stuck in To Do; a full-board sweep afterward found
+  // 35 of 290 links similarly stuck). Deriving the recorded watermark from
+  // `entries`' own max updated_at instead means it can only ever record what
+  // was truly processed -- at worst falling one tick behind (self-corrects
+  // next resolve), never falsely claiming to be caught up.
+  const actualEntriesWatermark = entries.reduce<string | null>(
+    (max, e) => (max === null || e.updated_at > max ? e.updated_at : max),
+    null,
+  );
+  // A partial failure (a status move OR a cancellation) must NOT record it,
+  // so the next tick's watermark check still sees a mismatch and retries the
+  // still-failing item(s) instead of silently skipping them forever.
   const recordWatermark = async (): Promise<void> => {
-    if (currentWatermark !== null) {
-      await upsertSyncWatermark(tab, currentWatermark, client).catch(() => {});
+    if (actualEntriesWatermark !== null) {
+      await upsertSyncWatermark(tab, actualEntriesWatermark, client).catch(() => {});
     }
   };
 

@@ -626,17 +626,30 @@ describe('syncScheduleStatusToPms', () => {
 // when passed, records every deleted id from a .delete().eq('id', id) call --
 // deleteSchedulePmsLink's real shape, reached by the self-healing
 // cancellation tests below.
+// entriesWatermarkOverride, when passed, makes a `select('updated_at')` call
+// on the 'entries' table return this array instead of `tables['entries']` --
+// every other select (fetchAllTabEntries' own `select('*')`) still returns
+// the normal `tables['entries']` rows. Simulates the real-world divergence
+// between fetchTabEntriesWatermark's own uncached query and fetchAllTabEntries'
+// up-to-60s-stale in-memory cache (src/lib/queries.ts's tabEntryCache) landing
+// on genuinely different snapshots of the same table -- a scenario this fake's
+// single shared `rows` array can't otherwise represent, since both real
+// functions read the same table.
 function fakeMultiTableClient(
   tables: Record<string, unknown[]>,
   upsertCapture?: { table: string; row: unknown }[],
   deleteCapture?: { table: string; id: string }[],
+  entriesWatermarkOverride?: unknown[],
 ) {
-  function builder(rows: unknown[], tableName: string) {
+  function builder(rows: unknown[], tableName: string, selectArg?: string) {
     return {
-      select: () => builder(rows, tableName),
-      eq: () => builder(rows, tableName),
-      order: () => builder(rows, tableName),
-      range: () => builder(rows, tableName),
+      select: (arg?: string) =>
+        tableName === 'entries' && arg === 'updated_at' && entriesWatermarkOverride
+          ? builder(entriesWatermarkOverride, tableName, arg)
+          : builder(rows, tableName, arg),
+      eq: () => builder(rows, tableName, selectArg),
+      order: () => builder(rows, tableName, selectArg),
+      range: () => builder(rows, tableName, selectArg),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
       upsert: (row: unknown) => {
         upsertCapture?.push({ table: tableName, row });
@@ -986,6 +999,44 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(result.synced).toHaveLength(1);
     expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
       { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T11:00:00Z' } },
+    ]);
+  });
+
+  it('records the watermark from the entries actually used, not a separately-fetched fresher value -- so a real change made while the entries cache is stale is never marked falsely "seen"', async () => {
+    const upserts: { table: string; row: unknown }[] = [];
+    // The 'entries' table represents what fetchAllTabEntries' up-to-60s cache
+    // returns -- a snapshot where WinMega's status is still blank ('active').
+    // entriesWatermarkOverride represents fetchTabEntriesWatermark's own
+    // uncached query hitting a NEWER row (e.g. a Done update that landed
+    // moments ago, real production timeline: SilverPlay/Silver Play/ag
+    // stayed stuck on 'active' for ~5.7 hours this exact way). The old,
+    // buggy code recorded that newer value regardless of what data was
+    // actually processed -- permanently hiding the Done update from every
+    // later resolve, since the recorded watermark would already "match" the
+    // true current DB state without ever having synced it.
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega' }), updated_at: '2026-08-20T00:00:00Z' }],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      // A real 'active' day (not null) so this link resolves to plain
+      // 'active' via resolvePmsSyncStatus's fallback -- not the separate
+      // self-healing-cancellation branch, which a genuinely blank day with
+      // no evidence would otherwise trigger instead.
+      brand_schedule: [
+        { tab: 'TP Brand Injection', brand_key: 'winmega', week_start: '2026-08-24', platform: 'tp', monday: null, tuesday: null, wednesday: null, thursday: 'active', friday: null },
+      ],
+    }, upserts, undefined, [{ updated_at: '2026-08-27T07:57:07Z' }]);
+    const fetchFn = vi.fn();
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
+    expect(result.synced).toEqual([]);
+    expect(result.cancelled).toEqual([]);
+    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
+      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-20T00:00:00Z' } },
     ]);
   });
 
