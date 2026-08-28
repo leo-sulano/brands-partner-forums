@@ -19,7 +19,7 @@ import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow } from '../lib/queries';
-import { mergeCredentialsIntoData, type EntryCredentials } from '../lib/entryCredentials';
+import { mergeCredentialsIntoData, preserveCredentialFields, type EntryCredentials } from '../lib/entryCredentials';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
@@ -1055,7 +1055,16 @@ export default function BrandGroup() {
 
       if (payload.eventType === 'UPDATE' && payload.new) {
         const updated = payload.new as Entry;
-        setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
+        // entries.data never carries credential-shaped fields (Password, Backup
+        // Codes, etc. — see entryCredentials.ts): they live in the separate
+        // entry_credentials table, which this subscription doesn't watch. A
+        // realtime UPDATE payload for `entries` therefore always lacks them —
+        // without preserveCredentialFields, applying it wholesale would wipe
+        // those fields from the table a few seconds after every save, once the
+        // realtime event for that save's own `entries` write round-trips back.
+        setEntries((prev) => prev.map((e) => (e.id === updated.id
+          ? { ...updated, data: preserveCredentialFields(updated.data, e.data) }
+          : e)));
         return;
       }
       if (payload.eventType === 'DELETE' && payload.old) {

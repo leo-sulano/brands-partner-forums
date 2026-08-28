@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractCredentials, mergeCredentialsIntoData } from './entryCredentials';
+import { extractCredentials, mergeCredentialsIntoData, preserveCredentialFields } from './entryCredentials';
 
 describe('extractCredentials', () => {
   it('splits a known credential key out of the payload', () => {
@@ -70,5 +70,44 @@ describe('mergeCredentialsIntoData', () => {
   it('writes AG Password / CG Password to their one literal key, no tab-header lookup needed', () => {
     const merged = mergeCredentialsIntoData({}, { ag_password: 'ag-pw', cg_password: 'cg-pw' }, []);
     expect(merged).toEqual({ 'AG Password': 'ag-pw', 'CG Password': 'cg-pw' });
+  });
+});
+
+describe('preserveCredentialFields', () => {
+  it('copies a credential-shaped key from previousData onto data when data is missing it', () => {
+    const merged = preserveCredentialFields(
+      { Account: 'acc1' },
+      { Account: 'acc1', Password: 'hunter2' },
+    );
+    expect(merged).toEqual({ Account: 'acc1', Password: 'hunter2' });
+  });
+
+  it('preserves whichever real header spelling previousData already used', () => {
+    const merged = preserveCredentialFields({}, { 'Backup Codes': 'abc' });
+    expect(merged).toEqual({ 'Backup Codes': 'abc' });
+  });
+
+  it('preserves AG Password and CG Password independently', () => {
+    const merged = preserveCredentialFields(
+      {},
+      { 'AG Password': 'ag-pw', 'CG Password': 'cg-pw' },
+    );
+    expect(merged).toEqual({ 'AG Password': 'ag-pw', 'CG Password': 'cg-pw' });
+  });
+
+  it('returns the original data object unchanged when previousData has no credential fields', () => {
+    const data = { Account: 'acc1' };
+    expect(preserveCredentialFields(data, { Account: 'acc1' })).toBe(data);
+    expect(preserveCredentialFields(data, {})).toBe(data);
+  });
+
+  it('does not overwrite a credential value already present on data', () => {
+    const data = { Password: 'new-pw' };
+    const merged = preserveCredentialFields(data, { Password: 'stale-pw' });
+    // In practice `data` (a raw entries.data row) never carries these keys at
+    // all any more, but if it somehow did, the incoming payload should win —
+    // this only backfills what's genuinely missing.
+    expect(merged).toBe(data);
+    expect(merged).toEqual({ Password: 'new-pw' });
   });
 });

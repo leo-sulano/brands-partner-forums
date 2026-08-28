@@ -110,3 +110,28 @@ export function mergeCredentialsIntoData(
   }
   return merged ?? data;
 }
+
+const ALL_CREDENTIAL_HEADER_KEYS: readonly string[] = CREDENTIAL_FIELD_ENTRIES.flatMap(([, keys]) => keys);
+
+// A Postgres realtime UPDATE payload for `entries` reflects that table's row
+// exactly, which never carries credential-shaped fields any more (see the
+// module comment above) — so a caller that replaces its in-memory copy of an
+// entry with a realtime payload's `data` wholesale would wipe
+// Password/Backup Codes/etc. from the UI a few seconds after every save,
+// even though the value the user just entered was upserted into
+// entry_credentials successfully. `previousData` is that entry's own last
+// known state (already merged via mergeCredentialsIntoData), so copying its
+// credential-shaped keys onto the incoming payload restores them without
+// needing another entry_credentials fetch or this tab's header list.
+export function preserveCredentialFields(
+  data: Record<string, string | null>,
+  previousData: Record<string, string | null>,
+): Record<string, string | null> {
+  let merged: Record<string, string | null> | null = null;
+  for (const key of ALL_CREDENTIAL_HEADER_KEYS) {
+    if (key in data || !(key in previousData)) continue;
+    if (!merged) merged = { ...data };
+    merged[key] = previousData[key];
+  }
+  return merged ?? data;
+}
