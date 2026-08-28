@@ -109,10 +109,23 @@ function canonicalEvidence(evidence: RemovalEvidence): unknown {
   };
 }
 
-// Deliberately excludes `status` — a pure status change (e.g. Pending -> Removed)
-// with no content/behavioral/evidence change should still surface the last cached
-// assessment rather than discarding it. See design spec's "Staleness" section.
-export async function hashAssessmentInput(input: AssessmentInput): Promise<string> {
+// Mirrors buildSystemPrompt's `removedLike` regex in
+// supabase/functions/review-removal-assessment/index.ts — this bucket, not the raw
+// status string, is what actually changes which prompt branch (and therefore which
+// content framing) produced a cached assessment, and it's what ReviewRemovalAssessment.tsx
+// keys its UI labels off of.
+export function isRemovedLikeStatus(status: string): boolean {
+  return /remov|refus|reject/i.test(status);
+}
+
+// Includes only the removed-like *bucket*, not the raw status string — a same-bucket
+// status change (e.g. Removed -> Refused, or Published -> Pending) still surfaces the
+// last cached assessment rather than discarding it, matching the original design intent.
+// A bucket-crossing change (e.g. Published -> Removed) DOES invalidate: that boundary is
+// exactly where buildSystemPrompt switches which framing it used, so the cached content's
+// meaning (and the UI labels rendered over it) would otherwise silently stop matching the
+// review's current status. See design spec's "Staleness" section.
+export async function hashAssessmentInput(input: AssessmentInput & { status: string }): Promise<string> {
   const sortedFields = Object.keys(input.behavioralFields).sort().reduce<Record<string, string | null>>((acc, k) => {
     acc[k] = input.behavioralFields[k];
     return acc;
@@ -122,6 +135,7 @@ export async function hashAssessmentInput(input: AssessmentInput): Promise<strin
     reviewText: input.reviewText,
     behavioralFields: sortedFields,
     evidence: canonicalEvidence(input.evidence),
+    removedLike: isRemovedLikeStatus(input.status),
   });
   return sha256Hex(canonical);
 }

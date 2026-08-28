@@ -5,6 +5,7 @@ import {
   ASSESSMENT_FAILURE_MESSAGE,
   collectBehavioralFields,
   hashAssessmentInput,
+  isRemovedLikeStatus,
   isValidAssessmentResult,
   requestReviewRemovalAssessment,
   type ReviewRemovalAssessmentResult,
@@ -80,10 +81,6 @@ function evidenceSummaryLine(evidence: ReturnType<typeof computeRemovalEvidence>
 
 const SEVERITY_RANK: Record<AssessmentSignal['severity'], number> = { high: 0, medium: 1, low: 2 };
 
-function isRemovedLikeStatus(status: string): boolean {
-  return /remov|refus|reject/i.test(status);
-}
-
 function SignalBadge({ signal }: { signal: AssessmentSignal }) {
   const icon = signal.severity === 'low' ? '✓' : '⚠';
   const color = signal.severity === 'high'
@@ -119,13 +116,13 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
 
   useEffect(() => {
     let cancelled = false;
-    hashAssessmentInput({ platform, reviewText, behavioralFields, evidence }).then((h) => {
+    hashAssessmentInput({ platform, status, reviewText, behavioralFields, evidence }).then((h) => {
       if (!cancelled) setCurrentHash(h);
     });
     return () => {
       cancelled = true;
     };
-  }, [platform, reviewText, behavioralFields, evidence]);
+  }, [platform, status, reviewText, behavioralFields, evidence]);
 
   const isStale = result !== null && currentHash !== null && savedHash !== currentHash;
   const hasFreshResult = result !== null && !isStale;
@@ -136,7 +133,7 @@ export default function ReviewRemovalAssessment({ entry, tab, platform, status, 
     setError(null);
     try {
       const { analysis, model } = await requestReviewRemovalAssessment({ platform, status, reviewText, behavioralFields, evidence });
-      const hash = currentHash ?? (await hashAssessmentInput({ platform, reviewText, behavioralFields, evidence }));
+      const hash = currentHash ?? (await hashAssessmentInput({ platform, status, reviewText, behavioralFields, evidence }));
       await saveReviewAnalysis(entry.id, tab, platform, analysis, evidence, hash, model);
       setResult(analysis);
       setSavedHash(hash);

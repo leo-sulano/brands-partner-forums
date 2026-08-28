@@ -65,7 +65,7 @@ const FEATURES: FeatureSection[] = [
       'Browse every tracked account/entry for that brand group, filterable and sortable',
       'Add, edit, or delete entries directly, this is the live source of truth',
       'Any approved user can create or delete a Brand Tab from the sidebar, no code change needed',
-      "Edit Entry includes an AI-powered Review Removal Assessment for removed reviews, see below",
+      "Edit Entry includes an AI-powered Review Assessment for removed and published reviews, see below",
     ],
   },
   {
@@ -87,7 +87,7 @@ const FEATURES: FeatureSection[] = [
     blurb: "A chat assistant that can answer questions over the dashboard's data.",
     bullets: [
       "Read-only, it can look up entries, score summaries, schedules, and pauses, it can't edit anything",
-      'Can also summarize saved Review Removal Assessments across brands or agents',
+      'Can also summarize saved AI Review Assessments across brands or agents',
       'Supports voice input where the browser allows it',
     ],
     href: '/ask-ai',
@@ -209,19 +209,19 @@ export default function HowItWorks() {
 
       <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
         <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
-          AI Review Removal Assessment
+          AI Review Assessment
         </p>
         <p className="text-sm text-slate-600 leading-relaxed">
-          When a review has been removed, Edit Entry's "Analyze Review" button explains why using real evidence gathered from the rest of that brand's entries, not just a guess.
+          Edit Entry's "Analyze Review" button explains a review using real evidence gathered from the rest of that brand's entries, not just a guess — why it may have been removed if it was, or what supports it reading as genuine and compliant if it's still live.
         </p>
         <ul className="mt-3 space-y-1">
           <li className="text-sm text-slate-500 flex gap-2">
             <span className="text-slate-300">&bull;</span>
-            <span>Weighs deterministic evidence first — matching proxy/country patterns, this brand's history on the platform, cross-platform corroboration, and duplicate review text — before naming a Root Cause</span>
+            <span>Weighs deterministic evidence first — matching proxy/country patterns, this brand's history on the platform, cross-platform corroboration, and duplicate review text — before naming a Key Finding</span>
           </li>
           <li className="text-sm text-slate-500 flex gap-2">
             <span className="text-slate-300">&bull;</span>
-            <span>Shows Evidence For and Evidence Against side by side, plus a "For Next Time" block with concrete actions for agents</span>
+            <span>Shows Risk Factors and Content Strengths (or Evidence For/Against Removal for an already-removed review) side by side, plus a "For Next Time" block with concrete actions for agents</span>
           </li>
           <li className="text-sm text-slate-500 flex gap-2">
             <span className="text-slate-300">&bull;</span>

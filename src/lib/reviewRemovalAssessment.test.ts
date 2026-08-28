@@ -13,6 +13,7 @@ import {
   collectBehavioralFields,
   entryReviewAnalysisKey,
   hashAssessmentInput,
+  isRemovedLikeStatus,
   isValidAssessmentResult,
   requestReviewRemovalAssessment,
   type ReviewRemovalAssessmentResult,
@@ -78,49 +79,49 @@ describe('collectBehavioralFields', () => {
 
 describe('hashAssessmentInput', () => {
   it('is deterministic for identical input', async () => {
-    const input = { platform: 'tp' as const, reviewText: 'Great casino', behavioralFields: { 'Sticky IP (Mobile) (Y/N)': 'No' }, evidence: VALID_EVIDENCE };
+    const input = { platform: 'tp' as const, status: 'Removed', reviewText: 'Great casino', behavioralFields: { 'Sticky IP (Mobile) (Y/N)': 'No' }, evidence: VALID_EVIDENCE };
     const a = await hashAssessmentInput(input);
     const b = await hashAssessmentInput(input);
     expect(a).toBe(b);
   });
 
   it('changes when reviewText changes', async () => {
-    const a = await hashAssessmentInput({ platform: 'tp', reviewText: 'Great casino', behavioralFields: {}, evidence: VALID_EVIDENCE });
-    const b = await hashAssessmentInput({ platform: 'tp', reviewText: 'Bad casino', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'Great casino', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'Bad casino', behavioralFields: {}, evidence: VALID_EVIDENCE });
     expect(a).not.toBe(b);
   });
 
   it('changes when a behavioral field value changes', async () => {
-    const a = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: { 'Sticky IP (Mobile) (Y/N)': 'No' }, evidence: VALID_EVIDENCE });
-    const b = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: { 'Sticky IP (Mobile) (Y/N)': 'Yes' }, evidence: VALID_EVIDENCE });
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: { 'Sticky IP (Mobile) (Y/N)': 'No' }, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: { 'Sticky IP (Mobile) (Y/N)': 'Yes' }, evidence: VALID_EVIDENCE });
     expect(a).not.toBe(b);
   });
 
   it('is unaffected by behavioral field key order', async () => {
-    const a = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: { A: '1', B: '2' }, evidence: VALID_EVIDENCE });
-    const b = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: { B: '2', A: '1' }, evidence: VALID_EVIDENCE });
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: { A: '1', B: '2' }, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: { B: '2', A: '1' }, evidence: VALID_EVIDENCE });
     expect(a).toBe(b);
   });
 
   it('changes when platform changes', async () => {
-    const a = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
-    const b = await hashAssessmentInput({ platform: 'wo', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'wo', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
     expect(a).not.toBe(b);
   });
 
   it('produces a distinct hash for each of the 4 platforms given identical text/fields', async () => {
     const hashes = await Promise.all(
       (['tp', 'ag', 'cg', 'wo'] as const).map((platform) =>
-        hashAssessmentInput({ platform, reviewText: 'same review text', behavioralFields: { A: '1' }, evidence: VALID_EVIDENCE }),
+        hashAssessmentInput({ platform, status: 'Removed', reviewText: 'same review text', behavioralFields: { A: '1' }, evidence: VALID_EVIDENCE }),
       ),
     );
     expect(new Set(hashes).size).toBe(4);
   });
 
   it('changes when the evidence bundle changes', async () => {
-    const a = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
     const changedEvidence: RemovalEvidence = { ...VALID_EVIDENCE, crossEntry: { ...VALID_EVIDENCE.crossEntry, sameProxyCount: 3 } };
-    const b = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: {}, evidence: changedEvidence });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: changedEvidence });
     expect(a).not.toBe(b);
   });
 
@@ -133,9 +134,41 @@ describe('hashAssessmentInput', () => {
       ...VALID_EVIDENCE,
       crossPlatform: { applicable: true, other: { cg: { status: 'Removed' }, ag: { status: 'Live' } } },
     };
-    const a = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: {}, evidence: evidenceA });
-    const b = await hashAssessmentInput({ platform: 'tp', reviewText: 'x', behavioralFields: {}, evidence: evidenceB });
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: evidenceA });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: evidenceB });
     expect(a).toBe(b);
+  });
+
+  it('is unaffected by a same-bucket status change (Removed -> Refused)', async () => {
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Refused', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    expect(a).toBe(b);
+  });
+
+  it('is unaffected by a same-bucket status change (Published -> Pending)', async () => {
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Published', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Pending', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    expect(a).toBe(b);
+  });
+
+  it('changes when status crosses the removed-like bucket boundary (Published -> Removed)', async () => {
+    const a = await hashAssessmentInput({ platform: 'tp', status: 'Published', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    const b = await hashAssessmentInput({ platform: 'tp', status: 'Removed', reviewText: 'x', behavioralFields: {}, evidence: VALID_EVIDENCE });
+    expect(a).not.toBe(b);
+  });
+});
+
+describe('isRemovedLikeStatus', () => {
+  it('returns true for removed/refused/rejected-type statuses', () => {
+    expect(isRemovedLikeStatus('Removed')).toBe(true);
+    expect(isRemovedLikeStatus('Refused')).toBe(true);
+    expect(isRemovedLikeStatus('Rejected')).toBe(true);
+  });
+
+  it('returns false for non-removed statuses', () => {
+    expect(isRemovedLikeStatus('Published')).toBe(false);
+    expect(isRemovedLikeStatus('Pending')).toBe(false);
+    expect(isRemovedLikeStatus('')).toBe(false);
   });
 });
 
