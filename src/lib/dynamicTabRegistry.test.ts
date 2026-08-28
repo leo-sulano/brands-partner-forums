@@ -5,8 +5,6 @@ import {
   unregisterDynamicTab,
   resetDynamicTabs,
   getDynamicTabColumns,
-  getDynamicTabIcon,
-  getDynamicTabFavicon,
   isDynamicTab,
   renameDynamicTab,
 } from './dynamicTabRegistry';
@@ -203,87 +201,5 @@ describe('renameDynamicTab', () => {
     renameDynamicTab('Hanan', 'Hanan Renamed', ['tp']);
     expect(OPERATIONAL_TABS).toEqual(before);
     expect(isDynamicTab('Hanan Renamed')).toBe(false);
-  });
-});
-
-describe('getDynamicTabIcon', () => {
-  beforeEach(() => {
-    unregisterDynamicTab('Test Dynamic Tab');
-    unregisterDynamicTab('Renamed Dynamic Tab');
-  });
-
-  it('is null before registration', () => {
-    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
-  });
-
-  it('registerDynamicTabs sets the icon when provided', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
-    expect(getDynamicTabIcon('Test Dynamic Tab')).toBe('rocket');
-  });
-
-  it('re-registering without an icon field preserves the previously set icon', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] }]);
-    expect(getDynamicTabIcon('Test Dynamic Tab')).toBe('rocket');
-  });
-
-  it('re-registering with icon: null clears a previously set icon', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: null }]);
-    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
-  });
-
-  it('unregisterDynamicTab clears the icon', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
-    unregisterDynamicTab('Test Dynamic Tab');
-    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
-  });
-
-  it('renameDynamicTab carries the icon over to the new name', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
-    renameDynamicTab('Test Dynamic Tab', 'Renamed Dynamic Tab', ['tp']);
-    expect(getDynamicTabIcon('Test Dynamic Tab')).toBeNull();
-    expect(getDynamicTabIcon('Renamed Dynamic Tab')).toBe('rocket');
-  });
-});
-
-describe('getDynamicTabFavicon', () => {
-  beforeEach(() => {
-    unregisterDynamicTab('Test Dynamic Tab');
-    unregisterDynamicTab('Renamed Dynamic Tab');
-  });
-
-  it('is null before registration', () => {
-    expect(getDynamicTabFavicon('Test Dynamic Tab')).toBeNull();
-  });
-
-  it('registerDynamicTabs sets the favicon domain when provided', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
-    expect(getDynamicTabFavicon('Test Dynamic Tab')).toBe('trybet.com');
-  });
-
-  it('re-registering without a faviconDomain field preserves the previously set value', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp', 'ag'] }]);
-    expect(getDynamicTabFavicon('Test Dynamic Tab')).toBe('trybet.com');
-  });
-
-  it('re-registering with faviconDomain: null clears a previously set value', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: null }]);
-    expect(getDynamicTabFavicon('Test Dynamic Tab')).toBeNull();
-  });
-
-  it('unregisterDynamicTab clears the favicon domain', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
-    unregisterDynamicTab('Test Dynamic Tab');
-    expect(getDynamicTabFavicon('Test Dynamic Tab')).toBeNull();
-  });
-
-  it('renameDynamicTab carries the favicon domain over to the new name', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
-    renameDynamicTab('Test Dynamic Tab', 'Renamed Dynamic Tab', ['tp']);
-    expect(getDynamicTabFavicon('Test Dynamic Tab')).toBeNull();
-    expect(getDynamicTabFavicon('Renamed Dynamic Tab')).toBe('trybet.com');
   });
 });

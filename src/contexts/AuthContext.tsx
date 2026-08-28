@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs, fetchPausedTabs } from '../lib/queries';
+import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs, fetchPausedTabs, fetchTabIconOverrides } from '../lib/queries';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import { registerHiddenTabPlatforms, registerToolbarFilters } from '../lib/tab-configs';
 import { applyArchivedTabs } from '../lib/archivedTabRegistry';
 import { applyPausedTabs } from '../lib/pausedTabRegistry';
+import { registerTabIconOverrides } from '../lib/tabIconOverrideRegistry';
 import type { Profile } from '../types/profile';
 
 interface AuthContextValue {
@@ -108,7 +109,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Failed to fetch paused tabs:', err);
             return [];
           }),
-        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs, pausedTabs]) => {
+          fetchTabIconOverrides().catch((err) => {
+            console.error('Failed to fetch tab icon overrides:', err);
+            return [];
+          }),
+        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs, pausedTabs, tabIconOverrides]) => {
           if (!mounted) return;
           registerDynamicTabs(customTabs);
           registerHiddenTabPlatforms(hiddenPlatforms);
@@ -122,6 +127,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // dynamic tabs vs. archive above): pausing never touches
           // OPERATIONAL_TABS membership, only pausedTabRegistry's own set.
           applyPausedTabs(pausedTabs);
+          // Also order-independent: icon overrides apply to hardcoded tabs
+          // too, so this never depends on a tab being registered as dynamic.
+          registerTabIconOverrides(tabIconOverrides);
           setProfile(p);
           setLoading(false);
         });

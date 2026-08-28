@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
-  TAB_ICONS, DEFAULT_TAB_ICON, POPULAR_ICON_NAMES, ALL_DYNAMIC_ICON_NAMES,
-  isKnownDynamicIconName, resolveTabIconKind, faviconUrl,
+  TAB_ICONS, DEFAULT_TAB_ICON, DEFAULT_ICON_NAME, POPULAR_ICON_NAMES, ALL_DYNAMIC_ICON_NAMES,
+  isKnownDynamicIconName, resolveTabIconKind, computeInitialIconSelection, faviconUrl,
 } from './tabIcons';
-import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
+import { registerTabIconOverrides, clearTabIconOverride } from './tabIconOverrideRegistry';
 
 describe('faviconUrl', () => {
   it('builds a Google favicon-service URL for the given domain', () => {
@@ -37,47 +37,73 @@ describe('isKnownDynamicIconName', () => {
 
 describe('resolveTabIconKind', () => {
   beforeEach(() => {
-    unregisterDynamicTab('Test Dynamic Tab');
+    clearTabIconOverride('Hanan');
+    clearTabIconOverride('Test Dynamic Tab');
   });
 
-  it('resolves a hardcoded tab to its TAB_ICONS entry', () => {
+  it('resolves a hardcoded tab with no override to its TAB_ICONS entry', () => {
     expect(resolveTabIconKind('Hanan')).toEqual({ kind: 'static', Icon: TAB_ICONS['Hanan'] });
   });
 
-  it('falls back to DEFAULT_TAB_ICON for a dynamic tab with no icon set', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'] }]);
+  it('falls back to DEFAULT_TAB_ICON for an unrecognized tab with no override', () => {
     expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'static', Icon: DEFAULT_TAB_ICON });
   });
 
-  it('resolves a dynamic tab to its chosen icon name', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket' }]);
+  it('resolves a lucide-icon override', () => {
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: 'rocket', faviconDomain: null, imageUrl: null }]);
     expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'dynamic', name: 'rocket' });
   });
 
   it('falls back to DEFAULT_TAB_ICON for an unrecognized/stale icon name', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'not-a-real-icon-name' }]);
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: 'not-a-real-icon-name', faviconDomain: null, imageUrl: null }]);
     expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'static', Icon: DEFAULT_TAB_ICON });
   });
 
-  it('a hardcoded tab name always wins over any dynamic icon registration', () => {
-    // registerDynamicTabs itself refuses to register a hardcoded tab name, so
-    // this just confirms resolveTabIconKind still reads TAB_ICONS first regardless.
-    registerDynamicTabs([{ name: 'Hanan', platforms: ['tp'], icon: 'rocket' }]);
-    expect(resolveTabIconKind('Hanan')).toEqual({ kind: 'static', Icon: TAB_ICONS['Hanan'] });
-  });
-
-  it('resolves a dynamic tab to its favicon domain when set', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
+  it('resolves a favicon override', () => {
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: null, faviconDomain: 'trybet.com', imageUrl: null }]);
     expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'favicon', domain: 'trybet.com' });
   });
 
-  it('a favicon domain wins over a lucide icon name on the same tab', () => {
-    registerDynamicTabs([{ name: 'Test Dynamic Tab', platforms: ['tp'], icon: 'rocket', faviconDomain: 'trybet.com' }]);
-    expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'favicon', domain: 'trybet.com' });
+  it('resolves an image override', () => {
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: null, faviconDomain: null, imageUrl: 'https://x/icon.webp' }]);
+    expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'image', url: 'https://x/icon.webp' });
   });
 
-  it('a hardcoded tab name wins over any dynamic favicon registration', () => {
-    registerDynamicTabs([{ name: 'Hanan', platforms: ['tp'], faviconDomain: 'trybet.com' }]);
-    expect(resolveTabIconKind('Hanan')).toEqual({ kind: 'static', Icon: TAB_ICONS['Hanan'] });
+  it('priority order when multiple override fields are set: image > favicon > icon', () => {
+    registerTabIconOverrides([{
+      tab: 'Test Dynamic Tab', icon: 'rocket', faviconDomain: 'trybet.com', imageUrl: 'https://x/icon.webp',
+    }]);
+    expect(resolveTabIconKind('Test Dynamic Tab')).toEqual({ kind: 'image', url: 'https://x/icon.webp' });
+  });
+
+  it('an override wins over a hardcoded tab\'s own TAB_ICONS default', () => {
+    registerTabIconOverrides([{ tab: 'Hanan', icon: 'rocket', faviconDomain: null, imageUrl: null }]);
+    expect(resolveTabIconKind('Hanan')).toEqual({ kind: 'dynamic', name: 'rocket' });
+  });
+});
+
+describe('computeInitialIconSelection', () => {
+  beforeEach(() => {
+    clearTabIconOverride('Hanan');
+    clearTabIconOverride('Test Dynamic Tab');
+  });
+
+  it('defaults to the icon-search mode with DEFAULT_ICON_NAME when there is no override', () => {
+    expect(computeInitialIconSelection('Hanan')).toEqual({ type: 'icon', value: DEFAULT_ICON_NAME });
+  });
+
+  it('reflects an existing icon override', () => {
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: 'rocket', faviconDomain: null, imageUrl: null }]);
+    expect(computeInitialIconSelection('Test Dynamic Tab')).toEqual({ type: 'icon', value: 'rocket' });
+  });
+
+  it('reflects an existing favicon override', () => {
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: null, faviconDomain: 'trybet.com', imageUrl: null }]);
+    expect(computeInitialIconSelection('Test Dynamic Tab')).toEqual({ type: 'favicon', value: 'trybet.com' });
+  });
+
+  it('reflects an existing image override', () => {
+    registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: null, faviconDomain: null, imageUrl: 'https://x/icon.webp' }]);
+    expect(computeInitialIconSelection('Test Dynamic Tab')).toEqual({ type: 'image', value: 'https://x/icon.webp' });
   });
 });

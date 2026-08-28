@@ -1,9 +1,9 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, updateCustomTabIcon, updateCustomTabFavicon, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
+import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
 import {
-  PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, getDynamicTabIcon, getDynamicTabFavicon, type DynamicTabPlatform,
+  PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
 import {
   getTabPlatforms, getTabPlatformsUnfiltered,
@@ -11,7 +11,8 @@ import {
   getEnabledToolbarFilters, registerToolbarFilters,
   TOOLBAR_FILTER_LIST, type ToolbarFilterKey,
 } from '../lib/tab-configs';
-import { DEFAULT_ICON_NAME, type TabIconSelection } from '../lib/tabIcons';
+import { computeInitialIconSelection, type TabIconSelection } from '../lib/tabIcons';
+import { registerTabIconOverrides, renameTabIconOverride } from '../lib/tabIconOverrideRegistry';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
 import { useAuth } from '../contexts/AuthContext';
@@ -44,11 +45,12 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
   const [filters, setFilters] = useState<ToolbarFilterKey[]>(
     () => getEnabledToolbarFilters(tabName),
   );
-  const [iconSelection, setIconSelection] = useState<TabIconSelection>(() => {
-    const favicon = getDynamicTabFavicon(tabName);
-    if (favicon) return { type: 'favicon', value: favicon };
-    return { type: 'icon', value: getDynamicTabIcon(tabName) ?? DEFAULT_ICON_NAME };
-  });
+  // Same once-per-open-capture as initialPaused below — diffed against on
+  // submit so a hardcoded tab (which never showed this picker before today)
+  // doesn't get an icon override written just because someone saved an
+  // unrelated change (platforms, toolbar filters) without ever touching it.
+  const initialIconSelection = computeInitialIconSelection(tabName);
+  const [iconSelection, setIconSelection] = useState<TabIconSelection>(initialIconSelection);
   const [status, setStatus] = useState<'active' | 'paused'>(initialPaused ? 'paused' : 'active');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,8 +90,12 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
       setError('Select at least one platform to track.');
       return;
     }
-    if (dynamic && iconSelection.type === 'favicon' && !iconSelection.value.trim()) {
+    if (iconSelection.type === 'favicon' && !iconSelection.value.trim()) {
       setError('Enter a website domain for the favicon, or switch to Search icon.');
+      return;
+    }
+    if (iconSelection.type === 'image' && !iconSelection.value) {
+      setError('Upload an image, or switch to a different icon source.');
       return;
     }
     setSubmitting(true);
@@ -99,6 +105,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
       if (isRename) {
         await renameCustomTab(tabName, trimmedName);
         renameDynamicTab(tabName, trimmedName, platforms);
+        renameTabIconOverride(tabName, trimmedName);
         currentTabName = trimmedName;
       }
       if (isRename && initialPaused && currentTabName !== tabName) {
@@ -106,12 +113,8 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
         pauseTabLocally(currentTabName);
       }
       if (dynamic) {
-        const icon = iconSelection.type === 'icon' ? iconSelection.value : null;
-        const faviconDomain = iconSelection.type === 'favicon' ? iconSelection.value.trim() : null;
         await updateCustomTabPlatforms(currentTabName, platforms);
-        await updateCustomTabIcon(currentTabName, icon);
-        await updateCustomTabFavicon(currentTabName, faviconDomain);
-        registerDynamicTabs([{ name: currentTabName, platforms, icon, faviconDomain }]);
+        registerDynamicTabs([{ name: currentTabName, platforms }]);
       } else {
         const before = new Set(getTabPlatforms(currentTabName));
         const after = new Set(platforms);
@@ -123,6 +126,13 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
           if (nowVisible) unregisterHiddenTabPlatform(currentTabName, p);
           else registerHiddenTabPlatforms([{ tab: currentTabName, platform: p }]);
         }
+      }
+      if (JSON.stringify(iconSelection) !== JSON.stringify(initialIconSelection)) {
+        const icon = iconSelection.type === 'icon' ? iconSelection.value : null;
+        const faviconDomain = iconSelection.type === 'favicon' ? iconSelection.value.trim() : null;
+        const imageUrl = iconSelection.type === 'image' ? iconSelection.value : null;
+        await upsertTabIconOverride(currentTabName, { icon, faviconDomain, imageUrl });
+        registerTabIconOverrides([{ tab: currentTabName, icon, faviconDomain, imageUrl }]);
       }
       await setToolbarFilters(currentTabName, filters);
       registerToolbarFilters([{ tab: currentTabName, enabled_filters: filters }]);
@@ -194,7 +204,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
             </p>
           </div>
 
-          {dynamic && <IconPicker value={iconSelection} onChange={setIconSelection} />}
+          <IconPicker value={iconSelection} onChange={setIconSelection} />
 
           {isAdmin && (
             <div>

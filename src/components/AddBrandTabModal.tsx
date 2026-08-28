@@ -1,21 +1,16 @@
 // src/components/AddBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { createCustomTab } from '../lib/queries';
+import { createCustomTab, upsertTabIconOverride } from '../lib/queries';
 import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import { TOOLBAR_FILTER_LIST, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from '../lib/tab-configs';
 import { DEFAULT_ICON_NAME, type TabIconSelection } from '../lib/tabIcons';
+import { registerTabIconOverrides } from '../lib/tabIconOverrideRegistry';
 import { validateNewTabName } from '../lib/tabValidation';
 import IconPicker from './IconPicker';
 
 interface Props {
-  onCreated: (
-    name: string,
-    platforms: DynamicTabPlatform[],
-    enabledFilters: ToolbarFilterKey[],
-    icon: string | null,
-    faviconDomain: string | null,
-  ) => void;
+  onCreated: (name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) => void;
   onClose: () => void;
 }
 
@@ -67,13 +62,20 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
       setError('Enter a website domain for the favicon, or switch to Search icon.');
       return;
     }
+    if (iconSelection.type === 'image' && !iconSelection.value) {
+      setError('Upload an image, or switch to a different icon source.');
+      return;
+    }
     const icon = iconSelection.type === 'icon' ? iconSelection.value : null;
     const faviconDomain = iconSelection.type === 'favicon' ? iconSelection.value.trim() : null;
+    const imageUrl = iconSelection.type === 'image' ? iconSelection.value : null;
     setSubmitting(true);
     setError(null);
     try {
-      await createCustomTab(trimmed, platforms, filters, icon, faviconDomain);
-      onCreated(trimmed, platforms, filters, icon, faviconDomain);
+      await createCustomTab(trimmed, platforms, filters);
+      await upsertTabIconOverride(trimmed, { icon, faviconDomain, imageUrl });
+      registerTabIconOverrides([{ tab: trimmed, icon, faviconDomain, imageUrl }]);
+      onCreated(trimmed, platforms, filters);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create tab');
       setSubmitting(false);

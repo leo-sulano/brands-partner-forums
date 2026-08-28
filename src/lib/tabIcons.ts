@@ -6,16 +6,15 @@
 // unlike tab-configs.ts, this file is never imported by a Deno edge function,
 // so it's safe to depend on React-adjacent packages here.
 //
-// A tab not listed here falls back to a generic icon at each call site —
-// adding an icon for a new Brand Tab is optional, not required to register it
-// (see TAB_COLUMN_CONFIGS in tab-configs.ts for the one required step for a
-// hardcoded tab, or the `custom_tabs` table / src/lib/dynamicTabRegistry.ts
-// for a tab created in-app with no code change at all).
+// TAB_ICONS below is only the *default* for the 11 hardcoded tabs — any tab,
+// hardcoded or dynamic, can override it via `tab_icon_overrides`
+// (src/lib/tabIconOverrideRegistry.ts), the only way a Brand Tab set icon at
+// all before self-service creation existed.
 //
 // Kept JSX-free on purpose (this project has no @testing-library/react
 // dependency, so component-rendering tests aren't a pattern here) —
 // src/components/TabIcon.tsx turns resolveTabIconKind()'s result into actual
-// JSX. A dynamically-chosen icon can't be exposed as a plain component
+// JSX. A lucide-icon override can't be exposed as a plain component
 // reference the way the hardcoded TAB_ICONS map is: it must render through
 // lucide's own <DynamicIcon name=.../> (lucide-react/dynamic), which
 // lazy-loads that one icon's SVG as its own chunk instead of bundling
@@ -27,7 +26,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { iconNames } from 'lucide-react/dynamic';
-import { getDynamicTabIcon, getDynamicTabFavicon } from './dynamicTabRegistry';
+import { getTabIconOverride } from './tabIconOverrideRegistry';
 
 export const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection':        Syringe,
@@ -45,11 +44,9 @@ export const TAB_ICONS: Record<string, LucideIcon> = {
 
 export const DEFAULT_TAB_ICON: LucideIcon = Syringe;
 
-// The self-service "+ Add Brand Tab" flow (AddBrandTabModal/EditBrandTabModal)
-// lets the creator search and pick any of lucide's icons for a dynamic tab,
-// stored by kebab-case `name` on `custom_tabs.icon`
-// (dynamicTabRegistry.ts's `dynamicTabIcons` map holds the live in-session
-// copy).
+// The "Search icon" source of AddBrandTabModal/EditBrandTabModal's icon
+// picker searches every one of these, stored by kebab-case `name` on
+// `tab_icon_overrides.icon`.
 export type TabIconName = (typeof iconNames)[number];
 
 export const ALL_DYNAMIC_ICON_NAMES: readonly TabIconName[] = iconNames;
@@ -74,42 +71,57 @@ export const POPULAR_ICON_NAMES: TabIconName[] = [
 
 export const DEFAULT_ICON_NAME: TabIconName = POPULAR_ICON_NAMES[0];
 
-// Alternative to a lucide icon: a dynamic tab can instead use its own
-// website's favicon, fetched via the same Google favicon service
-// Sidebar.tsx's PLATFORM_FAVICON already relies on for TP/AG/CG/WO — no new
-// fetch/CORS/hotlinking concern, since it's just an <img src>.
+// Alternative to a lucide icon: use the tab's own website favicon instead,
+// fetched via the same Google favicon service Sidebar.tsx's PLATFORM_FAVICON
+// already relies on for TP/AG/CG/WO — no new fetch/CORS/hotlinking concern,
+// since it's just an <img src>.
 export function faviconUrl(domain: string, size = 32): string {
   return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=${size}`;
 }
 
-// The two exclusive ways AddBrandTabModal/EditBrandTabModal's icon-source
-// toggle lets a creator set a dynamic tab's icon — IconPicker is the single
-// controlled component for editing either.
+// The three mutually exclusive ways AddBrandTabModal/EditBrandTabModal's
+// icon-source toggle lets a creator set a tab's icon — IconPicker is the
+// single controlled component for editing any of them. 'image' holds the
+// already-uploaded tab-icons bucket URL (the upload itself happens inside
+// IconPicker before this value is ever produced).
 export type TabIconSelection =
   | { type: 'icon'; value: string }
-  | { type: 'favicon'; value: string };
+  | { type: 'favicon'; value: string }
+  | { type: 'image'; value: string };
 
 export type ResolvedTabIcon =
   | { kind: 'static'; Icon: LucideIcon }
   | { kind: 'dynamic'; name: TabIconName }
-  | { kind: 'favicon'; domain: string };
+  | { kind: 'favicon'; domain: string }
+  | { kind: 'image'; url: string };
 
 // Single resolver every render call site should go through (via
-// src/components/TabIcon.tsx) instead of the raw
-// `TAB_ICONS[tab] ?? DEFAULT_TAB_ICON` pattern — hardcoded tabs resolve
-// exactly as before; a dynamic tab resolves to its favicon domain if one is
-// set (favicon and lucide-icon selection are mutually exclusive by
-// construction — see dynamicTabRegistry.ts), else to its chosen lucide icon
-// name; anything else (never set, or an unrecognized/stale name) falls back
-// to DEFAULT_TAB_ICON.
+// src/components/TabIcon.tsx). An explicit tab_icon_overrides row — for ANY
+// tab, hardcoded or dynamic — wins over the hardcoded TAB_ICONS default
+// (image, then favicon, then lucide icon, in that priority order — see the
+// migration's own comment for why these three are mutually exclusive by
+// construction rather than DB-enforced). Only a tab with no override at all
+// falls back to TAB_ICONS[tab], and only an unrecognized tab falls back
+// further to DEFAULT_TAB_ICON.
 export function resolveTabIconKind(tab: string): ResolvedTabIcon {
+  const override = getTabIconOverride(tab);
+  if (override?.imageUrl) return { kind: 'image', url: override.imageUrl };
+  if (override?.faviconDomain) return { kind: 'favicon', domain: override.faviconDomain };
+  if (override?.icon && isKnownDynamicIconName(override.icon)) {
+    return { kind: 'dynamic', name: override.icon };
+  }
   const hardcoded = TAB_ICONS[tab];
   if (hardcoded) return { kind: 'static', Icon: hardcoded };
-  const faviconDomain = getDynamicTabFavicon(tab);
-  if (faviconDomain) return { kind: 'favicon', domain: faviconDomain };
-  const dynamicName = getDynamicTabIcon(tab);
-  if (dynamicName && isKnownDynamicIconName(dynamicName)) {
-    return { kind: 'dynamic', name: dynamicName };
-  }
   return { kind: 'static', Icon: DEFAULT_TAB_ICON };
+}
+
+// What IconPicker should show when a tab has no override yet — same default
+// a brand-new dynamic tab starts with, so "never touched the picker" looks
+// identical whether the tab is hardcoded or freshly created.
+export function computeInitialIconSelection(tab: string): TabIconSelection {
+  const override = getTabIconOverride(tab);
+  if (override?.imageUrl) return { type: 'image', value: override.imageUrl };
+  if (override?.faviconDomain) return { type: 'favicon', value: override.faviconDomain };
+  if (override?.icon) return { type: 'icon', value: override.icon };
+  return { type: 'icon', value: DEFAULT_ICON_NAME };
 }

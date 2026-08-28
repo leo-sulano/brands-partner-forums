@@ -1,10 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-const { singletonFrom, singletonRpc } = vi.hoisted(() => ({ singletonFrom: vi.fn(), singletonRpc: vi.fn() }));
+const { singletonFrom, singletonRpc, singletonStorageFrom } = vi.hoisted(() => ({
+  singletonFrom: vi.fn(), singletonRpc: vi.fn(), singletonStorageFrom: vi.fn(),
+}));
 vi.mock('./supabase', () => ({
   supabase: {
     from: singletonFrom,
     rpc: singletonRpc,
+    storage: { from: singletonStorageFrom },
     // setBrandPlatformOverride (unlike the fetch* functions above) always
     // goes through the singleton and calls currentUserEmail() ->
     // supabase.auth.getSession() internally -- stub it out so those tests
@@ -43,8 +46,9 @@ import {
   fetchCustomTabs,
   createCustomTab,
   updateCustomTabPlatforms,
-  updateCustomTabIcon,
-  updateCustomTabFavicon,
+  fetchTabIconOverrides,
+  upsertTabIconOverride,
+  uploadTabIconImage,
   archiveTab,
   unarchiveTab,
   fetchArchivedTabs,
@@ -1012,20 +1016,12 @@ describe('fetchEntryReviewAnalyses', () => {
 });
 
 describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
-  it('fetchCustomTabs maps rows to name/platforms/icon/faviconDomain', async () => {
+  it('fetchCustomTabs maps rows to name/platforms', async () => {
     singletonFrom.mockReturnValue(
-      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket', favicon_domain: null }], error: null }),
+      chain({ data: [{ name: 'Acme Tab', platforms: ['tp', 'ag'] }], error: null }),
     );
     const rows = await fetchCustomTabs();
-    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'], icon: 'rocket', faviconDomain: null }]);
-  });
-
-  it('fetchCustomTabs maps a favicon_domain row', async () => {
-    singletonFrom.mockReturnValue(
-      chain({ data: [{ name: 'Acme Tab', platforms: ['tp'], icon: null, favicon_domain: 'acme.com' }], error: null }),
-    );
-    const rows = await fetchCustomTabs();
-    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp'], icon: null, faviconDomain: 'acme.com' }]);
+    expect(rows).toEqual([{ name: 'Acme Tab', platforms: ['tp', 'ag'] }]);
   });
 
   it('createCustomTab inserts with the current actor email', async () => {
@@ -1033,25 +1029,7 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     singletonFrom.mockReturnValue({ insert });
     await createCustomTab('Acme Tab', ['tp']);
     expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: null, favicon_domain: null }),
-    );
-  });
-
-  it('createCustomTab inserts the given icon key', async () => {
-    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
-    singletonFrom.mockReturnValue({ insert });
-    await createCustomTab('Acme Tab', ['tp'], undefined, 'rocket');
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: 'rocket', favicon_domain: null }),
-    );
-  });
-
-  it('createCustomTab inserts the given favicon domain', async () => {
-    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
-    singletonFrom.mockReturnValue({ insert });
-    await createCustomTab('Acme Tab', ['tp'], undefined, null, 'acme.com');
-    expect(insert).toHaveBeenCalledWith(
-      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'], icon: null, favicon_domain: 'acme.com' }),
+      expect.objectContaining({ name: 'Acme Tab', platforms: ['tp'] }),
     );
   });
 
@@ -1079,39 +1057,69 @@ describe('fetchCustomTabs / createCustomTab / updateCustomTabPlatforms', () => {
     singletonFrom.mockReturnValue({ update });
     await expect(updateCustomTabPlatforms('Acme Tab', ['tp'])).rejects.toThrow('db down');
   });
+});
 
-  it('updateCustomTabIcon updates the row by name', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: null });
-    const update = vi.fn().mockReturnValue({ eq });
-    singletonFrom.mockReturnValue({ update });
-    await updateCustomTabIcon('Acme Tab', 'rocket');
-    expect(update).toHaveBeenCalledWith({ icon: 'rocket' });
-    expect(eq).toHaveBeenCalledWith('name', 'Acme Tab');
+describe('fetchTabIconOverrides / upsertTabIconOverride', () => {
+  it('fetchTabIconOverrides maps rows to tab/icon/faviconDomain/imageUrl', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ tab: 'Hanan', icon: 'rocket', favicon_domain: null, image_url: null }], error: null }),
+    );
+    const rows = await fetchTabIconOverrides();
+    expect(rows).toEqual([{ tab: 'Hanan', icon: 'rocket', faviconDomain: null, imageUrl: null }]);
   });
 
-  it('updateCustomTabIcon throws on error', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
-    const update = vi.fn().mockReturnValue({ eq });
-    singletonFrom.mockReturnValue({ update });
-    await expect(updateCustomTabIcon('Acme Tab', 'rocket')).rejects.toThrow('db down');
+  it('fetchTabIconOverrides maps a favicon/image row', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ tab: 'Hanan', icon: null, favicon_domain: 'acme.com', image_url: 'https://x/icon.webp' }], error: null }),
+    );
+    const rows = await fetchTabIconOverrides();
+    expect(rows).toEqual([{ tab: 'Hanan', icon: null, faviconDomain: 'acme.com', imageUrl: 'https://x/icon.webp' }]);
   });
 
-  it('updateCustomTabFavicon updates the row by name', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: null });
-    const update = vi.fn().mockReturnValue({ eq });
-    singletonFrom.mockReturnValue({ update });
-    await updateCustomTabFavicon('Acme Tab', 'acme.com');
-    expect(update).toHaveBeenCalledWith({ favicon_domain: 'acme.com' });
-    expect(eq).toHaveBeenCalledWith('name', 'Acme Tab');
+  it('upsertTabIconOverride upserts with the current actor email, onConflict tab', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await upsertTabIconOverride('Hanan', { icon: 'rocket', faviconDomain: null, imageUrl: null });
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'Hanan', icon: 'rocket', favicon_domain: null, image_url: null }),
+      { onConflict: 'tab' },
+    );
   });
 
-  it('updateCustomTabFavicon throws on error', async () => {
-    const eq = vi.fn().mockResolvedValue({ error: new Error('db down') });
-    const update = vi.fn().mockReturnValue({ eq });
-    singletonFrom.mockReturnValue({ update });
-    await expect(updateCustomTabFavicon('Acme Tab', 'acme.com')).rejects.toThrow('db down');
+  it('upsertTabIconOverride throws on error', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    singletonFrom.mockReturnValue({ upsert });
+    await expect(
+      upsertTabIconOverride('Hanan', { icon: 'rocket', faviconDomain: null, imageUrl: null }),
+    ).rejects.toThrow('db down');
+  });
+});
+
+describe('uploadTabIconImage', () => {
+  it('uploads to the tab-icons bucket at a random-id path and returns the public URL', async () => {
+    const upload = vi.fn().mockResolvedValue({ error: null });
+    const getPublicUrl = vi.fn().mockReturnValue({ data: { publicUrl: 'https://x/icon.webp' } });
+    singletonStorageFrom.mockReturnValue({ upload, getPublicUrl });
+
+    const blob = new Blob([new Uint8Array(10)], { type: 'image/webp' });
+    const url = await uploadTabIconImage(blob);
+
+    expect(singletonStorageFrom).toHaveBeenCalledWith('tab-icons');
+    expect(upload).toHaveBeenCalledWith(
+      expect.stringMatching(/^[0-9a-f-]{36}\/icon$/),
+      blob,
+      expect.objectContaining({ upsert: true, contentType: 'image/webp' }),
+    );
+    expect(url).toBe('https://x/icon.webp');
   });
 
+  it('throws on upload error', async () => {
+    const upload = vi.fn().mockResolvedValue({ error: new Error('storage down') });
+    singletonStorageFrom.mockReturnValue({ upload });
+
+    const blob = new Blob([new Uint8Array(10)], { type: 'image/webp' });
+    await expect(uploadTabIconImage(blob)).rejects.toThrow('storage down');
+  });
 });
 
 describe('renameCustomTab', () => {

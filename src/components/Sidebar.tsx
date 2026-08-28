@@ -98,14 +98,8 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     return () => window.removeEventListener('tab-platforms-changed', handleChange);
   }, []);
 
-  function handleTabCreated(
-    name: string,
-    platforms: DynamicTabPlatform[],
-    enabledFilters: ToolbarFilterKey[],
-    icon: string | null,
-    faviconDomain: string | null,
-  ) {
-    registerDynamicTabs([{ name, platforms, icon, faviconDomain }]);
+  function handleTabCreated(name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) {
+    registerDynamicTabs([{ name, platforms }]);
     registerToolbarFilters([{ tab: name, enabled_filters: enabledFilters }]);
     setShowAddTab(false);
     navigate(`/brands/${tabToSlug(name)}`);

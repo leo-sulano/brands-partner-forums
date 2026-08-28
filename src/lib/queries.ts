@@ -1794,36 +1794,23 @@ export async function restoreEditedEntity(logId: string): Promise<void> {
 export interface CustomTabRow {
   name: string;
   platforms: DynamicTabPlatform[];
-  icon: string | null;
-  faviconDomain: string | null;
 }
 
 export async function fetchCustomTabs(client: SupabaseClient = supabase): Promise<CustomTabRow[]> {
-  const { data, error } = await client.from('custom_tabs').select('name, platforms, icon, favicon_domain');
+  const { data, error } = await client.from('custom_tabs').select('name, platforms');
   if (error) throw error;
-  return (data ?? []).map((row) => ({
-    name: row.name as string,
-    platforms: row.platforms as DynamicTabPlatform[],
-    icon: (row.icon as string | null) ?? null,
-    faviconDomain: (row.favicon_domain as string | null) ?? null,
-  }));
+  return (data ?? []) as CustomTabRow[];
 }
 
 export async function createCustomTab(
   name: string,
   platforms: DynamicTabPlatform[],
   enabledFilters?: ToolbarFilterKey[],
-  icon?: string | null,
-  faviconDomain?: string | null,
 ): Promise<void> {
   const actor = await currentActor();
   const { error } = await supabase
     .from('custom_tabs')
-    .insert({
-      name, platforms, created_by: actor.email,
-      icon: icon ?? null,
-      favicon_domain: faviconDomain ?? null,
-    });
+    .insert({ name, platforms, created_by: actor.email });
   if (error) {
     if (error.code === '23505') throw new Error(`A tab named "${name}" already exists.`);
     throw error;
@@ -1857,25 +1844,61 @@ export async function updateCustomTabPlatforms(name: string, platforms: DynamicT
   if (error) throw error;
 }
 
-// Same "callers must also refresh the in-memory registry" contract as
-// updateCustomTabPlatforms above — callers must also call
-// registerDynamicTabs([{ name, platforms, icon }]) afterward.
-export async function updateCustomTabIcon(name: string, icon: string | null): Promise<void> {
+export interface TabIconOverrideRecord {
+  tab: string;
+  icon: string | null;
+  faviconDomain: string | null;
+  imageUrl: string | null;
+}
+
+export async function fetchTabIconOverrides(client: SupabaseClient = supabase): Promise<TabIconOverrideRecord[]> {
+  const { data, error } = await client.from('tab_icon_overrides').select('tab, icon, favicon_domain, image_url');
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    tab: row.tab as string,
+    icon: (row.icon as string | null) ?? null,
+    faviconDomain: (row.favicon_domain as string | null) ?? null,
+    imageUrl: (row.image_url as string | null) ?? null,
+  }));
+}
+
+// Sets tab (hardcoded or dynamic) `tab`'s icon override — the three fields
+// are mutually exclusive by construction (IconPicker's source toggle always
+// supplies exactly one non-null value and nulls the other two). Callers must
+// also call registerTabIconOverrides([{ tab, ...selection }]) afterward to
+// refresh the in-memory registry for the current session — this function
+// only writes the DB row.
+export async function upsertTabIconOverride(
+  tab: string,
+  selection: { icon: string | null; faviconDomain: string | null; imageUrl: string | null },
+): Promise<void> {
+  const actor = await currentActor();
   const { error } = await supabase
-    .from('custom_tabs')
-    .update({ icon })
-    .eq('name', name);
+    .from('tab_icon_overrides')
+    .upsert({
+      tab,
+      icon: selection.icon,
+      favicon_domain: selection.faviconDomain,
+      image_url: selection.imageUrl,
+      updated_by: actor.email,
+    }, { onConflict: 'tab' });
   if (error) throw error;
 }
 
-// Same contract as updateCustomTabIcon above — callers must also call
-// registerDynamicTabs([{ name, platforms, faviconDomain }]) afterward.
-export async function updateCustomTabFavicon(name: string, faviconDomain: string | null): Promise<void> {
-  const { error } = await supabase
-    .from('custom_tabs')
-    .update({ favicon_domain: faviconDomain })
-    .eq('name', name);
+// Uploads a compressed tab-icon image to the `tab-icons` Storage bucket and
+// returns its public URL. Path uses a random id rather than the tab's name
+// (unlike uploadAvatar's fixed `<userId>/avatar` path) — a brand-new tab in
+// AddBrandTabModal has no confirmed name yet, and a dynamic tab can be
+// renamed later; the tab_icon_overrides row is the only link between a tab
+// and its image URL.
+export async function uploadTabIconImage(file: Blob): Promise<string> {
+  const path = `${crypto.randomUUID()}/icon`;
+  const { error } = await supabase.storage
+    .from('tab-icons')
+    .upload(path, file, { upsert: true, contentType: file.type, cacheControl: '31536000' });
   if (error) throw error;
+  const { data } = supabase.storage.from('tab-icons').getPublicUrl(path);
+  return data.publicUrl;
 }
 
 export async function renameCustomTab(oldName: string, newName: string): Promise<void> {
