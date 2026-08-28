@@ -322,26 +322,43 @@ export function invalidateTabCache(tab: string) {
 // shift it out of every page's window and drop it from the result entirely.
 // Confirmed live (2026-08-28): this is exactly how a just-updated "Done"
 // status silently vanished from a resolve pass despite the pass's own
-// watermark showing it had scanned right up to that write. Same fix
-// fetchAllEntries below already uses, for the same reason.
+// watermark showing it had scanned right up to that write.
+//
+// Ordering by id alone isn't the whole fix, though -- an OFFSET-style
+// `.range(from, to)` page boundary is still position-based, so a brand-new
+// row *inserted* between the page-1 and page-2 requests (this tab gets new
+// entries continuously, not just status edits) shifts every later row's
+// OFFSET by one, which can still drop a row at the trailing edge of a page
+// even with a stable sort column. Keyset pagination (WHERE id > <last seen
+// id>, not OFFSET) doesn't have this failure mode: each page is defined by
+// what's already been seen, not by a position that a concurrent insert can
+// shift out from under it -- a new row either sorts after the cursor (picked
+// up naturally in a later page, correct) or doesn't (already-passed, exactly
+// as if it had been inserted before the scan started). Confirmed live
+// (2026-08-28, Task 288): the id-ordering fix alone still left tabs like
+// Rooster Partners (1,891 rows, 2 pages) and Hanan (1,214 rows, 2 pages)
+// exposed to this narrower insert-based variant of the same drop.
 async function fetchAllTabEntries(tab: string, client: SupabaseClient = supabase): Promise<Entry[]> {
   const cached = tabEntryCache.get(tab);
   if (cached && Date.now() - cached.ts < TAB_CACHE_TTL) return cached.entries;
 
   const PAGE = 1000;
   const all: Entry[] = [];
-  let from = 0;
+  let afterId: string | null = null;
   while (true) {
-    const { data, error } = await client
+    let query = client
       .from('entries')
       .select('*')
       .eq('tab', tab)
       .order('id', { ascending: true })
-      .range(from, from + PAGE - 1);
+      .limit(PAGE);
+    if (afterId !== null) query = query.gt('id', afterId);
+    const { data, error } = await query;
     if (error) throw error;
-    all.push(...((data ?? []) as Entry[]));
-    if ((data ?? []).length < PAGE) break;
-    from += PAGE;
+    const page = (data ?? []) as Entry[];
+    all.push(...page);
+    if (page.length < PAGE) break;
+    afterId = page[page.length - 1].id;
   }
 
   tabEntryCache.set(tab, { entries: all, ts: Date.now() });

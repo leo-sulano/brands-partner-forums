@@ -615,9 +615,10 @@ describe('syncScheduleStatusToPms', () => {
 // schedule_platform_restrictions, brand_platform_pause, brand_schedule),
 // unlike this file's other fakes which are scoped to one or two tables.
 // Beyond the brief's original select/eq/then shape, this also answers
-// .order()/.range() -- fetchRawEntriesByTab's real implementation
-// (fetchAllTabEntries in src/lib/queries.ts) chains
-// .select().eq().order().range(), not just .select().eq() -- and .update()
+// .order()/.range()/.limit()/.gt() -- fetchRawEntriesByTab's real
+// implementation (fetchAllTabEntries in src/lib/queries.ts) chains
+// .select().eq().order().limit() (plus .gt() once a keyset cursor exists),
+// not just .select().eq() -- and .update()
 // -- updateSchedulePmsLinkStatus's real implementation does
 // .update({synced_status}).eq('id', id), reached whenever
 // syncScheduleStatusToPms actually moves a link. Both gaps were found by
@@ -653,6 +654,8 @@ function fakeMultiTableClient(
       eq: () => builder(rows, tableName, selectArg),
       order: () => builder(rows, tableName, selectArg),
       range: () => builder(rows, tableName, selectArg),
+      limit: () => builder(rows, tableName, selectArg),
+      gt: () => builder(rows, tableName, selectArg),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
       upsert: (row: unknown) => {
         upsertCapture?.push({ table: tableName, row });

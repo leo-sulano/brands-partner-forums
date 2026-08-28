@@ -7247,3 +7247,104 @@ API that all 4 previously-stuck Rooster Partners cards are now genuinely in the 
 list) and generate-weekly-schedule (both import queries.ts and therefore fetchAllTabEntries
 transitively). No spec/plan doc — a live-symptom investigation and bounded fix, self-reviewed,
 following on directly from Task 284/285's work in the same subsystem.
+
+---
+
+## Task 288: Second Recurrence of Stuck PMS "Done" Cards — Root-Caused to a Poisoned Watermark Predating the Task 287 Fix
+
+**Date:** August 28, 2026
+
+User reported the same symptom again a few hours after Task 287 shipped: 4 more Rooster Partners
+cards (Spinjo, Rollero, Lucky7even, Fortuneplay — all TP, all dated today) sitting in PMS's To Do
+column despite their dashboard entries showing TP Review Status "Done" for 2026-08-28. Live
+diagnosis first ruled out a still-broken pipeline: both 1-minute crons (`sync-schedule-pms-status-
+minutely`, `sync-schedule-pms-column-reconcile-minutely`) were active and firing successfully every
+tick, a manual `syncAllStatuses` sweep across all 11 tabs returned zero failures, and a manual
+`reconcileColumns` pass found zero column drift — so the deployed code (v28, already carrying the
+Task 287 fix) was not silently broken. Directly querying `entries` confirmed all 4 rows genuinely
+had `TP Review Status = "Done"` and `Trust Pilot = "28/08/2026"`, exactly matching each link's
+`(brand_key, platform, date)` key — real, unambiguous evidence with no conflicting duplicate row.
+
+**Root cause: the Task 287 fix was deployed at 10:41 UTC, but these 4 entries were marked Done at
+~07:22–07:34 UTC — nearly 3.5 hours earlier, while the OLD buggy (updated_at-ordered) pagination
+was still live.** That old code silently dropped the 4 just-updated rows from its scan (the exact
+Task 287 race), but a *different* row's write happened to land at exactly the same moment and
+supplied the same true-max `updated_at` value, so the resolve's own watermark still recorded
+itself as fully caught-up. That poisoned `schedule_pms_sync_watermarks` row then permanently
+blocked every later resolve — including every post-10:41 pass running the already-fixed code —
+because the watermark short-circuit (`currentWatermark === storedWatermark` → skip re-fetching
+entries entirely) fires before the fixed pagination logic ever gets a chance to re-scan. Since no
+entry in that tab was touched again after 07:34, nothing ever nudged the watermark to force a
+fresh look. This is a one-time legacy artifact of the pre-10:41 bug, not a new or still-live defect
+in the pagination fix itself — id-ordered pagination cannot reproduce the original drop.
+
+**Fix (data remediation, no code change):** cleared the Rooster Partners watermark, re-ran
+`syncAllStatuses` scoped to that tab, and confirmed via a live PMS API query (by task ID, not just
+title, since brand names recur across scheduled dates) that all 4 cards' `columnId` now matches the
+real Done column. Then checked all 11 tabs' watermarks for the same at-risk window (several other
+tabs — Hanan, TP Affiliate, TP Brand Injection, SilverPlay, Trybet, Wizard of Odds — carried
+watermarks from the same pre-10:41 morning window and were equally at risk) and cleared all of
+them, then ran a full `syncAllStatuses` + `reconcileColumns` sweep across every tab: zero failures,
+zero remaining drift. Cross-checked the live PMS board's actual column counts against
+`schedule_pms_links.synced_status` counts and confirmed they now agree exactly (168 Done-mapped
+statuses ↔ 168 tasks physically in the Done column; 75 paused ↔ 75 in Project Paused). The
+remaining 14 `active`-status links are legitimate — mostly stale pre-Task-232 `testing`-tab rows
+(not a real operational tab, never swept by `handleSyncAllStatuses`) and old Aug 17–18 cards a
+human has since manually organized into Blocked/In Progress, which `enforcePmsColumns` correctly
+leaves untouched per its explicit "human moved it; respect it" rule (confirmed 2026-08-27, see
+Task 282). No durable code fix needed — the underlying bug is Task 287's, already fixed and
+deployed; this was purely draining a poisoned watermark left over from before that fix landed.
+
+**Superseded by Task 289 below** — the "no durable fix needed" conclusion above only covered the
+watermark-poisoning mechanism. A follow-up question ("won't this just happen again?") surfaced a
+second, narrower architectural gap in the same function that Task 287's own fix hadn't closed;
+Task 289 closes it with a real code change.
+
+---
+
+## Task 289: Closed the Remaining Pagination Gap — OFFSET-Based Fetching Itself, Not Just the Sort Column
+
+**Date:** August 28, 2026
+
+Follow-up to Task 288, same session, prompted by a fair user question after that task's fix:
+"I thought it will not happen again as we fixed it earlier?" Re-examined whether Task 287's
+id-ordering fix (`fetchAllTabEntries`, `src/lib/queries.ts`) actually closes the drop-a-row class
+of bug for good, or only the specific mechanism that caused the first two incidents.
+
+**Finding: it only closed half of it.** Task 287 fixed *rank-shifting* (a mutable sort column
+letting a row change position mid-fetch when it's *updated*). It did not fix the fact that
+`fetchAllTabEntries` still paged with OFFSET-style `.range(from, to)` — a **position**-based
+window. A brand-new row *inserted* into the tab between the page-1 and page-2 requests (this
+project's entries tables take continuous writes, not just status edits) shifts every later row's
+numeric position by one, which can still silently drop a trailing row from a page even with a
+fully stable, immutable sort column. Confirmed this isn't theoretical: querying live row counts
+showed Rooster Partners (1,891 rows) and Hanan (1,214 rows) both require 2 pages today, so both
+are/were genuinely exposed — Rooster Partners is exactly the tab that hit this twice.
+
+**Fix: switched `fetchAllTabEntries` from OFFSET pagination to keyset pagination** — each page is
+now `WHERE id > <last id seen on the previous page> ORDER BY id LIMIT 1000` instead of
+`.range(from, from+999)`. This is structurally immune to the insert-race: a page is defined by
+*content already seen*, not by a numeric position a concurrent write can shift out from under it.
+A row inserted after the cursor is picked up naturally in a later page (correct); a row inserted
+before the cursor is simply not part of that scan (same as if it had existed before the scan
+started) — but no row that existed *at* the cursor's position when the scan passed it can ever be
+skipped, regardless of how many rows are inserted elsewhere in between. `fetchAllEntries` (used by
+Score Summary) has the same latent OFFSET-based shape but was deliberately left alone here — it's
+a foreground, user-facing read (not driving an external system write with a watermark that can get
+permanently poisoned) and its existing parallel-page fan-out (a deliberate ~18s-of-page-sequencing
+avoidance) doesn't compose cleanly with a sequential keyset cursor; flagged as a smaller, lower-
+priority follow-up rather than bundled into this fix.
+
+New regression test in `queries.test.ts` reproduces both original mechanisms in one scenario (an
+1,200-row tab, id-ordered pagination, a row inserted between the two page requests at a position
+that would have shifted an OFFSET-based scan) and asserts all 1,200 original rows still come back
+— fails against the old `.range()`-based implementation (the mock doesn't even define `.range()`
+anymore, so reverting to it breaks loudly) and passes against the keyset fix. Updated
+`pmsSync.test.ts`'s shared multi-table fake to answer `.limit()`/`.gt()` (previously only
+`.order()`/`.range()`), since it exercises `fetchAllTabEntries` indirectly through
+`resolveAndSyncTabStatuses`. Full suite (2,190 tests), build, and `deno check` on both Deno
+consumers (`sync-schedule-pms`, `generate-weekly-schedule`) all pass. **Deployed the same
+session:** `sync-schedule-pms` (v28→29) and `generate-weekly-schedule` (v12→13), both confirmed
+via `supabase functions list`; a full `syncAllStatuses` + `reconcileColumns` sweep immediately
+after deploy confirmed zero failures and zero drift against the live board. No spec/plan doc —
+a small, well-scoped mechanical fix to one already-well-understood function.

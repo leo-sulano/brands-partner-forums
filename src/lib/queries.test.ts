@@ -89,46 +89,76 @@ describe('queries.ts injectable Supabase client', () => {
     vi.clearAllMocks();
   });
 
-  it('fetchRawEntriesByTab pagination is stable under a concurrent status write (orders by id, not the mutable updated_at)', async () => {
-    // Reproduces a real live incident (2026-08-28): a tab with >1000 rows
-    // pages in two round trips. If the query orders by updated_at (mutable —
-    // changed by every status write), a row updated between the two page
-    // requests jumps rank mid-fetch and can fall through the gap between
-    // pages, silently vanishing from the result even though it exists in the
-    // table. Ordering by the immutable primary key instead (matching
-    // fetchAllEntries's existing "order by id" pattern) means no row's rank
-    // can ever shift mid-pagination.
+  it('fetchRawEntriesByTab pagination is stable under a concurrent insert between page requests (keyset, not OFFSET)', async () => {
+    // Reproduces two real live incidents on the same day (2026-08-28). The
+    // first (Task 287): a tab with >1000 rows pages in two round trips: if
+    // the query orders by updated_at (mutable -- changed by every status
+    // write), a row updated between the two page requests jumps rank
+    // mid-fetch and falls through the gap, vanishing from the result even
+    // though it exists in the table. Ordering by the immutable id fixes
+    // that specific mechanism.
+    //
+    // The second (Task 288): ordering by id alone still isn't enough if
+    // pages are fetched by OFFSET (`.range(from, to)`), because OFFSET is
+    // position-based, not content-based -- a brand-new row *inserted*
+    // between the page-1 and page-2 requests shifts every later row's
+    // position by one, which can still drop a trailing row even with a
+    // stable sort column. This test simulates exactly that: a row is
+    // inserted, between the two page fetches, at a position earlier than
+    // everything page 2 is about to return. Under the fixed keyset
+    // implementation (`WHERE id > <last id from the previous page>`,
+    // re-resolved by content on every request, never a numeric offset),
+    // every one of the original rows must still come back -- the insertion
+    // can only ever affect whether the *new* row itself is picked up, never
+    // whether an existing row is dropped.
     invalidateTabCache('Rooster Partners');
     const TOTAL = 1200;
-    const idOrder = Array.from({ length: TOTAL }, (_, i) => `id-${i}`);
-    let mutableRankOrder = [...idOrder];
+    const idOrder = Array.from({ length: TOTAL }, (_, i) => `id-${String(i).padStart(4, '0')}`);
     const byId = new Map(idOrder.map((id) => [id, { id, tab: 'Rooster Partners', data: {} } as unknown as { id: string; tab: string; data: unknown }]));
+    let liveIds = [...idOrder];
 
     let pageCount = 0;
     singletonFrom.mockReturnValue({
       select: () => ({
         eq: () => ({
-          order: (col: string) => ({
-            range: (from: number, to: number) => {
-              pageCount++;
-              if (pageCount === 2) {
-                // The concurrent write: a row that would have landed in page
-                // 2 (under updated_at ordering) gets updated right after page
-                // 1 was already fetched, jumping it to the front of the rank.
-                const movedId = mutableRankOrder[1150];
-                mutableRankOrder = [movedId, ...mutableRankOrder.filter((id) => id !== movedId)];
-              }
-              const source = col === 'id' ? idOrder : mutableRankOrder;
-              const page = source.slice(from, to + 1).map((id) => byId.get(id));
-              return Promise.resolve({ data: page, error: null });
-            },
-          }),
+          order: () => {
+            let gtVal: string | null = null;
+            const builder: Record<string, unknown> = {
+              limit: (n: number) => {
+                builder._limit = n;
+                return builder;
+              },
+              gt: (_col: string, val: string) => {
+                gtVal = val;
+                return builder;
+              },
+              then: (resolve: (v: { data: unknown; error: null }) => unknown) => {
+                pageCount++;
+                if (pageCount === 2) {
+                  // The concurrent insert: a brand-new row lands well before
+                  // where page 2 is about to resume, mid-array -- exactly
+                  // the position an OFFSET-based `.range()` scan would have
+                  // used to silently drop a trailing row from the original
+                  // 1200.
+                  const insertedId = 'id-0500-inserted';
+                  liveIds = [...liveIds.slice(0, 501), insertedId, ...liveIds.slice(501)];
+                  byId.set(insertedId, { id: insertedId, tab: 'Rooster Partners', data: {} } as unknown as { id: string; tab: string; data: unknown });
+                }
+                const startIdx = gtVal === null ? 0 : liveIds.indexOf(gtVal) + 1;
+                const page = liveIds.slice(startIdx, startIdx + (builder._limit as number)).map((id) => byId.get(id));
+                return resolve({ data: page, error: null });
+              },
+            };
+            return builder;
+          },
         }),
       }),
     });
 
     const entries = await fetchRawEntriesByTab('Rooster Partners');
-    expect(new Set(entries.map((e) => e.id)).size).toBe(TOTAL);
+    const ids = new Set(entries.map((e) => e.id));
+    for (const id of idOrder) expect(ids.has(id)).toBe(true);
+    expect(entries.length).toBe(TOTAL);
   });
 
   it('fetchBrandSchedule uses the passed-in client, not the singleton', async () => {
