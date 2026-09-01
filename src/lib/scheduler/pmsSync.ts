@@ -5,7 +5,7 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchScheduleBrandPauses, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
 import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
@@ -640,17 +640,13 @@ export async function resolveAndSyncTabStatuses(
   // never touches brand_schedule -- the calendar itself is unaffected by a
   // tab pause, per the feature's design.
   if (isTabPaused) {
-    const [removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pausedBrandRows] = await Promise.all([
+    const [removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
       fetchRemovedPlatformBrands(client),
       fetchScheduleHiddenBrands(tab, client),
       fetchScheduleRestrictedBrands(tab, client),
-      fetchScheduleBrandPauses(tab, client),
     ]);
     const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
-    // Whole-brand pauses merge into the same hiddenSet a fully-hidden brand
-    // uses -- see scheduleBrandConfig.ts's file header and the paused-brands
-    // design spec.
-    const hiddenBrandSet = buildHiddenBrandSet([...hiddenBrandRows, ...pausedBrandRows]);
+    const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
     const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
     const tabPlatforms = getTabPlatforms(tab);
 
@@ -683,20 +679,16 @@ export async function resolveAndSyncTabStatuses(
     return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   }
 
-  const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pausedBrandRows, pauses] = await Promise.all([
+  const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
     fetchRawEntriesByTab(tab, client),
     fetchRemovedPlatformBrands(client),
     fetchScheduleHiddenBrands(tab, client),
     fetchScheduleRestrictedBrands(tab, client),
-    fetchScheduleBrandPauses(tab, client),
     fetchActiveBrandPlatformPauses(tab, client),
   ]);
   const dateStatusIndex = buildDateStatusIndex(entries);
   const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
-  // Whole-brand pauses merge into the same hiddenSet a fully-hidden brand
-  // uses -- see scheduleBrandConfig.ts's file header and the paused-brands
-  // design spec.
-  const hiddenBrandSet = buildHiddenBrandSet([...hiddenBrandRows, ...pausedBrandRows]);
+  const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
   const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
   const tabPlatforms = getTabPlatforms(tab);
 

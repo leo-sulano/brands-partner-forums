@@ -28,9 +28,6 @@ import {
   fetchRemovedPlatformBrands,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
-  fetchScheduleBrandPauses,
-  pauseScheduleBrand,
-  unpauseScheduleBrand,
   fetchBrandAgentAssignments,
   bulkUpsertBrandSchedule,
   computeTabKpisFromEntries,
@@ -62,6 +59,8 @@ import {
   pauseTab,
   unpauseTab,
   fetchPausedTabs,
+  updatePausedTabDetails,
+  fetchPausedTabDetails,
   renameCustomTab,
   fetchToolbarFilters,
   setToolbarFilters,
@@ -250,35 +249,6 @@ describe('queries.ts injectable Supabase client', () => {
     expect(fakeFrom).toHaveBeenCalledWith('schedule_platform_restrictions');
     expect(singletonFrom).not.toHaveBeenCalled();
     expect(rows).toEqual([{ tab: 'X', brand: 'GOC', allowed_platform: 'ag' }]);
-  });
-
-  it('fetchScheduleBrandPauses uses the passed-in client', async () => {
-    const fakeFrom = vi.fn().mockReturnValue(chain({
-      data: [{ id: '1', tab: 'X', brand: 'WinMega', brand_key: 'winmega', reason: 'On hold', paused_since: '2026-09-01', paused_until: null, created_by: 'leo@optinetsolutions.com', created_at: '2026-09-01T00:00:00Z' }],
-      error: null,
-    }));
-    const rows = await fetchScheduleBrandPauses('X', { from: fakeFrom } as any);
-    expect(fakeFrom).toHaveBeenCalledWith('schedule_brand_pauses');
-    expect(singletonFrom).not.toHaveBeenCalled();
-    expect(rows[0].reason).toBe('On hold');
-  });
-
-  it('pauseScheduleBrand upserts into schedule_brand_pauses', async () => {
-    const upsert = vi.fn().mockResolvedValue({ error: null });
-    singletonFrom.mockReturnValue({ upsert });
-    await pauseScheduleBrand('X', 'WinMega', { reason: 'On hold', pausedSince: '2026-09-01', pausedUntil: null });
-    expect(singletonFrom).toHaveBeenCalledWith('schedule_brand_pauses');
-    expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ tab: 'X', brand: 'WinMega', reason: 'On hold', paused_since: '2026-09-01', paused_until: null }),
-      { onConflict: 'tab,brand_key' },
-    );
-  });
-
-  it('unpauseScheduleBrand deletes from schedule_brand_pauses', async () => {
-    const chainObj: any = { delete: () => chainObj, eq: () => chainObj, then: (resolve: any) => resolve({ error: null }) };
-    singletonFrom.mockReturnValue(chainObj);
-    await unpauseScheduleBrand('X', 'winmega');
-    expect(singletonFrom).toHaveBeenCalledWith('schedule_brand_pauses');
   });
 
   it('fetchBrandAgentAssignments uses the passed-in client', async () => {
@@ -1434,13 +1404,27 @@ describe('fetchHiddenTabPlatforms / setTabPlatformHidden', () => {
 });
 
 describe('pauseTab / unpauseTab / fetchPausedTabs', () => {
-  it('pauseTab inserts a row with the current actor email', async () => {
+  it('pauseTab inserts a row with the current actor email and null reason/until when omitted', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     singletonFrom.mockReturnValue({ insert });
     await pauseTab('Rooster Partners');
     expect(insert).toHaveBeenCalledWith({
       tab: 'Rooster Partners',
       paused_by_email: '',
+      reason: null,
+      paused_until: null,
+    });
+  });
+
+  it('pauseTab inserts the given reason and paused_until', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ insert });
+    await pauseTab('Rooster Partners', { reason: 'Client on hold', pausedUntil: '2026-10-01' });
+    expect(insert).toHaveBeenCalledWith({
+      tab: 'Rooster Partners',
+      paused_by_email: '',
+      reason: 'Client on hold',
+      paused_until: '2026-10-01',
     });
   });
 
@@ -1473,6 +1457,43 @@ describe('pauseTab / unpauseTab / fetchPausedTabs', () => {
     const rows = await fetchPausedTabs();
     expect(select).toHaveBeenCalledWith('tab');
     expect(rows).toEqual([{ tab: 'Rooster Partners' }]);
+  });
+
+  it('updatePausedTabDetails updates reason/paused_until without touching paused_at/paused_by_email', async () => {
+    const eq = vi.fn().mockResolvedValue({ error: null });
+    const update = vi.fn().mockReturnValue({ eq });
+    singletonFrom.mockReturnValue({ update });
+    await updatePausedTabDetails('Rooster Partners', { reason: 'Updated reason', pausedUntil: null });
+    expect(update).toHaveBeenCalledWith({ reason: 'Updated reason', paused_until: null });
+    expect(eq).toHaveBeenCalledWith('tab', 'Rooster Partners');
+  });
+
+  it('fetchPausedTabDetails returns full rows with camelCase fields', async () => {
+    const select = vi.fn().mockResolvedValue({
+      data: [{ tab: 'Rooster Partners', reason: 'Client on hold', paused_until: '2026-10-01', paused_at: '2026-09-01T00:00:00Z', paused_by_email: 'leo@optinetsolutions.com' }],
+      error: null,
+    });
+    singletonFrom.mockReturnValue({ select });
+    const rows = await fetchPausedTabDetails();
+    expect(select).toHaveBeenCalledWith('tab, reason, paused_until, paused_at, paused_by_email');
+    expect(rows).toEqual([{
+      tab: 'Rooster Partners',
+      reason: 'Client on hold',
+      pausedUntil: '2026-10-01',
+      pausedAt: '2026-09-01T00:00:00Z',
+      pausedByEmail: 'leo@optinetsolutions.com',
+    }]);
+  });
+
+  it('fetchPausedTabDetails defaults reason/paused_until to null when absent', async () => {
+    const select = vi.fn().mockResolvedValue({
+      data: [{ tab: 'Rooster Partners', reason: null, paused_until: null, paused_at: '2026-09-01T00:00:00Z', paused_by_email: 'leo@optinetsolutions.com' }],
+      error: null,
+    });
+    singletonFrom.mockReturnValue({ select });
+    const rows = await fetchPausedTabDetails();
+    expect(rows[0].reason).toBeNull();
+    expect(rows[0].pausedUntil).toBeNull();
   });
 });
 
