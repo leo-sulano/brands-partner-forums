@@ -7398,3 +7398,62 @@ to `DEFAULT_TAB_ICON`) — no backfill needed. New test coverage in `dynamicTabR
 `tabIcons.test.ts`; `queries.test.ts` updated for the new `icon` param on
 `fetchCustomTabs`/`createCustomTab`. Migration applied live (`supabase migration list` confirms
 `20260828120000` on both local and remote). Full suite and build pass.
+
+---
+
+## Task 292: A Cancelled Schedule Planner Day Now Deletes Its PMS Card, Not Just Pauses It
+
+**Date:** September 1, 2026
+
+Reported live: the "Forum Team" PMS project still had 23 Aug 31 (Monday) task cards after Aug 31
+was called off as a public holiday. Investigation found all 23 were correctly linked
+(`schedule_pms_links`), and 7 (Rooster Partners) had already synced to the real "Project Paused"
+column as designed. The other 14 — TP Brand Injection ×5, TP Affiliate ×3, Hanan ×3, Trybet,
+SilverPlay — were manually cycled to Paused on the Schedule Planner's Monday cell (all within one
+~50-minute window, confirming a single batch holiday cancellation), but their PMS cards never
+moved out of To Do; a 16th (Wizard of Odds' Fortuneplay) was legitimately still active, not
+cancelled, and correctly left alone. Root cause: `resolveAndSyncTabStatuses`
+(`src/lib/scheduler/pmsSync.ts`) already had a self-healing delete branch for a link whose day is
+genuinely *blank* in `brand_schedule` with no evidence (Task 277-era cancellation backstop), but a
+day explicitly cycled to `'paused'` fell through to the normal resolve path instead, which only
+ever *moves* a paused combo's card to Project Paused — it never deletes.
+
+Per direct user request, a Schedule Planner day cancelled by a human (cycled to Paused, e.g. for a
+holiday or a brand pulled for the day) should have its PMS card deleted outright, not parked in
+Project Paused. Widened that branch's condition from `dayStatus == null && !isPaused` to
+`(dayStatus == null || manuallyPaused) && !autoPaused` — `autoPaused` (the algorithmic,
+`brand_platform_pause`-driven weekly low-success-rate hold) is deliberately excluded and keeps its
+existing move-to-Project-Paused behavior unchanged, since that's an ongoing automated hold on the
+whole brand+platform, not a human cancelling one specific day. The evidence check
+(`!hasDateEvidence`) is untouched — a day with real Removed/Confirmed/Pending/Done evidence still
+wins over any pause state, exactly as before.
+
+One-time cleanup: deleted the 14 stale Aug 31 PMS tasks directly via the PMS API and their
+matching `schedule_pms_links` rows via the Management API (`supabase db query --linked`, no DB
+password needed). 2 new tests added (`pmsSync.test.ts`): a manually-cancelled day with no
+auto-pause now cancels/deletes, and a day that's both manually- and auto-paused still resolves to
+`'paused'`/Project Paused (auto-pause takes precedence, matching the code's own reasoning). Renamed
+the pre-existing "does not cancel a link that is currently paused" test to make explicit it's
+testing the auto-pause exclusion specifically, since its behavior is unchanged by this task. Full
+suite (2214 tests) and build pass; `deno check` clean on both Deno consumers
+(`sync-schedule-pms`, `generate-weekly-schedule`). **Deployed the same session:** `supabase
+functions deploy sync-schedule-pms` (confirmed `ACTIVE`), then live-verified with a manual
+`syncAllStatuses` trigger against all 11 tabs — all returned `"ok"`, no errors, confirming the
+deployed code runs clean (nothing further to cancel at that moment, since the Aug 31 backlog had
+already been cleared manually above).
+
+**Follow-up in the same session, before shipping:** the server-side fix alone would have been
+unreliable for exactly the scenario reported — `resolveAndSyncTabStatuses` only ever re-runs for a
+tab when its 1-minute cron tick sees that tab's `entries.updated_at` watermark advance past what
+was last recorded (an efficiency guard against re-pulling a tab's full entry list every minute for
+nothing); a pure Schedule Planner pause click with zero other entries activity on that tab — the
+literal holiday scenario — would never advance that watermark, so the tab could sit un-resolved
+indefinitely and the new delete branch would never fire. `handleCellClick`/`handleSetDayStatus`
+(`src/components/TabScheduleSection.tsx`) now immediately call the existing `cancelScheduleActivations`
+(the same unconditional-delete function the blank/3rd-click leg already used) the moment a day is
+cycled to Paused, gated on `!hasDateEvidence(...)` so a day that already has real evidence is left
+for the server to resolve to that evidence instead of being blindly deleted — mirroring
+`resolveAndSyncTabStatuses`'s own check exactly, so client and server can't disagree. The 1-minute
+cron remains the backstop for a failed/dropped client call or a pause set through any other path.
+Full suite (2214 tests, no dedicated test file for this page component — verified via build per
+this project's established pattern) and build both pass.

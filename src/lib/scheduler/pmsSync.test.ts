@@ -834,6 +834,56 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
   });
 
+  it('cancels a link whose day was manually cycled to Paused in brand_schedule (not a scheduler auto-pause), has no evidence -- e.g. a holiday day cancelled by hand', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-31', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [
+        { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-31', platform: 'tp', monday: 'paused', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ],
+    }, undefined, deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([{ tab: 'Trybet', brand: 'Trybet.com', platform: 'tp', date: '2026-08-31' }]);
+    expect(result.cancelFailed).toEqual([]);
+    expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+  });
+
+  it('does not cancel a link that is under an active scheduler auto-pause, even when the same day is also manually cycled to Paused', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-31', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-31', reason: 'low success rate' }],
+      brand_schedule: [
+        { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-31', platform: 'tp', monday: 'paused', tuesday: null, wednesday: null, thursday: null, friday: null },
+      ],
+    }, undefined, deletes);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([]);
+    expect(deletes).toEqual([]);
+    expect(result.synced[0]?.targetStatus).toBe('paused');
+  });
+
   it('does not cancel a link whose day is still active in brand_schedule -- only resolves it normally', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
@@ -860,7 +910,7 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('does not cancel a link that is currently paused, even with a genuinely blank day and no evidence', async () => {
+  it('does not cancel a link under an active scheduler auto-pause, even with a genuinely blank day and no evidence', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [

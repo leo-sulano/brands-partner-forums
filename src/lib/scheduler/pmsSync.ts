@@ -221,11 +221,14 @@ export async function pushScheduleToPms(
 // Only 'active' stays in To Do. Once a scheduled slot resolves to any real
 // outcome -- Pending, Done, Published, or Removed -- its task moves straight
 // to Done, so a human can see at a glance that the slot is settled without
-// opening the dashboard. 'paused' (a scheduler auto-pause, a manual
-// brand+platform override, or a single day cell manually cycled to Paused --
-// resolvePmsSyncStatus's caller combines all three into one boolean) moves
-// the task to the real "Project Paused" column instead, superseding the
-// earlier design where a paused combo's task was simply left untouched.
+// opening the dashboard. 'paused' (a scheduler auto-pause) moves the task to
+// the real "Project Paused" column instead, superseding the earlier design
+// where a paused combo's task was simply left untouched. A single day cell
+// manually cycled to Paused with no auto-pause and no evidence never reaches
+// this mapping at all -- resolveAndSyncTabStatuses' cancellation branch
+// above deletes that link/task outright before targetStatus is even
+// computed, since a human-cancelled day (a holiday, a pulled brand) has
+// nothing left to track, unlike an ongoing algorithmic hold.
 const PMS_STATUS_COLUMN_IDS: Record<PmsSyncStatus, string> = {
   active: PMS_TODO_COLUMN_ID,
   pending: PMS_DONE_COLUMN_ID,
@@ -581,18 +584,25 @@ export async function resolveAndSyncTabStatuses(
     const manuallyPaused = dayStatus === 'paused';
     const isPaused = autoPaused || manuallyPaused;
 
-    // A link whose day is genuinely blank in brand_schedule (not active, not
-    // paused), with no real evidence backing it either, has nothing left to
-    // sync -- most likely a cancelled slot whose client-side cleanup never
-    // ran (a stale browser tab still on an older bundle, a network blip, a
-    // closed page mid-click). Clean it up here instead of falling into
-    // resolvePmsSyncStatus's 'active' fallback, which can't otherwise tell
-    // "never scheduled" apart from "scheduled, then cancelled" -- this is
-    // what makes cancellation self-healing the same way status moves already
-    // are via this same cron. Requires a parseable date (loc != null); an
+    // A link whose day is either genuinely blank in brand_schedule, or has
+    // been explicitly cycled to Paused by a human on that exact day
+    // (manuallyPaused -- e.g. a public holiday, a brand pulled for the day),
+    // with no real evidence backing it either, has nothing left to sync -- the
+    // work for that day was cancelled and its PMS card should be deleted
+    // rather than sit forever in the "Project Paused" column. Clean it up
+    // here instead of falling into resolvePmsSyncStatus's 'active'/'paused'
+    // fallback, which can't otherwise tell "never scheduled"/"cancelled"
+    // apart from "on an active weekly performance hold" -- this is what makes
+    // cancellation self-healing the same way status moves already are via
+    // this same cron. autoPaused is deliberately excluded from this branch: a
+    // scheduler auto-pause (brand_platform_pause, a low-success-rate hold on
+    // the whole brand+platform for the week) is algorithmic, not a human
+    // cancelling one specific day, and still resolves to the normal 'paused'
+    // -> Project Paused column path below even on a day that also happens to
+    // be blank/manually-paused. Requires a parseable date (loc != null); an
     // unparseable link.date falls through to the normal resolve path below,
     // unchanged from before this check existed.
-    if (loc != null && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
+    if (loc != null && (dayStatus == null || manuallyPaused) && !autoPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
       const cancelItem: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
       try {
         await deletePmsTask(link.pms_task_id, credentials, fetchFn);

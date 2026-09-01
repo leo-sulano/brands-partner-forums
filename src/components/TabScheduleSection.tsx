@@ -25,7 +25,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, hasDateEvidence, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -718,6 +718,22 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
         });
+      } else if (next === 'paused' && !hasDateEvidence(dateStatusIndex, normalizeBrandKey(brand), platform, col.iso)) {
+        // A day cycled straight to Paused (active -> paused, no real evidence
+        // yet) is just as much a deliberate cancellation as the blank leg
+        // above -- mirrors resolveAndSyncTabStatuses' own server-side
+        // cancellation check (pmsSync.ts) exactly, so this client-triggered
+        // delete can never disagree with what the cron would eventually do.
+        // Firing it immediately here matters because that cron is gated on a
+        // per-tab entries-freshness watermark: a pure Schedule Planner pause
+        // click with no other entries activity on this tab (e.g. a holiday)
+        // would otherwise sit stuck until something else touches this tab's
+        // entries. When real evidence DOES already back this day, this is
+        // deliberately skipped -- the server resolves it to that evidence
+        // (Done/Removed/etc.) instead, same precedence as everywhere else.
+        cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
+          setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
+        });
       }
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
@@ -735,6 +751,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       if (status === 'active') {
         pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
+        });
+      } else if (status === 'paused' && !hasDateEvidence(dateStatusIndex, normalizeBrandKey(brand), platform, col.iso)) {
+        // Same immediate self-healing cancellation as handleCellClick above --
+        // this is the AddPlatformModal/bulk-pause path's equivalent write.
+        cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
+          setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
         });
       }
     } catch (err) {
