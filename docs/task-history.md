@@ -7457,3 +7457,57 @@ for the server to resolve to that evidence instead of being blindly deleted — 
 cron remains the backstop for a failed/dropped client call or a pause set through any other path.
 Full suite (2214 tests, no dedicated test file for this page component — verified via build per
 this project's established pattern) and build both pass.
+
+---
+
+## Task 293: PMS Column-Wide Card Sort (Every Column, Not Just Status-Mapped Ones)
+
+**Date:** September 1, 2026
+
+Reported live via a screenshot: cards in the "Forum Team" PMS board's **In Progress** column kept
+interleaving by whichever brand's status happened to change most recently instead of staying
+grouped by date, then brand — e.g. Sep 1 BITP / Sep 1 Rooster Partners / Sep 1 BITP / Sep 1 FTP
+instead of all same-date same-brand cards sitting contiguously.
+
+Root cause: the existing `(due date, tab label)` grouping (`computeGroupedInsertPosition` in
+`src/lib/scheduler/pmsSync.ts`) only ever fires at two narrow moments — a status-driven column move
+(`syncScheduleStatusToPms`) and drift correction (`enforcePmsColumns`) — and only for columns that
+appear in `PMS_STATUS_COLUMN_IDS` (To Do/Done/Project Paused). **In Progress** and **Blocked** are
+populated purely by a human dragging a card there; nothing in this codebase ever reasoned about
+those columns at all, so cards dropped into them just sat in whatever order the API happened to
+leave them.
+
+Brainstormed as a bounded task (two clarifying questions: should unmanaged columns be
+actively re-sorted on an ongoing basis — yes, on every tick; should manually-created cards with no
+schedule link be reordered too — no, pin them exactly where a human put them). New
+`computeColumnSortMoves` (pure function, `pmsSync.ts`) re-sorts every column found in a full-board
+task fetch — not just the ones `PMS_STATUS_COLUMN_IDS` names — by the same `(due date, tab label)`
+key (extracted into a new shared `taskSortKey` helper so a card placed by one code path is never
+immediately re-shuffled by another). A card whose id isn't in `schedule_pms_links` (manually
+created, e.g. "Create New BIT") is never the target of a move call — schedule-linked cards sort
+around it, diff-based (an already-sorted column costs zero API calls). Wired into the existing
+`enforcePmsColumns`/`reconcileColumns` 1-minute cron path — no new cron, no new action — reusing its
+`fetchPmsProjectTasks()` call when nothing moved this tick, or a fresh re-fetch when a drift
+correction did move something (the drift loop's own in-memory task bookkeeping only supports
+peer-counting, not position-sorting, so it can't be trusted as an ordering source once something's
+been moved). `PmsColumnEnforceResult` gained a `resorted` field alongside `moved`/`failed`;
+`handleReconcileColumns` reports its count too.
+
+Along the way, found and fixed 2 literal NUL bytes that had silently corrupted
+`computeGroupedInsertPosition`'s key-building template literal (`${a}\0${b}` instead of `${a} ${b}`)
+— harmless by coincidence (both sides of every comparison used the same corrupted separator, so
+relative ordering was unaffected), but real file corruption from an earlier session; fixed as part
+of extracting the shared `taskSortKey` helper.
+
+11 new tests (`pmsSync.test.ts`): `computeColumnSortMoves` unit tests (already-sorted column, a
+pinned card sitting between two out-of-order linked cards, single-task columns, independent
+multi-column sorting) plus `enforcePmsColumns` integration tests proving an unmanaged column (e.g.
+In Progress) gets sorted end to end while a manually-created card is never touched, and an
+already-correctly-grouped unmanaged column makes zero extra API calls. 4 pre-existing
+`enforcePmsColumns` tests updated for the new `resorted` field and the extra re-fetch a successful
+drift-correction move now triggers. `index_test.ts` (`sync-schedule-pms`) updated for
+`handleReconcileColumns`'s new `resorted` count. Full suite (2220 tests) and build pass; `deno
+check` clean on both Deno consumers (`sync-schedule-pms`, `generate-weekly-schedule`); `sync-
+schedule-pms`'s own Deno suite passes 16/16 (`generate-weekly-schedule`'s 6 pre-existing failures
+are unrelated to this task — confirmed identical via `git stash` against the pre-change baseline).
+**Deployed the same session:** `supabase functions deploy sync-schedule-pms`.
