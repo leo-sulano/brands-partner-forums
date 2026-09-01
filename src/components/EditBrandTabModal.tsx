@@ -1,7 +1,7 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
+import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
 import {
   PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
@@ -13,9 +13,10 @@ import {
 } from '../lib/tab-configs';
 import { computeInitialIconSelection, type TabIconSelection } from '../lib/tabIcons';
 import { registerTabIconOverrides, renameTabIconOverride } from '../lib/tabIconOverrideRegistry';
+import { renameHardcodedTabLocally } from '../lib/hardcodedTabRenameRegistry';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
-import { tabDisplayName } from '../lib/tabs';
+import { renameOperationalTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import IconPicker from './IconPicker';
 
@@ -79,7 +80,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
 
   async function handleSubmit() {
     const trimmedName = name.trim();
-    const isRename = dynamic && trimmedName !== tabName;
+    const isRename = trimmedName !== tabName;
     if (isRename) {
       const nameError = validateNewTabName(trimmedName);
       if (nameError) {
@@ -104,8 +105,14 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
     try {
       let currentTabName = tabName;
       if (isRename) {
-        await renameCustomTab(tabName, trimmedName);
-        renameDynamicTab(tabName, trimmedName, platforms);
+        if (dynamic) {
+          await renameCustomTab(tabName, trimmedName);
+          renameDynamicTab(tabName, trimmedName, platforms);
+        } else {
+          await renameHardcodedTab(tabName, trimmedName);
+          renameHardcodedTabLocally(tabName, trimmedName);
+          renameOperationalTab(tabName, trimmedName);
+        }
         renameTabIconOverride(tabName, trimmedName);
         currentTabName = trimmedName;
       }
@@ -172,18 +179,16 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
         <div className="px-5 pb-5 space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">Tab name</label>
-            {dynamic ? (
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            ) : (
-              <>
-                <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-600">{tabDisplayName(tabName)}</p>
-                <p className="mt-1 text-xs text-slate-400">Hardcoded tabs can't be renamed.</p>
-              </>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {!dynamic && (
+              <p className="mt-1 text-xs text-slate-400">
+                This tab has existing entries — renaming it updates every one of them and every dashboard link that points to it.
+              </p>
             )}
           </div>
 
