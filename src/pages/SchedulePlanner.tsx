@@ -550,6 +550,37 @@ export default function SchedulePlanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewByTab, agentFilter, allRangeColumns, todayISO]);
 
+  // Same computation as overviewPlatformCounts above, scoped to
+  // getPausedOperationalTabs() instead -- a separate, parallel count so a
+  // paused tab's evidence can never be folded into (or mistaken for) the
+  // active toolbar's numbers. Reuses the same countActivePlatformSlots
+  // helper: since a paused tab's scheduleRows always come back empty (see
+  // the preview-fetch effect's own comment), this counts pure real evidence
+  // for paused tabs, never a plan -- matching TabPreviewCard's own paused
+  // rendering rule.
+  const pausedPlatformCounts = useMemo(() => {
+    const totals: Partial<Record<Platform, number>> = {};
+    for (const t of getPausedOperationalTabs()) {
+      const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+      const brands = previewBrandsFor(t);
+      const tabCounts = countActivePlatformSlots(
+        preview.scheduleRows,
+        t,
+        brands,
+        (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
+        allRangeColumns,
+        preview.dateStatusIndex,
+        todayISO,
+      );
+      for (const platform of Object.keys(tabCounts) as Platform[]) {
+        totals[platform] = (totals[platform] ?? 0) + (tabCounts[platform] ?? 0);
+      }
+    }
+    return totals;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewByTab, agentFilter, allRangeColumns, todayISO]);
+  const pausedDisplayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in pausedPlatformCounts);
+
   // Specific-tab-mode platform counts: summed across every currently
   // selected tab's own reported counts (see handlePlatformCounts above).
   const selectedPlatformCounts = useMemo(() => {
@@ -702,7 +733,29 @@ export default function SchedulePlanner() {
         </div>
         {getPausedOperationalTabs().length > 0 && (
           <div className="mt-4">
-            <h2 className="mb-2 text-sm font-semibold text-slate-700">Paused Brand Tabs</h2>
+            <div className="mb-2 flex flex-wrap items-center gap-3">
+              <h2 className="text-sm font-semibold text-slate-700">Paused Brand Tabs</h2>
+              {pausedDisplayedPlatforms.length > 0 && (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {pausedDisplayedPlatforms.map((p) => (
+                    <Tooltip
+                      key={p}
+                      content={`${PLATFORM_BADGE[p].label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above`}
+                    >
+                      <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold opacity-70 ${PLATFORM_BADGE[p].className}`}>
+                        <img
+                          src={PLATFORM_FAVICON[p]}
+                          alt=""
+                          className="size-3 rounded-[1px]"
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                        />
+                        {PLATFORM_BADGE[p].label} <span className="text-slate-900">{pausedPlatformCounts[p] ?? 0}</span>
+                      </span>
+                    </Tooltip>
+                  ))}
+                </div>
+              )}
+            </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {getPausedOperationalTabs().map((t) => {
                 const detail = pausedTabDetails[t];
