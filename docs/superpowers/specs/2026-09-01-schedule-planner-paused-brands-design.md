@@ -88,9 +88,20 @@ the landing-grid preview's counts — all via the existing mechanism, zero new
 exclusion logic to keep in sync. Score Summary/Overview/Brand Tabs never
 import this table, so global aggregation is untouched by construction.
 
-Existing `brand_schedule`/`schedule_pms_links` rows for a newly-paused brand
-are left as-is (not deleted) — same accepted behavior `schedule_hidden_brands`
-already has; they simply stop being touched going forward.
+**Addendum (same day, per direct user feedback):** unlike `schedule_hidden_brands`,
+pausing a brand also actively cleans up what's already in flight for the
+currently-displayed week — every active/paused day for that brand across its
+platforms in that week is cancelled via the exact same path the day-cell
+Cancel button uses (`handleCancelDay`: writes the day blank, records a
+`schedule_cancellations` row, deletes any linked PMS task). This only fires
+on a brand-new pause, never on editing an already-paused brand's reason/dates
+(the loop is a natural no-op there, since `brandPlatforms()` already excludes
+a paused brand). Scoped to the week the user is currently viewing when they
+click Pause, not every week that combo has ever had a row in — the common
+case (pausing from the default current-week view) covers the actual
+in-flight state; a manually-created future-week row is left untouched, same
+as `schedule_hidden_brands`'s existing "future weeks aren't retroactively
+swept" behavior.
 
 `brand_platform_pause` (auto-pause) and `brand_platform_override` (manual
 per-platform override) are untouched — this is a new, independent,

@@ -964,8 +964,24 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // way to get a consistent tabCtx (hiddenBrandSet merge + pausedBrandRows)
   // after a pause is set/cleared, matching the existing "brand-new row"
   // INSERT fallback the live-entries subscription already uses above.
+  //
+  // A brand-new pause (not an edit of an already-paused brand -- brandPlatforms
+  // already returns [] for those, so this loop is naturally a no-op then) also
+  // cancels every currently active/paused day this week, across every platform,
+  // reusing handleCancelDay exactly (writes the day blank, records the
+  // cancellation, and deletes any linked PMS task) -- per direct user request:
+  // a paused brand must not leave an in-flight schedule row or PMS task
+  // behind, not just stop new ones from being created going forward.
   async function handlePauseBrandSave(brand: string, input: { reason: string; pausedSince: string; pausedUntil: string | null }) {
     try {
+      const cancellations: Promise<void>[] = [];
+      for (const platform of brandPlatforms(brand)) {
+        for (const col of columnsForWeek(weekStart)) {
+          const status = scheduleFor(scheduleRows, tab, brand, weekStartISO, platform)?.[col.weekday];
+          if (status) cancellations.push(handleCancelDay(brand, platform, col));
+        }
+      }
+      await Promise.all(cancellations);
       await pauseScheduleBrand(tab, brand, input);
       setPauseBrandTarget(null);
       setReloadSeq((s) => s + 1);

@@ -84,6 +84,9 @@ export default function PauseBrandModal({ brand, existing, onSave, onClose }: Pr
             </label>
           </div>
           <p className="text-xs text-slate-400">Blank "until" means the pause is indefinite — it won't clear on its own even once a date has passed; unpause manually when it's ready to resume.</p>
+          {!existing && (
+            <p className="text-xs text-slate-400">Pausing clears this week's active/paused slots and cancels any linked PMS task for this brand — nothing is left in flight.</p>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <button
