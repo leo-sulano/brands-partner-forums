@@ -7788,3 +7788,90 @@ live-verified via Playwright against real Supabase data across both views and bo
 (01/08–30/09, spanning a month boundary) and unfiltered (current week) cases. Frontend-only —
 nothing to redeploy.
 
+---
+
+## Task 304: Remove PMS Status-Sync Watermark Short-Circuit (Recurring Stuck-Card Bug, 6th Occurrence)
+
+**Date:** September 1, 2026
+
+Reported live: `BITP | Big Pirate Casino` and `BITP | Nomini Kasino` stuck in the legacy **In
+Progress** PMS column despite both entries being marked TP Done at 08:11 UTC that morning — over 3
+hours earlier. User asked for the underlying automatic-move behavior to be made reliable, not just
+patched again.
+
+**Diagnosis (same root cause class as Tasks 279/281/287/288/302, now a 6th occurrence, including on
+the very tab Task 302's same-day self-heal had just swept clean):** `resolveAndSyncTabStatuses`'s
+watermark short-circuit (`src/lib/scheduler/pmsSync.ts`) had recorded `TP Brand Injection`'s
+`schedule_pms_sync_watermarks` row as caught up to exactly the Nomini Kasino update's timestamp —
+proof a resolve pass *did* run with the correct, up-to-date entries — yet `schedule_pms_links`
+still showed both links `synced_status: 'active'`, and the real PMS activity log confirmed neither
+card had ever actually moved. Confirmed empirically (not just theorized) that the resolution logic
+itself is correct: clearing just this tab's watermark row and re-invoking the identical
+`syncAllStatuses` call immediately computed `'done'` for both links and moved both PMS cards to the
+real Done column (verified via direct PMS API `GET`). The exact trigger was not re-derived from
+scratch — per `systematic-debugging`'s "3+ fixes, question the architecture" heuristic, a 6th
+recurrence of the same "watermark says caught up, but wasn't" failure mode, on the same day a
+dedicated daily force-audit safety net (Task 302) was deployed specifically to catch it, is itself
+sufficient evidence that the short-circuit design is unreliable, not that today's specific mechanism
+needs isolating before acting.
+
+**User confirmed via `AskUserQuestion`** (options: remove the short-circuit entirely / leave
+architecture as-is and rely on the existing daily audit / shorten the daily audit's interval instead)
+to remove the short-circuit outright — the option that actually satisfies "must automatically move
+when status is set" rather than "self-heals within some window."
+
+**Fix:** `resolveAndSyncTabStatuses` no longer short-circuits on any cached watermark — every
+1-minute-cron tick now does a full, honest resolve for every active/paused tab, unconditionally.
+Removed entirely: the `currentWatermark`/`storedWatermark` comparison, the `force` param (and its
+plumbing through `syncAllTabStatuses`/`handleSyncAllStatuses`/`handleAuditAllStatuses` in
+`supabase/functions/sync-schedule-pms/index.ts`), the `isTabPaused` branch's watermark-invalidation
+upsert, and the post-resolve `recordWatermark` logic — along with the now-fully-unused
+`fetchTabEntriesWatermark`/`fetchSyncWatermark`/`upsertSyncWatermark` helpers in `src/lib/queries.ts`.
+The `schedule_pms_sync_watermarks` table itself is left in place, unused (no migration needed) —
+only the code that read/wrote it is gone. The `auditAllStatuses` action and its once-daily cron
+(Task 302) are kept as-is: no longer functionally different from a tab-unscoped `syncAllStatuses`
+call now that there's no short-circuit to force past, but harmless as a redundant belt-and-suspenders
+sweep, and keeping it avoids touching the cron/migration. Every tracked tab is well under the
+1,000-row page-size threshold, so the added per-tick DB cost (an entries pull + a handful of small
+config-table reads, once a minute, per active tab) is negligible — no added PMS API load, since PMS
+calls still only fire for links whose resolved status actually changed.
+
+**Test changes:** removed the tests that asserted the old skip-on-matching-watermark and
+force-bypass behaviors (both in `pmsSync.test.ts` and `supabase/functions/sync-schedule-pms/
+index_test.ts`), replacing the `resolveAndSyncTabStatuses` one with a regression lock proving two
+consecutive calls against unchanged data both perform a real resolve (no cached "already synced"
+state can survive between calls). Simplified the shared `fakeMultiTableClient` test helper
+(dropped the now-pointless `upsertCapture`/`entriesWatermarkOverride` params). Full suite (835
+tests in a clean worktree — this project's stray-nested-worktree test-count inflation, see prior
+task entries, does not apply here), `npm run build`, `deno check`, and `deno test` (18/18) all
+pass.
+
+**Process note — two real concurrent-session collisions during this task, both recovered cleanly:**
+(1) the shared main working directory took 3 unrelated commits mid-investigation from another
+active session (a Paused/Noted Brands feature), silently wiping an in-progress edit made directly
+in that shared directory before it was committed — recovered by isolating the rest of the work in a
+dedicated `git worktree` (per user confirmation) rather than continuing in the shared directory.
+(2) Rebasing the worktree branch onto a fast-moving `origin/main` produced a conflict whose marker
+content, cross-checked three different ways (`git show <ref>:path`, 3-way merge-stage `:1:`/`:2:`/
+`:3:` inspection, and a plain re-read of the working file), gave mutually contradictory answers for
+the exact same commit — most likely `rtk`'s git-command rewriting interfering with delicate
+plumbing (`git show :N:path`) rather than real repository corruption. Rather than trust a confusing
+rebase state, aborted it, reset the worktree hard to the actual current `origin/main` tip, and
+reapplied the (small, well-understood) diff fresh by re-reading each touched file's current content
+before editing — verified identical to the pre-collision target in every file except the one the
+concurrent session's own revert had already changed (which needed no attention from this fix at
+all). The remote `git push` was itself rejected twice more by further concurrent pushes before
+finally landing; each rejection was handled by re-fetching, confirming the new tip touched none of
+this fix's files, and a plain `git rebase` (clean, no conflicts) rather than assuming safety.
+
+**Deployed and live-verified same session:** `supabase functions deploy sync-schedule-pms`
+(version 34 → 35, confirmed `ACTIVE`). A direct call to the real deployed function with
+`{"action":"syncAllStatuses"}` (no `tab`, no force — the exact 1-minute-cron shape) swept all 11
+tracked tabs and returned `"ok"` with zero failures across the board, confirming the new
+unconditional-resolve code path runs cleanly in production. The two originally-reported cards were
+independently remediated live before the code fix (watermark cleared for `TP Brand Injection`,
+`syncAllStatuses` re-run, both cards confirmed moved to the real Done column via direct PMS API
+`GET` — `BITP | Big Pirate Casino` and `BITP | Nomini Kasino` both show `column.name: "Done"`).
+Pushed directly to `main` (`b199dcd`), no feature-branch PR, per this project's established
+deploy pattern.
+
