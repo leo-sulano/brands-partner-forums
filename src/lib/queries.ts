@@ -1958,6 +1958,24 @@ export async function renameCustomTab(oldName: string, newName: string): Promise
   if (error) throw error;
 }
 
+export interface HardcodedTabRenameRow {
+  original_name: string;
+  current_name: string;
+}
+
+export async function fetchHardcodedTabRenames(
+  client: SupabaseClient = supabase,
+): Promise<HardcodedTabRenameRow[]> {
+  const { data, error } = await client.from('hardcoded_tab_renames').select('original_name, current_name');
+  if (error) throw error;
+  return (data ?? []) as HardcodedTabRenameRow[];
+}
+
+export async function renameHardcodedTab(oldName: string, newName: string): Promise<void> {
+  const { error } = await supabase.rpc('rename_hardcoded_tab', { old_name: oldName, new_name: newName });
+  if (error) throw error;
+}
+
 export interface ToolbarFilterRow {
   tab: string;
   enabled_filters: ToolbarFilterKey[];

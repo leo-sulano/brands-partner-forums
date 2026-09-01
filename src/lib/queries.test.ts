@@ -60,6 +60,8 @@ import {
   unpauseTab,
   fetchPausedTabs,
   renameCustomTab,
+  fetchHardcodedTabRenames,
+  renameHardcodedTab,
   fetchToolbarFilters,
   setToolbarFilters,
   fetchHiddenTabPlatforms,
@@ -1178,6 +1180,34 @@ describe('renameCustomTab', () => {
   it('throws the RPC error', async () => {
     singletonRpc.mockResolvedValue({ error: new Error('a tab named "X" already exists') });
     await expect(renameCustomTab('Acme Tab', 'X')).rejects.toThrow('a tab named "X" already exists');
+  });
+});
+
+describe('fetchHardcodedTabRenames / renameHardcodedTab', () => {
+  beforeEach(() => {
+    singletonRpc.mockReset();
+  });
+
+  it('fetchHardcodedTabRenames maps rows to original_name/current_name', async () => {
+    singletonFrom.mockReturnValue(
+      chain({ data: [{ original_name: 'TP Brand Injection', current_name: 'BITP Team' }], error: null }),
+    );
+    const rows = await fetchHardcodedTabRenames();
+    expect(rows).toEqual([{ original_name: 'TP Brand Injection', current_name: 'BITP Team' }]);
+  });
+
+  it('renameHardcodedTab calls the rename_hardcoded_tab RPC with old and new names', async () => {
+    singletonRpc.mockResolvedValue({ error: null });
+    await renameHardcodedTab('TP Brand Injection', 'BITP Team');
+    expect(singletonRpc).toHaveBeenCalledWith('rename_hardcoded_tab', {
+      old_name: 'TP Brand Injection',
+      new_name: 'BITP Team',
+    });
+  });
+
+  it('renameHardcodedTab throws the RPC error', async () => {
+    singletonRpc.mockResolvedValue({ error: new Error('a tab named "X" already exists') });
+    await expect(renameHardcodedTab('Hanan', 'X')).rejects.toThrow('a tab named "X" already exists');
   });
 });
 
