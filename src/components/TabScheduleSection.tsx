@@ -984,7 +984,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }
 
   const pausedBrands = tabCtx?.pausedBrandRows ?? [];
-  const lastPostIndex = useMemo(() => buildLastPostIndex(tabCtx?.entries ?? []), [tabCtx]);
+  // liveEntries (not tabCtx.entries) so a status change (e.g. Check Status
+  // finishing while a brand happens to be paused) reflects immediately, same
+  // freshness dateStatusIndex above already has.
+  const lastPostIndex = useMemo(() => buildLastPostIndex(liveEntries), [liveEntries]);
 
   return (
     <div className="rounded-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col">
