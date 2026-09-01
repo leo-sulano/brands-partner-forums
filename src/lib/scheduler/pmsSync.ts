@@ -604,12 +604,25 @@ export async function enforcePmsColumns(
 // those change far less often, and a config-only change with no entries
 // write is still caught by the next entries change on that tab, or by the
 // on-visit trigger the next time someone opens it.
+//
+// force bypasses this short-circuit entirely (still records the watermark
+// normally afterward) -- the escape hatch for the daily audit sweep
+// (handleAuditAllStatuses/'auditAllStatuses' action below). The watermark
+// approach trusts "the last resolve completed with zero exceptions" as proof
+// every individual link was actually synced correctly; those aren't the same
+// thing, and this project has repeatedly found new, different ways for that
+// assumption to be wrong (Tasks 287, 288, 302 in docs/task-history.md), each
+// leaving some link's synced_status silently stuck until a human noticed and
+// a watermark was cleared by hand. force=true reproduces that manual
+// remediation automatically, on a schedule, regardless of whether today's
+// specific trigger is one already seen before.
 export async function resolveAndSyncTabStatuses(
   tab: string,
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch = fetch,
   isTabPaused = false,
+  force = false,
 ): Promise<PmsResolveResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
   if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
@@ -662,7 +675,7 @@ export async function resolveAndSyncTabStatuses(
     fetchTabEntriesWatermark(tab, client),
     fetchSyncWatermark(tab, client),
   ]);
-  if (currentWatermark !== null && currentWatermark === storedWatermark) {
+  if (!force && currentWatermark !== null && currentWatermark === storedWatermark) {
     return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   }
 

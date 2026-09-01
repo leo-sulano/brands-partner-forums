@@ -1047,6 +1047,27 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  it('force=true bypasses the watermark short-circuit even when it matches the last successful sync, and still records the (unchanged) watermark afterward', async () => {
+    const upserts: { table: string; row: unknown }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T10:00:00Z' }],
+      schedule_pms_sync_watermarks: [{ tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' }],
+    }, upserts);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, false, true);
+    expect(result.synced).toHaveLength(1);
+    expect(fetchFn).toHaveBeenCalled();
+    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
+      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' } },
+    ]);
+  });
+
   it('records the new tab watermark after a fully successful resolve, so the next tick can skip it', async () => {
     const upserts: { table: string; row: unknown }[] = [];
     const client = fakeMultiTableClient({

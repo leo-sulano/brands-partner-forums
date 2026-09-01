@@ -7695,6 +7695,66 @@ pass. Frontend-only — nothing to redeploy.
 
 ---
 
+## Task 302: Third Recurrence of Stuck PMS "Done" Cards — Live Root-Cause + Board-Wide Remediation, New Trigger (Not Pagination)
+
+**Date:** September 1, 2026
+
+User reported the same symptom class as Tasks 279/287/288: Schedule Planner showed Done-status
+badges across several tabs (BITP, FTP, Rooster Partners, Trybet, SilverPlay, Hanan) but the linked
+PMS cards weren't moving — only Wizard of Odds was actually reflecting Done correctly. Live-diagnosed
+one concrete example: SilverPlay's "Silver Play" AG entry, marked Done at 08:56:57 UTC today
+(2026-09-01), stayed `synced_status='active'` in `schedule_pms_links` for 3+ hours, and its real PMS
+card sat in the legacy "In Progress" column (a human had dragged it there at 11:54 UTC, unaware the
+review was already Done — confirmed via a direct PMS API task lookup, `updatedAt` matching).
+
+**Confirmed this is NOT a recurrence of the Task 287/289 pagination bug**: SilverPlay's tab has only
+981 entries — under the 1,000-row single-page threshold, so no pagination boundary could have been
+involved at all. Manually re-invoking `sync-schedule-pms`'s `syncAllStatuses` action for SilverPlay
+with its stored watermark unchanged returned `"ok"` with zero effect (the watermark short-circuit
+skipping re-evaluation entirely, exactly as designed); clearing `schedule_pms_sync_watermarks` for
+just that tab and re-invoking the *identical* call immediately resolved it correctly (`synced_status`
+→ `done`, card moved live to the real Done column, confirmed via PMS API). This proves the
+evidence-resolution logic itself (`buildDateStatusIndex`/`resolvePmsSyncStatus`) is correct — the bug
+is purely that some earlier tick recorded the tab's watermark as "fully caught up" while this
+specific link's status update never actually landed, and nothing since then touched SilverPlay's
+`entries` table to force a re-check. The exact mechanism of that original poisoning tick was not
+pinned down (no Edge Function log access in this session — `supabase functions logs` doesn't exist
+in this CLI version); most likely a concurrent-invocation race between the 1-minute cron and an
+on-visit browser trigger both resolving the same tab, per-item, at once (Task 281's on-visit
+debounce reduces but doesn't eliminate this).
+
+**Remediation applied (no code change):** cleared `schedule_pms_sync_watermarks` for all 11
+tracked tabs and ran a full `syncAllStatuses` sweep with no tab filter — all 11 reported `"ok"`
+(zero failures). Confirmed zero residual drift: no `schedule_pms_links` row references a column
+outside the 3 current valid IDs (To Do/Done/Project Paused), and a `reconcileColumns` pass afterward
+found zero moves needed (2 pure re-sorts only).
+
+**Durable fix built and deployed the same session, per direct user request:** a new
+`auditAllStatuses` action on `sync-schedule-pms` (`src/lib/scheduler/pmsSync.ts`'s
+`resolveAndSyncTabStatuses` gained a `force` param that bypasses the watermark short-circuit
+entirely while still recording the watermark normally afterward; `syncAllTabStatuses`/
+`handleAuditAllStatuses` in `supabase/functions/sync-schedule-pms/index.ts` thread it through,
+always covering every active+paused tab with no `body.tab` scoping) plus a new once-daily
+`pg_cron` job, `sync-schedule-pms-daily-status-audit` (migration `20260901140000`, 18:00 UTC =
+02:00 Manila), that calls it. This reproduces the exact manual remediation used in every prior
+incident (clear a tab's watermark, re-run `syncAllStatuses`) automatically, once a day, for every
+tab, so a future recurrence, even from a still-unknown trigger, self-heals within 24h instead of
+needing a human to notice a stuck card and ask. The existing 1-minute `syncAllStatuses`/
+`reconcileColumns` crons are completely unchanged (force defaults to `false`, so their behavior and
+cost profile are untouched). New tests: `pmsSync.test.ts` (force bypasses a matching watermark, then
+still records it), `index_test.ts` (force threads through `syncAllTabStatuses` to `resolveFn`;
+`handleAuditAllStatuses` bootstraps once, covers every active+paused tab ignoring any tab scoping,
+and reaches the real `resolveAndSyncTabStatuses` through the real loop). Full suite (2225 tests),
+`npm run build`, and `deno check`/`deno test` (20/20) all pass. **Deployed and live-verified same
+session:** `supabase db push` (migration confirmed via `cron.job`, `active: true`), `supabase
+functions deploy sync-schedule-pms`, then a direct call to the real deployed function with
+`{"action":"auditAllStatuses"}` returned `"ok"` with zero failures across all 11 tracked tabs.
+
+This closes the 4th distinct occurrence of the same general symptom (Tasks 279, 281, 287, 288, this
+one) with a structural safety net instead of another one-off remediation.
+
+---
+
 ## Task 303: Schedule Planner Date Header Reformat, Sticky Brand Column, Icon-Only Platform Chips
 
 **Date:** September 1, 2026

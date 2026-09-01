@@ -30,18 +30,23 @@ function jsonResponse(body: unknown, status = 200): Response {
 // fetchRawEntriesByTab caches a tab's full entry list with no write-side
 // eviction, and this action can run every minute across every active tab.
 // resolveFn is injectable so tests can verify this loop's isolation/eviction
-// behavior without a real Supabase client or PMS API.
+// behavior without a real Supabase client or PMS API. force is passed
+// straight through to resolveFn's own force param (see
+// resolveAndSyncTabStatuses in pmsSync.ts) -- true only for the daily audit
+// sweep ('auditAllStatuses' below), which needs every tab fully re-resolved
+// regardless of its watermark.
 export async function syncAllTabStatuses(
   tabs: readonly { tab: string; paused: boolean }[],
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
-  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch, isTabPaused?: boolean) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
+  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch, isTabPaused?: boolean, force?: boolean) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
+  force = false,
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
   for (const { tab, paused } of tabs) {
     try {
-      const result = await resolveFn(tab, client, credentials, fetchFn, paused);
+      const result = await resolveFn(tab, client, credentials, fetchFn, paused, force);
       const failures: string[] = [];
       if (result.failed.length > 0) failures.push(`${result.failed.length} link(s) failed to move`);
       if (result.cancelFailed.length > 0) failures.push(`${result.cancelFailed.length} link(s) failed to cancel`);
@@ -96,6 +101,37 @@ export async function handleSyncAllStatuses(
     ];
   }
   return syncAllTabStatuses(tabs, client, credentials, fetchFn);
+}
+
+// The 'auditAllStatuses' action (its own once-daily pg_cron job, separate
+// from the 1-minute 'syncAllStatuses'). Always covers every active+paused
+// tab (no body.tab scoping -- a full board audit has no reason to run
+// narrower) and always forces every tab's resolve past its watermark short-
+// circuit. Exists because the watermark trusts "the last resolve completed
+// with zero exceptions" as proof every individual link was actually synced
+// correctly -- and this project has repeatedly found new, different ways for
+// that assumption to be wrong (Tasks 287, 288, 302 in docs/task-history.md),
+// each one only found because a human noticed a stuck PMS card and asked.
+// This reproduces that same manual remediation (clear the tab's watermark,
+// re-run syncAllStatuses) automatically once a day, so a future recurrence
+// self-heals within a day even if it's a cause nobody's seen yet, instead of
+// silently persisting until reported. Same bootstrapFn/getActiveTabsFn/
+// getPausedTabsFn injection points as handleSyncAllStatuses, for the same
+// testability reason.
+export async function handleAuditAllStatuses(
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
+  getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
+  getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
+): Promise<Record<string, string>> {
+  await bootstrapFn(client, 'sync-schedule-pms');
+  const tabs = [
+    ...getActiveTabsFn().map((tab) => ({ tab, paused: false })),
+    ...getPausedTabsFn().map((tab) => ({ tab, paused: true })),
+  ];
+  return syncAllTabStatuses(tabs, client, credentials, fetchFn, resolveAndSyncTabStatuses, true);
 }
 
 // The 'reconcileColumns' action (its own 1-minute pg_cron job, separate from
@@ -156,6 +192,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
     if (body?.action === 'syncAllStatuses') {
       const results = await handleSyncAllStatuses(body, client, credentials, fetch);
+      return jsonResponse({ results });
+    }
+    if (body?.action === 'auditAllStatuses') {
+      const results = await handleAuditAllStatuses(client, credentials, fetch);
       return jsonResponse({ results });
     }
     if (body?.action === 'reconcileColumns') {

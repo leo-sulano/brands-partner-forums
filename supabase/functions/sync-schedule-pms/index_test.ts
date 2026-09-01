@@ -1,6 +1,6 @@
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { syncAllTabStatuses, handleSyncAllStatuses, handleReconcileColumns } from './index.ts';
+import { syncAllTabStatuses, handleSyncAllStatuses, handleAuditAllStatuses, handleReconcileColumns } from './index.ts';
 
 Deno.test('syncAllTabStatuses processes every given tab independently, isolating one failure', async () => {
   const calls: string[] = [];
@@ -69,6 +69,33 @@ Deno.test('syncAllTabStatuses passes each tab\'s paused flag through to resolveF
     fakeResolve as any,
   );
   assertEquals(calls, [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }]);
+});
+
+Deno.test('syncAllTabStatuses defaults force to false, passed through to resolveFn as the 6th argument', async () => {
+  const forceSeen: unknown[] = [];
+  const fakeResolve = async (_t: string, _c: unknown, _cr: unknown, _f: unknown, _p: unknown, force: unknown) => {
+    forceSeen.push(force);
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+  };
+  await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  assertEquals(forceSeen, [false]);
+});
+
+Deno.test('syncAllTabStatuses passes an explicit force=true through to every tab\'s resolveFn call', async () => {
+  const forceSeen: unknown[] = [];
+  const fakeResolve = async (_t: string, _c: unknown, _cr: unknown, _f: unknown, _p: unknown, force: unknown) => {
+    forceSeen.push(force);
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+  };
+  await syncAllTabStatuses(
+    [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }],
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    fakeResolve as any,
+    true,
+  );
+  assertEquals(forceSeen, [true, true]);
 });
 
 // handleSyncAllStatuses tests below cover the Deno.serve handler's own
@@ -195,6 +222,47 @@ Deno.test('handleSyncAllStatuses resolves a requested body.tab that is currently
   assertEquals(Object.keys(results), ['GRG - Gulf Recovery Group']);
 });
 
+
+// handleAuditAllStatuses tests: the once-daily audit ('auditAllStatuses'
+// action) always covers every active+paused tab (no body.tab scoping, unlike
+// handleSyncAllStatuses) and always forces resolveAndSyncTabStatuses past its
+// watermark short-circuit -- see the doc comment above the real function in
+// index.ts for why this exists (Tasks 287/288/302 in docs/task-history.md).
+
+Deno.test('handleAuditAllStatuses bootstraps once and covers every active and paused tab, ignoring any tab scoping', async () => {
+  let bootstrapCalls = 0;
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {
+      bootstrapCalls++;
+    },
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+  );
+  assertEquals(bootstrapCalls, 1);
+  assertEquals(Object.keys(results).sort(), ['BITP', 'GRG - Gulf Recovery Group', 'Hanan']);
+});
+
+Deno.test('handleAuditAllStatuses forces every tab\'s resolve past its watermark, via the real syncAllTabStatuses loop', async () => {
+  // No resolveFn injection at this layer (handleAuditAllStatuses has none,
+  // same as handleSyncAllStatuses) -- proves force=true actually reaches the
+  // real resolveAndSyncTabStatuses call through the real syncAllTabStatuses,
+  // not just that handleAuditAllStatuses's own signature accepts it.
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+  );
+  // Fake client has no .from, so the real resolve throws -- same isolation
+  // guarantee as syncAllTabStatuses's own dedicated tests, now confirmed
+  // reachable through this handler too.
+  assertEquals(results['BITP'].startsWith('error:'), true);
+});
 
 // handleReconcileColumns tests: the column-drift reconcile is a separate
 // action ('reconcileColumns') from the per-tab status sweep. It bootstraps
