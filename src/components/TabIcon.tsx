@@ -25,7 +25,7 @@ export default function TabIcon({ tab, className }: Props) {
   }
 
   if (resolved.kind === 'image') {
-    return <img src={resolved.url} alt="" className={className} onError={hideOnError} />;
+    return <img src={resolved.url} alt="" className={`rounded-[3px] ${className ?? ''}`} onError={hideOnError} />;
   }
 
   if (resolved.kind === 'favicon') {
@@ -33,7 +33,7 @@ export default function TabIcon({ tab, className }: Props) {
     // images — Google's favicon service effectively never 404s (it returns
     // a generic placeholder for any domain), so this only matters for a
     // genuine network failure.
-    return <img src={faviconUrl(resolved.domain)} alt="" className={className} onError={hideOnError} />;
+    return <img src={faviconUrl(resolved.domain)} alt="" className={`rounded-[3px] ${className ?? ''}`} onError={hideOnError} />;
   }
 
   // resolved.kind === 'dynamic'. No `fallback` prop: DynamicIcon renders
