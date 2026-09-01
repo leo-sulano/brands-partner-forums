@@ -7674,3 +7674,21 @@ state already fetched for Task 294, filtered to the target brand/platform/week. 
 user first: a Paused day's chip stays dimmed-and-visible on the date column, unchanged — only the
 popup gained the new indicator, nothing about how Paused already renders changed. Full suite (2224
 tests) and build pass. Frontend-only — nothing to redeploy.
+
+---
+
+## Task 301: Pause Days Popup Now Lists the Full Week, Not Just Pausable Days
+
+**Date:** September 1, 2026
+
+Same-day follow-up to Task 300, per direct user request: the popup only listed `scheduledDays`
+(days with a real active/paused row) as checkboxes, plus a separate summary line for cancelled
+days — so a day that was neither (never scheduled at all) had no row at all, and cancelled days sat
+apart from the rest of the week instead of in it. `PauseDaysModal.tsx` now always lists all 5
+weekdays: a day in `scheduledDays` keeps its checkbox as before; a cancelled day gets its own row
+with a "🚫 Cancelled" marker in place of the checkbox (still informational-only — un-cancelling
+still only happens via the day cell's own "+" button); a day with nothing scheduled at all renders
+as a dimmed, non-interactive row instead of being omitted. The old `scheduledDays.length === 0`
+"Nothing scheduled this week" empty state is gone — every week now shows its full 5-day list one
+way or another, so there's no longer a special case to fall into. Full suite (2224 tests) and build
+pass. Frontend-only — nothing to redeploy.

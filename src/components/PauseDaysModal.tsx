@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
-import { WEEKDAY_LABELS, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAYS, WEEKDAY_LABELS, type Weekday } from '../lib/scheduleBrands';
 
 interface Props {
   brand: string;
@@ -25,9 +25,15 @@ interface Props {
 // initialPausedDays and writes just the days that actually changed via the
 // same setBrandScheduleDay/handleSetDayStatus path a single cell click
 // already uses, so nothing downstream (PMS sync, export) needs to know this
-// modal exists. Only offers scheduledDays (from pausableWeekdays) as
-// checkboxes — a day with nothing scheduled at all for this platform isn't
-// shown, since there's nothing there to pause.
+// modal exists.
+//
+// Lists all 5 weekdays every time (not just scheduledDays), per direct user
+// request — a day previously omitted from the list entirely (cancelled, or
+// never scheduled at all) now still gets its own row, just non-interactive:
+// a cancelled day renders a "Cancelled" marker in place of the checkbox
+// (informational only — un-cancelling goes through the day cell's own "+"
+// button, not this modal), and a day with nothing scheduled at all renders
+// dimmed with no checkbox, since there's nothing there to pause.
 export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDays, initialPausedDays, cancelledDays, onSave, onClose }: Props) {
   const [pausedDays, setPausedDays] = useState<Set<Weekday>>(() => new Set(initialPausedDays));
 
@@ -73,34 +79,46 @@ export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDa
           </button>
         </div>
 
-        {cancelledDays.length > 0 && (
-          <p className="mx-5 mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
-            🚫 Cancelled this week: {cancelledDays.map((d) => WEEKDAY_LABELS[d]).join(', ')}
-          </p>
-        )}
-
-        {scheduledDays.length === 0 ? (
-          <p className="px-5 pb-4 text-sm text-slate-500">
-            Nothing scheduled this week for {PLATFORM_FULL_LABEL[platform]}.
-          </p>
-        ) : (
-          <div className="px-4 pb-2 space-y-1.5">
-            {scheduledDays.map((day) => (
-              <label
+        <div className="px-4 pb-2 space-y-1.5">
+          {WEEKDAYS.map((day) => {
+            if (cancelledDays.includes(day)) {
+              return (
+                <div
+                  key={day}
+                  className="flex items-center justify-between rounded-xl border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600"
+                >
+                  <span>{WEEKDAY_LABELS[day]}</span>
+                  <span className="text-xs font-semibold">🚫 Cancelled</span>
+                </div>
+              );
+            }
+            if (scheduledDays.includes(day)) {
+              return (
+                <label
+                  key={day}
+                  className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
+                >
+                  <input
+                    type="checkbox"
+                    checked={pausedDays.has(day)}
+                    onChange={() => toggleDay(day)}
+                    className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"
+                  />
+                  {WEEKDAY_LABELS[day]}
+                </label>
+              );
+            }
+            // Nothing scheduled at all this day — no checkbox, nothing to pause.
+            return (
+              <div
                 key={day}
-                className="flex items-center gap-2.5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 cursor-pointer hover:bg-slate-50"
+                className="flex items-center gap-2.5 rounded-xl border border-slate-100 px-4 py-2.5 text-sm font-medium text-slate-300"
               >
-                <input
-                  type="checkbox"
-                  checked={pausedDays.has(day)}
-                  onChange={() => toggleDay(day)}
-                  className="size-4 rounded border-slate-300 text-blue-600 focus:ring-blue-400"
-                />
                 {WEEKDAY_LABELS[day]}
-              </label>
-            ))}
-          </div>
-        )}
+              </div>
+            );
+          })}
+        </div>
 
         <div className="flex items-center justify-end gap-2 px-5 pt-3 pb-5">
           <button
@@ -108,17 +126,15 @@ export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDa
             onClick={onClose}
             className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
           >
-            {scheduledDays.length === 0 ? 'Close' : 'Cancel'}
+            Cancel
           </button>
-          {scheduledDays.length > 0 && (
-            <button
-              type="button"
-              onClick={() => { onSave([...pausedDays]); onClose(); }}
-              className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-            >
-              Save
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => { onSave([...pausedDays]); onClose(); }}
+            className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            Save
+          </button>
         </div>
       </div>
     </div>
