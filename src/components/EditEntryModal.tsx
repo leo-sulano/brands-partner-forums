@@ -6,6 +6,7 @@ import { getColLabel, getCountryForAccount, getBrandAgUrl, getBrandCgUrl, getBra
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
+import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import ReviewTextBlock from './ReviewTextBlock';
 import ReviewRemovalAssessment from './ReviewRemovalAssessment';
@@ -223,7 +224,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     const rest = fields.filter((h) => !priority.includes(h));
     let ordered = [...priority, ...rest];
 
-    if (currentTab === 'Wizard of Odds') {
+    if (currentTab && resolveHardcodedTabKey(currentTab) === 'Wizard of Odds') {
       const toMove = ['User Name', 'WO User'].filter((h) => ordered.includes(h));
       if (toMove.length) {
         const without = ordered.filter((h) => !toMove.includes(h));
@@ -453,7 +454,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           {/* Trust Pilot / Wizard of Odds */}
           {sections.tp.length > 0 && (
             <>
-              <SectionHeading label={currentTab === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
+              <SectionHeading label={currentTab && resolveHardcodedTabKey(currentTab) === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {renderSectionFields(sections.tp, 'tp')}
               </div>

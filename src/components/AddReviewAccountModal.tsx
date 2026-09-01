@@ -5,6 +5,7 @@ import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
 import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount, getBrandNameCol, getBrandLinkCol, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
+import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 
@@ -186,7 +187,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const brandLinkField: FieldDef | null =
     brandLinkCol === 'Link to the profile' ? null : { key: brandLinkCol, label: 'Brand Link', link: true };
   const tpFields = TP_FIELDS.map((f) =>
-    f.key === 'Link to the profile' && selectedTab === 'Wizard of Odds' ? { ...f, label: 'Brand Link' } : f,
+    f.key === 'Link to the profile' && resolveHardcodedTabKey(selectedTab) === 'Wizard of Odds' ? { ...f, label: 'Brand Link' } : f,
   );
 
   function toggleReveal(key: string) {
