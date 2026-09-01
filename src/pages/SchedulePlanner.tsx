@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, PlayCircle, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { tabDisplayName } from '../lib/tabs';
-import { getActiveOperationalTabs, getPausedOperationalTabs, unpauseTabLocally } from '../lib/pausedTabRegistry';
+import { getActiveOperationalTabs, getPausedOperationalTabs } from '../lib/pausedTabRegistry';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
@@ -16,7 +16,6 @@ import {
   fetchRemovedPlatformBrands,
   fetchBrandAgentAssignments,
   fetchPausedTabDetails,
-  unpauseTab,
 } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
@@ -24,7 +23,6 @@ import TabScheduleSection from '../components/TabScheduleSection';
 import TabPreviewCard from '../components/TabPreviewCard';
 import Tooltip from '../components/Tooltip';
 import { subscribeEntries } from '../lib/realtime';
-import { useAuth } from '../contexts/AuthContext';
 import type { Entry } from '../types/entry';
 import type { BrandAgentAssignmentRow, PausedTabDetail } from '../lib/queries';
 
@@ -120,13 +118,13 @@ function formatPausedDate(iso: string): string {
 }
 
 export default function SchedulePlanner() {
-  const { isAdmin } = useAuth();
   // Bumped by the same 'tab-platforms-changed' event Sidebar.tsx/Topbar.tsx
   // already listen to (pausedTabRegistry.ts's notify call, fired by
   // pauseTabLocally/unpauseTabLocally) -- forces the preview-fetch effect
   // below to re-run when a tab's paused status changes elsewhere (Sidebar,
-  // EditBrandTabModal, or this page's own Resume button), since neither
-  // showGrid nor previewWeekKey change on their own for that.
+  // EditBrandTabModal -- pausing/resuming a tab is deliberately only done
+  // from there, not from this page), since neither showGrid nor
+  // previewWeekKey change on their own for that.
   const [reloadSeq, setReloadSeq] = useState(0);
   useEffect(() => {
     function handleChange() {
@@ -439,16 +437,6 @@ export default function SchedulePlanner() {
     };
   }, [showGrid, reloadSeq]);
 
-  async function handleResumeTab(tab: string) {
-    try {
-      await unpauseTab(tab);
-      unpauseTabLocally(tab);
-    } catch {
-      // best-effort -- a failed resume just leaves the card in place; retry,
-      // or use Edit Brand Tab's Status select instead
-    }
-  }
-
   // Keeps the landing-grid cards' status badges current without a manual
   // reload or re-visit — mirrors TabScheduleSection.tsx's own subscribeEntries
   // consumer (Task 244) exactly, just fanned out across every tab shown here
@@ -729,8 +717,8 @@ export default function SchedulePlanner() {
                     todayISO={todayISO}
                     previewLoading={previewLoading}
                     headerExtra={
-                      <div className="flex items-start justify-between gap-2 rounded border border-amber-100 bg-amber-50 px-2 py-1.5">
-                        <div className="min-w-0 text-[11px] text-amber-800">
+                      (detail?.reason || detail?.pausedAt) && (
+                        <div className="min-w-0 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                           {detail?.reason && <p className="truncate">{detail.reason}</p>}
                           {detail?.pausedAt && (
                             <p className="text-amber-600">
@@ -738,17 +726,7 @@ export default function SchedulePlanner() {
                             </p>
                           )}
                         </div>
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => handleResumeTab(t)}
-                            className="shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
-                          >
-                            <PlayCircle className="size-3" />
-                            Resume
-                          </button>
-                        )}
-                      </div>
+                      )
                     }
                   />
                 );
