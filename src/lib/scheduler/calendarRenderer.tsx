@@ -305,8 +305,17 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 (e.g. AG and CG in the same cell), so hovering just the CG
                 chip previously revealed AG's buttons too. Reverted from
                 group/cell to this narrower per-chip group per direct user
-                follow-up. */}
-            <span className="group/chip inline-flex items-center gap-0.5">
+                follow-up. `relative` anchors the buttons span below, which
+                is `absolute` rather than a normal flex sibling -- an
+                opacity-0 (not display:none) sibling still reserves its full
+                width in flex layout even while invisible (needed so it stays
+                focusable/tappable for keyboard and touch users), and with
+                two buttons per platform per day that added up to visibly
+                more whitespace throughout the whole grid than before this
+                feature, per a direct user report. Absolute positioning keeps
+                it out of the flex flow entirely, so the grid's spacing is
+                identical to before whether or not any chip has buttons. */}
+            <span className="group/chip relative inline-flex items-center">
               <PlatformChip
                 platform={platform}
                 stateClassName={stateClassName}
@@ -330,7 +339,12 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 onClick={() => onToggle(platform)}
               />
               {showDayActions && (
-                <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover/chip:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                // pointer-events-none while invisible -- being absolutely
+                // positioned to the right of this chip (see the wrapper
+                // span's own comment above), it would otherwise still
+                // intercept hover/click on whatever chip happens to render
+                // next to it in the same cell, even at opacity-0.
+                <span className="pointer-events-none absolute left-full top-1/2 z-10 ml-0.5 flex -translate-y-1/2 items-center gap-0.5 rounded bg-white p-0.5 opacity-0 shadow-sm transition-opacity group-hover/chip:pointer-events-auto group-hover/chip:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
                   {status === 'active' ? (
                     <button
                       type="button"

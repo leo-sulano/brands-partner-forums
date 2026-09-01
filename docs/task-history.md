@@ -7630,3 +7630,28 @@ icon kinds render consistently. Tier 1 (fast path) — confined to `TabIcon.tsx`
 render entry point already used by Sidebar/Overview/Schedule Planner, so every consumer picks this
 up automatically with no other call-site changes. Build passes clean. Frontend-only — nothing to
 redeploy.
+
+---
+
+## Task 299: Pause/Resume/Cancel Buttons No Longer Reserve Grid Space When Hidden
+
+**Date:** September 1, 2026
+
+Same-day follow-up to Task 297, reported live via screenshot: after scoping the buttons to
+`group/chip`, the whole Schedule Planner grid visibly widened — every scheduled/paused platform now
+had noticeably more space around it than before this feature shipped, and the buttons looked like
+they were "floating" oddly when shown. Root cause: the buttons `<span>` was a normal flex sibling of
+the chip (`inline-flex ... opacity-0 ... group-hover/chip:opacity-100`) — an `opacity-0` element
+still reserves its full width in flex layout (unlike `display:none`), which is what keeps it
+focusable/tappable for keyboard and touch users, but with two buttons per platform per scheduled
+day, that reserved width added up across the whole grid. Switched the buttons span from a flex
+sibling to `absolute` positioning anchored off the chip's own `relative` wrapper
+(`left-full top-1/2 -translate-y-1/2`, small `bg-white`/`shadow-sm` so it reads clearly as an
+overlay) — it's completely out of the flex flow now, so the grid's spacing is identical to before
+regardless of how many chips have buttons. Since an invisible absolutely-positioned element still
+intercepts pointer events by default, added `pointer-events-none` at rest and
+`pointer-events-auto` alongside the existing opacity reveal (hover/focus-within/touch) so it can no
+longer block clicks on whatever chip happens to render next to it while hidden — keyboard Tab
+access is unaffected either way, since focusability and `:focus`/`focus-within` don't depend on
+`pointer-events` (that's mouse-only). Full suite (2224 tests) and build pass. Frontend-only —
+nothing to redeploy.

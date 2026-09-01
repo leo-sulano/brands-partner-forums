@@ -219,7 +219,7 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                       className={({ isActive }) => linkClass(isActive, isCollapsed, true)}
                     >
                       <span className="relative shrink-0">
-                        <TabIcon tab={tab} className="size-4" />
+                        <TabIcon tab={tab} className="size-5" />
                         {isTabPaused(tab) && (
                           <PausedBadgeIcon className="absolute -bottom-1.5 -right-1.5 size-3.5" />
                         )}
