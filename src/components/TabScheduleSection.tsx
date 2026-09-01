@@ -153,6 +153,33 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return () => observer.disconnect();
   }, []);
 
+  // The header is now 3 stacked rows (month / weekday-letter+Brand /
+  // day-number), each independently `sticky` with its own `top` offset —
+  // same reasoning as toolbarHeight above: measure the real rendered height
+  // rather than guess a fixed pixel value that drifts if text size/padding
+  // ever changes, so the 3 rows always stack cleanly under the toolbar with
+  // no gap or overlap.
+  const monthHeaderRef = useRef<HTMLTableRowElement>(null);
+  const [monthHeaderHeight, setMonthHeaderHeight] = useState(0);
+  const weekdayHeaderRef = useRef<HTMLTableRowElement>(null);
+  const [weekdayHeaderHeight, setWeekdayHeaderHeight] = useState(0);
+
+  useEffect(() => {
+    const el = monthHeaderRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => setMonthHeaderHeight(entries[0].contentRect.height));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const el = weekdayHeaderRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => setWeekdayHeaderHeight(entries[0].contentRect.height));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // The day columns this section actually renders — every weekday in the
   // picked date range when one is set, otherwise just weekStart's own
   // Mon–Fri week (the nav-controlled default). Declared early (depends only
@@ -176,6 +203,22 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [columns],
   );
   const columnWeekKey = columnWeekISOs.join(',');
+
+  // Consecutive-run grouping so the header's month row can show a month
+  // label once, spanning the columns it covers, instead of repeating
+  // "Aug"/"Sep" on every column — mirrors SchedulePlanner.tsx's own
+  // dateHeaderMonthGroups for the landing-grid preview cards, so the two
+  // views can't disagree on how a month boundary is grouped.
+  const dateHeaderMonthGroups = useMemo(() => {
+    const groups: { month: string; count: number }[] = [];
+    for (const col of columns) {
+      const month = new Date(`${col.iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short' });
+      const last = groups[groups.length - 1];
+      if (last && last.month === month) last.count += 1;
+      else groups.push({ month, count: 1 });
+    }
+    return groups;
+  }, [columns]);
 
   // Brand list depends only on the tab (raw entries + headers), never on the
   // displayed week — re-fetching this on every Prev/Next/Today click would
@@ -953,28 +996,64 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
 
         <table className="min-w-full text-sm">
           <thead>
-            <tr>
+            <tr ref={monthHeaderRef}>
+              <th
+                className="sticky left-0 z-30 bg-slate-50 px-3 py-1 text-left text-xs font-medium text-slate-500 will-change-transform"
+                style={{ top: toolbarHeight }}
+              />
+              {dateHeaderMonthGroups.map((g, i) => (
+                <th
+                  key={`${g.month}-${i}`}
+                  colSpan={g.count}
+                  className="sticky z-[25] bg-slate-50 px-3 py-1 text-center text-xs font-medium text-slate-500 will-change-transform"
+                  style={{ top: toolbarHeight }}
+                >
+                  {g.month}
+                </th>
+              ))}
+              <th className="sticky z-[25] bg-slate-50 px-3 py-1 will-change-transform" style={{ top: toolbarHeight }} />
+            </tr>
+            <tr ref={weekdayHeaderRef}>
               <th
                 className="sticky left-0 z-30 bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 will-change-transform"
-                style={{ top: toolbarHeight }}
+                style={{ top: toolbarHeight + monthHeaderHeight }}
               >
                 Brand
               </th>
               {columns.map((col) => (
                 <th
                   key={col.iso}
-                  className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
-                  style={{ top: toolbarHeight }}
+                  className="sticky z-[25] bg-slate-50 px-3 py-2 text-center font-medium text-slate-600 whitespace-nowrap will-change-transform"
+                  style={{ top: toolbarHeight + monthHeaderHeight }}
                 >
-                  {WEEKDAY_LABELS[col.weekday]} {formatWeekdayDate(new Date(`${col.iso}T00:00:00`), 0)}
+                  {WEEKDAY_LABELS[col.weekday][0]}
                 </th>
               ))}
               <th
                 className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
-                style={{ top: toolbarHeight }}
+                style={{ top: toolbarHeight + monthHeaderHeight }}
               >
                 Schedule Status
               </th>
+            </tr>
+            <tr>
+              <th
+                className="sticky left-0 z-30 bg-slate-50 px-3 py-1 will-change-transform"
+                style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
+              />
+              {columns.map((col) => (
+                <th
+                  key={col.iso}
+                  className="sticky z-[25] bg-slate-50 px-3 py-1 text-center text-xs font-medium text-slate-500 will-change-transform"
+                  style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
+                >
+                  {Number(col.iso.slice(8, 10))}
+                </th>
+              ))}
+              <th
+                className="sticky z-[25] bg-slate-50 px-3 py-1 will-change-transform"
+                style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
+              />
             </tr>
           </thead>
           <tbody>
@@ -1078,6 +1157,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             onSetStatus={(platform, status) => handleSetDayStatus(brand, platform, col, status)}
                             onCancel={(platform) => handleCancelDay(brand, platform, col)}
                             onAddPlatform={() => setAddPlatformTarget({ brand, col })}
+                            iconOnly={hasDateFilter}
                           />
                         </td>
                       );

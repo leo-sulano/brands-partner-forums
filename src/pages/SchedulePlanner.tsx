@@ -237,6 +237,22 @@ export default function SchedulePlanner() {
     () => (hasDateFilter ? weekdayColumnsInRange(rangeFrom, rangeTo) : columnsForWeek(weekStart)),
     [hasDateFilter, rangeFrom, rangeTo, weekStart],
   );
+  // Consecutive-run grouping so the per-card date header can show a month
+  // label once, spanning the columns it covers, instead of repeating
+  // "Aug"/"Sep" on every single column — this is what lets the header
+  // compress "Mon Aug 24" down to a stacked month/weekday-letter/day-number
+  // layout without losing the month, and is also why a range that crosses a
+  // month boundary (e.g. Aug 31 – Sep 4) still reads correctly.
+  const dateHeaderMonthGroups = useMemo(() => {
+    const groups: { month: string; count: number }[] = [];
+    for (const col of allRangeColumns) {
+      const month = new Date(`${col.iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short' });
+      const last = groups[groups.length - 1];
+      if (last && last.month === month) last.count += 1;
+      else groups.push({ month, count: 1 });
+    }
+    return groups;
+  }, [allRangeColumns]);
   // The distinct weeks the picked range actually needs fetched — usually
   // one, but a multi-week range needs a fetchBrandSchedule call per week it
   // touches. Joined to a stable string so the fetch effect below doesn't re-fire on
@@ -653,16 +669,34 @@ export default function SchedulePlanner() {
                   ) : (
                     <table className="w-full min-w-max border-collapse text-[10px]">
                       <thead>
+                        {hasDateFilter && (
+                          <tr className="bg-slate-50 text-slate-400">
+                            <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-0.5" />
+                            {dateHeaderMonthGroups.map((g, i) => (
+                              <th key={`${g.month}-${i}`} colSpan={g.count} className="px-1 py-0.5 text-center font-medium">
+                                {g.month}
+                              </th>
+                            ))}
+                          </tr>
+                        )}
                         <tr className="bg-slate-50 text-slate-400">
-                          <th className="px-1.5 py-1 text-left font-medium">Brand</th>
+                          <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-1 text-left font-medium">Brand</th>
                           {allRangeColumns.map((col) => (
                             <th key={col.iso} className="px-1 py-1 text-center font-medium whitespace-nowrap">
-                              {hasDateFilter
-                                ? `${WEEKDAY_LABELS[col.weekday]} ${formatWeekdayDate(new Date(`${col.iso}T00:00:00`), 0)}`
-                                : WEEKDAY_LABELS[col.weekday][0]}
+                              {WEEKDAY_LABELS[col.weekday][0]}
                             </th>
                           ))}
                         </tr>
+                        {hasDateFilter && (
+                          <tr className="bg-slate-50 text-slate-400">
+                            <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-0.5" />
+                            {allRangeColumns.map((col) => (
+                              <th key={col.iso} className="px-1 py-0.5 text-center font-medium">
+                                {Number(col.iso.slice(8, 10))}
+                              </th>
+                            ))}
+                          </tr>
+                        )}
                       </thead>
                       <tbody>
                         {previewBrands.length === 0 ? (
@@ -679,7 +713,7 @@ export default function SchedulePlanner() {
                             const brandKey = normalizeBrandKey(brand);
                             return (
                               <tr key={brand} className="border-t border-slate-100">
-                                <td className="max-w-[90px] truncate px-1.5 py-1 text-[12px] text-slate-600">
+                                <td className="sticky left-0 z-10 max-w-[90px] truncate bg-white px-1.5 py-1 text-[12px] text-slate-600">
                                   <Tooltip content={brand} block className="truncate">
                                     {brand}
                                   </Tooltip>
@@ -720,24 +754,29 @@ export default function SchedulePlanner() {
                                     <td key={col.iso} className="px-0.5 py-1 text-center">
                                       <span className="flex flex-wrap items-center justify-center gap-0.5">
                                         {executedEntries.map(({ platform: p, kind }) => (
-                                          <span
-                                            key={p}
-                                            className={`relative inline-flex items-center gap-px rounded-[2px] px-px text-[6px] font-bold leading-tight ${PLATFORM_BADGE[p].className}`}
-                                          >
-                                            <img
-                                              src={PLATFORM_FAVICON[p]}
-                                              alt={PLATFORM_BADGE[p].label}
-                                              className="size-2.5 rounded-[1px]"
-                                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                            />
-                                            {PLATFORM_BADGE[p].label}
-                                            {kind && <EvidenceCornerBadge kind={kind} />}
-                                          </span>
+                                          <Tooltip key={p} content={PLATFORM_BADGE[p].label}>
+                                            <span
+                                              className={`relative inline-flex items-center rounded-[2px] p-px ${PLATFORM_BADGE[p].className}`}
+                                            >
+                                              <img
+                                                src={PLATFORM_FAVICON[p]}
+                                                alt={PLATFORM_BADGE[p].label}
+                                                className="size-2.5 rounded-[1px]"
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                              />
+                                              {kind && <EvidenceCornerBadge kind={kind} />}
+                                            </span>
+                                          </Tooltip>
                                         ))}
                                         {missed.map((p) => (
-                                          <Tooltip key={p} content="Planned — no confirmed activity found">
-                                            <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 px-px text-[6px] font-bold leading-tight text-slate-400">
-                                              {PLATFORM_BADGE[p].label}
+                                          <Tooltip key={p} content={`${PLATFORM_BADGE[p].label}: Planned — no confirmed activity found`}>
+                                            <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 p-px opacity-60">
+                                              <img
+                                                src={PLATFORM_FAVICON[p]}
+                                                alt={PLATFORM_BADGE[p].label}
+                                                className="size-2.5 rounded-[1px] grayscale"
+                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                              />
                                             </span>
                                           </Tooltip>
                                         ))}

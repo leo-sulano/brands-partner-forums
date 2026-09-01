@@ -91,6 +91,14 @@ interface ScheduleCellProps {
   // whether a day counts as cancelled.
   onCancel: (platform: Platform) => void;
   onAddPlatform: () => void;
+  // True whenever the grid is showing more than one week's worth of columns
+  // at once (a date-range filter is active) -- TabScheduleSection sets this
+  // from its own hasDateFilter so a chip drops its "TP"/"AG"/"CG"/"WO" text
+  // label (icon only) the moment columns get narrow enough for that label to
+  // wrap onto two lines, same tradeoff already made for the Schedule
+  // Planner landing-grid preview's own chips. The current single-week view
+  // has room to keep the label, so this defaults to false there.
+  iconOnly?: boolean;
 }
 
 interface PlatformChipProps {
@@ -119,6 +127,7 @@ interface PlatformChipProps {
   pauseReason?: string;
   pausedBy?: string;
   onClick: () => void;
+  iconOnly?: boolean;
 }
 
 // Small color-coded corner badge (✓ Confirmed/Published, ✕ Removed, P
@@ -155,7 +164,7 @@ export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
 // chips) — wrapping it in Tooltip's own extra trigger <span> would add a
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
-function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, isPausedState, pauseReason, pausedBy, onClick }: PlatformChipProps) {
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, isPausedState, pauseReason, pausedBy, onClick, iconOnly }: PlatformChipProps) {
   const badge = PLATFORM_BADGE[platform];
   const content = (
     <div>
@@ -185,7 +194,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
           className="size-3 rounded-sm"
           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
-        {badge.label}
+        {!iconOnly && badge.label}
         {isRemoved && <EvidenceCornerBadge kind="removed" />}
         {isConfirmed && <EvidenceCornerBadge kind="confirmed" />}
         {isPending && <EvidenceCornerBadge kind="pending" />}
@@ -233,7 +242,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -339,6 +348,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 pauseReason={pauseReason}
                 pausedBy={pausedBy}
                 onClick={() => onToggle(platform)}
+                iconOnly={iconOnly}
               />
               {showDayActions && (
                 // pointer-events-none while invisible -- being absolutely

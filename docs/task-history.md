@@ -7692,3 +7692,39 @@ as a dimmed, non-interactive row instead of being omitted. The old `scheduledDay
 "Nothing scheduled this week" empty state is gone — every week now shows its full 5-day list one
 way or another, so there's no longer a special case to fall into. Full suite (2224 tests) and build
 pass. Frontend-only — nothing to redeploy.
+
+---
+
+## Task 303: Schedule Planner Date Header Reformat, Sticky Brand Column, Icon-Only Platform Chips
+
+**Date:** September 1, 2026
+
+Three UI polish requests against the Schedule Planner, all reported live via screenshots — none
+touch scheduling/PMS-sync logic. (1) **Date header reformat:** both the landing-grid overview cards
+(`SchedulePlanner.tsx`) and the detailed single-tab view (`TabScheduleSection.tsx`) used to render
+each day column as one wide "Mon Aug 24" string, which got cut off in the narrow overview cards and
+wrapped awkwardly once a date-range filter widened the grid to many weeks. Both now use a stacked
+3-row header: a month row (spanning the columns it covers via consecutive-run grouping, so a range
+crossing a month boundary correctly shows Aug then Sep), a weekday-letter row (M T W T F, alongside
+the Brand/Schedule Status labels), and a day-number row underneath.
+`TabScheduleSection.tsx`'s header also stays vertically sticky while scrolling a long brand list, so
+each of its 3 rows measures its own real rendered height via `ResizeObserver` (the same technique
+already used for `toolbarHeight`) and stacks its `top` offset accordingly rather than guessing a
+fixed pixel value. (2) **Frozen Brand column:** the overview cards' per-tab mini table now keeps its
+Brand column pinned (`sticky left-0`) while the date columns scroll horizontally underneath,
+matching the sticky-column pattern `TabScheduleSection.tsx` already used. (3) **Icon-only platform
+chips:** both views' TP/AG/CG/WO chips dropped their visible text label in favor of icon-only — the
+overview cards always show icon-only now (a hover tooltip on the confirmed/missed chips still
+carries the platform name); the detailed view drops the label only once a date-range filter spans
+more than the current single week (new `iconOnly` prop threaded through `ScheduleCell`/
+`PlatformChip` in `calendarRenderer.tsx`, driven by `TabScheduleSection.tsx`'s existing
+`hasDateFilter`) — the default current-week view keeps the label, since 5 columns has room for it.
+The full platform name stays available via each chip's existing hover tooltip either way.
+
+Tier 1 (fast path) — confined to `SchedulePlanner.tsx`, `TabScheduleSection.tsx`, and
+`calendarRenderer.tsx`'s own rendering; no `queries.ts`/`scoreSummary.ts`/date-status-platform
+filtering logic touched. Full scheduler test suite (580 tests) and `npm run build` both pass;
+live-verified via Playwright against real Supabase data across both views and both the filtered
+(01/08–30/09, spanning a month boundary) and unfiltered (current week) cases. Frontend-only —
+nothing to redeploy.
+
