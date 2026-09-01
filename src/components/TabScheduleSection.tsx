@@ -861,10 +861,21 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         const { brand, platform } = pauseDaysTarget;
         const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
         const systemPaused = !!pausesByPlatform[platform];
+        const brandKey = normalizeBrandKey(brand);
         return {
           scheduledDays: pausableWeekdays(rowsByPlatform[platform], systemPaused),
           initialPausedDays: effectivePauseDays(rowsByPlatform[platform], systemPaused),
           weekLabel: `Week of ${formatWeekdayDate(weekStart, 0)} – ${formatWeekdayDate(weekStart, 4)}`,
+          // Informational only (not a checkbox like scheduledDays above) — a
+          // cancelled day has no brand_schedule row at all, so there's
+          // nothing here to toggle; un-cancelling still goes through the day
+          // cell's own "+" button. Per direct user request, shown here so the
+          // one popup a platform's Schedule Status icon already opens covers
+          // both Paused and Cancelled, instead of Cancelled having no
+          // indicator anywhere a click can reach.
+          cancelledDays: cancellations
+            .filter((c) => c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === weekStartISO)
+            .map((c) => c.weekday),
         };
       })()
     : null;
@@ -1095,10 +1106,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           }
                           if (cancelledPlatformSet.has(platform)) {
                             const days = cancelledPlatforms.find((x) => x.platform === platform)!.days;
-                            // Not clickable — see ScheduleStatusIconProps' own doc
-                            // comment on the 'cancelled' variant for why.
+                            // Clickable again, same PauseDaysModal every other
+                            // variant opens — per direct user request, the
+                            // modal now shows this platform's cancelled days
+                            // too (see pauseDaysModalData's cancelledDays),
+                            // not just its paused ones.
                             return (
-                              <ScheduleStatusIcon key={platform} platform={platform} source="cancelled" days={days} agent={agent} clickable={false} onClick={() => {}} />
+                              <ScheduleStatusIcon key={platform} platform={platform} source="cancelled" days={days} agent={agent} clickable={clickable} onClick={onClick} />
                             );
                           }
                           if (manuallyPausedPlatformSet.has(platform)) {
@@ -1142,6 +1156,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           weekLabel={pauseDaysModalData.weekLabel}
           scheduledDays={pauseDaysModalData.scheduledDays}
           initialPausedDays={pauseDaysModalData.initialPausedDays}
+          cancelledDays={pauseDaysModalData.cancelledDays}
           onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
           onClose={() => setPauseDaysTarget(null)}
         />

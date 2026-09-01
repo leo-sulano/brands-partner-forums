@@ -416,12 +416,14 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // clickable is gated the same way ScheduleCell's chips already are
 // (isApproved && not a legacy week), so a read-only view never renders a
 // button here.
-// 'cancelled' (a day explicitly Cancelled via the new day-cell button, see
-// schedule_cancellations) is deliberately NOT clickable to open
-// PauseDaysModal the way every other variant is -- that modal manages Paused
-// days specifically, and opening it from a Cancelled badge would be
-// semantically wrong. Un-cancelling a day goes through the day cell itself
-// (the "+" button, or Resume once it's been reactivated), not this icon.
+// 'cancelled' (a day explicitly Cancelled via the day-cell button, see
+// schedule_cancellations) opens that same PauseDaysModal too -- per direct
+// user request, the modal now shows this platform's cancelled days
+// alongside its paused ones (TabScheduleSection's pauseDaysModalData /
+// PauseDaysModal's cancelledDays prop), informational-only since a
+// cancelled day has no brand_schedule row to check/uncheck. Un-cancelling
+// still goes through the day cell itself (the "+" button, or Resume once
+// it's been reactivated), not this icon.
 type ScheduleStatusIconProps = { agent?: string; pausedBy?: string; clickable: boolean; onClick: () => void } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }

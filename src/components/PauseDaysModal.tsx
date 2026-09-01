@@ -10,6 +10,10 @@ interface Props {
   weekLabel: string;
   scheduledDays: Weekday[];
   initialPausedDays: Weekday[];
+  // Informational only, not a checkbox like scheduledDays -- a cancelled day
+  // has no brand_schedule row at all, so there's nothing here to toggle.
+  // Un-cancelling goes through the day cell's own "+" button, not this modal.
+  cancelledDays: Weekday[];
   onSave: (pausedDays: Weekday[]) => void;
   onClose: () => void;
 }
@@ -24,7 +28,7 @@ interface Props {
 // modal exists. Only offers scheduledDays (from pausableWeekdays) as
 // checkboxes — a day with nothing scheduled at all for this platform isn't
 // shown, since there's nothing there to pause.
-export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDays, initialPausedDays, onSave, onClose }: Props) {
+export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDays, initialPausedDays, cancelledDays, onSave, onClose }: Props) {
   const [pausedDays, setPausedDays] = useState<Set<Weekday>>(() => new Set(initialPausedDays));
 
   useEffect(() => {
@@ -68,6 +72,12 @@ export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDa
             <X className="size-4" />
           </button>
         </div>
+
+        {cancelledDays.length > 0 && (
+          <p className="mx-5 mb-4 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600">
+            🚫 Cancelled this week: {cancelledDays.map((d) => WEEKDAY_LABELS[d]).join(', ')}
+          </p>
+        )}
 
         {scheduledDays.length === 0 ? (
           <p className="px-5 pb-4 text-sm text-slate-500">

@@ -7655,3 +7655,22 @@ longer block clicks on whatever chip happens to render next to it while hidden �
 access is unaffected either way, since focusability and `:focus`/`focus-within` don't depend on
 `pointer-events` (that's mouse-only). Full suite (2224 tests) and build pass. Frontend-only —
 nothing to redeploy.
+
+---
+
+## Task 300: Pause Days Popup Now Shows Which Days Were Cancelled Too
+
+**Date:** September 1, 2026
+
+Per direct user request, clicking a platform's Schedule Status icon when it shows "🚫 Cancelled"
+now opens the same Pause Days popup every other variant already opens, instead of doing nothing —
+`ScheduleStatusIcon`'s 'cancelled' branch is clickable again (`TabScheduleSection.tsx`), reversing
+the "deliberately not clickable" choice from Task 294. The popup (`PauseDaysModal.tsx`) gained a
+new `cancelledDays` prop, rendered as a small rose informational line ("🚫 Cancelled this week:
+Monday") above the existing Paused-day checkboxes — read-only, since a cancelled day has no
+`brand_schedule` row to check/uncheck; un-cancelling still only happens via the day cell's own "+"
+button. `pauseDaysModalData` (`TabScheduleSection.tsx`) computes it straight from the `cancellations`
+state already fetched for Task 294, filtered to the target brand/platform/week. Confirmed with the
+user first: a Paused day's chip stays dimmed-and-visible on the date column, unchanged — only the
+popup gained the new indicator, nothing about how Paused already renders changed. Full suite (2224
+tests) and build pass. Frontend-only — nothing to redeploy.
