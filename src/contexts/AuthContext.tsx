@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs, fetchPausedTabs, fetchTabIconOverrides } from '../lib/queries';
+import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs, fetchPausedTabs, fetchTabIconOverrides, fetchHardcodedTabRenames } from '../lib/queries';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import { registerHiddenTabPlatforms, registerToolbarFilters } from '../lib/tab-configs';
 import { applyArchivedTabs } from '../lib/archivedTabRegistry';
 import { applyPausedTabs } from '../lib/pausedTabRegistry';
 import { registerTabIconOverrides } from '../lib/tabIconOverrideRegistry';
+import { registerHardcodedTabRenames } from '../lib/hardcodedTabRenameRegistry';
 import type { Profile } from '../types/profile';
 
 interface AuthContextValue {
@@ -113,7 +114,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Failed to fetch tab icon overrides:', err);
             return [];
           }),
-        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs, pausedTabs, tabIconOverrides]) => {
+          fetchHardcodedTabRenames().catch((err) => {
+            console.error('Failed to fetch hardcoded tab renames:', err);
+            return [];
+          }),
+        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs, pausedTabs, tabIconOverrides, hardcodedTabRenames]) => {
           if (!mounted) return;
           registerDynamicTabs(customTabs);
           registerHiddenTabPlatforms(hiddenPlatforms);
@@ -130,6 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Also order-independent: icon overrides apply to hardcoded tabs
           // too, so this never depends on a tab being registered as dynamic.
           registerTabIconOverrides(tabIconOverrides);
+          // Order-independent, same reasoning as tabIconOverrides above: a
+          // rename applies to hardcoded tabs regardless of dynamic/archive/
+          // pause state.
+          registerHardcodedTabRenames(hardcodedTabRenames);
           setProfile(p);
           setLoading(false);
         });
