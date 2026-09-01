@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PlayCircle, Search } from 'lucide-react';
 import { tabDisplayName } from '../lib/tabs';
-import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
-import TabIcon from '../components/TabIcon';
+import { getActiveOperationalTabs, getPausedOperationalTabs, unpauseTabLocally } from '../lib/pausedTabRegistry';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
-import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
+import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, resolveDateEvidenceKind, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
-import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -17,15 +15,18 @@ import {
   fetchScheduleRestrictedBrands,
   fetchRemovedPlatformBrands,
   fetchBrandAgentAssignments,
+  fetchPausedTabDetails,
+  unpauseTab,
 } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
-import PausedTabsSection from '../components/PausedTabsSection';
+import TabPreviewCard from '../components/TabPreviewCard';
 import Tooltip from '../components/Tooltip';
 import { subscribeEntries } from '../lib/realtime';
+import { useAuth } from '../contexts/AuthContext';
 import type { Entry } from '../types/entry';
-import type { BrandAgentAssignmentRow } from '../lib/queries';
+import type { BrandAgentAssignmentRow, PausedTabDetail } from '../lib/queries';
 
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
@@ -34,7 +35,7 @@ const DATE_FROM_STORAGE_KEY = 'schedulePlanner.dateFrom';
 const DATE_TO_STORAGE_KEY = 'schedulePlanner.dateTo';
 const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
 
-interface TabPreview {
+export interface TabPreview {
   // Already filtered to brands with at least one schedulable, non-removed
   // platform (same rule TabScheduleSection's own filteredBrands applies) —
   // so the "+N more" count matches what actually has rows in the real
@@ -70,7 +71,7 @@ interface TabPreview {
   agentAssignmentRows: BrandAgentAssignmentRow[];
 }
 
-const EMPTY_PREVIEW: TabPreview = {
+export const EMPTY_PREVIEW: TabPreview = {
   brands: [],
   activePlatforms: [],
   hiddenSet: new Set(),
@@ -108,7 +109,32 @@ function deriveEntryDependentPreview(
   };
 }
 
+// Formats a bare YYYY-MM-DD date without going through Date/timezone
+// conversion (this project has a documented history of that off-by-one bug
+// class — see toISODate's own doc comment in scheduleBrands.ts). Used for
+// the Paused Brand Tabs grid's since/until line.
+function formatPausedDate(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 export default function SchedulePlanner() {
+  const { isAdmin } = useAuth();
+  // Bumped by the same 'tab-platforms-changed' event Sidebar.tsx/Topbar.tsx
+  // already listen to (pausedTabRegistry.ts's notify call, fired by
+  // pauseTabLocally/unpauseTabLocally) -- forces the preview-fetch effect
+  // below to re-run when a tab's paused status changes elsewhere (Sidebar,
+  // EditBrandTabModal, or this page's own Resume button), since neither
+  // showGrid nor previewWeekKey change on their own for that.
+  const [reloadSeq, setReloadSeq] = useState(0);
+  useEffect(() => {
+    function handleChange() {
+      setReloadSeq((v) => v + 1);
+    }
+    window.addEventListener('tab-platforms-changed', handleChange);
+    return () => window.removeEventListener('tab-platforms-changed', handleChange);
+  }, []);
   // Recomputed on every render (deliberately not memoized, and deliberately
   // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
   // dynamic tab is created/deleted mid-session (src/lib/dynamicTabRegistry.ts),
@@ -350,8 +376,13 @@ export default function SchedulePlanner() {
       const removedRows = await fetchRemovedPlatformBrands().catch(() => []);
       const removedSet = buildRemovedPlatformBrandSet(removedRows);
       const weeks = previewWeekKey ? previewWeekKey.split(',') : [];
+      // Paused tabs share this same fetch+shape (their own "Paused Brand
+      // Tabs" grid below reuses the exact TabPreviewCard the active grid
+      // uses) -- scheduleRowsPerWeek naturally comes back empty for them
+      // (nothing ever gets generated/planned for a paused tab), which is
+      // exactly what makes their cards show pure evidence, never a plan.
       const entries = await Promise.all(
-        getActiveOperationalTabs().map(async (t) => {
+        [...getActiveOperationalTabs(), ...getPausedOperationalTabs()].map(async (t) => {
           try {
             const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek, agentAssignmentRows] = await Promise.all([
               fetchRawEntriesByTab(t),
@@ -389,7 +420,34 @@ export default function SchedulePlanner() {
     return () => {
       canceled = true;
     };
-  }, [showGrid, previewWeekKey]);
+  }, [showGrid, previewWeekKey, reloadSeq]);
+
+  // Reason/since/until for the "Paused Brand Tabs" grid below -- kept
+  // separate from previewByTab above since it comes from paused_tabs, not
+  // entries, and every other surface on this page that reads previewByTab
+  // has no use for it.
+  const [pausedTabDetails, setPausedTabDetails] = useState<Record<string, PausedTabDetail>>({});
+  useEffect(() => {
+    if (!showGrid) return;
+    let canceled = false;
+    (async () => {
+      const rows = await fetchPausedTabDetails().catch(() => []);
+      if (!canceled) setPausedTabDetails(Object.fromEntries(rows.map((r) => [r.tab, r])));
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [showGrid, reloadSeq]);
+
+  async function handleResumeTab(tab: string) {
+    try {
+      await unpauseTab(tab);
+      unpauseTabLocally(tab);
+    } catch {
+      // best-effort -- a failed resume just leaves the card in place; retry,
+      // or use Edit Brand Tab's Status select instead
+    }
+  }
 
   // Keeps the landing-grid cards' status badges current without a manual
   // reload or re-visit — mirrors TabScheduleSection.tsx's own subscribeEntries
@@ -638,167 +696,66 @@ export default function SchedulePlanner() {
       {showGrid ? (
         <>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {getActiveOperationalTabs().map((t) => {
-            const preview = previewByTab[t] ?? EMPTY_PREVIEW;
-            const previewBrands = previewBrandsFor(t);
-            return (
-              <div
-                key={t}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedTabs([t])}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelectedTabs([t]);
-                  }
-                }}
-                className="flex cursor-pointer flex-col gap-2 rounded-lg border border-solid border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50"
-              >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <TabIcon tab={t} className="size-4 shrink-0 text-blue-500" />
-                    <span className="text-sm font-medium text-slate-800">{tabDisplayName(t)}</span>
-                  </span>
-                  <ChevronRight className="size-4 shrink-0 text-slate-400" />
-                </span>
-
-                <div className={`overflow-x-auto rounded border border-slate-100 transition-opacity ${previewLoading ? 'opacity-40' : ''}`}>
-                  {hasDateFilter && allRangeColumns.length === 0 ? (
-                    <div className="px-1.5 py-3 text-center text-[10px] text-slate-400">
-                      No schedule tracked on weekends
-                    </div>
-                  ) : (
-                    <table className="w-full min-w-max border-collapse text-[10px]">
-                      <thead>
-                        {hasDateFilter && (
-                          <tr className="bg-slate-50 text-slate-400">
-                            <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-0.5" />
-                            {dateHeaderMonthGroups.map((g, i) => (
-                              <th key={`${g.month}-${i}`} colSpan={g.count} className="px-1 py-0.5 text-center font-medium">
-                                {g.month}
-                              </th>
-                            ))}
-                          </tr>
-                        )}
-                        <tr className="bg-slate-50 text-slate-400">
-                          <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-1 text-left font-medium">Brand</th>
-                          {allRangeColumns.map((col) => (
-                            <th key={col.iso} className="px-1 py-1 text-center font-medium whitespace-nowrap">
-                              {WEEKDAY_LABELS[col.weekday][0]}
-                            </th>
-                          ))}
-                        </tr>
-                        {hasDateFilter && (
-                          <tr className="bg-slate-50 text-slate-400">
-                            <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-0.5" />
-                            {allRangeColumns.map((col) => (
-                              <th key={col.iso} className="px-1 py-0.5 text-center font-medium">
-                                {Number(col.iso.slice(8, 10))}
-                              </th>
-                            ))}
-                          </tr>
-                        )}
-                      </thead>
-                      <tbody>
-                        {previewBrands.length === 0 ? (
-                          <tr>
-                            <td colSpan={allRangeColumns.length + 1} className="px-1.5 py-2 text-center text-slate-400">
-                              No schedule yet
-                            </td>
-                          </tr>
-                        ) : (
-                          previewBrands.map((brand) => {
-                            const brandPlatforms = resolveBrandPlatforms(
-                              t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
-                            );
-                            const brandKey = normalizeBrandKey(brand);
-                            return (
-                              <tr key={brand} className="border-t border-slate-100">
-                                <td className="sticky left-0 z-10 max-w-[90px] truncate bg-white px-1.5 py-1 text-[12px] text-slate-600">
-                                  <Tooltip content={brand} block className="truncate">
-                                    {brand}
-                                  </Tooltip>
-                                </td>
-                                {allRangeColumns.map((col) => {
-                                  const isPast = col.iso < todayISO;
-                                  const isToday = col.iso === todayISO;
-                                  const planActive = (p: Platform) =>
-                                    scheduleFor(preview.scheduleRows, t, brand, col.weekStartISO, p)?.[col.weekday] === 'active';
-                                  // Past days require real evidence to show a normal chip at all
-                                  // (regardless of what the plan said). Today shows a chip for every
-                                  // platform that's either planned or already has real evidence —
-                                  // Published/Removed/Pending/Done can land same-day (Check Status or
-                                  // a manual Edit Entry save), and the detailed tab view's own
-                                  // ScheduleCell already layers evidence onto today's chip regardless
-                                  // of whether the day has fully elapsed; this preview previously only
-                                  // checked evidence once a day was strictly in the past, so a same-day
-                                  // status change showed in the tab view but not here until the next
-                                  // day. Future days stay plan-only, since nothing could have happened
-                                  // yet.
-                                  const executedEntries: { platform: Platform; kind: DateEvidenceKind | null }[] = isPast
-                                    ? brandPlatforms
-                                        .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
-                                        .filter((e): e is { platform: Platform; kind: DateEvidenceKind } => e.kind !== null)
-                                    : isToday
-                                      ? brandPlatforms
-                                          .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
-                                          .filter((e) => e.kind !== null || planActive(e.platform))
-                                      : brandPlatforms.filter((p) => planActive(p)).map((p) => ({ platform: p, kind: null }));
-                                  // A past day the plan called active but no entry ever confirmed —
-                                  // a real operational miss, shown distinctly rather than silently
-                                  // dropped (a day with no plan and no evidence renders nothing, same
-                                  // as it always has).
-                                  const missed = isPast
-                                    ? brandPlatforms.filter((p) => planActive(p) && !executedEntries.some((e) => e.platform === p))
-                                    : [];
-                                  return (
-                                    <td key={col.iso} className="px-0.5 py-1 text-center">
-                                      <span className="flex flex-wrap items-center justify-center gap-0.5">
-                                        {executedEntries.map(({ platform: p, kind }) => (
-                                          <Tooltip key={p} content={PLATFORM_BADGE[p].label}>
-                                            <span
-                                              className={`relative inline-flex items-center rounded-[2px] p-px ${PLATFORM_BADGE[p].className}`}
-                                            >
-                                              <img
-                                                src={PLATFORM_FAVICON[p]}
-                                                alt={PLATFORM_BADGE[p].label}
-                                                className="size-2.5 rounded-[1px]"
-                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                              />
-                                              {kind && <EvidenceCornerBadge kind={kind} />}
-                                            </span>
-                                          </Tooltip>
-                                        ))}
-                                        {missed.map((p) => (
-                                          <Tooltip key={p} content={`${PLATFORM_BADGE[p].label}: Planned — no confirmed activity found`}>
-                                            <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 p-px opacity-60">
-                                              <img
-                                                src={PLATFORM_FAVICON[p]}
-                                                alt={PLATFORM_BADGE[p].label}
-                                                className="size-2.5 rounded-[1px] grayscale"
-                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                              />
-                                            </span>
-                                          </Tooltip>
-                                        ))}
-                                      </span>
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })
-                        )}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+          {getActiveOperationalTabs().map((t) => (
+            <TabPreviewCard
+              key={t}
+              tab={t}
+              preview={previewByTab[t] ?? EMPTY_PREVIEW}
+              previewBrands={previewBrandsFor(t)}
+              hasDateFilter={hasDateFilter}
+              allRangeColumns={allRangeColumns}
+              dateHeaderMonthGroups={dateHeaderMonthGroups}
+              todayISO={todayISO}
+              previewLoading={previewLoading}
+              onClick={() => setSelectedTabs([t])}
+            />
+          ))}
         </div>
-        <PausedTabsSection />
+        {getPausedOperationalTabs().length > 0 && (
+          <div className="mt-4">
+            <h2 className="mb-2 text-sm font-semibold text-slate-700">Paused Brand Tabs</h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {getPausedOperationalTabs().map((t) => {
+                const detail = pausedTabDetails[t];
+                return (
+                  <TabPreviewCard
+                    key={t}
+                    tab={t}
+                    preview={previewByTab[t] ?? EMPTY_PREVIEW}
+                    previewBrands={previewBrandsFor(t)}
+                    hasDateFilter={hasDateFilter}
+                    allRangeColumns={allRangeColumns}
+                    dateHeaderMonthGroups={dateHeaderMonthGroups}
+                    todayISO={todayISO}
+                    previewLoading={previewLoading}
+                    headerExtra={
+                      <div className="flex items-start justify-between gap-2 rounded border border-amber-100 bg-amber-50 px-2 py-1.5">
+                        <div className="min-w-0 text-[11px] text-amber-800">
+                          {detail?.reason && <p className="truncate">{detail.reason}</p>}
+                          {detail?.pausedAt && (
+                            <p className="text-amber-600">
+                              {formatPausedDate(detail.pausedAt.slice(0, 10))} → {detail.pausedUntil ? formatPausedDate(detail.pausedUntil) : 'Permanent'}
+                            </p>
+                          )}
+                        </div>
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => handleResumeTab(t)}
+                            className="shrink-0 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-emerald-700 hover:bg-emerald-100"
+                          >
+                            <PlayCircle className="size-3" />
+                            Resume
+                          </button>
+                        )}
+                      </div>
+                    }
+                  />
+                );
+              })}
+            </div>
+          </div>
+        )}
         </>
       ) : (
         <div className="space-y-4">
