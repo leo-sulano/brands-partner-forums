@@ -4,6 +4,7 @@ import {
   isKnownDynamicIconName, resolveTabIconKind, computeInitialIconSelection, faviconUrl,
 } from './tabIcons';
 import { registerTabIconOverrides, clearTabIconOverride } from './tabIconOverrideRegistry';
+import { renameHardcodedTabLocally, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry';
 
 describe('faviconUrl', () => {
   it('builds a Google favicon-service URL for the given domain', () => {
@@ -79,6 +80,12 @@ describe('resolveTabIconKind', () => {
   it('an override wins over a hardcoded tab\'s own TAB_ICONS default', () => {
     registerTabIconOverrides([{ tab: 'Hanan', icon: 'rocket', faviconDomain: null, imageUrl: null }]);
     expect(resolveTabIconKind('Hanan')).toEqual({ kind: 'dynamic', name: 'rocket' });
+  });
+
+  it('resolves a renamed hardcoded tab back to its original TAB_ICONS entry', () => {
+    renameHardcodedTabLocally('Hanan', 'Hanan Group');
+    expect(resolveTabIconKind('Hanan Group')).toEqual({ kind: 'static', Icon: TAB_ICONS['Hanan'] });
+    resetHardcodedTabRenames();
   });
 });
 

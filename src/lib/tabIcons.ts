@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { iconNames } from 'lucide-react/dynamic';
 import { getTabIconOverride } from './tabIconOverrideRegistry';
+import { resolveHardcodedTabKey } from './hardcodedTabRenameRegistry';
 
 export const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection':        Syringe,
@@ -110,7 +111,7 @@ export function resolveTabIconKind(tab: string): ResolvedTabIcon {
   if (override?.icon && isKnownDynamicIconName(override.icon)) {
     return { kind: 'dynamic', name: override.icon };
   }
-  const hardcoded = TAB_ICONS[tab];
+  const hardcoded = TAB_ICONS[resolveHardcodedTabKey(tab)];
   if (hardcoded) return { kind: 'static', Icon: hardcoded };
   return { kind: 'static', Icon: DEFAULT_TAB_ICON };
 }
