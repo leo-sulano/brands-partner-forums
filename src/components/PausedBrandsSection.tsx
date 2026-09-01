@@ -1,7 +1,9 @@
 import { PlayCircle, Pencil } from 'lucide-react';
+import { tabDisplayName } from '../lib/tabs';
 import { PLATFORM_FAVICON, normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { PLATFORM_FULL_LABEL, type LastPost } from '../lib/scheduler/scheduleUtils';
 import type { ScheduleBrandPause } from '../lib/queries';
+import TabIcon from './TabIcon';
 
 interface Props {
   pausedBrands: ScheduleBrandPause[];
@@ -13,6 +15,16 @@ interface Props {
   isApproved: boolean;
   onEdit: (row: ScheduleBrandPause) => void;
   onUnpause: (brandKey: string) => void;
+  // Set only when this section stands alone as its own card (Schedule
+  // Planner's landing grid, one per tab) rather than embedded below a tab's
+  // own already-labeled calendar (TabScheduleSection) -- renders a tab
+  // icon+name header and a standalone card border instead of the plain
+  // border-top used when embedded. Keeping the empty/filtered-out check
+  // (rows.length === 0 below) inside this one component, rather than in
+  // each caller, is what lets a tab with paused brands that are all
+  // currently filtered out of view render nothing at all instead of an
+  // orphaned header with an empty table under it.
+  tab?: string;
 }
 
 // Formats a bare YYYY-MM-DD date column without going through Date/timezone
@@ -28,7 +40,7 @@ function formatISODate(iso: string): string {
 // 2026-09-01-schedule-planner-paused-brands-design.md) -- shown here purely
 // for reference (why it's paused, since when, until when if not indefinite,
 // and its last known post per platform), never fed into any KPI/aggregation.
-export default function PausedBrandsSection({ pausedBrands, activePlatforms, lastPostIndex, agentIndex, search, agentFilter, isApproved, onEdit, onUnpause }: Props) {
+export default function PausedBrandsSection({ pausedBrands, activePlatforms, lastPostIndex, agentIndex, search, agentFilter, isApproved, onEdit, onUnpause, tab }: Props) {
   if (pausedBrands.length === 0) return null;
 
   const q = search.trim().toLowerCase();
@@ -44,7 +56,13 @@ export default function PausedBrandsSection({ pausedBrands, activePlatforms, las
   if (rows.length === 0) return null;
 
   return (
-    <div className="border-t border-slate-200 bg-slate-50/60">
+    <div className={tab ? 'rounded-lg border border-solid border-slate-200 bg-white shadow-sm' : 'border-t border-slate-200 bg-slate-50/60'}>
+      {tab && (
+        <div className="flex items-center gap-2 px-4 pt-3">
+          <TabIcon tab={tab} className="size-4 shrink-0 text-blue-500" />
+          <span className="text-sm font-medium text-slate-800">{tabDisplayName(tab)}</span>
+        </div>
+      )}
       <div className="px-4 py-2.5">
         <h3 className="text-sm font-semibold text-slate-700">Paused / Noted Brands</h3>
         <p className="text-xs text-slate-400 mt-0.5">

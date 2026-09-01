@@ -7,7 +7,7 @@ import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, scheduleFor, WEEKDAY_LABELS, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, resolveDateEvidenceKind, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, buildLastPostIndex, resolveDateEvidenceKind, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
 import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
 import {
   fetchBrandSchedule,
@@ -16,16 +16,21 @@ import {
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
   fetchScheduleBrandPauses,
+  pauseScheduleBrand,
+  unpauseScheduleBrand,
   fetchRemovedPlatformBrands,
   fetchBrandAgentAssignments,
 } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
+import PausedBrandsSection from '../components/PausedBrandsSection';
+import PauseBrandModal from '../components/PauseBrandModal';
 import Tooltip from '../components/Tooltip';
 import { subscribeEntries } from '../lib/realtime';
+import { useAuth } from '../contexts/AuthContext';
 import type { Entry } from '../types/entry';
-import type { BrandAgentAssignmentRow } from '../lib/queries';
+import type { BrandAgentAssignmentRow, ScheduleBrandPause } from '../lib/queries';
 
 const TABS_STORAGE_KEY = 'schedulePlanner.tabs';
 const SEARCH_STORAGE_KEY = 'schedulePlanner.search';
@@ -68,6 +73,11 @@ interface TabPreview {
   rawEntries: Entry[];
   headers: string[];
   agentAssignmentRows: BrandAgentAssignmentRow[];
+  // Retained (unlike hiddenSet, which already has these merged in for
+  // exclusion purposes) so the landing page's own "Paused / Noted Brands"
+  // section can render the raw reason/dates per tab -- see the paused-brands
+  // design spec's addendum.
+  pausedRows: ScheduleBrandPause[];
 }
 
 const EMPTY_PREVIEW: TabPreview = {
@@ -82,6 +92,7 @@ const EMPTY_PREVIEW: TabPreview = {
   rawEntries: [],
   headers: [],
   agentAssignmentRows: [],
+  pausedRows: [],
 };
 
 // The subset of a TabPreview that depends only on that tab's raw entries (plus
@@ -109,6 +120,13 @@ function deriveEntryDependentPreview(
 }
 
 export default function SchedulePlanner() {
+  const { isApproved } = useAuth();
+  // Edit-pause modal target for the landing grid's own "Paused / Noted
+  // Brands" cards -- Pausing a brand for the first time only happens from
+  // inside a tab's expanded TabScheduleSection, so `existing` here is never
+  // null (this modal only ever edits an already-paused brand's reason/dates).
+  const [pauseBrandTarget, setPauseBrandTarget] = useState<{ tab: string; brand: string; existing: ScheduleBrandPause } | null>(null);
+
   // Recomputed on every render (deliberately not memoized, and deliberately
   // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
   // dynamic tab is created/deleted mid-session (src/lib/dynamicTabRegistry.ts),
@@ -379,6 +397,7 @@ export default function SchedulePlanner() {
               rawEntries,
               headers,
               agentAssignmentRows,
+              pausedRows,
             };
             return [t, preview] as const;
           } catch {
@@ -478,6 +497,42 @@ export default function SchedulePlanner() {
       const agent = preview.agentIndex.get(normalizeBrandKey(b));
       return !!agent && agentFilter.includes(agent);
     });
+  }
+
+  // Re-fetches just one tab's pausedRows after an edit/unpause from the
+  // landing grid's own "Paused / Noted Brands" cards -- mirrors the
+  // INSERT-refetch pattern the live-entries subscription above already uses
+  // for this same previewByTab state, just scoped to the one field that can
+  // change from these two actions instead of the whole entry-dependent set.
+  async function refetchPausedRows(tab: string) {
+    const rows = await fetchScheduleBrandPauses(tab).catch(() => []);
+    setPreviewByTab((prev) => {
+      const preview = prev[tab];
+      if (!preview) return prev;
+      return { ...prev, [tab]: { ...preview, pausedRows: rows } };
+    });
+  }
+
+  async function handleLandingUnpauseBrand(tab: string, brandKey: string) {
+    try {
+      await unpauseScheduleBrand(tab, brandKey);
+      await refetchPausedRows(tab);
+    } catch (err) {
+      // No shared Toast on this page's landing view today -- best-effort,
+      // matching the live-refresh catch blocks directly above.
+      console.error('Failed to unpause brand', err);
+    }
+  }
+
+  async function handlePauseBrandEditSave(input: { reason: string; pausedSince: string; pausedUntil: string | null }) {
+    if (!pauseBrandTarget) return;
+    try {
+      await pauseScheduleBrand(pauseBrandTarget.tab, pauseBrandTarget.brand, input);
+      await refetchPausedRows(pauseBrandTarget.tab);
+      setPauseBrandTarget(null);
+    } catch (err) {
+      console.error('Failed to save pause', err);
+    }
   }
 
   // Overview-mode platform counts: summed across every active operational
@@ -640,6 +695,7 @@ export default function SchedulePlanner() {
       </div>
 
       {showGrid ? (
+        <>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {getActiveOperationalTabs().map((t) => {
             const preview = previewByTab[t] ?? EMPTY_PREVIEW;
@@ -801,6 +857,32 @@ export default function SchedulePlanner() {
             );
           })}
         </div>
+        {/* One card per active operational tab, each self-gating to null
+            (PausedBrandsSection's own early return) when that tab has no
+            paused brands, or none survive the current search/Agent filter —
+            so this whole block renders nothing at all when nothing is
+            paused anywhere, same as the "no cards" case would look today. */}
+        <div className="mt-3 space-y-3">
+          {getActiveOperationalTabs().map((t) => {
+            const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+            return (
+              <PausedBrandsSection
+                key={t}
+                tab={t}
+                pausedBrands={preview.pausedRows}
+                activePlatforms={preview.activePlatforms}
+                lastPostIndex={buildLastPostIndex(preview.rawEntries)}
+                agentIndex={preview.agentIndex}
+                search={search}
+                agentFilter={agentFilter}
+                isApproved={isApproved}
+                onEdit={(row) => setPauseBrandTarget({ tab: t, brand: row.brand, existing: row })}
+                onUnpause={(brandKey) => handleLandingUnpauseBrand(t, brandKey)}
+              />
+            );
+          })}
+        </div>
+        </>
       ) : (
         <div className="space-y-4">
           {selectedTabs.map((t) => (
@@ -819,6 +901,14 @@ export default function SchedulePlanner() {
             />
           ))}
         </div>
+      )}
+      {pauseBrandTarget && (
+        <PauseBrandModal
+          brand={pauseBrandTarget.brand}
+          existing={pauseBrandTarget.existing}
+          onSave={handlePauseBrandEditSave}
+          onClose={() => setPauseBrandTarget(null)}
+        />
       )}
     </div>
   );
