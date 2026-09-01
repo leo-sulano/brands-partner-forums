@@ -7564,3 +7564,21 @@ directory — confirmed no conflict: both touch `src/lib/scheduler/pmsSync.ts` b
 functions (Task 293's `brand`-aware sort vs. this task's cancellation-branch revert), verified by
 reading the merged file directly and by the full suite passing against the merged state. See
 [[feedback_concurrent_sessions_migrations]].
+
+---
+
+## Task 295: Pause/Resume/Cancel Buttons Now Reveal on Row Hover, Not Just Cell Hover
+
+**Date:** September 1, 2026
+
+Same-day follow-up to Task 294, reported live via screenshot: the new Pause/⏸/Resume▶/Cancel🚫
+buttons only appeared while hovering the exact day cell, even though that cell's whole row already
+highlights blue on hover — a user hovering anywhere else in the row saw no buttons at all. Per
+direct user request, hovering anywhere in a brand's row now reveals every day cell's buttons at
+once. Fix: the buttons' wrapping `<span>` (`ScheduleCell`, `src/lib/scheduler/calendarRenderer.tsx`)
+switched from `group-hover/cell:opacity-100` (this cell's own named group) to `group-hover:opacity-100`
+(the row's own bare `group`, already set on the `<tr>` in `TabScheduleSection.tsx` for its
+`hover:bg-blue-50`) — a one-class CSS change, no logic touched. The pre-existing "+" Add Platform
+button and `PlatformChip`'s own past-day ghosting are untouched, still gated on the cell's own
+`group/cell` hover. Full suite (2224 tests) and build pass. Frontend-only — no migration, no Edge
+Function change, nothing to redeploy.
