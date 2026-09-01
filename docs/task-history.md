@@ -7613,3 +7613,20 @@ that platform's own buttons, leaving sibling platforms in the same cell untouche
 Platform button (which adds a platform not yet in the cell, so it has no one chip to scope to) is
 unchanged, still cell-wide. Full suite (2224 tests) and build pass. Frontend-only — nothing to
 redeploy.
+
+---
+
+## Task 298: Extended the White Icon Border to Static/Dynamic Tab Icons, Not Just Images
+
+**Date:** September 1, 2026
+
+Same-day follow-up to the commit directly below in git history (the white-border treatment for
+image-based tab icons) — the border was only added to `TabIcon.tsx`'s `image`/`favicon` branches,
+so lucide-based icons (e.g. BITP's pencil, FTP's link icon, Trybet's dynamic "Y") still rendered
+with no border next to now-bordered favicon icons like Rooster Partners/SilverPlay/Hanan, an
+inconsistency reported directly via a sidebar screenshot. Added the same `rounded-[3px] border
+border-[#ffffff80]` classes to the `static` and `dynamic` branches of `TabIcon.tsx`, so all four
+icon kinds render consistently. Tier 1 (fast path) — confined to `TabIcon.tsx`, the single shared
+render entry point already used by Sidebar/Overview/Schedule Planner, so every consumer picks this
+up automatically with no other call-site changes. Build passes clean. Frontend-only — nothing to
+redeploy.
