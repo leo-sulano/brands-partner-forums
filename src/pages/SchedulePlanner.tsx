@@ -21,6 +21,7 @@ import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
 import TabPreviewCard from '../components/TabPreviewCard';
+import PausedBadgeIcon from '../components/PausedBadgeIcon';
 import Tooltip from '../components/Tooltip';
 import { subscribeEntries } from '../lib/realtime';
 import type { Entry } from '../types/entry';
@@ -716,6 +717,7 @@ export default function SchedulePlanner() {
                     dateHeaderMonthGroups={dateHeaderMonthGroups}
                     todayISO={todayISO}
                     previewLoading={previewLoading}
+                    cornerBadge={<PausedBadgeIcon className="size-4 shrink-0" />}
                     headerExtra={
                       (detail?.reason || detail?.pausedAt) && (
                         <div className="min-w-0 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">

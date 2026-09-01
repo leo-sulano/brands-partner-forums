@@ -27,9 +27,14 @@ interface Props {
   // generation; today nothing in this codebase can reach that state, and
   // this card staying non-clickable is what keeps it that way).
   onClick?: () => void;
+  // Rendered in the header row's trailing slot (top-right of the card) —
+  // the active grid's chevron already lives there when clickable; the
+  // paused-tabs grid uses this for a small paused-status icon instead,
+  // since a paused card is never clickable and that slot is otherwise empty.
+  cornerBadge?: ReactNode;
   // Rendered between the header row and the mini calendar table — the
-  // paused-tabs grid uses this for its reason/since→until line and Resume
-  // button; the active grid passes nothing.
+  // paused-tabs grid uses this for its reason/since→until line; the
+  // active grid passes nothing.
   headerExtra?: ReactNode;
 }
 
@@ -41,7 +46,7 @@ interface Props {
 // so planActive below is always false for it — every chip a paused card
 // shows is real evidence, never a plan, with no separate "missed" concept
 // needed for that case.
-export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, onClick, headerExtra }: Props) {
+export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, onClick, cornerBadge, headerExtra }: Props) {
   const clickable = !!onClick;
   return (
     <div
@@ -65,7 +70,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
           <TabIcon tab={tab} className="size-4 shrink-0 text-blue-500" />
           <span className="text-sm font-medium text-slate-800">{tabDisplayName(tab)}</span>
         </span>
-        {clickable && <ChevronRight className="size-4 shrink-0 text-slate-400" />}
+        {clickable ? <ChevronRight className="size-4 shrink-0 text-slate-400" /> : cornerBadge}
       </span>
 
       {headerExtra}
