@@ -626,44 +626,22 @@ describe('syncScheduleStatusToPms', () => {
 // .update({synced_status}).eq('id', id), reached whenever
 // syncScheduleStatusToPms actually moves a link. Both gaps were found by
 // reading the real queries.ts functions against this fake, not assumed.
-// upsertCapture, when passed, records every { table, row } an .upsert() call
-// on this fake client makes -- used by the watermark tests below to assert
-// what resolveAndSyncTabStatuses actually wrote, without changing the
-// signature callers that don't care about upserts already use. deleteCapture,
-// when passed, records every deleted id from a .delete().eq('id', id) call --
-// deleteSchedulePmsLink's real shape, reached by the self-healing
-// cancellation tests below.
-// entriesWatermarkOverride, when passed, makes a `select('updated_at')` call
-// on the 'entries' table return this array instead of `tables['entries']` --
-// every other select (fetchAllTabEntries' own `select('*')`) still returns
-// the normal `tables['entries']` rows. Simulates the real-world divergence
-// between fetchTabEntriesWatermark's own uncached query and fetchAllTabEntries'
-// up-to-60s-stale in-memory cache (src/lib/queries.ts's tabEntryCache) landing
-// on genuinely different snapshots of the same table -- a scenario this fake's
-// single shared `rows` array can't otherwise represent, since both real
-// functions read the same table.
+// deleteCapture, when passed, records every deleted id from a
+// .delete().eq('id', id) call -- deleteSchedulePmsLink's real shape, reached
+// by the self-healing cancellation tests below.
 function fakeMultiTableClient(
   tables: Record<string, unknown[]>,
-  upsertCapture?: { table: string; row: unknown }[],
   deleteCapture?: { table: string; id: string }[],
-  entriesWatermarkOverride?: unknown[],
 ) {
   function builder(rows: unknown[], tableName: string, selectArg?: string) {
     return {
-      select: (arg?: string) =>
-        tableName === 'entries' && arg === 'updated_at' && entriesWatermarkOverride
-          ? builder(entriesWatermarkOverride, tableName, arg)
-          : builder(rows, tableName, arg),
+      select: (arg?: string) => builder(rows, tableName, arg),
       eq: () => builder(rows, tableName, selectArg),
       order: () => builder(rows, tableName, selectArg),
       range: () => builder(rows, tableName, selectArg),
       limit: () => builder(rows, tableName, selectArg),
       gt: () => builder(rows, tableName, selectArg),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
-      upsert: (row: unknown) => {
-        upsertCapture?.push({ table: tableName, row });
-        return Promise.resolve({ error: null });
-      },
       delete: () => ({
         eq: (_col: string, id: string) => {
           deleteCapture?.push({ table: tableName, id });
@@ -826,7 +804,7 @@ describe('resolveAndSyncTabStatuses', () => {
       brand_schedule: [
         { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
     ]);
@@ -855,7 +833,7 @@ describe('resolveAndSyncTabStatuses', () => {
       brand_schedule: [
         { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-31', platform: 'tp', monday: 'paused', tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
       return { ok: true, status: 200, json: async () => ({}) };
@@ -881,7 +859,7 @@ describe('resolveAndSyncTabStatuses', () => {
       brand_schedule: [
         { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-31', platform: 'tp', monday: 'paused', tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
       return { ok: true, status: 200, json: async () => ({}) };
@@ -906,7 +884,7 @@ describe('resolveAndSyncTabStatuses', () => {
       brand_schedule: [
         { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: 'active', friday: null },
       ],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
     // 2026-08-27 is a Thursday -- still 'active' in brand_schedule, so this
@@ -930,7 +908,7 @@ describe('resolveAndSyncTabStatuses', () => {
       schedule_platform_restrictions: [],
       brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-24', reason: 'low success rate' }],
       brand_schedule: [],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
       return { ok: true, status: 200, json: async () => ({}) };
@@ -954,7 +932,7 @@ describe('resolveAndSyncTabStatuses', () => {
       brand_schedule: [
         { tab: 'TP Brand Injection', brand_key: 'winmega', week_start: '2026-08-24', platform: 'tp', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
       return { ok: true, status: 200, json: async () => ({}) };
@@ -965,9 +943,8 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(result.synced[0]?.targetStatus).toBe('done');
   });
 
-  it('records a per-link cancellation failure without blocking others, and does not record the watermark', async () => {
+  it('records a per-link cancellation failure without blocking others', async () => {
     const deletes: { table: string; id: string }[] = [];
-    const upserts: { table: string; row: unknown }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
         { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-bad', synced_status: 'active' },
@@ -984,7 +961,7 @@ describe('resolveAndSyncTabStatuses', () => {
         { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
         { tab: 'Rooster Partners', brand_key: 'rocketspin', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
-    }, upserts, deletes);
+    }, deletes);
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks\/task-bad$/, method: 'DELETE', body: {}, status: 500 },
       { url: /\/tasks\/task-ok$/, method: 'DELETE', body: null, status: 204 },
@@ -994,7 +971,6 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(result.cancelFailed).toHaveLength(1);
     expect(result.cancelFailed[0].item).toEqual({ tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'cg', date: '2026-08-27' });
     expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-2' }]);
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([]);
   });
 
   it('skips a link whose platform is currently hidden for that brand, never syncing it', async () => {
@@ -1033,113 +1009,42 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
-  it('skips the whole resolve (no PMS calls at all) when the tab watermark matches the last successful sync', async () => {
+  // Regression lock for the watermark-short-circuit removal (see
+  // docs/task-history.md): an earlier version of resolveAndSyncTabStatuses
+  // skipped its whole resolve -- no entries fetch, no PMS calls -- whenever a
+  // cached "nothing changed since the last successful sync" watermark
+  // matched, and that optimization repeatedly (and unpredictably) went stale
+  // in production, leaving real status changes silently unsynced for hours.
+  // There is no longer any stored state that could make this function skip a
+  // tab: two consecutive calls against the exact same unchanged data both
+  // fetch and resolve the tab in full.
+  it('performs a full resolve on every call, with nothing cached across calls that could short-circuit a later one', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
         { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
       ],
-      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T10:00:00Z' }],
-      schedule_pms_sync_watermarks: [{ tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' }],
-    });
-    const fetchFn = vi.fn();
-    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
-    expect(fetchFn).not.toHaveBeenCalled();
-  });
-
-  it('force=true bypasses the watermark short-circuit even when it matches the last successful sync, and still records the (unchanged) watermark afterward', async () => {
-    const upserts: { table: string; row: unknown }[] = [];
-    const client = fakeMultiTableClient({
-      schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
-      ],
-      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T10:00:00Z' }],
-      schedule_pms_sync_watermarks: [{ tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' }],
-    }, upserts);
-    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
-      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
-      return { ok: true, status: 200, json: async () => ({}) };
-    }) as unknown as typeof fetch;
-    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, false, true);
-    expect(result.synced).toHaveLength(1);
-    expect(fetchFn).toHaveBeenCalled();
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
-      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' } },
-    ]);
-  });
-
-  it('records the new tab watermark after a fully successful resolve, so the next tick can skip it', async () => {
-    const upserts: { table: string; row: unknown }[] = [];
-    const client = fakeMultiTableClient({
-      schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
-      ],
-      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T11:00:00Z' }],
-    }, upserts);
-    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
-      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
-      return { ok: true, status: 200, json: async () => ({}) };
-    }) as unknown as typeof fetch;
-    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result.synced).toHaveLength(1);
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
-      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T11:00:00Z' } },
-    ]);
-  });
-
-  it('records the watermark from the entries actually used, not a separately-fetched fresher value -- so a real change made while the entries cache is stale is never marked falsely "seen"', async () => {
-    const upserts: { table: string; row: unknown }[] = [];
-    // The 'entries' table represents what fetchAllTabEntries' up-to-60s cache
-    // returns -- a snapshot where WinMega's status is still blank ('active').
-    // entriesWatermarkOverride represents fetchTabEntriesWatermark's own
-    // uncached query hitting a NEWER row (e.g. a Done update that landed
-    // moments ago, real production timeline: SilverPlay/Silver Play/ag
-    // stayed stuck on 'active' for ~5.7 hours this exact way). The old,
-    // buggy code recorded that newer value regardless of what data was
-    // actually processed -- permanently hiding the Done update from every
-    // later resolve, since the recorded watermark would already "match" the
-    // true current DB state without ever having synced it.
-    const client = fakeMultiTableClient({
-      schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
-      ],
-      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega' }), updated_at: '2026-08-20T00:00:00Z' }],
+      entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [],
       schedule_hidden_brands: [],
       schedule_platform_restrictions: [],
       brand_platform_pause: [],
-      // A real 'active' day (not null) so this link resolves to plain
-      // 'active' via resolvePmsSyncStatus's fallback -- not the separate
-      // self-healing-cancellation branch, which a genuinely blank day with
-      // no evidence would otherwise trigger instead.
-      brand_schedule: [
-        { tab: 'TP Brand Injection', brand_key: 'winmega', week_start: '2026-08-24', platform: 'tp', monday: null, tuesday: null, wednesday: null, thursday: 'active', friday: null },
-      ],
-    }, upserts, undefined, [{ updated_at: '2026-08-27T07:57:07Z' }]);
-    const fetchFn = vi.fn();
-    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result.synced).toEqual([]);
-    expect(result.cancelled).toEqual([]);
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
-      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-20T00:00:00Z' } },
-    ]);
-  });
-
-  it('does not record a new tab watermark when a link fails to sync, so the next tick retries it', async () => {
-    const upserts: { table: string; row: unknown }[] = [];
-    const client = fakeMultiTableClient({
-      schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
-      ],
-      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T12:00:00Z' }],
-    }, upserts);
+      brand_schedule: [],
+    });
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
-      return { ok: false, status: 500, json: async () => ({}) }; // the PMS move itself fails
+      return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result.failed).toHaveLength(1);
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([]);
+    const first = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(first.synced).toHaveLength(1);
+    const callsAfterFirst = (fetchFn as ReturnType<typeof vi.fn>).mock.calls.length;
+    invalidateTabCache('TP Brand Injection'); // fetchAllTabEntries' own 60s cache -- unrelated to the removed watermark, cleared so this call reads fresh too.
+    const second = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    // The mock's schedule_pms_links row is never actually mutated by
+    // .update(), so the second call resolves the exact same 'active' ->
+    // 'done' mismatch as the first -- proof the resolve genuinely ran again
+    // rather than trusting a stored "already caught up" signal.
+    expect(second.synced).toHaveLength(1);
+    expect((fetchFn as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
 });
 
@@ -1175,31 +1080,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     expect(calls.some((c) => !c.url.endsWith('/move'))).toBe(false);
   });
 
-  it('invalidates the tab\'s sync watermark, so a later unpaused resolve is not short-circuited by a still-matching entries watermark', async () => {
-    const upserts: { table: string; row: unknown }[] = [];
-    const client = fakeMultiTableClient({
-      schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
-      ],
-      entries: [],
-      removed_platform_brands: [],
-      schedule_hidden_brands: [],
-      schedule_platform_restrictions: [],
-      brand_platform_pause: [],
-      brand_schedule: [],
-    }, upserts);
-    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
-      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
-      return { ok: true, status: 200, json: async () => ({}) };
-    }) as unknown as typeof fetch;
-    await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
-      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '' } },
-    ]);
-  });
-
-  it('invalidates the watermark even when every link is already synced as paused (nothing to move)', async () => {
-    const upserts: { table: string; row: unknown }[] = [];
+  it('makes no PMS calls when every link is already synced as paused (nothing to move)', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
         { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused' },
@@ -1210,14 +1091,11 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
       schedule_platform_restrictions: [],
       brand_platform_pause: [],
       brand_schedule: [],
-    }, upserts);
+    });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch, true);
     expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
-    expect(upserts.filter((u) => u.table === 'schedule_pms_sync_watermarks')).toEqual([
-      { table: 'schedule_pms_sync_watermarks', row: { tab: 'TP Brand Injection', last_seen_max_updated_at: '' } },
-    ]);
   });
 
   it('does not force-pause a link whose platform is currently hidden for that brand, leaving it untouched', async () => {
@@ -1270,7 +1148,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
       brand_schedule: [
         { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
-    }, undefined, deletes);
+    }, deletes);
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
       return { ok: true, status: 200, json: async () => ({}) };
@@ -1281,26 +1159,6 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'Rooster Partners', brand: 'Lucky7even', date: '2026-08-27' }]);
   });
 
-  it('still resolves when the entries watermark matches the last successful sync, unlike the normal (non-paused) path', async () => {
-    const client = fakeMultiTableClient({
-      schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
-      ],
-      entries: [{ ...entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' }), updated_at: '2026-08-27T10:00:00Z' }],
-      schedule_pms_sync_watermarks: [{ tab: 'TP Brand Injection', last_seen_max_updated_at: '2026-08-27T10:00:00Z' }],
-      removed_platform_brands: [],
-      schedule_hidden_brands: [],
-      schedule_platform_restrictions: [],
-      brand_platform_pause: [],
-      brand_schedule: [],
-    });
-    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
-      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
-      return { ok: true, status: 200, json: async () => ({}) };
-    }) as unknown as typeof fetch;
-    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
-    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27' }]);
-  });
 });
 
 // Column drift reconcile: makes every linked PMS task obey the column its

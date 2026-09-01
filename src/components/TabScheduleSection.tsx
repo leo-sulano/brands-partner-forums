@@ -529,9 +529,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // fetchRawEntriesByTab pull, during a single scraper run. The cleanup
   // function clears the pending timer on every dep change, so only the
   // *last* change in a burst actually triggers a sync, ~500ms after the
-  // burst settles -- not a missed update, just a coalesced one, and
-  // resolveAndSyncTabStatuses's own watermark check (pmsSync.ts) makes a
-  // slightly-stale entries snapshot harmless either way.
+  // burst settles -- not a missed update, just a coalesced one, and every
+  // resolveAndSyncTabStatuses call (pmsSync.ts) does a full, unconditional
+  // resolve with no cached state to go stale, so a change that lands mid-burst
+  // is simply picked up by the very next resolve (this effect's next tick, or
+  // the 1-minute cron) rather than silently lost.
   useEffect(() => {
     if (!isApproved || !tabCtx || tabCtx.tab !== tab || scheduleLoading) return;
     let canceled = false;

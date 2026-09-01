@@ -1386,36 +1386,6 @@ export async function deleteSchedulePmsLink(id: string, client: SupabaseClient =
   if (error) throw error;
 }
 
-// Cheap stand-in for "has anything changed for this tab since we last
-// resolved it" -- entries_tab_updated_idx (schema.sql) makes this an
-// index-only scan, unlike fetchAllTabEntries's full `select *` jsonb pull.
-// Returns null when the tab has no entries at all.
-export async function fetchTabEntriesWatermark(tab: string, client: SupabaseClient = supabase): Promise<string | null> {
-  const { data, error } = await client
-    .from('entries')
-    .select('updated_at')
-    .eq('tab', tab)
-    .order('updated_at', { ascending: false })
-    .range(0, 0);
-  if (error) throw error;
-  return (data ?? [])[0]?.updated_at ?? null;
-}
-
-export async function fetchSyncWatermark(tab: string, client: SupabaseClient = supabase): Promise<string | null> {
-  const { data, error } = await client
-    .from('schedule_pms_sync_watermarks')
-    .select('last_seen_max_updated_at')
-    .eq('tab', tab)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.last_seen_max_updated_at ?? null;
-}
-
-export async function upsertSyncWatermark(tab: string, value: string, client: SupabaseClient = supabase): Promise<void> {
-  const { error } = await client.from('schedule_pms_sync_watermarks').upsert({ tab, last_seen_max_updated_at: value }, { onConflict: 'tab' });
-  if (error) throw error;
-}
-
 // ---------------------------------------------------------------------------
 // TP/AG/CG/WO review status check triggers
 // ---------------------------------------------------------------------------
