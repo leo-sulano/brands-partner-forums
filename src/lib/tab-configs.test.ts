@@ -1,12 +1,14 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeEach } from 'vitest';
 import {
   TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup,
   getTabPlatforms, getTabPlatformsUnfiltered, registerHiddenTabPlatforms,
   unregisterHiddenTabPlatform, resetHiddenTabPlatforms,
   stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol,
   getEnabledToolbarFilters, registerToolbarFilters, unregisterToolbarFilters, resetToolbarFilters, ALL_TOOLBAR_FILTERS,
+  getColLabel, getTabSequence, getTabSequenceCol, getBrandTpUrl, getBrandLinkCol, resolveBrandLink,
 } from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
+import { renameHardcodedTabLocally, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry';
 
 describe('TAB_COLUMN_CONFIGS', () => {
   it('places Country immediately after Account in every tab', () => {
@@ -303,5 +305,61 @@ describe('toolbar filter overrides', () => {
   it('allows registering an empty filter set', () => {
     registerToolbarFilters([{ tab: 'Rooster Partners', enabled_filters: [] }]);
     expect(getEnabledToolbarFilters('Rooster Partners')).toEqual([]);
+  });
+});
+
+describe('hardcoded tab rename resolution', () => {
+  afterEach(() => {
+    resetHardcodedTabRenames();
+  });
+
+  it('getTabColumns resolves a renamed hardcoded tab back to its original column list', () => {
+    renameHardcodedTabLocally('Hanan', 'Hanan Group');
+    expect(getTabColumns('Hanan Group')).toEqual(TAB_COLUMN_CONFIGS['Hanan']);
+  });
+
+  it('getColLabel resolves a renamed hardcoded tab back to its per-tab label override', () => {
+    renameHardcodedTabLocally('Wizard of Odds', 'WO Renamed');
+    expect(getColLabel('User Name', 'WO Renamed')).toBe('WO User');
+  });
+
+  it('getTabSequence/getTabSequenceCol resolve a renamed hardcoded tab', () => {
+    renameHardcodedTabLocally('TP Brand Injection', 'BITP Team');
+    expect(getTabSequence('BITP Team')).toEqual(getTabSequence('TP Brand Injection'));
+    expect(getTabSequenceCol('BITP Team')).toBe(getTabSequenceCol('TP Brand Injection'));
+  });
+
+  it('getCountryForAccount resolves a renamed hardcoded tab\'s default country', () => {
+    renameHardcodedTabLocally('SuprPlay Limited', 'SuprPlay Renamed');
+    expect(getCountryForAccount('not a delimited value', 'SuprPlay Renamed')).toBe('UK');
+  });
+
+  it('getBrandGroup resolves a renamed hardcoded tab (no groups configured today, still resolves without throwing)', () => {
+    renameHardcodedTabLocally('TP Affiliate', 'FTP Renamed');
+    expect(getBrandGroup('FTP Renamed', 'Any Brand')).toBeNull();
+  });
+
+  it('getBrandTpUrl/resolveBrandLink resolve a renamed tab\'s per-tab brand URL override', () => {
+    renameHardcodedTabLocally('Wizard of Odds', 'WO Renamed');
+    expect(getBrandTpUrl('lucky7even', 'WO Renamed')).toBe(getBrandTpUrl('lucky7even', 'Wizard of Odds'));
+    expect(resolveBrandLink('lucky7even', 'WO Renamed')).toBe(resolveBrandLink('lucky7even', 'Wizard of Odds'));
+  });
+
+  it('getBrandLinkCol resolves a renamed hardcoded tab\'s special-cased link column', () => {
+    renameHardcodedTabLocally('Wizard of Odds', 'WO Renamed');
+    expect(getBrandLinkCol('WO Renamed')).toBe('Link to the profile');
+    renameHardcodedTabLocally('WO Renamed', 'Wizard of Odds');
+    renameHardcodedTabLocally('TP Brand Injection', 'BITP Team');
+    expect(getBrandLinkCol('BITP Team')).toBe('Brand / TP URL PAGE__href');
+  });
+
+  it('getTabPlatformsUnfiltered resolves a renamed Wizard of Odds tab to wo-only', () => {
+    renameHardcodedTabLocally('Wizard of Odds', 'WO Renamed');
+    expect(getTabPlatformsUnfiltered('WO Renamed')).toEqual(['wo']);
+  });
+
+  it('getTabPlatforms resolves a renamed multi-platform hardcoded tab', () => {
+    renameHardcodedTabLocally('Hanan', 'Hanan Group');
+    expect(getTabPlatforms('Hanan Group')).toEqual(getTabPlatforms('Hanan'));
   });
 });

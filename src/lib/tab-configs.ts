@@ -1,3 +1,5 @@
+import { resolveHardcodedTabKey } from './hardcodedTabRenameRegistry.ts';
+
 // Per-tab column whitelists — controls which columns are shown and in what order.
 // Column names must match the exact header names in the Google Sheet.
 // Tabs not listed here fall back to showing all columns from tab_schemas.
@@ -226,7 +228,7 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
 
 // Returns the ordered column list for a tab, or null if no config exists.
 export function getTabColumns(tab: string): string[] | null {
-  return TAB_COLUMN_CONFIGS[tab] ?? (dynamicColumnsResolver ? dynamicColumnsResolver(tab) : null);
+  return TAB_COLUMN_CONFIGS[resolveHardcodedTabKey(tab)] ?? (dynamicColumnsResolver ? dynamicColumnsResolver(tab) : null);
 }
 
 // Columns that stay part of a tab's config (modal fields, brand-link
@@ -262,7 +264,9 @@ export function deriveTabBrands(tab: string, entries: { data: Record<string, str
       .map((e) => e.data[brandCol])
       .filter((v): v is string => !!v && v.trim() !== ''),
   )].sort();
-  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[tab]) uniqueBrands.push(TAB_DEFAULT_BRAND[tab]);
+  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[resolveHardcodedTabKey(tab)]) {
+    uniqueBrands.push(TAB_DEFAULT_BRAND[resolveHardcodedTabKey(tab)]);
+  }
   return uniqueBrands;
 }
 
@@ -331,7 +335,7 @@ function deriveCountryFromAccount(account: string | null | undefined): string {
 // Called whenever Account is set or changed (Add, Edit, Duplicate) to keep
 // Country in sync with it.
 export function getCountryForAccount(account: string | null | undefined, tab: string): string {
-  return deriveCountryFromAccount(account) || TAB_DEFAULT_COUNTRY[tab] || '';
+  return deriveCountryFromAccount(account) || TAB_DEFAULT_COUNTRY[resolveHardcodedTabKey(tab)] || '';
 }
 
 // Returns the country to display/sort/filter by for an entry: the real value synced
@@ -344,8 +348,9 @@ export function getEntryCountry(data: Record<string, string | null>, tab: string
 
 // Returns the display label for a column header, with optional tab-specific override.
 export function getColLabel(header: string, tab?: string): string {
-  if (tab && TAB_COLUMN_LABELS[tab]?.[header]) {
-    return TAB_COLUMN_LABELS[tab][header];
+  const key = tab ? resolveHardcodedTabKey(tab) : undefined;
+  if (key && TAB_COLUMN_LABELS[key]?.[header]) {
+    return TAB_COLUMN_LABELS[key][header];
   }
   return COLUMN_LABELS[header] ?? header;
 }
@@ -394,12 +399,12 @@ const TAB_SEQUENCE_COL: Record<string, string> = {
 
 // Returns the fixed brand sequence for a tab, or null if none is defined.
 export function getTabSequence(tab: string): string[] | null {
-  return TAB_BRAND_SEQUENCE[tab] ?? null;
+  return TAB_BRAND_SEQUENCE[resolveHardcodedTabKey(tab)] ?? null;
 }
 
 // Returns the column used for brand name matching in sequence-sorted tabs.
 export function getTabSequenceCol(tab: string): string | null {
-  return TAB_SEQUENCE_COL[tab] ?? null;
+  return TAB_SEQUENCE_COL[resolveHardcodedTabKey(tab)] ?? null;
 }
 
 // Brand names that are the same underlying campaign submitted under different
@@ -417,7 +422,7 @@ const TAB_BRAND_GROUPS: Record<string, string[][]> = {};
 // so trailing/leading whitespace in the sheet data doesn't break the match),
 // or null if `brand` isn't part of any configured group for that tab.
 export function getBrandGroup(tab: string, brand: string): string[] | null {
-  const groups = TAB_BRAND_GROUPS[tab];
+  const groups = TAB_BRAND_GROUPS[resolveHardcodedTabKey(tab)];
   if (!groups) return null;
   const trimmed = brand.trim();
   return groups.find((g) => g.some((v) => v.trim() === trimmed)) ?? null;
@@ -538,7 +543,8 @@ const TAB_BRAND_URLS: Record<string, Record<string, string>> = {
 
 export function getBrandTpUrl(brandName: string, tab?: string): string | undefined {
   const key = brandName.toLowerCase().trim();
-  if (tab && TAB_BRAND_URLS[tab]?.[key]) return TAB_BRAND_URLS[tab][key];
+  const resolvedTab = tab ? resolveHardcodedTabKey(tab) : undefined;
+  if (resolvedTab && TAB_BRAND_URLS[resolvedTab]?.[key]) return TAB_BRAND_URLS[resolvedTab][key];
   return BRAND_TP_URLS[key];
 }
 
@@ -642,9 +648,10 @@ export function getBrandCgUrl(brandName: string): string | undefined {
 // every other tab where that same column holds 20-70+ distinct per-review
 // confirmation links and must not be brand-derived).
 export function getBrandLinkCol(tab: string): string {
-  if (tab === 'TP Brand Injection') return 'Brand / TP URL PAGE__href';
-  if (tab === 'TP Affiliate') return 'URL PAGE__href';
-  if (tab === 'Wizard of Odds') return 'Link to the profile';
+  const key = resolveHardcodedTabKey(tab);
+  if (key === 'TP Brand Injection') return 'Brand / TP URL PAGE__href';
+  if (key === 'TP Affiliate') return 'URL PAGE__href';
+  if (key === 'Wizard of Odds') return 'Link to the profile';
   return 'Brand Link';
 }
 
@@ -654,7 +661,7 @@ export function getBrandLinkCol(tab: string): string {
 // value there; every other tab prefers the static map, falling back to the
 // tab-local value for brands not yet in it.
 export function resolveBrandLink(brand: string, tab: string, tabLocalValue?: string): string {
-  if (tab === 'TP Affiliate') return tabLocalValue ?? '';
+  if (resolveHardcodedTabKey(tab) === 'TP Affiliate') return tabLocalValue ?? '';
   return getBrandTpUrl(brand, tab) || tabLocalValue || '';
 }
 
@@ -677,8 +684,9 @@ export function hasMultiPlatform(tab: string): boolean {
 // derived purely from which columns buildDynamicTabColumns generated.
 function computeRawTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   const cols = getTabColumns(tab);
-  if (tab === 'Wizard of Odds') return ['wo'];
-  if (tab in TAB_COLUMN_CONFIGS) {
+  const key = resolveHardcodedTabKey(tab);
+  if (key === 'Wizard of Odds') return ['wo'];
+  if (key in TAB_COLUMN_CONFIGS) {
     const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = ['tp'];
     if (cols) {
       const set = new Set(cols);
