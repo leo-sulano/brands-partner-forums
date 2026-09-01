@@ -7875,3 +7875,90 @@ independently remediated live before the code fix (watermark cleared for `TP Bra
 Pushed directly to `main` (`b199dcd`), no feature-branch PR, per this project's established
 deploy pattern.
 
+---
+
+## Task 305: Paused Brand Tabs Section on the Schedule Planner Landing Page
+
+**Date:** September 1, 2026
+
+Per direct user feedback, on top of the existing per-day Pause/Resume/Cancel controls
+(Tasks 296-301): a whole Brand Tab that's paused (`paused_tabs` / `pausedTabRegistry.ts` — the
+Sidebar's existing paused badges, e.g. Revolution Casino, SuprPlay Limited, HazEmirates UAE, GRG -
+Gulf Recovery) was invisible on the Schedule Planner landing page, and pausing a tab didn't clean
+up anything already in flight for it.
+
+**A misread, caught and reverted before shipping.** The first attempt built a new *per-brand*
+pause (`schedule_brand_pauses`, independent of the tab-level `paused_tabs`), because "Paused/Noted
+Brands" read as "individual brands," not "Brand Tabs." The user pointed at the Sidebar's existing
+paused-*tab* badges to correct this — this project's established proper noun is "Brand Tabs" for
+the per-tab pages themselves (see [[feedback_brand_tabs_terminology]]), and a whole-tab pause
+feature already existed; the request was to surface *that*, not build a new per-brand layer.
+Reverted cleanly (`schedule_brand_pauses` had zero real rows, confirmed live before dropping): the
+table (migration `20260901160000_drop_schedule_brand_pauses.sql`, undoing
+`20260901150000_add_schedule_brand_pauses.sql` from the same session), its `queries.ts` functions,
+the Pause button/modal/section in `TabScheduleSection.tsx`/`SchedulePlanner.tsx`, and the exclusion
+wiring in `scheduleBrandConfig.ts` call sites (`pmsSync.ts`, `generate-weekly-schedule`).
+`buildLastPostIndex` (`scheduleUtils.ts`) survived the revert — it never depended on the dropped
+table. Rebuilt on `paused_tabs` instead.
+
+**What shipped:**
+- `paused_tabs` gained `reason` and `paused_until` (migration
+  `20260901170000_add_paused_tabs_reason_and_until.sql`) — `paused_at` already covers "since," so
+  no redundant column was added — plus an admin `UPDATE` policy so those two fields can be edited
+  while a tab stays paused (the original table only supported insert/delete). `EditBrandTabModal`'s
+  pause form now captures both.
+- A new **"Paused Brand Tabs"** section on the Schedule Planner landing page
+  (`SchedulePlanner.tsx`), one card per tab in `getPausedOperationalTabs()`, showing reason and
+  since→until plus, per brand, its last known post per platform (`buildLastPostIndex`, itself fixed
+  earlier the same day — see the `d97be30` commit — to read from live entries rather than a stale
+  snapshot).
+- The card grid and mini weekly calendar were then unified with the active grid: a new shared
+  `TabPreviewCard` component (`src/components/TabPreviewCard.tsx`) extracts the active grid's
+  icon/name header + weekday mini-calendar (evidence chips only, never a plan) so both grids render
+  identically instead of the paused section using a separate stacked-card/status-text design. The
+  existing preview-fetch effect widened to also cover paused tabs — a paused tab's `scheduleRows`
+  naturally come back empty (nothing is ever generated for a paused tab), so its card shows pure
+  historical evidence with zero new fetch logic. Paused cards are deliberately non-clickable (no
+  chevron, no `onClick`): `TabScheduleSection`'s scheduler-invocation effect has no `isTabPaused`
+  guard today, and opening a paused tab's expanded view would be a new, previously-unreachable way
+  to trigger it — this keeps that path closed. A `cornerBadge` prop puts the same `PausedBadgeIcon`
+  the Sidebar already uses in the header's trailing slot (where the active grid's chevron sits,
+  otherwise empty on a non-clickable card).
+- Per direct user request, the inline **Resume** button was then removed from every Schedule
+  Planner surface — pausing/resuming a Brand Tab now only happens from Edit Brand Tab (Sidebar).
+  The reason/since→until line stays; only the action button was removed.
+- Per direct user request, the toolbar's TP/AG/CG/WO count badges (the same style the active grid
+  already shows) were added next to the "Paused Brand Tabs" heading — a fully separate
+  `pausedPlatformCounts` computation scoped to `getPausedOperationalTabs()` only, reusing
+  `countActivePlatformSlots`, so a paused tab's evidence can never be folded into or mistaken for
+  the active toolbar's own totals.
+- **`33436a1` — pausing a brand now cancels its in-flight work, not just stops new work.** Per
+  direct user feedback, a paused brand must not leave a schedule row or PMS task in flight.
+  Pausing a Brand Tab now cancels every active/paused day that brand has scheduled for the current
+  week, across all its platforms, reusing the existing per-day Cancel path (Task 296-297's
+  `schedule_cancellations` table) — writes the day blank, records the cancellation, deletes any
+  linked PMS task. Only fires on a brand-new pause; editing an already-paused brand's reason/dates
+  is a no-op here since `brandPlatforms()` already excludes it from generation.
+
+**Verification:** full scheduler test suite and `npm run build` pass at each step (per the
+individual commits above); `queries.test.ts`, `pmsSync.test.ts`, and `scheduleUtils.test.ts` all
+gained coverage for the new `paused_tabs` reason/until fields and the cancel-on-pause path. No live
+browser verification recorded this session.
+
+**Pending manual deploy — status not independently confirmed this session:**
+1. `supabase db push` — applies `20260901170000_add_paused_tabs_reason_and_until.sql` (the only
+   surviving schema change; the `schedule_brand_pauses` add/drop pair nets to no live schema
+   change if applied together, or to nothing at all if the add was never pushed before the drop was
+   written).
+2. `git push origin main` — this is frontend/shared-lib only; no Edge Function's *behavior*
+   changes from this task (the `pmsSync.ts`/`sync-schedule-pms/index.ts` diff in this range is
+   Task 304's already-deployed watermark removal, not new code from this task), so no separate
+   function redeploy is needed beyond what Task 304 already shipped.
+Follow the correction note near the top of the Known Issues section in `CLAUDE.md` for the general
+rule here: verify via `supabase migration list`/`db push` output rather than trusting this bullet,
+since several prior "pending deploy" notes in this project's history turned out stale.
+
+**Spec:** `docs/superpowers/specs/2026-09-01-schedule-planner-whole-tab-paused-section-design.md`
+(the earlier `2026-09-01-schedule-planner-paused-brands-design.md`, written for the reverted
+per-brand approach, was deleted in the same commit that rewrote this one).
+
