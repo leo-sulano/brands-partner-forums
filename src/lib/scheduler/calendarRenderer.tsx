@@ -6,6 +6,7 @@ import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
 import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
 import { useTooltip } from '../../components/Tooltip';
+import PausedBadgeIcon from '../../components/PausedBadgeIcon';
 
 // Shared tooltip body for a brand's Agent/Country/Account, appended below
 // whatever status/assignee lines a cell already shows — same brand-level
@@ -189,6 +190,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
         {isConfirmed && <EvidenceCornerBadge kind="confirmed" />}
         {isPending && <EvidenceCornerBadge kind="pending" />}
         {isDone && <EvidenceCornerBadge kind="done" />}
+        {isPausedState && <PausedBadgeIcon className="absolute -bottom-0.5 -right-0.5 size-2.5" />}
       </span>
       {portal}
     </>
@@ -515,7 +517,7 @@ export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
   } ${clickable ? 'cursor-pointer hover:bg-slate-200' : ''}`;
   const inner = (
     <>
-      {isFlagged && (isCancelled ? '🚫' : '⛔')}
+      {isFlagged && (isCancelled ? '🚫' : <PausedBadgeIcon className="size-3" />)}
       <img
         src={PLATFORM_FAVICON[platform]}
         alt={PLATFORM_BADGE[platform].label}
