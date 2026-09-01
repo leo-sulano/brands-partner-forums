@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { validateNewTabName } from './tabValidation';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 import { archiveTabLocally, unarchiveTabLocally } from './archivedTabRegistry';
+import { renameOperationalTab } from './tabs';
+import { renameHardcodedTabLocally, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry';
 
 describe('validateNewTabName', () => {
   beforeEach(() => {
@@ -47,5 +49,14 @@ describe('validateNewTabName', () => {
       '"Old Archived Tab" is currently archived — unarchive it, or choose a different name.',
     );
     unarchiveTabLocally('Old Archived Tab');
+  });
+
+  it('still rejects a hardcoded tab\'s original name even after that tab has been renamed away from it', () => {
+    renameOperationalTab('Hanan', 'Hanan Renamed');
+    renameHardcodedTabLocally('Hanan', 'Hanan Renamed');
+    expect(validateNewTabName('Hanan')).toBe('A tab named "Hanan" already exists.');
+    // cleanup: revert both the OPERATIONAL_TABS splice and the registry entry
+    renameOperationalTab('Hanan Renamed', 'Hanan');
+    resetHardcodedTabRenames();
   });
 });

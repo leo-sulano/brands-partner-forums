@@ -1,4 +1,5 @@
 import { TAB_COLUMN_CONFIGS } from './tab-configs.ts';
+import { resolveHardcodedTabKey, isRenamedHardcodedTab } from './hardcodedTabRenameRegistry.ts';
 
 // The canonical list of registered Brand Tabs — derived from TAB_COLUMN_CONFIGS
 // (src/lib/tab-configs.ts) so a tab only has to be added in one place to be
@@ -20,7 +21,7 @@ const SLUG_OVERRIDES: Partial<Record<OperationalTab, string>> = {
 };
 
 export function tabToSlug(tab: string): string {
-  return SLUG_OVERRIDES[tab as OperationalTab] ?? tab.toLowerCase().replace(/\s+/g, '-');
+  return SLUG_OVERRIDES[resolveHardcodedTabKey(tab) as OperationalTab] ?? tab.toLowerCase().replace(/\s+/g, '-');
 }
 
 export function slugToTab(slug: string): OperationalTab | null {
@@ -50,5 +51,20 @@ const TAB_DISPLAY_NAMES: Partial<Record<OperationalTab, string>> = {
 };
 
 export function tabDisplayName(tab: string): string {
+  // A true rename (src/lib/hardcodedTabRenameRegistry.ts) always supersedes
+  // the older TAB_DISPLAY_NAMES cosmetic alias below -- otherwise renaming
+  // 'TP Brand Injection' would keep silently redisplaying it as "BITP"
+  // everywhere, hiding the very rename the user just made.
+  if (isRenamedHardcodedTab(tab)) return tab;
   return TAB_DISPLAY_NAMES[tab as OperationalTab] ?? tab;
+}
+
+// In-place OPERATIONAL_TABS splice for a hardcoded tab rename, mirroring
+// dynamicTabRegistry.ts's renameDynamicTab splice exactly -- this is what
+// lets every one of OPERATIONAL_TABS' ~12 existing importers (Sidebar,
+// Overview, Score Summary, Schedule Planner, both entry modals, BrandGroup)
+// pick up a hardcoded-tab rename with zero call-site changes.
+export function renameOperationalTab(oldName: string, newName: string): void {
+  const idx = OPERATIONAL_TABS.indexOf(oldName);
+  if (idx !== -1) OPERATIONAL_TABS.splice(idx, 1, newName);
 }
