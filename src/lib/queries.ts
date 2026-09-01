@@ -1243,6 +1243,58 @@ export async function deleteBrandPlatformPause(tab: string, brandKey: string, pl
   if (error) throw error;
 }
 
+export interface ScheduleCancellation {
+  tab: string;
+  brand_key: string;
+  platform: Platform;
+  week_start: string;
+  weekday: Weekday;
+}
+
+// Pure display/audit trail (see the migration's own doc comment) — never
+// read by the scheduler engine, generation logic, or PMS sync. Only the
+// Schedule Status column's "Cancelled" icon reads this.
+export async function fetchScheduleCancellations(tab: string, weekStart: string, client: SupabaseClient = supabase): Promise<ScheduleCancellation[]> {
+  const { data, error } = await client
+    .from('schedule_cancellations')
+    .select('tab, brand_key, platform, week_start, weekday')
+    .eq('tab', tab)
+    .eq('week_start', weekStart);
+  if (error) throw error;
+  return (data ?? []) as ScheduleCancellation[];
+}
+
+// Upserts on the same (tab, brand_key, platform, week_start, weekday) key
+// the table's unique constraint enforces, so re-cancelling an
+// already-cancelled day (a rare double-click race) just refreshes
+// cancelled_at/cancelled_by instead of erroring.
+export async function recordScheduleCancellation(tab: string, brand: string, platform: Platform, weekStart: string, weekday: Weekday, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
+    .from('schedule_cancellations')
+    .upsert(
+      { tab, brand, platform, week_start: weekStart, weekday, cancelled_at: new Date().toISOString(), cancelled_by: await currentUserEmail() },
+      { onConflict: 'tab,brand_key,platform,week_start,weekday' },
+    );
+  if (error) throw error;
+}
+
+// Called whenever a previously-cancelled day is reactivated (Resume, or the
+// "+" button setting Active/Paused on a blank cell) — clears the marker so
+// the Schedule Status column stops showing "Cancelled" for it. A no-op
+// (zero rows deleted) when the day was never cancelled, which is the common
+// case, so callers don't need to check first.
+export async function clearScheduleCancellation(tab: string, brandKey: string, platform: Platform, weekStart: string, weekday: Weekday, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
+    .from('schedule_cancellations')
+    .delete()
+    .eq('tab', tab)
+    .eq('brand_key', brandKey)
+    .eq('platform', platform)
+    .eq('week_start', weekStart)
+    .eq('weekday', weekday);
+  if (error) throw error;
+}
+
 export interface SchedulePmsLink {
   id: string;
   tab: string;

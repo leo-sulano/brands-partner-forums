@@ -7511,3 +7511,56 @@ check` clean on both Deno consumers (`sync-schedule-pms`, `generate-weekly-sched
 schedule-pms`'s own Deno suite passes 16/16 (`generate-weekly-schedule`'s 6 pre-existing failures
 are unrelated to this task — confirmed identical via `git stash` against the pre-change baseline).
 **Deployed the same session:** `supabase functions deploy sync-schedule-pms`.
+
+---
+
+## Task 294: Schedule Planner Gets Real Pause/Resume/Cancel Buttons; Corrects Task 292's Delete Rule
+
+**Date:** September 1, 2026
+
+**Correction to Task 292, found the same day via direct user follow-up.** Task 292 made ANY
+manually-paused Schedule Planner day (cycled to Paused, not just cycled to blank) delete its PMS
+card outright. The user clarified this was wrong: Paused (dimmed, still visible on the calendar)
+and Cancelled (blank, not on the calendar at all) are two distinct, separately-actioned outcomes —
+Paused should always move its card to Project Paused, exactly like an algorithmic scheduler
+auto-pause; only a genuine Cancel should delete the card. Reverted
+`resolveAndSyncTabStatuses`' cancellation branch (`src/lib/scheduler/pmsSync.ts`) back to its
+original condition (`dayStatus == null && !isPaused`, i.e. only a genuinely blank day with no
+evidence and no pause of either kind cancels) and removed the immediate client-side
+delete-on-pause call Task 292 had added to `handleCellClick`/`handleSetDayStatus`
+(`src/components/TabScheduleSection.tsx`). One `pmsSync.test.ts` test updated to assert the
+corrected behavior (manually-paused resolves to `'paused'`/Project Paused, not cancelled); the
+sibling auto-pause-precedence test needed no change.
+
+**New feature, same session, per direct user request:** the day cell itself now has explicit
+Pause/Resume/Cancel buttons instead of relying purely on click-to-cycle (blank → Active → Paused →
+blank). Hover-revealed next to an Active chip: a ⏸ Pause button and a 🚫 Cancel button (not ✕,
+which already means Removed); next to a Paused chip: a ▶ Resume button and the same 🚫 Cancel
+button (`ScheduleCell`, `src/lib/scheduler/calendarRenderer.tsx`). Pause/Resume reuse the existing
+`handleSetDayStatus` write path (same one `AddPlatformModal` already calls); Cancel writes the day
+back to blank and, unlike the old click-cycle's silent blank leg, now also records the fact via a
+new `schedule_cancellations` table (migration `20260901120000_add_schedule_cancellations.sql`,
+applied live) — a pure display/audit trail, deliberately never read by the scheduler engine,
+generation logic, or PMS sync, only by the Schedule Status column's new "🚫 Cancelled" icon variant
+(`ScheduleStatusIcon`). `handleCellClick`'s own paused→blank cycle leg now routes through the same
+shared `finalizeCancellation` helper as the new button, so the two paths to "blank" can't disagree
+about whether a day counts as cancelled; reactivating a day (Resume, or "+" on a blank cell) clears
+any cancellation record via a matching `clearCancellationIfAny` helper, called unconditionally
+(harmless no-op when there was nothing to clear). Per direct user confirmation, when a platform's
+week has both a cancelled day and a manually-paused day, the Schedule Status icon shows Cancelled
+(checked before Manual in the render's if-chain); the system/algorithmic auto-pause still wins over
+both, unchanged. New `fetchScheduleCancellations`/`recordScheduleCancellation`/
+`clearScheduleCancellation` (`src/lib/queries.ts`), each with test coverage in `queries.test.ts`
+following this project's existing "uses the passed-in client" pattern; `calendarRenderer.tsx`/
+`TabScheduleSection.tsx` have no dedicated test files (page/presentational components, verified via
+build per this project's established pattern for `Overview.tsx`/`BrandGroup.tsx`). Full suite (2224
+tests) and build pass; `deno check` clean on both Deno consumers. **Deployed the same session:**
+`supabase db push` (migration applied, confirmed via `supabase migration list`) and `supabase
+functions deploy sync-schedule-pms` (the corrected delete-rule revert only — the new
+`schedule_cancellations` table is frontend-only, never read by any Edge Function).
+
+Built concurrently with another session's Task 293 (PMS column-wide card sort) in the same working
+directory — confirmed no conflict: both touch `src/lib/scheduler/pmsSync.ts` but in disjoint
+functions (Task 293's `brand`-aware sort vs. this task's cancellation-branch revert), verified by
+reading the merged file directly and by the full suite passing against the merged state. See
+[[feedback_concurrent_sessions_migrations]].

@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
 import { WEEKDAY_LABELS } from '../scheduleBrands';
 import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
@@ -74,6 +75,20 @@ interface ScheduleCellProps {
   isPastDay: boolean;
   isApproved: boolean;
   onToggle: (platform: Platform) => void;
+  // Explicit Pause ('active' -> 'paused') / Resume ('paused' -> 'active')
+  // buttons rendered next to a chip with a real per-day status -- an
+  // alternative to onToggle's cycle for anyone who wants the direct action
+  // instead of clicking through the whole sequence. Reuses the same
+  // TabScheduleSection.handleSetDayStatus write path AddPlatformModal
+  // already calls, so it can't disagree with what that path already does.
+  onSetStatus: (platform: Platform, status: 'active' | 'paused') => void;
+  // Explicit Cancel button -- writes the day back to blank and records a
+  // schedule_cancellations row, so the Schedule Status column can show
+  // "Cancelled" for it (see TabScheduleSection's handleCancelDay). onToggle's
+  // own paused -> blank cycle leg routes through this exact same recording
+  // logic internally, so the two paths to "blank" can't disagree about
+  // whether a day counts as cancelled.
+  onCancel: (platform: Platform) => void;
   onAddPlatform: () => void;
 }
 
@@ -216,7 +231,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, isApproved, onToggle, onAddPlatform }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   return (
     <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
@@ -276,30 +291,72 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 : effectivePaused
                   ? 'Paused (scheduler)'
                   : statusLabel(status);
+        // Pause/Resume/Cancel only make sense against a real per-day status
+        // (status === 'active' | 'paused') — a chip shown purely because of a
+        // week-level scheduler pause (effectivePaused, no day row) or purely
+        // because of evidence (status null, hasEvidence true) has no specific
+        // day-level plan to act on; onToggle's own cycle already covers
+        // creating one from scratch if needed.
+        const showDayActions = clickable && (status === 'active' || status === 'paused');
         return (
-          <PlatformChip
-            key={platform}
-            platform={platform}
-            stateClassName={stateClassName}
-            isRemoved={isRemoved}
-            isConfirmed={isConfirmed}
-            isPending={isPending}
-            isDone={isDone}
-            clickable={clickable}
-            planUnverified={planUnverified}
-            label={label}
-            agent={agent}
-            // Country/Account only once this exact day has real add-date
-            // evidence — see the doc comment on ScheduleCellProps' own
-            // agent/country/account fields above for why a plan-only
-            // "Scheduled" chip (hasEvidence false) must not show them.
-            country={hasEvidence ? country : undefined}
-            account={hasEvidence ? account : undefined}
-            isPausedState={isPausedState}
-            pauseReason={pauseReason}
-            pausedBy={pausedBy}
-            onClick={() => onToggle(platform)}
-          />
+          <Fragment key={platform}>
+            <PlatformChip
+              platform={platform}
+              stateClassName={stateClassName}
+              isRemoved={isRemoved}
+              isConfirmed={isConfirmed}
+              isPending={isPending}
+              isDone={isDone}
+              clickable={clickable}
+              planUnverified={planUnverified}
+              label={label}
+              agent={agent}
+              // Country/Account only once this exact day has real add-date
+              // evidence — see the doc comment on ScheduleCellProps' own
+              // agent/country/account fields above for why a plan-only
+              // "Scheduled" chip (hasEvidence false) must not show them.
+              country={hasEvidence ? country : undefined}
+              account={hasEvidence ? account : undefined}
+              isPausedState={isPausedState}
+              pauseReason={pauseReason}
+              pausedBy={pausedBy}
+              onClick={() => onToggle(platform)}
+            />
+            {showDayActions && (
+              <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                {status === 'active' ? (
+                  <button
+                    type="button"
+                    onClick={() => onSetStatus(platform, 'paused')}
+                    title={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
+                    aria-label={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                    className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
+                  >
+                    ⏸
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => onSetStatus(platform, 'active')}
+                    title={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
+                    aria-label={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                    className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
+                  >
+                    ▶
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onCancel(platform)}
+                  title={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
+                  aria-label={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                  className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
+                >
+                  🚫
+                </button>
+              </span>
+            )}
+          </Fragment>
         );
       })}
       {isApproved && addable.length > 0 && (
@@ -337,9 +394,16 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // clickable is gated the same way ScheduleCell's chips already are
 // (isApproved && not a legacy week), so a read-only view never renders a
 // button here.
+// 'cancelled' (a day explicitly Cancelled via the new day-cell button, see
+// schedule_cancellations) is deliberately NOT clickable to open
+// PauseDaysModal the way every other variant is -- that modal manages Paused
+// days specifically, and opening it from a Cancelled badge would be
+// semantically wrong. Un-cancelling a day goes through the day cell itself
+// (the "+" button, or Resume once it's been reactivated), not this icon.
 type ScheduleStatusIconProps = { agent?: string; pausedBy?: string; clickable: boolean; onClick: () => void } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
+  | { platform: Platform; source: 'cancelled'; days: Weekday[] }
   | { platform: Platform; source: 'no-schedule' }
   | { platform: Platform; source: 'active' }
 );
@@ -373,6 +437,9 @@ function titleFor(props: ScheduleStatusIconProps): string {
   if (props.source === 'manual') {
     return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;
   }
+  if (props.source === 'cancelled') {
+    return `Cancelled: ${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')}`;
+  }
   if (props.source === 'no-schedule') {
     return 'Reason: No schedule this week';
   }
@@ -386,7 +453,11 @@ function titleFor(props: ScheduleStatusIconProps): string {
 export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
   const { platform, agent, pausedBy, clickable, onClick } = props;
   const [line1, line2] = titleFor(props).split('\n');
-  const isPaused = props.source !== 'active';
+  // "flagged" covers every non-active variant (system/manual/cancelled/
+  // no-schedule) -- all four stay always-visible and share the same
+  // dimmed-badge treatment; only 'cancelled' gets its own icon/text below.
+  const isFlagged = props.source !== 'active';
+  const isCancelled = props.source === 'cancelled';
   // Deliberately terse, per direct user request: reasoning + Agent only —
   // no Country/Account (this icon is a per-week control, not a claim about a
   // specific day's posting account the way a day-cell chip's tooltip is).
@@ -394,7 +465,7 @@ export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
   // manual/forced 'system' pause), not a separate detail, so it's kept
   // alongside the reason lines rather than dropped.
   const isActualPause = props.source === 'system' || props.source === 'manual';
-  const actionLine = clickable ? (isPaused ? 'Click to manage pause days' : 'Click to pause days') : null;
+  const actionLine = clickable ? (isFlagged ? 'Click to manage pause days' : 'Click to pause days') : null;
   const content = (
     <div>
       <div>{line1}</div>
@@ -405,23 +476,29 @@ export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
     </div>
   );
   const { triggerProps, portal } = useTooltip(content);
-  // isPaused variants (system/manual/no-schedule) stay always-visible, same
-  // as before this feature — an active platform's icon is hover/focus-only
+  // Flagged variants (system/manual/cancelled/no-schedule) stay always-visible,
+  // same as before this feature — an active platform's icon is hover/focus-only
   // (matching ScheduleCell's own "+ Add Platform" affordance) so a fully
   // active row doesn't get visually cluttered with one icon per platform.
+  // 'cancelled' gets a rose tint (distinct from the neutral slate every other
+  // flagged variant uses) since it's the more final/deliberate outcome.
   const className = `inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
-    isPaused ? 'bg-slate-100 text-slate-500' : 'bg-white text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
+    isCancelled
+      ? 'bg-rose-50 text-rose-600'
+      : isFlagged
+        ? 'bg-slate-100 text-slate-500'
+        : 'bg-white text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
   } ${clickable ? 'cursor-pointer hover:bg-slate-200' : ''}`;
   const inner = (
     <>
-      {isPaused && '⛔'}
+      {isFlagged && (isCancelled ? '🚫' : '⛔')}
       <img
         src={PLATFORM_FAVICON[platform]}
         alt={PLATFORM_BADGE[platform].label}
         className="size-3 rounded-sm"
         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
       />
-      {isPaused && 'Paused'}
+      {isFlagged && (isCancelled ? 'Cancelled' : 'Paused')}
     </>
   );
   return (

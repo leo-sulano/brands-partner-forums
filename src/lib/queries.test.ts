@@ -35,6 +35,9 @@ import {
   fetchBrandPlatformOverrides,
   setBrandPlatformOverride,
   clearBrandPlatformOverride,
+  fetchScheduleCancellations,
+  recordScheduleCancellation,
+  clearScheduleCancellation,
   saveReviewAnalysis,
   fetchEntryReviewAnalyses,
   fetchSchedulePmsLinks,
@@ -279,6 +282,42 @@ describe('queries.ts injectable Supabase client', () => {
     singletonFrom.mockReturnValue(chainObj);
     await clearBrandPlatformOverride('X', 'winmega', 'tp');
     expect(singletonFrom).toHaveBeenCalledWith('brand_platform_override');
+  });
+
+  it('fetchScheduleCancellations uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({
+      data: [{ tab: 'X', brand_key: 'y', platform: 'tp', week_start: '2026-08-31', weekday: 'monday' }],
+      error: null,
+    }));
+    const rows = await fetchScheduleCancellations('X', '2026-08-31', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_cancellations');
+    expect(singletonFrom).not.toHaveBeenCalled();
+    expect(rows).toEqual([{ tab: 'X', brand_key: 'y', platform: 'tp', week_start: '2026-08-31', weekday: 'monday' }]);
+  });
+
+  it('fetchScheduleCancellations falls back to the singleton when no client is passed', async () => {
+    singletonFrom.mockReturnValue(chain({ data: [], error: null }));
+    await fetchScheduleCancellations('X', '2026-08-31');
+    expect(singletonFrom).toHaveBeenCalledWith('schedule_cancellations');
+  });
+
+  it('recordScheduleCancellation upserts into schedule_cancellations keyed on the full (tab, brand, platform, week, weekday)', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const fakeFrom = vi.fn().mockReturnValue({ upsert });
+    await recordScheduleCancellation('X', 'WinMega', 'tp', '2026-08-31', 'monday', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_cancellations');
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'X', brand: 'WinMega', platform: 'tp', week_start: '2026-08-31', weekday: 'monday' }),
+      { onConflict: 'tab,brand_key,platform,week_start,weekday' },
+    );
+  });
+
+  it('clearScheduleCancellation deletes from schedule_cancellations', async () => {
+    const chainObj: any = { delete: () => chainObj, eq: () => chainObj, then: (resolve: any) => resolve({ error: null }) };
+    const fakeFrom = vi.fn().mockReturnValue(chainObj);
+    await clearScheduleCancellation('X', 'winmega', 'tp', '2026-08-31', 'monday', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_cancellations');
+    expect(singletonFrom).not.toHaveBeenCalled();
   });
 
   it('fetchSchedulePmsLinks uses the passed-in client', async () => {

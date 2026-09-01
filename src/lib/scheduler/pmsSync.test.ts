@@ -443,7 +443,7 @@ describe('syncScheduleStatusToPms', () => {
       { url: /\/tasks$/, method: 'GET', body: [] },
       { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
     ]);
-    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', date: '2026-08-20' };
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20' };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
     expect(updated).toEqual([{ id: 'link-1', synced_status: 'published', synced_column_id: DONE_COL }]);
@@ -451,8 +451,8 @@ describe('syncScheduleStatusToPms', () => {
 
   it('records a per-item failure without aborting the rest of the batch, and never updates synced_status for the failed item', async () => {
     const { client, updated } = fakeSupabaseForStatusUpdate();
-    const badItem: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-bad', targetStatus: 'removed', tabLabel: 'BITP', date: '2026-08-20' };
-    const okItem: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-ok', targetStatus: 'active', tabLabel: 'BITP', date: '2026-08-20' };
+    const badItem: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-bad', targetStatus: 'removed', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20' };
+    const okItem: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-ok', targetStatus: 'active', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20' };
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [] },
       { url: /\/tasks\/task-bad\/move$/, method: 'PATCH', body: {}, status: 500 },
@@ -481,7 +481,7 @@ describe('syncScheduleStatusToPms', () => {
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     await syncScheduleStatusToPms(
-      [{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: targetStatus as PmsStatusSyncItem['targetStatus'], tabLabel: 'BITP', date: '2026-08-20' }],
+      [{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: targetStatus as PmsStatusSyncItem['targetStatus'], tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20' }],
       client,
       CREDENTIALS,
       fetchFn,
@@ -514,10 +514,11 @@ describe('syncScheduleStatusToPms', () => {
       movedBody = JSON.parse(init.body as string);
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    // A second Hanan card due the same date should slot in right after
-    // existing-3 (the current lone Hanan/08-27 card), i.e. position 3 --
-    // after both BITP cards and the existing Hanan card, before the 08-28 item.
-    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-new', targetStatus: 'published', tabLabel: 'Hanan', date: '2026-08-27' };
+    // A second Hanan card due the same date, with a brand that sorts after
+    // "ZodiacBet.com" alphabetically, should slot in right after existing-3
+    // (the current lone Hanan/08-27 card), i.e. position 3 -- after both
+    // BITP cards and the existing Hanan card, before the 08-28 item.
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-new', targetStatus: 'published', tabLabel: 'Hanan', brand: 'ZZ Top Casino', date: '2026-08-27' };
     await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(movedBody).toEqual({ columnId: DONE_COLUMN, position: 3 });
   });
@@ -534,12 +535,14 @@ describe('syncScheduleStatusToPms', () => {
       movedBodies.push(JSON.parse(init.body as string));
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    // Two Hanan/08-27 cards moving in the same batch: the first joins after
-    // the existing BITP card (position 1); the second must see the first
-    // one's new placement and join after it too (position 2), not recompute
-    // against the stale pre-batch list and also land at position 1.
-    const item1: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-a', targetStatus: 'published', tabLabel: 'Hanan', date: '2026-08-27' };
-    const item2: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-b', targetStatus: 'published', tabLabel: 'Hanan', date: '2026-08-27' };
+    // Two Hanan/08-27 cards moving in the same batch, brand "AaaBrand" then
+    // "ZzzBrand" (so the second sorts after the first within the tie): the
+    // first joins after the existing BITP card (position 1); the second must
+    // see the first one's new placement and join after it too (position 2),
+    // not recompute against the stale pre-batch list and also land at
+    // position 1.
+    const item1: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-a', targetStatus: 'published', tabLabel: 'Hanan', brand: 'AaaBrand', date: '2026-08-27' };
+    const item2: PmsStatusSyncItem = { linkId: 'link-2', pmsTaskId: 'task-b', targetStatus: 'published', tabLabel: 'Hanan', brand: 'ZzzBrand', date: '2026-08-27' };
     await syncScheduleStatusToPms([item1, item2], client, CREDENTIALS, fetchFn);
     expect(movedBodies).toEqual([{ columnId: DONE_COLUMN, position: 1 }, { columnId: DONE_COLUMN, position: 2 }]);
   });
@@ -550,7 +553,7 @@ describe('syncScheduleStatusToPms', () => {
       if ((init.method ?? 'GET') === 'GET') return { ok: false, status: 500, json: async () => ({}) };
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', date: '2026-08-20' };
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'published', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20' };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
     expect(updated).toEqual([{ id: 'link-1', synced_status: 'published', synced_column_id: DONE_COL }]);
@@ -564,7 +567,7 @@ describe('syncScheduleStatusToPms', () => {
       { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
     ]);
     const item: PmsStatusSyncItem = {
-      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-20',
+      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20',
       description: 'Account: agent@example.com\nCountry: Germany\nProxy: SpyderProxy\n\nGreat service.',
     };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
@@ -585,7 +588,7 @@ describe('syncScheduleStatusToPms', () => {
       { url: /\/tasks$/, method: 'GET', body: [] },
       { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
     ]);
-    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'active', tabLabel: 'BITP', date: '2026-08-20' };
+    const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'active', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20' };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ synced: [item], failed: [] });
   });
@@ -598,7 +601,7 @@ describe('syncScheduleStatusToPms', () => {
       { url: /\/tasks\/task-1$/, method: 'PATCH', body: {}, status: 500 },
     ]);
     const item: PmsStatusSyncItem = {
-      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-20',
+      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-20',
       description: 'Account: x\nCountry: y\nProxy: z',
     };
     const result = await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
@@ -719,7 +722,7 @@ describe('resolveAndSyncTabStatuses', () => {
     // details block still renders with each label blank, per the "always
     // show the details block, only the content line is conditional" design.
     expect(result.synced).toEqual([{
-      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', date: '2026-08-27',
+      linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27',
       description: 'Account: \nCountry: \nProxy: ',
     }]);
     const moveCall = calls.find((c) => c.url.endsWith('/move'));
@@ -834,7 +837,11 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
   });
 
-  it('cancels a link whose day was manually cycled to Paused in brand_schedule (not a scheduler auto-pause), has no evidence -- e.g. a holiday day cancelled by hand', async () => {
+  it('does not cancel a link whose day was manually cycled to Paused in brand_schedule -- moves it to Project Paused instead, same as a scheduler auto-pause', async () => {
+    // Paused and Cancelled are two distinct, separately-actioned outcomes
+    // (see the day-cell Pause/Resume/Cancel buttons and schedule_cancellations
+    // table): Paused always moves the card to Project Paused; only an
+    // explicit Cancel (the day written back to blank) deletes it.
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
@@ -849,14 +856,15 @@ describe('resolveAndSyncTabStatuses', () => {
         { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-31', platform: 'tp', monday: 'paused', tuesday: null, wednesday: null, thursday: null, friday: null },
       ],
     }, undefined, deletes);
-    const fetchFn = fakeFetchSequence([
-      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
-    ]);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
     const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result.cancelled).toEqual([{ tab: 'Trybet', brand: 'Trybet.com', platform: 'tp', date: '2026-08-31' }]);
+    expect(result.cancelled).toEqual([]);
     expect(result.cancelFailed).toEqual([]);
-    expect(result.synced).toEqual([]);
-    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+    expect(deletes).toEqual([]);
+    expect(result.synced[0]?.targetStatus).toBe('paused');
   });
 
   it('does not cancel a link that is under an active scheduler auto-pause, even when the same day is also manually cycled to Paused', async () => {
@@ -1139,7 +1147,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
-    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', date: '2026-08-27' }]);
+    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27' }]);
     expect(result.cancelled).toEqual([]);
     const moveCall = calls.find((c) => c.url.endsWith('/move'));
     expect(moveCall?.body).toEqual({ columnId: PAUSED_COL, position: 0 });
@@ -1249,7 +1257,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn, true);
     expect(result.cancelled).toEqual([]);
     expect(deletes).toEqual([]);
-    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'Rooster Partners', date: '2026-08-27' }]);
+    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'Rooster Partners', brand: 'Lucky7even', date: '2026-08-27' }]);
   });
 
   it('still resolves when the entries watermark matches the last successful sync, unlike the normal (non-paused) path', async () => {
@@ -1270,7 +1278,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
-    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', date: '2026-08-27' }]);
+    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27' }]);
   });
 });
 
@@ -1399,7 +1407,7 @@ describe('enforcePmsColumns', () => {
     expect(movedBody).toEqual({ columnId, position: 0 });
   });
 
-  it('groups a moved card by (due date, tab label) among existing peers in the target column', async () => {
+  it('groups a moved card by (due date, tab label, brand) among existing peers in the target column', async () => {
     // Peer titles use display names (that is what task titles actually
     // contain), and 'Hanan' is a tab whose key equals its display name, so
     // the grouping key comparison is unambiguous here.
@@ -1416,10 +1424,12 @@ describe('enforcePmsColumns', () => {
       movedBody = JSON.parse(init.body as string);
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    // mover key "2026-08-27 hanan" is <= both same-date Hanan peers (ties join
-    // the tail) and < the 2026-08-28 peer -> lands at position 2.
+    // mover's key "2026-08-27 hanan winmega" (link()'s default brand is
+    // 'WinMega') sorts alphabetically between "aaabrand" and "zzzbrand" --
+    // <= e1's key, > e2's key -- so it lands right after e1, before e2, at
+    // position 1. Also < e3's 08-28 key regardless of brand.
     await enforcePmsColumns([link({ tab: 'Hanan', pms_task_id: 'mover', date: '2026-08-27', synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
-    expect(movedBody).toEqual({ columnId: DONE_COL, position: 2 });
+    expect(movedBody).toEqual({ columnId: DONE_COL, position: 1 });
   });
 
   // A column like "In Progress" -- populated only by a human dragging a card
@@ -1473,8 +1483,11 @@ describe('enforcePmsColumns', () => {
 
   it('makes no move calls for an unmanaged column that is already correctly grouped', async () => {
     const tasks = [
-      pmsTask('a', IN_PROGRESS_COL, { title: 'BITP | Nomini Kasino', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
-      pmsTask('c', IN_PROGRESS_COL, { title: 'BITP | 7Bit Casino crypto', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
+      // '7bit casino crypto' sorts before 'nomini kasino' alphabetically, so
+      // 'c' (position 0) must precede 'a' (position 1) for this fixture to
+      // already be in (date, tab, brand) order.
+      pmsTask('c', IN_PROGRESS_COL, { title: 'BITP | 7Bit Casino crypto', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('a', IN_PROGRESS_COL, { title: 'BITP | Nomini Kasino', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
       pmsTask('d', IN_PROGRESS_COL, { title: 'FTP | NZ Jackpots', position: 2, dueDate: '2026-09-01T00:00:00.000Z' }),
     ];
     const { client } = fakeSupabaseForStatusUpdate();

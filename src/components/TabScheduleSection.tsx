@@ -14,8 +14,12 @@ import {
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
   fetchBrandAgentAssignments,
+  fetchScheduleCancellations,
+  recordScheduleCancellation,
+  clearScheduleCancellation,
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
+  type ScheduleCancellation,
 } from '../lib/queries';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
@@ -25,7 +29,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, hasDateEvidence, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import { useAuth } from '../contexts/AuthContext';
@@ -121,6 +125,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
+  const [cancellations, setCancellations] = useState<ScheduleCancellation[]>([]);
   const [brandsLoading, setBrandsLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const loading = brandsLoading || scheduleLoading;
@@ -304,9 +309,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             });
           }
         }
-        const [rows, activePauses] = await Promise.all([
+        const [rows, activePauses, weekCancellations] = await Promise.all([
           fetchBrandSchedule(tab, weekStartISO),
           fetchActiveBrandPlatformPauses(tab),
+          fetchScheduleCancellations(tab, weekStartISO),
         ]);
         if (canceled) return;
         // Merge rather than replace: scheduleRows can also hold other weeks
@@ -315,6 +321,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         // out every time this effect re-fires (e.g. on Prev/Next/Today).
         setScheduleRows((prev) => [...prev.filter((r) => r.week_start !== weekStartISO), ...rows]);
         setPauses(activePauses);
+        setCancellations((prev) => [...prev.filter((c) => c.week_start !== weekStartISO), ...weekCancellations]);
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -338,12 +345,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     const extraWeeks = columnWeekISOs.filter((w) => w !== weekStartISO);
     let canceled = false;
     (async () => {
-      const rowsPerWeek = extraWeeks.length > 0
-        ? await Promise.all(extraWeeks.map((w) => fetchBrandSchedule(tab, w).catch(() => [])))
-        : [];
+      const [rowsPerWeek, cancellationsPerWeek] = await Promise.all([
+        extraWeeks.length > 0 ? Promise.all(extraWeeks.map((w) => fetchBrandSchedule(tab, w).catch(() => []))) : Promise.resolve([]),
+        extraWeeks.length > 0 ? Promise.all(extraWeeks.map((w) => fetchScheduleCancellations(tab, w).catch(() => []))) : Promise.resolve([]),
+      ]);
       if (canceled) return;
       const fresh = rowsPerWeek.flat();
       setScheduleRows((prev) => [...prev.filter((r) => r.week_start === weekStartISO), ...fresh]);
+      const freshCancellations = cancellationsPerWeek.flat();
+      setCancellations((prev) => [...prev.filter((c) => c.week_start === weekStartISO), ...freshCancellations]);
     })();
     return () => {
       canceled = true;
@@ -697,6 +707,41 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return { rowsByPlatform, pausesByPlatform, pausedByPlatform };
   }
 
+  // Optimistically drops any schedule_cancellations row for this exact day,
+  // then deletes it server-side best-effort (fire-and-forget, no toast on
+  // failure -- worst case is a stale "Cancelled" badge lingering until the
+  // next real cancel/clear touches this cell, not a functional break). Safe
+  // to call unconditionally on any reactivation (there's usually nothing to
+  // clear), since a genuinely-cancelled day is just as "blank" as one that
+  // was never scheduled -- the caller can't tell which without this table,
+  // so it never needs to check first.
+  function clearCancellationIfAny(brand: string, platform: Platform, col: ScheduleColumn) {
+    const brandKey = normalizeBrandKey(brand);
+    setCancellations((prev) => prev.filter((c) => !(c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === col.weekStartISO && c.weekday === col.weekday)));
+    clearScheduleCancellation(tab, brandKey, platform, col.weekStartISO, col.weekday).catch(() => {});
+  }
+
+  // The other half of a Cancel action, shared by the explicit Cancel button
+  // (handleCancelDay) and onToggle's own paused -> blank cycle leg
+  // (handleCellClick) so the two paths to "blank" can't disagree about
+  // whether a day counts as cancelled. Records the cancellation (so the
+  // Schedule Status column can show it) and deletes any already-created PMS
+  // task for this exact combo immediately, rather than leaving it to
+  // re-resolve on the next status sync.
+  function finalizeCancellation(brand: string, platform: Platform, col: ScheduleColumn) {
+    const brandKey = normalizeBrandKey(brand);
+    setCancellations((prev) => [
+      ...prev.filter((c) => !(c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === col.weekStartISO && c.weekday === col.weekday)),
+      { tab, brand_key: brandKey, platform, week_start: col.weekStartISO, weekday: col.weekday },
+    ]);
+    recordScheduleCancellation(tab, brand, platform, col.weekStartISO, col.weekday).catch((err) => {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to record cancellation', kind: 'error' });
+    });
+    cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
+    });
+  }
+
   async function handleCellClick(brand: string, platform: Platform, col: ScheduleColumn) {
     if (!isApproved) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
@@ -706,35 +751,24 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     try {
       await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, next);
       if (next === 'active') {
+        // Reaching 'active' from blank is this cycle's own "un-cancel" leg --
+        // harmless no-op when the day was never cancelled in the first place.
+        clearCancellationIfAny(brand, platform, col);
         pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       } else if (next === null) {
         // The only way a cell reaches null is the paused -> blank leg of the
         // cycle (see nextStatus in scheduleBrands.ts) -- that's a deliberate
-        // cancellation, so any PMS task already created for this exact combo
-        // is deleted too, not just left to re-resolve back to active on the
-        // next status sync.
-        cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
-          setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
-        });
-      } else if (next === 'paused' && !hasDateEvidence(dateStatusIndex, normalizeBrandKey(brand), platform, col.iso)) {
-        // A day cycled straight to Paused (active -> paused, no real evidence
-        // yet) is just as much a deliberate cancellation as the blank leg
-        // above -- mirrors resolveAndSyncTabStatuses' own server-side
-        // cancellation check (pmsSync.ts) exactly, so this client-triggered
-        // delete can never disagree with what the cron would eventually do.
-        // Firing it immediately here matters because that cron is gated on a
-        // per-tab entries-freshness watermark: a pure Schedule Planner pause
-        // click with no other entries activity on this tab (e.g. a holiday)
-        // would otherwise sit stuck until something else touches this tab's
-        // entries. When real evidence DOES already back this day, this is
-        // deliberately skipped -- the server resolves it to that evidence
-        // (Done/Removed/etc.) instead, same precedence as everywhere else.
-        cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
-          setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
-        });
+        // cancellation, same as the explicit Cancel button.
+        finalizeCancellation(brand, platform, col);
       }
+      // next === 'paused' (active -> paused) needs no immediate client action
+      // here -- Paused always moves its PMS card to Project Paused via the
+      // normal status sync (pmsSync.ts), same as an algorithmic scheduler
+      // auto-pause. It can't have an existing cancellation record either
+      // (only reachable from 'active', which already clears one on the way
+      // in), so there's nothing to clear.
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
@@ -748,20 +782,37 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, status));
     try {
       await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, status);
+      // Unconditional, same reasoning as handleCellClick's 'active' leg above
+      // -- covers AddPlatformModal reactivating a previously-cancelled blank
+      // day, and is a harmless no-op for the new Pause/Resume buttons (which
+      // only ever fire from an already-active/-paused day, never a
+      // cancelled one).
+      clearCancellationIfAny(brand, platform, col);
       if (status === 'active') {
         pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
-        });
-      } else if (status === 'paused' && !hasDateEvidence(dateStatusIndex, normalizeBrandKey(brand), platform, col.iso)) {
-        // Same immediate self-healing cancellation as handleCellClick above --
-        // this is the AddPlatformModal/bulk-pause path's equivalent write.
-        cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
-          setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
         });
       }
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
+    }
+  }
+
+  // The new explicit Cancel button's handler -- unlike handleCellClick, this
+  // writes straight to blank from whichever real status the day currently
+  // has (active or paused), rather than cycling through the sequence.
+  async function handleCancelDay(brand: string, platform: Platform, col: ScheduleColumn) {
+    if (!isApproved) return;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
+
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, null));
+    try {
+      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, null);
+      finalizeCancellation(brand, platform, col);
+    } catch (err) {
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
+      setToast({ message: err instanceof Error ? err.message : 'Failed to cancel', kind: 'error' });
     }
   }
 
@@ -945,9 +996,20 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                   .map((p) => ({ platform: p, days: trailingManualPauseDays(weekRowsByPlatform[p]) }))
                   .filter((x) => x.days.length > 0);
                 const manuallyPausedPlatformSet = new Set(manualPausedPlatforms.map((x) => x.platform));
+                // Scoped to this navigated week only, same as manualPausedPlatforms
+                // above and the Schedule Status column's other buckets. System
+                // auto-pause still wins over a cancellation for the same
+                // platform/week (filtered out here too); a cancelled day within an
+                // otherwise-manually-paused week wins in the icon itself (checked
+                // before 'manual' in the render below), per direct user request.
+                const cancelledPlatforms = brandPlatforms(brand)
+                  .filter((p) => !weekPausesByPlatform[p])
+                  .map((p) => ({ platform: p, days: cancellations.filter((c) => c.tab === tab && c.brand_key === brandKey && c.platform === p && c.week_start === weekStartISO).map((c) => c.weekday) }))
+                  .filter((x) => x.days.length > 0);
+                const cancelledPlatformSet = new Set(cancelledPlatforms.map((x) => x.platform));
                 const noSchedulePlatforms = isCurrentWeek
                   ? brandPlatforms(brand).filter(
-                      (p) => !weekPausesByPlatform[p] && !manuallyPausedPlatformSet.has(p) && hasNoScheduleThisWeek(weekRowsByPlatform[p]),
+                      (p) => !weekPausesByPlatform[p] && !manuallyPausedPlatformSet.has(p) && !cancelledPlatformSet.has(p) && hasNoScheduleThisWeek(weekRowsByPlatform[p]),
                     )
                   : [];
                 return (
@@ -1002,6 +1064,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             // platform-tracked weeks.
                             isApproved={isApproved && !isLegacyWeekAt(col.weekStartISO)}
                             onToggle={(platform) => handleCellClick(brand, platform, col)}
+                            onSetStatus={(platform, status) => handleSetDayStatus(brand, platform, col, status)}
+                            onCancel={(platform) => handleCancelDay(brand, platform, col)}
                             onAddPlatform={() => setAddPlatformTarget({ brand, col })}
                           />
                         </td>
@@ -1027,6 +1091,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           if (weekPausesByPlatform[platform]) {
                             return (
                               <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} pausedBy={weekPausedByPlatform[platform]} clickable={clickable} onClick={onClick} />
+                            );
+                          }
+                          if (cancelledPlatformSet.has(platform)) {
+                            const days = cancelledPlatforms.find((x) => x.platform === platform)!.days;
+                            // Not clickable — see ScheduleStatusIconProps' own doc
+                            // comment on the 'cancelled' variant for why.
+                            return (
+                              <ScheduleStatusIcon key={platform} platform={platform} source="cancelled" days={days} agent={agent} clickable={false} onClick={() => {}} />
                             );
                           }
                           if (manuallyPausedPlatformSet.has(platform)) {

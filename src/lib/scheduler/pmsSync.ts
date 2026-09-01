@@ -221,14 +221,15 @@ export async function pushScheduleToPms(
 // Only 'active' stays in To Do. Once a scheduled slot resolves to any real
 // outcome -- Pending, Done, Published, or Removed -- its task moves straight
 // to Done, so a human can see at a glance that the slot is settled without
-// opening the dashboard. 'paused' (a scheduler auto-pause) moves the task to
-// the real "Project Paused" column instead, superseding the earlier design
-// where a paused combo's task was simply left untouched. A single day cell
-// manually cycled to Paused with no auto-pause and no evidence never reaches
-// this mapping at all -- resolveAndSyncTabStatuses' cancellation branch
-// above deletes that link/task outright before targetStatus is even
-// computed, since a human-cancelled day (a holiday, a pulled brand) has
-// nothing left to track, unlike an ongoing algorithmic hold.
+// opening the dashboard. 'paused' (a scheduler auto-pause, or a single day
+// cell manually cycled to Paused -- resolvePmsSyncStatus's caller combines
+// both into one boolean) moves the task to the real "Project Paused" column
+// instead, superseding the earlier design where a paused combo's task was
+// simply left untouched. Only an explicit Cancel (a day written back to
+// blank via the Cancel button, or the legacy blank-cycle leg) never reaches
+// this mapping at all -- resolveAndSyncTabStatuses' cancellation branch above
+// deletes that link/task outright before targetStatus is even computed,
+// since a genuinely-cancelled day has nothing left to track.
 const PMS_STATUS_COLUMN_IDS: Record<PmsSyncStatus, string> = {
   active: PMS_TODO_COLUMN_ID,
   pending: PMS_DONE_COLUMN_ID,
@@ -242,11 +243,12 @@ export interface PmsStatusSyncItem {
   linkId: string;
   pmsTaskId: string;
   targetStatus: PmsSyncStatus;
-  // tabLabel/date are the same values the task was created with (see
+  // tabLabel/brand/date are the same values the task was created with (see
   // PmsSyncItem above) -- needed here so computeGroupedInsertPosition can
-  // place the moved task among its actual due-date/brand-tab peers instead
+  // place the moved task among its actual due-date/tab/brand peers instead
   // of always landing at the top of the target column.
   tabLabel: string;
+  brand: string;
   date: string;
   // Set only when targetStatus resolved from real evidence (done/pending/
   // published/removed) -- see buildTaskDescription below. Undefined for
@@ -312,16 +314,27 @@ function tabLabelFromTitle(title: string): string {
   return sep === -1 ? title : title.slice(0, sep);
 }
 
+// The other half of tabLabelFromTitle -- everything after " | ". Returns ''
+// for a title with no separator (a manually-created, non-schedule card), so
+// it sorts before every real brand name rather than throwing.
+function brandFromTitle(title: string): string {
+  const sep = title.indexOf(' | ');
+  return sep === -1 ? '' : title.slice(sep + 3);
+}
+
 function dueDateSortKey(dueDate: string | null | undefined): string {
   return dueDate ? dueDate.slice(0, 10) : '';
 }
 
-// Shared grouping key -- (due date, tab label) -- used both by
+// Shared grouping key -- (due date, tab label, brand) -- used both by
 // computeGroupedInsertPosition (a single moved/created card) and
 // computeColumnSortMoves (a full-column re-sort) below, so a card placed by
-// one is never immediately re-shuffled by the other.
+// one is never immediately re-shuffled by the other. Brand is the tie-breaker
+// within a same-date-same-tab cluster, per an explicit user request: cards
+// should read date-1 BITP/BrandA, date-1 BITP/BrandB in brand order, not left
+// in whatever order they happened to already be in.
 function taskSortKey(dueDate: string | null | undefined, title: string): string {
-  return `${dueDateSortKey(dueDate)} ${tabLabelFromTitle(title).toLowerCase()}`;
+  return `${dueDateSortKey(dueDate)} ${tabLabelFromTitle(title).toLowerCase()} ${brandFromTitle(title).toLowerCase()}`;
 }
 
 // Confirmed live against the real "Forum Team" project (2026-08-27): each
@@ -329,19 +342,22 @@ function taskSortKey(dueDate: string | null | undefined, title: string): string 
 // position N there shifts every task at/after N down by one -- so computing
 // "how many peers in the target column already sort at-or-before this item"
 // and moving to that index reproduces a stable insertion sort, one move at a
-// time. Grouping key is (due date, tab label) per an explicit user request:
-// cards should read date-27 Hanan/Hanan/Hanan, date-27 BITP/BITP/BITP, not
-// interleaved by whichever tab's status happened to change most recently.
-// Ties (same date + tab) sort the new/moved item after its existing peers
-// (`<=`), so it joins the tail of its own cluster instead of splitting it.
+// time. Grouping key is (due date, tab label, brand) per an explicit user
+// request: cards should read date-27 Hanan/AaaBrand, date-27 Hanan/ZzzBrand,
+// date-27 BITP/..., not interleaved by whichever tab's status happened to
+// change most recently, nor left unsorted within a same-date-same-tab
+// cluster. Ties (identical date + tab + brand) sort the new/moved item after
+// its existing peers (`<=`), so it joins the tail of its own cluster instead
+// of splitting it.
 function computeGroupedInsertPosition(
   tasks: PmsTaskListed[],
   columnId: string,
   dueDate: string,
   tabLabel: string,
+  brand: string,
   excludeTaskId: string,
 ): number {
-  const newKey = `${dueDateSortKey(dueDate)} ${tabLabel.toLowerCase()}`;
+  const newKey = `${dueDateSortKey(dueDate)} ${tabLabel.toLowerCase()} ${brand.toLowerCase()}`;
   return tasks.filter((t) => {
     if (t.columnId !== columnId || t.id === excludeTaskId) return false;
     return taskSortKey(t.dueDate, t.title) <= newKey;
@@ -446,7 +462,7 @@ export async function syncScheduleStatusToPms(
   for (const item of items) {
     try {
       const columnId = PMS_STATUS_COLUMN_IDS[item.targetStatus];
-      const position = computeGroupedInsertPosition(tasks, columnId, item.date, item.tabLabel, item.pmsTaskId);
+      const position = computeGroupedInsertPosition(tasks, columnId, item.date, item.tabLabel, item.brand, item.pmsTaskId);
       await movePmsTask(item.pmsTaskId, columnId, position, credentials, fetchFn);
       // A description-write failure here fails the whole item (same catch as
       // the move above) rather than being swallowed -- the move already
@@ -457,7 +473,7 @@ export async function syncScheduleStatusToPms(
       if (item.description != null) await setPmsTaskDescription(item.pmsTaskId, item.description, credentials, fetchFn);
       await updateSchedulePmsLinkStatus(item.linkId, item.targetStatus, columnId, client);
       tasks = tasks.filter((t) => t.id !== item.pmsTaskId);
-      tasks.push({ id: item.pmsTaskId, title: `${item.tabLabel} | `, columnId, position, dueDate: item.date, assignees: [] });
+      tasks.push({ id: item.pmsTaskId, title: `${item.tabLabel} | ${item.brand}`, columnId, position, dueDate: item.date, assignees: [] });
       synced.push(item);
     } catch (err) {
       failed.push({ item, error: err instanceof Error ? err.message : String(err) });
@@ -523,11 +539,11 @@ export async function enforcePmsColumns(
     if (link.synced_column_id === want) continue; // human moved it; respect it
     const tabLabel = tabDisplayName(link.tab);
     try {
-      const position = computeGroupedInsertPosition(tasks, want, link.date, tabLabel, link.pms_task_id);
+      const position = computeGroupedInsertPosition(tasks, want, link.date, tabLabel, link.brand, link.pms_task_id);
       await movePmsTask(link.pms_task_id, want, position, credentials, fetchFn);
       await updateSchedulePmsLinkColumn(link.id, want, client);
       tasks = tasks.filter((t) => t.id !== link.pms_task_id);
-      tasks.push({ id: link.pms_task_id, title: `${tabLabel} | `, columnId: want, position, dueDate: link.date, assignees: [] });
+      tasks.push({ id: link.pms_task_id, title: `${tabLabel} | ${link.brand}`, columnId: want, position, dueDate: link.date, assignees: [] });
       moved.push({ linkId: link.id, pmsTaskId: link.pms_task_id, from: task.columnId, to: want });
     } catch (err) {
       failed.push({ linkId: link.id, pmsTaskId: link.pms_task_id, error: err instanceof Error ? err.message : String(err) });
@@ -626,7 +642,7 @@ export async function resolveAndSyncTabStatuses(
       if (link.synced_status === 'paused') continue;
       const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
       if (!allowedPlatforms.includes(link.platform)) continue;
-      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), date: link.date });
+      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date });
     }
     // Unconditionally invalidates this tab's recorded watermark (an empty
     // string can never equal a real entries.updated_at timestamp, nor the
@@ -683,25 +699,25 @@ export async function resolveAndSyncTabStatuses(
     const manuallyPaused = dayStatus === 'paused';
     const isPaused = autoPaused || manuallyPaused;
 
-    // A link whose day is either genuinely blank in brand_schedule, or has
-    // been explicitly cycled to Paused by a human on that exact day
-    // (manuallyPaused -- e.g. a public holiday, a brand pulled for the day),
-    // with no real evidence backing it either, has nothing left to sync -- the
-    // work for that day was cancelled and its PMS card should be deleted
-    // rather than sit forever in the "Project Paused" column. Clean it up
-    // here instead of falling into resolvePmsSyncStatus's 'active'/'paused'
-    // fallback, which can't otherwise tell "never scheduled"/"cancelled"
-    // apart from "on an active weekly performance hold" -- this is what makes
-    // cancellation self-healing the same way status moves already are via
-    // this same cron. autoPaused is deliberately excluded from this branch: a
-    // scheduler auto-pause (brand_platform_pause, a low-success-rate hold on
-    // the whole brand+platform for the week) is algorithmic, not a human
-    // cancelling one specific day, and still resolves to the normal 'paused'
-    // -> Project Paused column path below even on a day that also happens to
-    // be blank/manually-paused. Requires a parseable date (loc != null); an
-    // unparseable link.date falls through to the normal resolve path below,
-    // unchanged from before this check existed.
-    if (loc != null && (dayStatus == null || manuallyPaused) && !autoPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
+    // A link whose day is genuinely blank in brand_schedule (not active, not
+    // paused), with no real evidence backing it either, has nothing left to
+    // sync -- most likely a cancelled slot whose client-side cleanup never
+    // ran (a stale browser tab still on an older bundle, a network blip, a
+    // closed page mid-click). Clean it up here instead of falling into
+    // resolvePmsSyncStatus's 'active' fallback, which can't otherwise tell
+    // "never scheduled" apart from "scheduled, then cancelled" -- this is
+    // what makes cancellation self-healing the same way status moves already
+    // are via this same cron. A day explicitly cycled to Paused (manuallyPaused)
+    // is deliberately NOT treated as a cancellation here -- Paused and
+    // Cancelled are two distinct, separately-actioned outcomes (see the new
+    // per-cell Pause/Resume/Cancel buttons and schedule_cancellations table):
+    // Paused always moves its card to Project Paused, same as an algorithmic
+    // scheduler auto-pause; only an explicit Cancel (which writes the day back
+    // to blank) deletes the card, via cancelScheduleInPms below/client-side.
+    // Requires a parseable date (loc != null); an unparseable link.date falls
+    // through to the normal resolve path below, unchanged from before this
+    // check existed.
+    if (loc != null && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
       const cancelItem: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
       try {
         await deletePmsTask(link.pms_task_id, credentials, fetchFn);
@@ -718,7 +734,7 @@ export async function resolveAndSyncTabStatuses(
       const detailsKey = `${link.brand_key}::${link.platform}::${link.date}`;
       const details = dateStatusIndex.details.get(detailsKey);
       const description = details ? buildTaskDescription(details) : undefined;
-      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), date: link.date, description });
+      items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date, description });
     }
   }
   // Deliberately NOT currentWatermark (the separate, uncached
