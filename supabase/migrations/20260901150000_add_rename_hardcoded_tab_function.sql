@@ -1,4 +1,4 @@
--- supabase/migrations/20260901140000_add_rename_hardcoded_tab_function.sql
+-- supabase/migrations/20260901150000_add_rename_hardcoded_tab_function.sql
 -- Atomically renames a hardcoded Brand Tab across every table keyed by its
 -- name. A sibling to rename_custom_tab (20260819110000), never a
 -- modification of it -- every existing dynamic-tab rename already depends
@@ -33,8 +33,14 @@ begin
     v_original := old_name;
   end if;
 
+  -- Additional guard beyond hardcoded_tab_renames/custom_tabs: no table stores
+  -- the 11 original hardcoded tab names, so a never-renamed hardcoded tab
+  -- (e.g. 'Hanan') would otherwise pass both checks below and get silently
+  -- merged into by this rename. Checking entries directly closes the practical
+  -- case, since every hardcoded tab already has live entries.
   if exists (select 1 from public.hardcoded_tab_renames where current_name = new_name)
-     or exists (select 1 from public.custom_tabs where name = new_name) then
+     or exists (select 1 from public.custom_tabs where name = new_name)
+     or exists (select 1 from public.entries where tab = new_name) then
     raise exception 'a tab named "%" already exists', new_name;
   end if;
 
