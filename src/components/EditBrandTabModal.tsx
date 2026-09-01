@@ -15,6 +15,7 @@ import { computeInitialIconSelection, type TabIconSelection } from '../lib/tabIc
 import { registerTabIconOverrides, renameTabIconOverride } from '../lib/tabIconOverrideRegistry';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
+import { tabDisplayName } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import IconPicker from './IconPicker';
 
@@ -180,7 +181,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
               />
             ) : (
               <>
-                <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-600">{tabName}</p>
+                <p className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2 text-sm text-slate-600">{tabDisplayName(tabName)}</p>
                 <p className="mt-1 text-xs text-slate-400">Hardcoded tabs can't be renamed.</p>
               </>
             )}
