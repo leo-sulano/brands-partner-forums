@@ -323,15 +323,13 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
               onClick={() => onToggle(platform)}
             />
             {showDayActions && (
-              // Keyed off the row's own bare `group` (set on the <tr> in
-              // TabScheduleSection.tsx, already used for that row's
-              // hover:bg-blue-50), not this cell's own `group/cell` -- per
-              // direct user request, hovering anywhere in a brand's row
-              // reveals every day cell's Pause/Resume/Cancel buttons at once,
-              // not just the one cell the cursor happens to be over. The "+"
-              // Add Platform button and PlatformChip's own past-day ghosting
-              // are untouched, still gated on this cell's own group/cell hover.
-              <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+              // Keyed off this cell's own `group/cell` (Task 295 briefly tried
+              // the row's bare `group` instead, so every day cell's buttons
+              // appeared at once on row hover -- reverted per direct user
+              // follow-up, showing every column's icons simultaneously read as
+              // too cluttered). Matches the "+" Add Platform button's own
+              // per-cell hover scope.
+              <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
                 {status === 'active' ? (
                   <button
                     type="button"

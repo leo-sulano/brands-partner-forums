@@ -7582,3 +7582,17 @@ switched from `group-hover/cell:opacity-100` (this cell's own named group) to `g
 button and `PlatformChip`'s own past-day ghosting are untouched, still gated on the cell's own
 `group/cell` hover. Full suite (2224 tests) and build pass. Frontend-only — no migration, no Edge
 Function change, nothing to redeploy.
+
+---
+
+## Task 296: Reverted Task 295 — Buttons Back to Per-Cell Hover Only
+
+**Date:** September 1, 2026
+
+Same-day reversal, reported live via screenshot: Task 295's row-wide hover made every day cell's
+Pause/Resume/Cancel buttons appear at once (e.g. Play Mojo's whole week lighting up with ▶/⏸/🚫
+across 4-5 columns simultaneously) — too cluttered in practice. Reverted the one-class change back
+to `group-hover/cell:opacity-100` (`ScheduleCell`, `src/lib/scheduler/calendarRenderer.tsx`), so
+the buttons only appear on the exact day cell being hovered again, same as the "+" Add Platform
+button. No other part of Task 294/295 touched. Full suite (2224 tests) and build pass.
+Frontend-only — nothing to redeploy.
