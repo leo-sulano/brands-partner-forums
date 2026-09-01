@@ -42,6 +42,25 @@ describe('buildHiddenBrandSet / getSchedulableBrandPlatforms (hide)', () => {
   });
 });
 
+describe('buildHiddenBrandSet (whole-brand pause merge)', () => {
+  // A schedule_brand_pauses row carries extra fields (reason, dates, etc.)
+  // beyond {tab, brand} -- confirms the paused-brands exclusion wiring
+  // (docs/superpowers/specs/2026-09-01-schedule-planner-paused-brands-design.md,
+  // "reuse the existing choke point") actually works when a paused row is
+  // spread into buildHiddenBrandSet alongside real schedule_hidden_brands
+  // rows, the same way every call site does it.
+  it('excludes a whole-brand-paused row the same way it excludes a hidden one', () => {
+    const pausedRow = {
+      id: 'p1', tab: 'Rooster Partners', brand: 'PausedBrand', brand_key: 'pausedbrand',
+      reason: 'On hold', paused_since: '2026-09-01', paused_until: null,
+      created_by: 'leo@optinetsolutions.com', created_at: '2026-09-01T00:00:00Z',
+    };
+    const hiddenSet = buildHiddenBrandSet([{ tab: 'Rooster Partners', brand: 'RealHidden' }, pausedRow]);
+    expect(getSchedulableBrandPlatforms('Rooster Partners', 'PausedBrand', ['tp', 'ag'], hiddenSet, new Map())).toEqual([]);
+    expect(getSchedulableBrandPlatforms('Rooster Partners', 'RealHidden', ['tp', 'ag'], hiddenSet, new Map())).toEqual([]);
+  });
+});
+
 describe('buildPlatformRestrictionMap / getSchedulableBrandPlatforms (restrict)', () => {
   it('narrows a restricted brand down to its single allowed platform', () => {
     const restrictionMap = buildPlatformRestrictionMap([

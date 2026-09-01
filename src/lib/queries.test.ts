@@ -28,6 +28,9 @@ import {
   fetchRemovedPlatformBrands,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
+  fetchScheduleBrandPauses,
+  pauseScheduleBrand,
+  unpauseScheduleBrand,
   fetchBrandAgentAssignments,
   bulkUpsertBrandSchedule,
   computeTabKpisFromEntries,
@@ -247,6 +250,35 @@ describe('queries.ts injectable Supabase client', () => {
     expect(fakeFrom).toHaveBeenCalledWith('schedule_platform_restrictions');
     expect(singletonFrom).not.toHaveBeenCalled();
     expect(rows).toEqual([{ tab: 'X', brand: 'GOC', allowed_platform: 'ag' }]);
+  });
+
+  it('fetchScheduleBrandPauses uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({
+      data: [{ id: '1', tab: 'X', brand: 'WinMega', brand_key: 'winmega', reason: 'On hold', paused_since: '2026-09-01', paused_until: null, created_by: 'leo@optinetsolutions.com', created_at: '2026-09-01T00:00:00Z' }],
+      error: null,
+    }));
+    const rows = await fetchScheduleBrandPauses('X', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_brand_pauses');
+    expect(singletonFrom).not.toHaveBeenCalled();
+    expect(rows[0].reason).toBe('On hold');
+  });
+
+  it('pauseScheduleBrand upserts into schedule_brand_pauses', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await pauseScheduleBrand('X', 'WinMega', { reason: 'On hold', pausedSince: '2026-09-01', pausedUntil: null });
+    expect(singletonFrom).toHaveBeenCalledWith('schedule_brand_pauses');
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'X', brand: 'WinMega', reason: 'On hold', paused_since: '2026-09-01', paused_until: null }),
+      { onConflict: 'tab,brand_key' },
+    );
+  });
+
+  it('unpauseScheduleBrand deletes from schedule_brand_pauses', async () => {
+    const chainObj: any = { delete: () => chainObj, eq: () => chainObj, then: (resolve: any) => resolve({ error: null }) };
+    singletonFrom.mockReturnValue(chainObj);
+    await unpauseScheduleBrand('X', 'winmega');
+    expect(singletonFrom).toHaveBeenCalledWith('schedule_brand_pauses');
   });
 
   it('fetchBrandAgentAssignments uses the passed-in client', async () => {

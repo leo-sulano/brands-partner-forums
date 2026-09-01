@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, Pause } from 'lucide-react';
 import { tabDisplayName, tabToSlug } from '../lib/tabs';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import {
@@ -17,9 +17,13 @@ import {
   fetchScheduleCancellations,
   recordScheduleCancellation,
   clearScheduleCancellation,
+  fetchScheduleBrandPauses,
+  pauseScheduleBrand,
+  unpauseScheduleBrand,
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
   type ScheduleCancellation,
+  type ScheduleBrandPause,
 } from '../lib/queries';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
@@ -29,9 +33,11 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, buildLastPostIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
+import PauseBrandModal from './PauseBrandModal';
+import PausedBrandsSection from './PausedBrandsSection';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
@@ -121,6 +127,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     hiddenBrandSet: Set<string>;
     platformRestrictionMap: Map<string, Platform>;
     agentAssignmentRows: BrandAgentAssignmentRow[];
+    // Raw rows (not merged into hiddenBrandSet) -- the "Paused / Noted
+    // Brands" section renders these directly, with their reason/dates.
+    // hiddenBrandSet above already has these brands merged in (see the load
+    // effect below) so brandPlatforms()/filteredBrands drop them from the
+    // active grid the same way a fully-hidden brand is dropped.
+    pausedBrandRows: ScheduleBrandPause[];
     flagsLoaded: boolean;
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
@@ -133,6 +145,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
+  // Whole-brand pause modal target -- an existing pause (edit) or null (a
+  // fresh brand-name string means "pausing this brand for the first time").
+  const [pauseBrandTarget, setPauseBrandTarget] = useState<{ brand: string; existing: ScheduleBrandPause | null } | null>(null);
   const { isApproved } = useAuth();
 
   // Bumped by the live-entries subscription below on an INSERT (or any
@@ -252,13 +267,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       });
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, agentAssignmentRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, pausedBrandRows, agentAssignmentRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           withFlagFallback(fetchRemovedPlatformBrands()),
           withFlagFallback(fetchBrandPlatformOverrides(tab)),
           withFlagFallback(fetchScheduleHiddenBrands(tab)),
           withFlagFallback(fetchScheduleRestrictedBrands(tab)),
+          withFlagFallback(fetchScheduleBrandPauses(tab)),
           // Agent data is purely informational (tooltip/filter/PMS-assignee
           // display), not an exclusion flag like the four above — a
           // transient failure here must not gate the scheduler-invocation
@@ -283,9 +299,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
           overrideMap: buildOverrideMap(overrideRows),
           overrideSetByMap: buildOverrideSetByMap(overrideRows),
-          hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
+          // A whole-brand pause is treated as another "hidden" row here --
+          // see scheduleBrandConfig.ts's file header and the paused-brands
+          // design spec for why this reuses the existing choke point
+          // instead of widening resolveBrandPlatforms' signature.
+          hiddenBrandSet: buildHiddenBrandSet([...hiddenBrandRows, ...pausedBrandRows]),
           platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
           agentAssignmentRows,
+          pausedBrandRows,
           flagsLoaded,
         });
       } catch (err) {
@@ -939,6 +960,32 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     }
   }
 
+  // Both re-trigger the brands-loading effect via reloadSeq -- the simplest
+  // way to get a consistent tabCtx (hiddenBrandSet merge + pausedBrandRows)
+  // after a pause is set/cleared, matching the existing "brand-new row"
+  // INSERT fallback the live-entries subscription already uses above.
+  async function handlePauseBrandSave(brand: string, input: { reason: string; pausedSince: string; pausedUntil: string | null }) {
+    try {
+      await pauseScheduleBrand(tab, brand, input);
+      setPauseBrandTarget(null);
+      setReloadSeq((s) => s + 1);
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to save pause', kind: 'error' });
+    }
+  }
+
+  async function handleUnpauseBrand(brandKey: string) {
+    try {
+      await unpauseScheduleBrand(tab, brandKey);
+      setReloadSeq((s) => s + 1);
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to unpause', kind: 'error' });
+    }
+  }
+
+  const pausedBrands = tabCtx?.pausedBrandRows ?? [];
+  const lastPostIndex = useMemo(() => buildLastPostIndex(tabCtx?.entries ?? []), [tabCtx]);
+
   return (
     <div className="rounded-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col">
       {error && (
@@ -1114,6 +1161,18 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                         </Link>
                       </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
+                      {isApproved && (
+                        <Tooltip content="Pause this brand">
+                          <button
+                            type="button"
+                            onClick={() => setPauseBrandTarget({ brand, existing: null })}
+                            className="ml-1.5 p-0.5 rounded text-slate-300 hover:bg-slate-100 hover:text-slate-600 opacity-0 group-hover:opacity-100 focus-visible:opacity-100"
+                            aria-label={`Pause ${brand}`}
+                          >
+                            <Pause className="size-3.5" />
+                          </button>
+                        </Tooltip>
+                      )}
                     </td>
                     {columns.map((col) => {
                       const dayISO = col.iso;
@@ -1219,6 +1278,17 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           </tbody>
         </table>
       </div>
+      <PausedBrandsSection
+        pausedBrands={pausedBrands}
+        activePlatforms={activePlatforms}
+        lastPostIndex={lastPostIndex}
+        agentIndex={agentIndex}
+        search={search}
+        agentFilter={agentFilter}
+        isApproved={isApproved}
+        onEdit={(row) => setPauseBrandTarget({ brand: row.brand, existing: row })}
+        onUnpause={handleUnpauseBrand}
+      />
       {toast && <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} />}
       {addPlatformTarget && addPlatformModalData && (
         <AddPlatformModal
@@ -1239,6 +1309,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           cancelledDays={pauseDaysModalData.cancelledDays}
           onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
           onClose={() => setPauseDaysTarget(null)}
+        />
+      )}
+      {pauseBrandTarget && (
+        <PauseBrandModal
+          brand={pauseBrandTarget.brand}
+          existing={pauseBrandTarget.existing}
+          onSave={(input) => handlePauseBrandSave(pauseBrandTarget.brand, input)}
+          onClose={() => setPauseBrandTarget(null)}
         />
       )}
     </div>

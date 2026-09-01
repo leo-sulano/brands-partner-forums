@@ -15,6 +15,7 @@ import {
   fetchTabHeaders,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
+  fetchScheduleBrandPauses,
   fetchRemovedPlatformBrands,
   fetchBrandAgentAssignments,
 } from '../lib/queries';
@@ -352,16 +353,20 @@ export default function SchedulePlanner() {
       const entries = await Promise.all(
         getActiveOperationalTabs().map(async (t) => {
           try {
-            const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek, agentAssignmentRows] = await Promise.all([
+            const [rawEntries, headers, hiddenRows, restrictedRows, pausedRows, scheduleRowsPerWeek, agentAssignmentRows] = await Promise.all([
               fetchRawEntriesByTab(t),
               fetchTabHeaders(t),
               fetchScheduleHiddenBrands(t),
               fetchScheduleRestrictedBrands(t),
+              fetchScheduleBrandPauses(t).catch(() => []),
               Promise.all(weeks.map((w) => fetchBrandSchedule(t, w))),
               fetchBrandAgentAssignments(t).catch(() => []),
             ]);
             const activePlatforms = getTabPlatforms(t);
-            const hiddenSet = buildHiddenBrandSet(hiddenRows);
+            // Whole-brand pauses merge into the same hiddenSet a fully-hidden
+            // brand uses — see scheduleBrandConfig.ts's file header and the
+            // paused-brands design spec.
+            const hiddenSet = buildHiddenBrandSet([...hiddenRows, ...pausedRows]);
             const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
             const derived = deriveEntryDependentPreview(t, rawEntries, headers, agentAssignmentRows, activePlatforms, hiddenSet, restrictionMap, removedSet);
             const preview: TabPreview = {

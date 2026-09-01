@@ -277,6 +277,71 @@ export async function fetchScheduleRestrictedBrands(
   return (data ?? []) as { tab: string; brand: string; allowed_platform: Platform }[];
 }
 
+// A whole-brand pause (docs/superpowers/specs/2026-09-01-schedule-planner-paused-brands-design.md)
+// -- distinct from schedule_hidden_brands (no reason/dates, no UI) and from
+// brand_platform_pause/brand_platform_override (per-platform). Row existence
+// pulls the brand out of the active grid (see scheduleBrandConfig.ts's
+// exclusion wiring -- every call site that fetches schedule_hidden_brands
+// also fetches this and merges the two before buildHiddenBrandSet) and
+// surfaces it in the Schedule Planner "Paused / Noted Brands" section
+// instead. paused_until is informational only -- it never auto-clears the
+// row (confirmed with user: manual unpause only).
+export interface ScheduleBrandPause {
+  id: string;
+  tab: string;
+  brand: string;
+  brand_key: string;
+  reason: string;
+  paused_since: string; // ISO date
+  paused_until: string | null; // ISO date, null = indefinite/permanent
+  created_by: string | null;
+  created_at: string;
+}
+
+export async function fetchScheduleBrandPauses(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<ScheduleBrandPause[]> {
+  const { data, error } = await client
+    .from('schedule_brand_pauses')
+    .select('id, tab, brand, brand_key, reason, paused_since, paused_until, created_by, created_at')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as ScheduleBrandPause[];
+}
+
+// Upserts on (tab, brand_key) -- also used to edit an existing pause's
+// reason/dates, since a brand has at most one active pause row.
+export async function pauseScheduleBrand(
+  tab: string,
+  brand: string,
+  input: { reason: string; pausedSince: string; pausedUntil: string | null },
+): Promise<void> {
+  const { error } = await supabase
+    .from('schedule_brand_pauses')
+    .upsert(
+      {
+        tab,
+        brand,
+        reason: input.reason,
+        paused_since: input.pausedSince,
+        paused_until: input.pausedUntil,
+        created_by: await currentUserEmail(),
+      },
+      { onConflict: 'tab,brand_key' },
+    );
+  if (error) throw error;
+}
+
+export async function unpauseScheduleBrand(tab: string, brandKey: string): Promise<void> {
+  const { error } = await supabase
+    .from('schedule_brand_pauses')
+    .delete()
+    .eq('tab', tab)
+    .eq('brand_key', brandKey);
+  if (error) throw error;
+}
+
 export interface BrandAgentAssignmentRow {
   tab: string;
   brand: string;

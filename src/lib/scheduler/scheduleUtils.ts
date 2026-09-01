@@ -314,6 +314,43 @@ export function buildAccountIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+export interface LastPost {
+  status: string;
+  dateISO: string;
+}
+
+// Last known post per (brand, platform), for the "Paused / Noted Brands"
+// section's "what/where/when we last posted" display. Same
+// most-recently-updated-entry building blocks buildDateStatusIndex already
+// uses (PLATFORM_STATUS_KEYS/PLATFORM_DATE_KEYS + parsePostDate), but keeps
+// the single latest-by-post-date entry per platform instead of a set of
+// every dated post — this is a display summary, not a date-matching index.
+// Entries with no parseable post date for a platform are ignored for that
+// platform (a status with no date can't be ordered against one that has
+// one).
+export function buildLastPostIndex(entries: Entry[]): Map<string, Partial<Record<Platform, LastPost>>> {
+  const result = new Map<string, Partial<Record<Platform, LastPost>>>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of ALL_PLATFORMS) {
+      const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim();
+      if (!status) continue;
+      const date = parsePostDate(pick(entry.data, PLATFORM_DATE_KEYS[platform]));
+      if (!date) continue;
+      const dateISO = toISODate(date);
+      const byPlatform = result.get(brandKey) ?? {};
+      const existing = byPlatform[platform];
+      if (!existing || dateISO > existing.dateISO) {
+        byPlatform[platform] = { status, dateISO };
+        result.set(brandKey, byPlatform);
+      }
+    }
+  }
+  return result;
+}
+
 export interface BrandAgentAssignmentRow {
   tab: string;
   brand: string;

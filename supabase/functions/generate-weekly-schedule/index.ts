@@ -12,7 +12,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { tabDisplayName } from '../../../src/lib/tabs.ts';
 import { BRAND_COLS, getBrandNameCol, TAB_DEFAULT_BRAND, getTabPlatforms } from '../../../src/lib/tab-configs.ts';
-import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchBrandAgentAssignments, invalidateTabCache } from '../../../src/lib/queries.ts';
+import { fetchRawEntriesByTab, fetchTabHeaders, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchScheduleBrandPauses, fetchBrandAgentAssignments, invalidateTabCache } from '../../../src/lib/queries.ts';
 import { buildRemovedPlatformBrandSet, type Platform } from '../../../src/lib/removedPlatformBrands.ts';
 import { buildOverrideMap } from '../../../src/lib/scheduleOverrides.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap } from '../../../src/lib/scheduleBrandConfig.ts';
@@ -33,13 +33,14 @@ const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 // re-exercising recalculatePauses/ensureWeekGenerated, which already have
 // full coverage in schedulerService.test.ts.
 export async function buildTabContext(tab: string, client: SupabaseClient): Promise<TabContext> {
-  const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+  const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, pausedBrandRows] = await Promise.all([
     fetchRawEntriesByTab(tab, client),
     fetchTabHeaders(tab, client),
     fetchRemovedPlatformBrands(client),
     fetchBrandPlatformOverrides(tab, client),
     fetchScheduleHiddenBrands(tab, client),
     fetchScheduleRestrictedBrands(tab, client),
+    fetchScheduleBrandPauses(tab, client),
   ]);
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
   const uniqueBrands = [...new Set(
@@ -57,7 +58,10 @@ export async function buildTabContext(tab: string, client: SupabaseClient): Prom
       removedPlatformBrandRows as { tab: string; brand: string; platform: Platform }[],
     ),
     overrideMap: buildOverrideMap(overrideRows),
-    hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
+    // Whole-brand pauses merge into the same hiddenSet a fully-hidden brand
+    // uses -- see scheduleBrandConfig.ts's file header and the paused-brands
+    // design spec (docs/superpowers/specs/2026-09-01-schedule-planner-paused-brands-design.md).
+    hiddenBrandSet: buildHiddenBrandSet([...hiddenBrandRows, ...pausedBrandRows]),
     platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
   };
 }
