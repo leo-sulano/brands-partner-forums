@@ -4,7 +4,7 @@ import { pullScheduleFromPms } from './pmsSync';
 import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 import { resolveAndSyncTabStatuses } from './pmsSync';
 import { cancelScheduleInPms, type PmsCancelItem } from './pmsSync';
-import { enforcePmsColumns } from './pmsSync';
+import { enforcePmsColumns, computeColumnSortMoves } from './pmsSync';
 import type { SchedulePmsLink } from '../queries';
 import { invalidateTabCache } from '../queries';
 
@@ -1299,6 +1299,10 @@ describe('enforcePmsColumns', () => {
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-1', TODO_COL)] },
       { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
+      // A successful move triggers a fresh re-fetch for the full-column sort
+      // pass (see enforcePmsColumns) -- one task in the whole project, so the
+      // sort pass finds nothing to do and makes no further calls.
+      { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-1', DONE_COL)] },
     ]);
     const result = await enforcePmsColumns([link({ synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
     expect(result.moved).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', from: TODO_COL, to: DONE_COL }]);
@@ -1312,7 +1316,7 @@ describe('enforcePmsColumns', () => {
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-1', DONE_COL)] },
     ]);
     const result = await enforcePmsColumns([link({ synced_status: 'published', synced_column_id: DONE_COL })], client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ moved: [], failed: [] });
+    expect(result).toEqual({ moved: [], resorted: [], failed: [] });
     expect(updated).toEqual([]);
   });
 
@@ -1328,7 +1332,7 @@ describe('enforcePmsColumns', () => {
       // unexpected extra call, so a revert attempt would fail this test.
     ]);
     const result = await enforcePmsColumns([link({ synced_status: 'published', synced_column_id: DONE_COL })], client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ moved: [], failed: [] });
+    expect(result).toEqual({ moved: [], resorted: [], failed: [] });
     expect(updated).toEqual([]);
   });
 
@@ -1338,7 +1342,7 @@ describe('enforcePmsColumns', () => {
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('some-other-task', DONE_COL)] },
     ]);
     const result = await enforcePmsColumns([link({ pms_task_id: 'task-gone', synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ moved: [], failed: [] });
+    expect(result).toEqual({ moved: [], resorted: [], failed: [] });
   });
 
   it('isolates a per-link remap-correction failure from the rest of the batch', async () => {
@@ -1347,6 +1351,11 @@ describe('enforcePmsColumns', () => {
       { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-bad', TODO_COL), pmsTask('task-ok', TODO_COL)] },
       { url: /\/tasks\/task-bad\/move$/, method: 'PATCH', body: {}, status: 500 },
       { url: /\/tasks\/task-ok\/move$/, method: 'PATCH', body: {} },
+      // task-ok's successful move triggers a fresh re-fetch for the
+      // full-column sort pass -- task-bad is still stuck in TODO_COL (its
+      // move failed) and task-ok moved to PAUSED_COL, so each column has
+      // only one task and the sort pass makes no further calls.
+      { url: /\/tasks$/, method: 'GET', body: [pmsTask('task-bad', TODO_COL), pmsTask('task-ok', PAUSED_COL)] },
     ]);
     const result = await enforcePmsColumns([
       link({ id: 'link-bad', pms_task_id: 'task-bad', synced_status: 'done', synced_column_id: TODO_COL }),
@@ -1361,7 +1370,7 @@ describe('enforcePmsColumns', () => {
     const { client } = fakeSupabaseForStatusUpdate();
     const fetchFn = vi.fn();
     const result = await enforcePmsColumns([], client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ moved: [], failed: [] });
+    expect(result).toEqual({ moved: [], resorted: [], failed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -1411,5 +1420,114 @@ describe('enforcePmsColumns', () => {
     // the tail) and < the 2026-08-28 peer -> lands at position 2.
     await enforcePmsColumns([link({ tab: 'Hanan', pms_task_id: 'mover', date: '2026-08-27', synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
     expect(movedBody).toEqual({ columnId: DONE_COL, position: 2 });
+  });
+
+  // A column like "In Progress" -- populated only by a human dragging a card
+  // there -- has no entry in PMS_STATUS_COLUMN_IDS, so the drift-correction
+  // loop above never reasons about it at all. This is the gap the full-board
+  // sort pass exists to close: it reaches every real columnId the fetch
+  // returns, not just the ones the status mapping manages.
+  const IN_PROGRESS_COL = 'in-progress-col';
+
+  it('sorts an unmanaged column (e.g. In Progress) by (due date, tab label), leaving a manually-created card pinned', async () => {
+    const tasks = [
+      pmsTask('a', IN_PROGRESS_COL, { title: 'BITP | Nomini Kasino', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('b', IN_PROGRESS_COL, { title: 'Rooster Partners | Luckyvibe', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('c', IN_PROGRESS_COL, { title: 'BITP | 7Bit Casino crypto', position: 2, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('manual', IN_PROGRESS_COL, { title: 'Create New BIT', position: 3, dueDate: null }),
+      pmsTask('d', IN_PROGRESS_COL, { title: 'FTP | NZ Jackpots', position: 4, dueDate: '2026-09-01T00:00:00.000Z' }),
+    ];
+    const { client } = fakeSupabaseForStatusUpdate();
+    const moveBodies: unknown[] = [];
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => tasks };
+      moveBodies.push(JSON.parse(init.body as string));
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const links = [
+      // synced_column_id stays TODO_COL -- what our own system last recorded
+      // for an 'active' card -- even though the real task.columnId is
+      // IN_PROGRESS_COL (a human dragged it there); that mismatch is exactly
+      // what makes the drift-correction loop's "human moved it; respect it"
+      // guard fire, leaving the column itself untouched.
+      link({ id: 'link-a', pms_task_id: 'a', tab: 'BITP', synced_status: 'active', synced_column_id: TODO_COL }),
+      link({ id: 'link-b', pms_task_id: 'b', tab: 'Rooster Partners', synced_status: 'active', synced_column_id: TODO_COL }),
+      link({ id: 'link-c', pms_task_id: 'c', tab: 'BITP', synced_status: 'active', synced_column_id: TODO_COL }),
+      link({ id: 'link-d', pms_task_id: 'd', tab: 'FTP', synced_status: 'active', synced_column_id: TODO_COL }),
+    ];
+    // 'manual' has no matching link -- it must never appear as a move target.
+    const result = await enforcePmsColumns(links, client, CREDENTIALS, fetchFn);
+    expect(result.moved).toEqual([]); // IN_PROGRESS_COL isn't a status-mapped column
+    expect(result.failed).toEqual([]);
+    // 'a' is already correctly placed (first, same date+tab as 'c'); 'c'/'d'/'b'
+    // each need to relocate to reach date-01 BITP, BITP, FTP, then Rooster
+    // Partners order -- see computeColumnSortMoves' own unit tests for the
+    // general algorithm; this just confirms it applies end to end here.
+    expect(result.resorted.map((r) => r.pmsTaskId).sort()).toEqual(['b', 'c', 'd']);
+    expect(result.resorted.map((r) => r.pmsTaskId)).not.toContain('manual');
+    expect(result.resorted.map((r) => r.pmsTaskId)).not.toContain('a');
+    expect(result.resorted.every((r) => r.columnId === IN_PROGRESS_COL)).toBe(true);
+    expect(moveBodies).toHaveLength(3);
+    expect(moveBodies.every((b) => (b as { position: number }).position !== undefined)).toBe(true);
+  });
+
+  it('makes no move calls for an unmanaged column that is already correctly grouped', async () => {
+    const tasks = [
+      pmsTask('a', IN_PROGRESS_COL, { title: 'BITP | Nomini Kasino', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('c', IN_PROGRESS_COL, { title: 'BITP | 7Bit Casino crypto', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('d', IN_PROGRESS_COL, { title: 'FTP | NZ Jackpots', position: 2, dueDate: '2026-09-01T00:00:00.000Z' }),
+    ];
+    const { client } = fakeSupabaseForStatusUpdate();
+    const fetchFn = fakeFetchSequence([{ url: /\/tasks$/, method: 'GET', body: tasks }]);
+    const links = [
+      link({ id: 'link-a', pms_task_id: 'a', tab: 'BITP', synced_status: 'active', synced_column_id: TODO_COL }),
+      link({ id: 'link-c', pms_task_id: 'c', tab: 'BITP', synced_status: 'active', synced_column_id: TODO_COL }),
+      link({ id: 'link-d', pms_task_id: 'd', tab: 'FTP', synced_status: 'active', synced_column_id: TODO_COL }),
+    ];
+    // fakeFetchSequence throws on any call beyond the one GET declared above,
+    // so any move call here (there should be none) fails this test.
+    const result = await enforcePmsColumns(links, client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ moved: [], resorted: [], failed: [] });
+  });
+});
+
+describe('computeColumnSortMoves', () => {
+  it('returns no moves for an already-sorted column', () => {
+    const tasks = [
+      pmsTask('a', TODO_COL, { title: 'BITP | X', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('b', TODO_COL, { title: 'FTP | Y', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
+    ];
+    expect(computeColumnSortMoves(tasks, new Set(['a', 'b']))).toEqual([]);
+  });
+
+  it('never emits a move for a pinned (unlinked) task, even when it sits between two out-of-order linked cards', () => {
+    const tasks = [
+      pmsTask('x', TODO_COL, { title: 'FTP | Y', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('manual', TODO_COL, { title: 'Some ad-hoc task', position: 1, dueDate: '2026-08-01T00:00:00.000Z' }),
+      pmsTask('y', TODO_COL, { title: 'BITP | Z', position: 2, dueDate: '2026-09-01T00:00:00.000Z' }),
+    ];
+    const moves = computeColumnSortMoves(tasks, new Set(['x', 'y']));
+    expect(moves.some((m) => m.taskId === 'manual')).toBe(false);
+    expect(moves).toEqual([
+      { taskId: 'y', columnId: TODO_COL, position: 0 },
+      { taskId: 'x', columnId: TODO_COL, position: 2 },
+    ]);
+  });
+
+  it('ignores a single-task column entirely (nothing to sort)', () => {
+    const tasks = [pmsTask('a', TODO_COL, { position: 0 })];
+    expect(computeColumnSortMoves(tasks, new Set(['a']))).toEqual([]);
+  });
+
+  it('sorts across multiple columns independently', () => {
+    const tasks = [
+      pmsTask('a', TODO_COL, { title: 'FTP | Y', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('b', TODO_COL, { title: 'BITP | X', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('c', DONE_COL, { title: 'FTP | Y', position: 0, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('d', DONE_COL, { title: 'BITP | X', position: 1, dueDate: '2026-09-01T00:00:00.000Z' }),
+    ];
+    const moves = computeColumnSortMoves(tasks, new Set(['a', 'b', 'c', 'd']));
+    expect(moves).toContainEqual({ taskId: 'b', columnId: TODO_COL, position: 0 });
+    expect(moves).toContainEqual({ taskId: 'd', columnId: DONE_COL, position: 0 });
   });
 });

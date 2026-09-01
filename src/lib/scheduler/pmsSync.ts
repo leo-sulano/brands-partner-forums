@@ -316,6 +316,14 @@ function dueDateSortKey(dueDate: string | null | undefined): string {
   return dueDate ? dueDate.slice(0, 10) : '';
 }
 
+// Shared grouping key -- (due date, tab label) -- used both by
+// computeGroupedInsertPosition (a single moved/created card) and
+// computeColumnSortMoves (a full-column re-sort) below, so a card placed by
+// one is never immediately re-shuffled by the other.
+function taskSortKey(dueDate: string | null | undefined, title: string): string {
+  return `${dueDateSortKey(dueDate)} ${tabLabelFromTitle(title).toLowerCase()}`;
+}
+
 // Confirmed live against the real "Forum Team" project (2026-08-27): each
 // column holds a dense, zero-based `position` per task, and moving a task to
 // position N there shifts every task at/after N down by one -- so computing
@@ -333,12 +341,70 @@ function computeGroupedInsertPosition(
   tabLabel: string,
   excludeTaskId: string,
 ): number {
-  const newKey = `${dueDateSortKey(dueDate)} ${tabLabel.toLowerCase()}`;
+  const newKey = `${dueDateSortKey(dueDate)} ${tabLabel.toLowerCase()}`;
   return tasks.filter((t) => {
     if (t.columnId !== columnId || t.id === excludeTaskId) return false;
-    const key = `${dueDateSortKey(t.dueDate)} ${tabLabelFromTitle(t.title).toLowerCase()}`;
-    return key <= newKey;
+    return taskSortKey(t.dueDate, t.title) <= newKey;
   }).length;
+}
+
+export interface PmsSortMove {
+  taskId: string;
+  columnId: string;
+  position: number;
+}
+
+// Full-board re-sort: within EVERY column found among `tasks` (not just the
+// ones enforcePmsColumns' status-drift loop manages -- this is what actually
+// covers a human-populated column like "In Progress"/"Blocked" that this
+// codebase never writes into directly), reorders the schedule-linked cards
+// (task id present in `linkedTaskIds`) into the same (due date, tab label)
+// grouping computeGroupedInsertPosition already uses, while never issuing a
+// move for a manually-created card (id absent from `linkedTaskIds`) -- per an
+// explicit user request, a human's own task stays exactly where they put it;
+// a linked card can still land on either side of it as the sort proceeds.
+// Diff-based (an already-sorted column produces zero moves): walks the
+// column's current (position-ordered) tasks left to right, and whenever the
+// desired (sorted) card for a linked slot isn't already there, relocates it
+// -- mirroring the single-item "stable insertion sort, one move at a time"
+// approach above, just applied across every linked slot in the column
+// instead of one caller-supplied card. A pinned slot is always skipped
+// outright (never compared, never moved); the ascending left-to-right walk
+// self-corrects the linked cards around it as it proceeds. `simulated` models
+// the real API's own remove-then-reinsert shift semantics purely in memory,
+// so each successive move's `position` argument is computed against the
+// board state as it will actually be after every move emitted so far.
+export function computeColumnSortMoves(tasks: PmsTaskListed[], linkedTaskIds: Set<string>): PmsSortMove[] {
+  const moves: PmsSortMove[] = [];
+  const columnIds = [...new Set(tasks.map((t) => t.columnId))];
+
+  for (const columnId of columnIds) {
+    const current = tasks.filter((t) => t.columnId === columnId).sort((a, b) => a.position - b.position);
+    if (current.length < 2) continue;
+
+    const sortedLinked = current
+      .filter((t) => linkedTaskIds.has(t.id))
+      .sort((a, b) => {
+        const ka = taskSortKey(a.dueDate, a.title);
+        const kb = taskSortKey(b.dueDate, b.title);
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+    if (sortedLinked.length < 2) continue;
+
+    let linkedIdx = 0;
+    const target = current.map((t) => (linkedTaskIds.has(t.id) ? sortedLinked[linkedIdx++] : t));
+
+    const simulated = [...current];
+    for (let i = 0; i < target.length; i++) {
+      if (!linkedTaskIds.has(target[i].id)) continue; // never move a manually-created card
+      if (simulated[i].id === target[i].id) continue; // already correct
+      const fromIdx = simulated.findIndex((t) => t.id === target[i].id);
+      const [movedTask] = simulated.splice(fromIdx, 1);
+      simulated.splice(i, 0, movedTask);
+      moves.push({ taskId: target[i].id, columnId, position: i });
+    }
+  }
+  return moves;
 }
 
 // Moves each linked task's PMS column to match its resolved dashboard status
@@ -402,6 +468,9 @@ export async function syncScheduleStatusToPms(
 
 export interface PmsColumnEnforceResult {
   moved: { linkId: string; pmsTaskId: string; from: string; to: string }[];
+  // Pure within-column reorders from the full-board sort pass below -- from
+  // and to are always the same columnId, unlike `moved` above.
+  resorted: { linkId: string; pmsTaskId: string; columnId: string; position: number }[];
   failed: { linkId: string; pmsTaskId: string; error: string }[];
 }
 
@@ -433,8 +502,9 @@ export async function enforcePmsColumns(
   fetchFn: typeof fetch = fetch,
 ): Promise<PmsColumnEnforceResult> {
   const moved: PmsColumnEnforceResult['moved'] = [];
+  const resorted: PmsColumnEnforceResult['resorted'] = [];
   const failed: PmsColumnEnforceResult['failed'] = [];
-  if (links.length === 0) return { moved, failed };
+  if (links.length === 0) return { moved, resorted, failed };
 
   // No try/catch here: a failed task-list fetch means nothing can be
   // reconciled this tick, and the caller (handleReconcileColumns) turns the
@@ -463,7 +533,36 @@ export async function enforcePmsColumns(
       failed.push({ linkId: link.id, pmsTaskId: link.pms_task_id, error: err instanceof Error ? err.message : String(err) });
     }
   }
-  return { moved, failed };
+
+  // Full-board sort pass -- this is what actually reaches a column like "In
+  // Progress"/"Blocked" that the drift-correction loop above never targets
+  // (no synced_status maps to it), since it reasons about every real columnId
+  // found in the fetch, not just PMS_STATUS_COLUMN_IDS' values. `linkedTaskIds`
+  // is every schedule-managed card on the whole board (all of `links`, not
+  // just ones this tick's drift loop touched), so a card sitting in a
+  // human-populated column is still recognized as "ours to sort" even though
+  // its column itself is left alone. Deliberately re-fetches fresh rather than
+  // reusing the drift loop's `tasks` variable when it moved anything: that
+  // variable's own in-memory bookkeeping only ever appends a moved item's new
+  // entry and never re-indexes the peers it actually shifted past (it only
+  // ever needed to support computeGroupedInsertPosition's peer-counting, which
+  // doesn't care about stale `.position` values) -- this pass is the first
+  // consumer that sorts BY `.position`, so it needs the real, authoritative
+  // per-task positions the API now reports, not that approximation.
+  const tasksForSort = moved.length > 0 ? await fetchPmsProjectTasks(credentials, fetchFn) : tasks;
+  const linkedTaskIds = new Set(links.map((l) => l.pms_task_id));
+  const linkIdByTaskId = new Map(links.map((l) => [l.pms_task_id, l.id]));
+  for (const move of computeColumnSortMoves(tasksForSort, linkedTaskIds)) {
+    const linkId = linkIdByTaskId.get(move.taskId) ?? '';
+    try {
+      await movePmsTask(move.taskId, move.columnId, move.position, credentials, fetchFn);
+      resorted.push({ linkId, pmsTaskId: move.taskId, columnId: move.columnId, position: move.position });
+    } catch (err) {
+      failed.push({ linkId, pmsTaskId: move.taskId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  return { moved, resorted, failed };
 }
 
 // The one place the full dashboard -> PMS status resolution rules are

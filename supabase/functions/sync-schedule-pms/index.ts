@@ -115,11 +115,11 @@ export async function handleReconcileColumns(
   bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
   fetchLinksFn: typeof fetchAllSchedulePmsLinks = fetchAllSchedulePmsLinks,
   enforceFn: typeof enforcePmsColumns = enforcePmsColumns,
-): Promise<{ moved: number; failed: number; errors: string[] }> {
+): Promise<{ moved: number; resorted: number; failed: number; errors: string[] }> {
   await bootstrapFn(client, 'sync-schedule-pms');
   const links = await fetchLinksFn(client);
-  const { moved, failed } = await enforceFn(links, client, credentials, fetchFn);
-  return { moved: moved.length, failed: failed.length, errors: failed.slice(0, 5).map((f) => f.error) };
+  const { moved, resorted, failed } = await enforceFn(links, client, credentials, fetchFn);
+  return { moved: moved.length, resorted: resorted.length, failed: failed.length, errors: failed.slice(0, 5).map((f) => f.error) };
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {

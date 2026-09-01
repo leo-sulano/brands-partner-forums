@@ -214,10 +214,10 @@ Deno.test('handleReconcileColumns bootstraps, then reports the enforce move/fail
       bootstrapCalls++;
     },
     async () => [{ id: 'link-1' }, { id: 'link-2' }] as any,
-    async () => ({ moved: [{ linkId: 'link-1', pmsTaskId: 't1', from: 'a', to: 'b' }], failed: [] }),
+    async () => ({ moved: [{ linkId: 'link-1', pmsTaskId: 't1', from: 'a', to: 'b' }], resorted: [{ linkId: 'link-2', pmsTaskId: 't2', columnId: 'c', position: 1 }], failed: [] }),
   );
   assertEquals(bootstrapCalls, 1);
-  assertEquals(result, { moved: 1, failed: 0, errors: [] });
+  assertEquals(result, { moved: 1, resorted: 1, failed: 0, errors: [] });
 });
 
 Deno.test('handleReconcileColumns surfaces enforce failures in the count and error list', async () => {
@@ -229,13 +229,14 @@ Deno.test('handleReconcileColumns surfaces enforce failures in the count and err
     async () => [] as any,
     async () => ({
       moved: [],
+      resorted: [],
       failed: [
         { linkId: 'l1', pmsTaskId: 't1', error: 'move boom' },
         { linkId: 'l2', pmsTaskId: 't2', error: 'move boom 2' },
       ],
     }),
   );
-  assertEquals(result, { moved: 0, failed: 2, errors: ['move boom', 'move boom 2'] });
+  assertEquals(result, { moved: 0, resorted: 0, failed: 2, errors: ['move boom', 'move boom 2'] });
 });
 
 Deno.test('handleReconcileColumns caps the reported error list at 5 while still counting all failures', async () => {
@@ -246,7 +247,7 @@ Deno.test('handleReconcileColumns caps the reported error list at 5 while still 
     fetch,
     async () => {},
     async () => [] as any,
-    async () => ({ moved: [], failed }),
+    async () => ({ moved: [], resorted: [], failed }),
   );
   assertEquals(result.failed, 7);
   assertEquals(result.errors.length, 5);
@@ -263,7 +264,7 @@ Deno.test('handleReconcileColumns propagates a links-fetch failure (handler-leve
         async () => {
           throw new Error('links fetch boom');
         },
-        async () => ({ moved: [], failed: [] }),
+        async () => ({ moved: [], resorted: [], failed: [] }),
       ),
     Error,
     'links fetch boom',
