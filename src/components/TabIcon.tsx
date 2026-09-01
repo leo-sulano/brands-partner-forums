@@ -21,7 +21,7 @@ export default function TabIcon({ tab, className }: Props) {
 
   if (resolved.kind === 'static') {
     const Icon = resolved.Icon;
-    return <Icon className={className} />;
+    return <Icon className={`rounded-[3px] border border-[#ffffff80] ${className ?? ''}`} />;
   }
 
   if (resolved.kind === 'image') {
@@ -39,5 +39,5 @@ export default function TabIcon({ tab, className }: Props) {
   // resolved.kind === 'dynamic'. No `fallback` prop: DynamicIcon renders
   // null while its chunk loads, rather than briefly flashing a default icon
   // at its intrinsic 24px before this component's className shrinks it.
-  return <DynamicIcon name={resolved.name} className={className} />;
+  return <DynamicIcon name={resolved.name} className={`rounded-[3px] border border-[#ffffff80] ${className ?? ''}`} />;
 }

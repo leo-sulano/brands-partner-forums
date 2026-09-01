@@ -300,68 +300,70 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const showDayActions = clickable && (status === 'active' || status === 'paused');
         return (
           <Fragment key={platform}>
-            <PlatformChip
-              platform={platform}
-              stateClassName={stateClassName}
-              isRemoved={isRemoved}
-              isConfirmed={isConfirmed}
-              isPending={isPending}
-              isDone={isDone}
-              clickable={clickable}
-              planUnverified={planUnverified}
-              label={label}
-              agent={agent}
-              // Country/Account only once this exact day has real add-date
-              // evidence — see the doc comment on ScheduleCellProps' own
-              // agent/country/account fields above for why a plan-only
-              // "Scheduled" chip (hasEvidence false) must not show them.
-              country={hasEvidence ? country : undefined}
-              account={hasEvidence ? account : undefined}
-              isPausedState={isPausedState}
-              pauseReason={pauseReason}
-              pausedBy={pausedBy}
-              onClick={() => onToggle(platform)}
-            />
-            {showDayActions && (
-              // Keyed off this cell's own `group/cell` (Task 295 briefly tried
-              // the row's bare `group` instead, so every day cell's buttons
-              // appeared at once on row hover -- reverted per direct user
-              // follow-up, showing every column's icons simultaneously read as
-              // too cluttered). Matches the "+" Add Platform button's own
-              // per-cell hover scope.
-              <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover/cell:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
-                {status === 'active' ? (
+            {/* group/chip scopes hover to THIS platform's own chip -- a day
+                cell's group/cell wraps every platform scheduled that day
+                (e.g. AG and CG in the same cell), so hovering just the CG
+                chip previously revealed AG's buttons too. Reverted from
+                group/cell to this narrower per-chip group per direct user
+                follow-up. */}
+            <span className="group/chip inline-flex items-center gap-0.5">
+              <PlatformChip
+                platform={platform}
+                stateClassName={stateClassName}
+                isRemoved={isRemoved}
+                isConfirmed={isConfirmed}
+                isPending={isPending}
+                isDone={isDone}
+                clickable={clickable}
+                planUnverified={planUnverified}
+                label={label}
+                agent={agent}
+                // Country/Account only once this exact day has real add-date
+                // evidence — see the doc comment on ScheduleCellProps' own
+                // agent/country/account fields above for why a plan-only
+                // "Scheduled" chip (hasEvidence false) must not show them.
+                country={hasEvidence ? country : undefined}
+                account={hasEvidence ? account : undefined}
+                isPausedState={isPausedState}
+                pauseReason={pauseReason}
+                pausedBy={pausedBy}
+                onClick={() => onToggle(platform)}
+              />
+              {showDayActions && (
+                <span className="inline-flex items-center gap-0.5 opacity-0 transition-opacity group-hover/chip:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+                  {status === 'active' ? (
+                    <button
+                      type="button"
+                      onClick={() => onSetStatus(platform, 'paused')}
+                      title={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
+                      aria-label={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                      className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
+                    >
+                      ⏸
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onSetStatus(platform, 'active')}
+                      title={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
+                      aria-label={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                      className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
+                    >
+                      ▶
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => onSetStatus(platform, 'paused')}
-                    title={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
-                    aria-label={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
-                    className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
+                    onClick={() => onCancel(platform)}
+                    title={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
+                    aria-label={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                    className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
                   >
-                    ⏸
+                    🚫
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => onSetStatus(platform, 'active')}
-                    title={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
-                    aria-label={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
-                    className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
-                  >
-                    ▶
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onCancel(platform)}
-                  title={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
-                  aria-label={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
-                  className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
-                >
-                  🚫
-                </button>
-              </span>
-            )}
+                </span>
+              )}
+            </span>
           </Fragment>
         );
       })}

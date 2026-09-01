@@ -7596,3 +7596,20 @@ to `group-hover/cell:opacity-100` (`ScheduleCell`, `src/lib/scheduler/calendarRe
 the buttons only appear on the exact day cell being hovered again, same as the "+" Add Platform
 button. No other part of Task 294/295 touched. Full suite (2224 tests) and build pass.
 Frontend-only — nothing to redeploy.
+
+---
+
+## Task 297: Pause/Resume/Cancel Buttons Scoped to the Hovered Platform, Not the Whole Day Cell
+
+**Date:** September 1, 2026
+
+Same-day follow-up to Task 296, reported live via screenshot: on a day cell holding multiple
+platforms (e.g. AG and CG scheduled the same day for Play Mojo), hovering just the CG chip still
+revealed AG's Pause/Resume/Cancel buttons too — Task 296's `group/cell` scope covers every platform
+in that cell, not one. Each platform's chip + its buttons are now wrapped in their own small
+`group/chip` span (`ScheduleCell`, `src/lib/scheduler/calendarRenderer.tsx`), and the buttons'
+visibility is keyed off that narrower group instead — hovering one platform's chip now only reveals
+that platform's own buttons, leaving sibling platforms in the same cell untouched. The "+" Add
+Platform button (which adds a platform not yet in the cell, so it has no one chip to scope to) is
+unchanged, still cell-wide. Full suite (2224 tests) and build pass. Frontend-only — nothing to
+redeploy.
