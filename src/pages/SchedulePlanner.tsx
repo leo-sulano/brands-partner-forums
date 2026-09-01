@@ -6,7 +6,7 @@ import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -759,11 +759,17 @@ export default function SchedulePlanner() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {getPausedOperationalTabs().map((t) => {
                 const detail = pausedTabDetails[t];
+                const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+                // All-time (not range/week-scoped, unlike the mini calendar
+                // below it) first/last dated post per brand+platform -- a
+                // dormant tab's whole history, not just what the current
+                // date filter happens to show.
+                const firstLastIndex = buildFirstLastPostIndex(preview.rawEntries);
                 return (
                   <TabPreviewCard
                     key={t}
                     tab={t}
-                    preview={previewByTab[t] ?? EMPTY_PREVIEW}
+                    preview={preview}
                     previewBrands={previewBrandsFor(t)}
                     hasDateFilter={hasDateFilter}
                     allRangeColumns={allRangeColumns}
@@ -771,6 +777,18 @@ export default function SchedulePlanner() {
                     todayISO={todayISO}
                     previewLoading={previewLoading}
                     cornerBadge={<PausedBadgeIcon className="size-4 shrink-0" />}
+                    renderBrandDetail={(brand) => {
+                      const byPlatform = firstLastIndex.get(normalizeBrandKey(brand));
+                      if (!byPlatform) return null;
+                      const segments = preview.activePlatforms
+                        .filter((p) => byPlatform[p])
+                        .map((p) => {
+                          const fl = byPlatform[p]!;
+                          return `${PLATFORM_BADGE[p].label}: First ${formatPausedDate(fl.firstDateISO)} → Last ${formatPausedDate(fl.lastDateISO)}`;
+                        });
+                      if (segments.length === 0) return null;
+                      return segments.join('  ·  ');
+                    }}
                     headerExtra={
                       (detail?.reason || detail?.pausedAt) && (
                         <div className="min-w-0 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">

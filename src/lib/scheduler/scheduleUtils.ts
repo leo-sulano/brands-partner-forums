@@ -314,22 +314,24 @@ export function buildAccountIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
-export interface LastPost {
-  status: string;
-  dateISO: string;
+export interface FirstLastPost {
+  firstDateISO: string;
+  lastDateISO: string;
+  lastStatus: string;
 }
 
-// Last known post per (brand, platform), for the "Paused / Noted Brands"
-// section's "what/where/when we last posted" display. Same
+// First and last dated post per (brand, platform) — the Paused Brand Tabs
+// grid's per-brand detail row ("First ... → Last ..." across all
+// platforms), so a dormant tab's brands can be reviewed for their whole
+// history, not just the current week's mini-calendar. Same
 // most-recently-updated-entry building blocks buildDateStatusIndex already
 // uses (PLATFORM_STATUS_KEYS/PLATFORM_DATE_KEYS + parsePostDate), but keeps
-// the single latest-by-post-date entry per platform instead of a set of
-// every dated post — this is a display summary, not a date-matching index.
-// Entries with no parseable post date for a platform are ignored for that
-// platform (a status with no date can't be ordered against one that has
-// one).
-export function buildLastPostIndex(entries: Entry[]): Map<string, Partial<Record<Platform, LastPost>>> {
-  const result = new Map<string, Partial<Record<Platform, LastPost>>>();
+// only the earliest and latest dated entry per platform — this is a display
+// summary, not a date-matching index. Entries with no parseable post date
+// for a platform are ignored for that platform (a status with no date can't
+// be ordered against one that has one).
+export function buildFirstLastPostIndex(entries: Entry[]): Map<string, Partial<Record<Platform, FirstLastPost>>> {
+  const result = new Map<string, Partial<Record<Platform, FirstLastPost>>>();
   for (const entry of entries) {
     const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
     if (!brand) continue;
@@ -342,10 +344,16 @@ export function buildLastPostIndex(entries: Entry[]): Map<string, Partial<Record
       const dateISO = toISODate(date);
       const byPlatform = result.get(brandKey) ?? {};
       const existing = byPlatform[platform];
-      if (!existing || dateISO > existing.dateISO) {
-        byPlatform[platform] = { status, dateISO };
-        result.set(brandKey, byPlatform);
+      if (!existing) {
+        byPlatform[platform] = { firstDateISO: dateISO, lastDateISO: dateISO, lastStatus: status };
+      } else {
+        byPlatform[platform] = {
+          firstDateISO: dateISO < existing.firstDateISO ? dateISO : existing.firstDateISO,
+          lastDateISO: dateISO > existing.lastDateISO ? dateISO : existing.lastDateISO,
+          lastStatus: dateISO >= existing.lastDateISO ? status : existing.lastStatus,
+        };
       }
+      result.set(brandKey, byPlatform);
     }
   }
   return result;

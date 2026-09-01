@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { ChevronRight } from 'lucide-react';
 import TabIcon from './TabIcon';
 import Tooltip from './Tooltip';
@@ -36,6 +36,13 @@ interface Props {
   // paused-tabs grid uses this for its reason/since→until line; the
   // active grid passes nothing.
   headerExtra?: ReactNode;
+  // Called once per brand row; when it returns a non-null node, an extra
+  // row is rendered directly below that brand's calendar row spanning the
+  // full table width. The paused-tabs grid uses this for a First→Last
+  // entry/review date line per platform (all-time, unlike the calendar
+  // above it, which only ever shows the currently displayed week/range) —
+  // the active grid passes nothing.
+  renderBrandDetail?: (brand: string) => ReactNode;
 }
 
 // Shared by both grids on the Schedule Planner landing page (active tabs
@@ -46,7 +53,7 @@ interface Props {
 // so planActive below is always false for it — every chip a paused card
 // shows is real evidence, never a plan, with no separate "missed" concept
 // needed for that case.
-export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, onClick, cornerBadge, headerExtra }: Props) {
+export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, onClick, cornerBadge, headerExtra, renderBrandDetail }: Props) {
   const clickable = !!onClick;
   return (
     <div
@@ -125,8 +132,10 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                     tab, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
                   );
                   const brandKey = normalizeBrandKey(brand);
+                  const detail = renderBrandDetail?.(brand);
                   return (
-                    <tr key={brand} className="border-t border-slate-100">
+                    <Fragment key={brand}>
+                    <tr className="border-t border-slate-100">
                       <td className="sticky left-0 z-10 max-w-[90px] truncate bg-white px-1.5 py-1 text-[12px] text-slate-600">
                         <Tooltip content={brand} block className="truncate">
                           {brand}
@@ -184,6 +193,14 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                         );
                       })}
                     </tr>
+                    {detail && (
+                      <tr className="border-t border-dashed border-slate-100 bg-slate-50/60">
+                        <td colSpan={allRangeColumns.length + 1} className="px-1.5 py-1 text-[10px] text-slate-500">
+                          {detail}
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   );
                 })
               )}
