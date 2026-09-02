@@ -5,7 +5,7 @@ import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
 import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
-import { useTooltip } from '../../components/Tooltip';
+import Tooltip, { useTooltip } from '../../components/Tooltip';
 import PausedBadgeIcon from '../../components/PausedBadgeIcon';
 
 // Shared tooltip body for a brand's Agent/Country/Account, appended below
@@ -74,6 +74,12 @@ interface ScheduleCellProps {
   // day already happened and nothing backs it up — see the ghosting logic
   // below.
   isPastDay: boolean;
+  // Set when this cell's calendar date is a public holiday. The cell renders
+  // greyed and read-only (no cycle, no "+ Add Platform"); the name is shown
+  // on hover via the shared Tooltip. Any pre-existing chips (a legacy week,
+  // or a chip added before this date was listed as a holiday) still render,
+  // dimmed — never removed from the DOM.
+  holidayName?: string;
   isApproved: boolean;
   onToggle: (platform: Platform) => void;
   // Explicit Pause ('active' -> 'paused') / Resume ('paused' -> 'active')
@@ -242,10 +248,19 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, holidayName, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
-  return (
-    <div className="group/cell flex flex-wrap items-center gap-1" role="group" aria-label={`${brand} schedule for ${day}`}>
+  const cell = (
+    <div
+      className={`group/cell flex flex-wrap items-center gap-1 ${holidayName ? 'rounded bg-slate-100 px-1 py-0.5 opacity-60 grayscale' : ''}`}
+      role="group"
+      aria-label={`${brand} schedule for ${day}${holidayName ? ` — Public holiday: ${holidayName}` : ''}`}
+    >
+      {holidayName && (
+        <span className="mb-0.5 block w-full text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+          Holiday
+        </span>
+      )}
       {platforms.map((platform) => {
         const isPaused = !!pausesByPlatform[platform];
         const row = rowsByPlatform[platform];
@@ -275,7 +290,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         // Always clickable when approved: a week-level pause is a
         // recommendation to skip, not a lock — ops can still manually
         // schedule/pause an individual day within a paused week.
-        const clickable = isApproved;
+        const clickable = isApproved && !holidayName;
         // Real add-date evidence (any of the four) always wins over the plan
         // labels below, and always exempts the chip from past-day ghosting —
         // it's a verified fact about that exact day, the same footing
@@ -393,7 +408,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
           </Fragment>
         );
       })}
-      {isApproved && addable.length > 0 && (
+      {isApproved && !holidayName && addable.length > 0 && (
         <button
           type="button"
           onClick={onAddPlatform}
@@ -406,6 +421,15 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
       )}
     </div>
   );
+
+  if (holidayName) {
+    return (
+      <Tooltip content={`Public holiday · ${holidayName}`} block>
+        {cell}
+      </Tooltip>
+    );
+  }
+  return cell;
 }
 
 // agent: same brand-level value as ScheduleCell's own prop (see its doc
