@@ -11,6 +11,9 @@ import {
   fetchActiveBrandPlatformPauses,
   fetchRemovedPlatformBrands,
   fetchBrandPlatformOverrides,
+  setBrandPlatformOverride,
+  clearBrandPlatformOverride,
+  deleteBrandPlatformPause,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
   fetchBrandAgentAssignments,
@@ -25,10 +28,9 @@ import {
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
-import { buildOverrideMap, buildOverrideSetByMap, overrideKey, type OverrideState } from '../lib/scheduleOverrides';
+import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
-import { PERSISTENT_PAUSE_REASONS } from '../lib/scheduler/schedulerRules';
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
@@ -125,11 +127,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     activePlatforms: Platform[];
     entries: Entry[];
     removedPlatformBrandSet: Set<string>;
-    overrideMap: Map<string, OverrideState>;
-    // Display-only "who forced this override" lookup (brand_platform_override
-    // .set_by) — kept separate from overrideMap since schedulerService.ts's
-    // pause-resolution logic only ever needs the OverrideState, not the actor.
-    overrideSetByMap: Map<string, string>;
+    overrideMap: Map<string, OverrideDetails>;
     hiddenBrandSet: Set<string>;
     platformRestrictionMap: Map<string, Platform>;
     agentAssignmentRows: BrandAgentAssignmentRow[];
@@ -297,7 +295,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           entries: rawEntries,
           removedPlatformBrandSet: buildRemovedPlatformBrandSet(removedPlatformBrandRows),
           overrideMap: buildOverrideMap(overrideRows),
-          overrideSetByMap: buildOverrideSetByMap(overrideRows),
           hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
           platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
           agentAssignmentRows,
@@ -593,6 +590,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     [tabCtx],
   );
 
+  // Reverse lookup from a normalized brand_key back to its real display
+  // brand string — brand_platform_pause/brand_platform_override rows only
+  // ever store brand_key, but the Paused Brands summary (Task 8) needs the
+  // real display name to show alongside it.
+  const brandByKey = useMemo(
+    () => new Map((tabCtx?.brands ?? []).map((b) => [normalizeBrandKey(b), b])),
+    [tabCtx?.brands],
+  );
+
   // Declared here (not further down, near where it's historically lived)
   // because brandPlatforms/filteredBrands below close over it inside a
   // useMemo callback that runs synchronously during this render — a
@@ -737,12 +743,23 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     onPlatformCounts?.(tab, platformCounts);
   }, [tab, platformCounts, onPlatformCounts]);
 
-  // Who forced a brand+platform's override, if any — used only to surface
-  // "Paused by" on a pause whose reason is PERSISTENT_PAUSE_REASONS.manual
-  // (i.e. the pause exists because of a forced override, not auto-detection).
-  // Overrides aren't week-scoped, so this doesn't take a week argument.
-  function pausedByFor(brandKey: string, platform: Platform): string | undefined {
-    return tabCtx?.overrideSetByMap.get(overrideKey(tab, brandKey, platform));
+  // Re-applies the override table's current effect onto brand_platform_pause
+  // for the current week (the same write path recalculatePauses already
+  // performs on every tab load) and refetches this component's own copies of
+  // `pauses`/`tabCtx.overrideMap`, so a Pause Brand save or a Resume Now
+  // click is reflected on the grid immediately rather than waiting for the
+  // next tab visit. Both PlatformPauseModal's save handler (Task 7) and the
+  // Paused Brands summary's Resume Now action (Task 8) call this after their
+  // own direct writes.
+  async function refreshPauseState() {
+    if (!tabCtx) return;
+    await recalculatePauses(tab, weekStartISO, tabCtx);
+    const [freshPauses, freshOverrideRows] = await Promise.all([
+      fetchActiveBrandPlatformPauses(tab),
+      fetchBrandPlatformOverrides(tab),
+    ]);
+    setPauses(freshPauses);
+    setTabCtx((prev) => (prev ? { ...prev, overrideMap: buildOverrideMap(freshOverrideRows) } : prev));
   }
 
   // colWeekStartISO defaults to weekStartISO (the nav's own week) so every
@@ -752,12 +769,24 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   function computeCellData(brand: string, colWeekStartISO: string = weekStartISO): {
     rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
     pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+    // Who forced the pause — only populated when this platform's active
+    // pause is override-driven (checked directly against tabCtx.overrideMap,
+    // NOT by comparing the pause's own reason text against a generic
+    // constant — see calendarRenderer.tsx's titleFor for why that string
+    // comparison was a bug waiting to happen once reasons became custom
+    // text).
     pausedByPlatform: Partial<Record<Platform, string>>;
+    // undefined = not override-driven (auto-detected, or no pause at all for
+    // this exact week); null = override-driven, permanent; an ISO date =
+    // override-driven, periodic. Threaded straight into ScheduleStatusIcon's
+    // pauseResumeAt prop.
+    resumeAtByPlatform: Partial<Record<Platform, string | null>>;
   } {
     const brandKey = normalizeBrandKey(brand);
     const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
     const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
     const pausedByPlatform: Partial<Record<Platform, string>> = {};
+    const resumeAtByPlatform: Partial<Record<Platform, string | null>> = {};
     for (const platform of brandPlatforms(brand)) {
       const r = scheduleFor(scheduleRows, tab, brand, colWeekStartISO, platform);
       if (r) rowsByPlatform[platform] = r;
@@ -766,13 +795,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       );
       if (p) {
         pausesByPlatform[platform] = p;
-        if (p.reason === PERSISTENT_PAUSE_REASONS.manual) {
-          const by = pausedByFor(brandKey, platform);
-          if (by) pausedByPlatform[platform] = by;
+        const override = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform));
+        if (override?.state === 'pause') {
+          resumeAtByPlatform[platform] = override.resumeAt;
+          if (override.setBy) pausedByPlatform[platform] = override.setBy;
         }
       }
     }
-    return { rowsByPlatform, pausesByPlatform, pausedByPlatform };
+    return { rowsByPlatform, pausesByPlatform, pausedByPlatform, resumeAtByPlatform };
   }
 
   // Optimistically drops any schedule_cancellations row for this exact day,
@@ -1106,7 +1136,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 // below is inherently a "this week" concept, independent of
                 // however many extra weeks the grid's day cells might also
                 // be showing.
-                const { rowsByPlatform: weekRowsByPlatform, pausesByPlatform: weekPausesByPlatform, pausedByPlatform: weekPausedByPlatform } = computeCellData(brand);
+                const { rowsByPlatform: weekRowsByPlatform, pausesByPlatform: weekPausesByPlatform, pausedByPlatform: weekPausedByPlatform, resumeAtByPlatform: weekResumeAtByPlatform } = computeCellData(brand);
                 const brandKey = normalizeBrandKey(brand);
                 const agent = agentIndex.get(brandKey);
                 const country = countryIndex.get(brandKey);
@@ -1213,7 +1243,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           const onClick = () => setPauseDaysTarget({ brand, platform });
                           if (weekPausesByPlatform[platform]) {
                             return (
-                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} pausedBy={weekPausedByPlatform[platform]} clickable={clickable} onClick={onClick} />
+                              <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} pausedBy={weekPausedByPlatform[platform]} pauseResumeAt={weekResumeAtByPlatform[platform]} clickable={clickable} onClick={onClick} />
                             );
                           }
                           if (cancelledPlatformSet.has(platform)) {
