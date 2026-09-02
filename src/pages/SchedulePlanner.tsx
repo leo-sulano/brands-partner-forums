@@ -25,6 +25,7 @@ import TabScheduleSection from '../components/TabScheduleSection';
 import TabPreviewCard from '../components/TabPreviewCard';
 import PausedBadgeIcon from '../components/PausedBadgeIcon';
 import Tooltip from '../components/Tooltip';
+import PublicHolidaysModal from '../components/PublicHolidaysModal';
 import { subscribeEntries } from '../lib/realtime';
 import type { Entry } from '../types/entry';
 import type { BrandAgentAssignmentRow, PausedTabDetail } from '../lib/queries';
@@ -244,6 +245,11 @@ export default function SchedulePlanner() {
       canceled = true;
     };
   }, []);
+  // Opens the Public Holidays management modal (Task 10) — reuses this same
+  // `holidays` state as its list, and refetches into it via `onChanged` after
+  // any add/remove so the landing-grid preview cards pick up the change
+  // without a page reload.
+  const [holidaysModalOpen, setHolidaysModalOpen] = useState(false);
 
   // Shared date-range filter — used both by the landing-grid preview cards
   // (narrows each card's mini calendar to specific days instead of the whole
@@ -736,7 +742,25 @@ export default function SchedulePlanner() {
             Today
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setHolidaysModalOpen(true)}
+          className="shrink-0 rounded border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+        >
+          Public Holidays
+        </button>
       </div>
+
+      <PublicHolidaysModal
+        open={holidaysModalOpen}
+        onClose={() => setHolidaysModalOpen(false)}
+        onChanged={() => {
+          fetchPublicHolidays().then(setHolidays).catch(() => {
+            // same fail-open behavior as the initial fetch above — cosmetic-only
+          });
+        }}
+      />
 
       {showGrid ? (
         <>
