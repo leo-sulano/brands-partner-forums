@@ -36,6 +36,8 @@ import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRende
 import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
+import PlatformPauseModal from './PlatformPauseModal';
+import PausedBadgeIcon from './PausedBadgeIcon';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
@@ -145,6 +147,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
+  const [pauseModalTarget, setPauseModalTarget] = useState<{ brand: string } | null>(null);
+  const [pauseModalBusy, setPauseModalBusy] = useState(false);
   const { isApproved } = useAuth();
 
   // Bumped by the live-entries subscription below on an INSERT (or any
@@ -762,6 +766,56 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     setTabCtx((prev) => (prev ? { ...prev, overrideMap: buildOverrideMap(freshOverrideRows) } : prev));
   }
 
+  function computePauseModalData(brand: string): { platforms: Platform[]; checkedPlatforms: Platform[]; autoPauseReasonByPlatform: Partial<Record<Platform, string>>; initialReason: string; initialResumeAt: string | null } {
+    const brandKey = normalizeBrandKey(brand);
+    const platforms = brandPlatforms(brand);
+    const { pausesByPlatform } = computeCellData(brand);
+    const checkedPlatforms: Platform[] = [];
+    const autoPauseReasonByPlatform: Partial<Record<Platform, string>> = {};
+    let initialReason = '';
+    let initialResumeAt: string | null = null;
+    for (const platform of platforms) {
+      const override = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform));
+      if (override?.state === 'pause') {
+        checkedPlatforms.push(platform);
+        if (!initialReason && override.reason) {
+          initialReason = override.reason;
+          initialResumeAt = override.resumeAt;
+        }
+      } else if (pausesByPlatform[platform]) {
+        autoPauseReasonByPlatform[platform] = pausesByPlatform[platform]!.reason;
+      }
+    }
+    return { platforms, checkedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt };
+  }
+
+  async function handleSavePauseModal(brand: string, checkedPlatforms: Platform[], reason: string, resumeAt: string | null) {
+    const brandKey = normalizeBrandKey(brand);
+    const nowChecked = new Set(checkedPlatforms);
+    const { checkedPlatforms: previouslyChecked } = computePauseModalData(brand);
+    const wasChecked = new Set(previouslyChecked);
+    setPauseModalBusy(true);
+    try {
+      for (const platform of brandPlatforms(brand)) {
+        const was = wasChecked.has(platform);
+        const now = nowChecked.has(platform);
+        if (was === now) continue;
+        if (now) {
+          await setBrandPlatformOverride(tab, brand, platform, 'pause', { reason, resumeAt });
+        } else {
+          await clearBrandPlatformOverride(tab, brandKey, platform);
+          await deleteBrandPlatformPause(tab, brandKey, platform);
+        }
+      }
+      await refreshPauseState();
+      setPauseModalTarget(null);
+    } catch (e) {
+      setToast({ message: e instanceof Error ? e.message : 'Failed to update pause', kind: 'error' });
+    } finally {
+      setPauseModalBusy(false);
+    }
+  }
+
   // colWeekStartISO defaults to weekStartISO (the nav's own week) so every
   // existing call site that only ever cared about one week — the trailing
   // Paused-column summary, Export — can keep calling this with no argument.
@@ -1174,6 +1228,17 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                         </Link>
                       </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
+                      {isApproved && (
+                        <button
+                          type="button"
+                          onClick={() => setPauseModalTarget({ brand })}
+                          className="ml-1.5 shrink-0 rounded-md p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
+                          title={`Pause ${brand}`}
+                          aria-label={`Pause ${brand}`}
+                        >
+                          <PausedBadgeIcon className="size-3.5" />
+                        </button>
+                      )}
                     </td>
                     {columns.map((col) => {
                       const dayISO = col.iso;
@@ -1303,6 +1368,23 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           onClose={() => setPauseDaysTarget(null)}
         />
       )}
+      {pauseModalTarget && (() => {
+        const data = computePauseModalData(pauseModalTarget.brand);
+        return (
+          <PlatformPauseModal
+            brand={pauseModalTarget.brand}
+            platforms={data.platforms}
+            initialCheckedPlatforms={data.checkedPlatforms}
+            autoPauseReasonByPlatform={data.autoPauseReasonByPlatform}
+            initialReason={data.initialReason}
+            initialResumeAt={data.initialResumeAt}
+            todayISO={todayISO}
+            busy={pauseModalBusy}
+            onSave={(checked, reason, resumeAt) => handleSavePauseModal(pauseModalTarget.brand, checked, reason, resumeAt)}
+            onClose={() => setPauseModalTarget(null)}
+          />
+        );
+      })()}
     </div>
   );
 }
