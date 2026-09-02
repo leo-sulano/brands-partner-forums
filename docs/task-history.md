@@ -7962,3 +7962,131 @@ since several prior "pending deploy" notes in this project's history turned out 
 (the earlier `2026-09-01-schedule-planner-paused-brands-design.md`, written for the reverted
 per-brand approach, was deleted in the same commit that rewrote this one).
 
+---
+
+## Task 306: Hardcoded Brand Tab Rename
+**Date:** September 2, 2026
+
+Any of the 11 hardcoded Brand Tabs (`TAB_COLUMN_CONFIGS` in `src/lib/tab-configs.ts` — BITP, FTP,
+Rooster Partners, Revolution Casino, Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan,
+Wizard of Odds, GRG - Gulf Recovery Group) can now be truly renamed from Edit Brand Tab, the same
+way a dynamic (`custom_tabs`-backed) tab already could — real identity change (URL slug,
+`entries.tab`, every other tab-keyed table), not a cosmetic label swap. Reported off a screenshot
+showing the modal's existing "Hardcoded tabs can't be renamed" locked box, on BITP specifically.
+
+**Core mechanism:** the original `TAB_COLUMN_CONFIGS` key never changes — it's a permanent
+internal identity. New `hardcoded_tab_renames` table + `rename_hardcoded_tab` RPC (a sibling to
+the existing `rename_custom_tab`, never a modification of it) + new dependency-free
+`src/lib/hardcodedTabRenameRegistry.ts` map that key to the tab's current live name.
+`resolveHardcodedTabKey(tab)` resolves a live name back to its permanent original before any
+hardcoded-name-keyed map lookup — every such site across `tab-configs.ts` (9 functions),
+`tabIcons.ts`, `tabs.ts` (`SLUG_OVERRIDES`, `OPERATIONAL_TABS` rename support), and 2 components
+now goes through it. A true rename supersedes the pre-existing `TAB_DISPLAY_NAMES` cosmetic alias
+(BITP/FTP) — `isRenamedHardcodedTab(tab)` is true only while the current name genuinely differs
+from the original, so renaming a tab back to its exact original spelling correctly restores the
+old cosmetic alias rather than permanently suppressing it (see live-verification fix #4 below).
+
+Built via Subagent-Driven Development, 10 tasks + 1 fix round each on Tasks 1/9 (both caught real
+issues — Task 1's task review found the RPC's collision guard could silently merge a renamed
+tab's entries into an unrenamed hardcoded tab with the same target name; fixed by adding an
+`entries` table check to the guard) + a final whole-branch review (opus) + one more fix round.
+Full suite (869 tests) and build pass.
+
+**Real concurrent-session drift, handled mid-plan:** a different feature's migrations
+(`20260901150000_add_schedule_brand_pauses.sql` + 2 more) landed on `main` while this branch was
+built in an isolated worktree, colliding twice with this branch's own migration timestamps (first
+`20260901140000`, caught in Task 1's fix round; then `20260901150000` again, caught live during
+deploy). Investigated read-only first, merged `main` in, resolved one same-line import conflict by
+hand, verified with build+full suite, then renumbered to `20260901180000` (the actual final RPC
+migration file, despite the `150000`-era name still visible in its own git history).
+
+**Task 10 (deploy + live verification) found and fixed 4 more real bugs directly against
+production data** (HazEmirates UAE, then BITP/TP Brand Injection, both reverted afterward and
+confirmed restored) — none were scope creep, all were genuine defects either shipped by this
+plan's own tasks or in pre-existing code newly exercised by this feature's first-ever bulk
+multi-row `entries.tab` UPDATE:
+1. `BrandGroup.tsx`'s realtime UPDATE subscription handler crashed the whole page when a Postgres/
+   Supabase-Realtime payload omitted an unchanged, TOASTed `data` column (a pre-existing latent
+   gap, first triggered by this feature's bulk rename) — now falls back to the entry's own
+   last-known `data` instead of crashing.
+2. The bootstrap (`tabRegistryBootstrap.ts` + `AuthContext.tsx`) only called
+   `registerHardcodedTabRenames` (populates the resolver's lookup maps) but never applied the
+   rename to `OPERATIONAL_TABS` itself, making a renamed tab completely unreachable by its new
+   name/slug on any fresh page load or session other than the one that renamed it.
+3. `validateNewTabName`'s permanent-original-name reservation correctly blocks every OTHER tab
+   from claiming a hardcoded tab's original name, but also wrongly blocked the SAME tab from
+   renaming itself back to its own original identity. New `currentTabName` param exempts exactly
+   that case.
+4. `isRenamedHardcodedTab` checked "does a row exist" instead of "is current different from
+   original" — since the RPC never deletes its row, renaming a tab back to its exact original
+   spelling left it permanently reporting as "renamed," silently suppressing the `TAB_DISPLAY_NAMES`
+   alias for that tab forever.
+
+**The final whole-branch review then found 3 more real gaps a per-task review structurally could
+not have caught** (all in files no task in the plan owned), fixed in one follow-up round + one
+controller-applied migration:
+5. Five more hardcoded-name-keyed lookups the spec's own "grep the codebase" touch-list audit
+   missed entirely: `BrandGroup.tsx`'s `linkColPlatform`, two `TAB_DEFAULT_BRAND[decodedTab]`
+   sites, its `NO_BRAND_FILTER_TABS` check, and a `decodedTab === 'Wizard of Odds'` header-reorder
+   check; plus `AddReviewAccountModal.tsx`'s own `TAB_DEFAULT_BRAND[selectedTab]` site. Renaming
+   Wizard of Odds, Trybet, SilverPlay, HazEmirates UAE, or GRG would have produced visibly wrong
+   output (missing brand-link column, blank default-brand cells, a wrongly-reappearing Brand
+   filter, or a broken field-reorder) until these were fixed.
+6. `tabToSlug` and `tabDisplayName` had an inconsistent renamed-tab policy: `tabDisplayName`
+   already let a true rename supersede the old `TAB_DISPLAY_NAMES` cosmetic alias, but `tabToSlug`
+   kept applying `SLUG_OVERRIDES` (keyed by original name) even after a rename — which both meant
+   `GRG - Gulf Recovery Group`'s URL silently never changed on rename (contradicting the feature's
+   own premise) and, more concretely, blocked GRG from ever being renamed back to its own original
+   name (the exact same class of bug as live-verification fix #3, at a different check).
+   `tabToSlug` now follows the same "true rename wins" rule `tabDisplayName` already used.
+7. `bif_review_accounts` (the read-only view the externally-hosted BIF Dashboard queries/
+   subscribes to) filtered on the literal string `'TP Brand Injection'` — renaming BITP, the exact
+   tab this whole feature was requested for, would have silently returned zero rows to that
+   external dashboard with no error on either side. Fixed by resolving the filter through
+   `hardcoded_tab_renames` at query time (original → current), falling back to the literal
+   original name when never renamed — today's behavior, byte for byte, until BITP's first real
+   rename. Applied live and verified: 854 rows returned, exactly matching the app's own table row
+   count for that tab.
+
+**Deployed and live-verified this session:** both of this branch's own migrations
+(`20260901130000_add_hardcoded_tab_renames.sql`, `20260901180000_add_rename_hardcoded_tab_function.sql`)
+plus the BIF-view fix (`20260902100000_fix_bif_review_accounts_rename_resilience.sql`) are applied
+to production and confirmed present. The feature was live-tested end to end against real production
+data on two tabs (rename → URL/sidebar/header/data all correct → survives a full page reload →
+revert → confirmed fully restored, including the cosmetic alias). `git push origin main` for this
+branch is still pending as of this entry.
+
+**Known, deliberately-accepted gaps (not fixed this session):**
+- `generate-weekly-schedule` and `sync-schedule-pms` Edge Functions both already import
+  `bootstrapTabRegistries` (so they'll pick up a rename correctly once redeployed), but neither is
+  redeployed by this branch — until `supabase functions deploy generate-weekly-schedule` and
+  `supabase functions deploy sync-schedule-pms` both run, a renamed hardcoded tab's Monday schedule
+  generation, PMS status sync, and the daily `auditAllStatuses` cron will silently find zero
+  entries for that tab and do nothing, with no error. Deploy both before renaming any hardcoded tab
+  in production for real.
+- `AuthContext.tsx`'s browser bootstrap loop can theoretically leave `OPERATIONAL_TABS` and the
+  resolver's maps briefly disagreeing if a session receives a Supabase `TOKEN_REFRESHED` event
+  between two separate renames of the same tab performed from other sessions — narrow (needs two
+  renames plus a token refresh in one open tab) and self-correcting on the next full page load, the
+  same class of accepted limitation this feature's own code already documents for a warm Edge
+  Function isolate.
+- `hardcoded_tab_renames.updated_by` is declared but never written by the RPC (unlike
+  `custom_tabs.created_by`) — no audit trail of who performed a given rename.
+- `rename_hardcoded_tab` is granted to any `authenticated` user with no server-side check that
+  `old_name` is actually one of the 11 real hardcoded tabs — an approved user calling it directly
+  via the API (bypassing the UI's `validateNewTabName`) against a dynamic tab's name would rewrite
+  `entries.tab` while leaving `custom_tabs.name` untouched, orphaning that tab. Same class of trust
+  boundary this project already accepts for `rename_custom_tab`, just a wider one for this new
+  function specifically.
+- `registerDynamicTabs`/`unregisterDynamicTab`/`renameDynamicTab` guard only against a `custom_tabs`
+  row named after an ORIGINAL hardcoded tab name, not a renamed tab's CURRENT name — reopens, for
+  renamed names only, the exact hazard Task 232's own fix wave closed for original names. The
+  normal UI path can't trigger this (`validateNewTabName` already blocks it via
+  `OPERATIONAL_TABS.includes`), so this only matters for a direct API call bypassing the frontend.
+- `renameOperationalTab` fires no change-notification event, unlike its sibling `renameDynamicTab`
+  — currently masked because its one caller always navigates immediately afterward, which
+  re-renders the Sidebar anyway regardless.
+
+**Spec:** `docs/superpowers/specs/2026-09-01-hardcoded-tab-rename-design.md`.
+**Plan:** `docs/superpowers/plans/2026-09-01-hardcoded-tab-rename.md`.
+

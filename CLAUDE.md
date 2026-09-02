@@ -61,7 +61,38 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-08-28 (newest):* AI Review Removal Assessment's Trustpilot policy prompt
+- *2026-09-02 (newest):* Any of the 11 hardcoded Brand Tabs (BITP, FTP, Rooster Partners,
+  Revolution Casino, Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan, Wizard of Odds,
+  GRG - Gulf Recovery Group) can now be truly renamed from Edit Brand Tab — same real identity
+  change (URL slug, `entries.tab`, every other tab-keyed table) a dynamic tab rename already gave,
+  reported off a screenshot of the modal's old "Hardcoded tabs can't be renamed" locked box on
+  BITP. Core mechanism: the original `TAB_COLUMN_CONFIGS` key stays a permanent internal identity;
+  new `hardcoded_tab_renames` table + `rename_hardcoded_tab` RPC (a sibling to `rename_custom_tab`,
+  never a modification of it) + new `src/lib/hardcodedTabRenameRegistry.ts` map that key to the
+  tab's live current name, resolved via `resolveHardcodedTabKey()` at every one of the ~15
+  hardcoded-name-keyed lookup sites across the codebase before any map index or literal comparison.
+  Built via 10 SDD tasks + 2 fix rounds + a final whole-branch review (opus) + 1 more fix round;
+  live-verified against real production data on two tabs (rename → all data/URL/sidebar/header
+  correct → survives a full reload → revert → confirmed fully restored), which itself found and
+  fixed **7 real bugs** no per-task review could have caught: a realtime-subscription crash on a
+  Postgres/Supabase-Realtime TOAST-omitted field (this feature's bulk rename was the first code
+  path to ever bulk-`UPDATE` many `entries` rows at once); the bootstrap never applying a fetched
+  rename to `OPERATIONAL_TABS` itself (renamed tab unreachable outside the renaming session);
+  `validateNewTabName` blocking a tab from reverting to its own original name; the old
+  `TAB_DISPLAY_NAMES` cosmetic alias (BITP/FTP) staying permanently suppressed after exactly such a
+  revert; five more missed hardcoded-name lookups in `BrandGroup.tsx`/`AddReviewAccountModal.tsx`
+  (files no task in the plan owned); a `tabToSlug`/`tabDisplayName` policy inconsistency that both
+  silently kept a renamed GRG's URL unchanged and blocked its own revert; and the externally-hosted
+  BIF Dashboard's `bif_review_accounts` view filtering on a literal `'TP Brand Injection'` string,
+  which would have silently zeroed out that dashboard's data the moment BITP was ever renamed for
+  real. All fixed with regression tests; full suite (869 tests) and build pass. Both of this
+  branch's schema migrations plus the BIF-view fix are applied to production and confirmed live;
+  `git push origin main` is still pending as of this entry. See Known Issues below for the
+  remaining accepted gaps (both PMS-adjacent Edge Functions need redeploying before a hardcoded tab
+  is renamed for real in production) and Task 306 in `docs/task-history.md` for full detail. Spec:
+  `docs/superpowers/specs/2026-09-01-hardcoded-tab-rename-design.md`. Plan:
+  `docs/superpowers/plans/2026-09-01-hardcoded-tab-rename.md`.
+- *2026-08-28 (prior):* AI Review Removal Assessment's Trustpilot policy prompt
   (`supabase/functions/review-removal-assessment/index.ts`, `TP_GUIDELINE_CATEGORIES`) updated per
   direct user request — the 7 categories in place since Task 262 were checked against Trustpilot's
   actual live-published policy pages (`Guidelines for Reviewers`, June 2026 revision; `Action We
@@ -1237,6 +1268,34 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
+- **Pending manual deploy (2026-09-02, Task 306) — deploy both before renaming any hardcoded
+  tab in production for real.** `generate-weekly-schedule` and `sync-schedule-pms` both already
+  import the shared `bootstrapTabRegistries` (so they'll pick up a rename correctly once
+  redeployed), but neither is redeployed by this task's branch — until
+  `supabase functions deploy generate-weekly-schedule` and
+  `supabase functions deploy sync-schedule-pms` both run, a renamed hardcoded tab's Monday schedule
+  generation, PMS status sync, and the daily `auditAllStatuses` cron will silently find zero
+  entries for that tab and do nothing, with no error surfaced anywhere. `git push origin main` for
+  this branch is also still pending as of this entry.
+- **Accepted, deliberately deferred (2026-09-02, Task 306) — 4 narrow, non-blocking gaps in the
+  new hardcoded-tab-rename feature, none reachable via the normal UI:**
+  1. `AuthContext.tsx`'s browser bootstrap can theoretically leave `OPERATIONAL_TABS` and
+     `hardcodedTabRenameRegistry.ts`'s own maps briefly disagreeing if a session receives a
+     Supabase `TOKEN_REFRESHED` event between two separate renames of the same tab performed from
+     *other* sessions — self-corrects on the next full page load, the same class of accepted
+     limitation this feature's own code already documents for a warm Edge Function isolate.
+  2. `hardcoded_tab_renames.updated_by` is declared but never written by `rename_hardcoded_tab` —
+     no audit trail of who performed a given rename.
+  3. `rename_hardcoded_tab` is granted to any `authenticated` user with no server-side check that
+     `old_name` is actually one of the 11 real hardcoded tabs — calling it directly via the API
+     (bypassing the UI's `validateNewTabName`) against a dynamic tab's name would rewrite
+     `entries.tab` while leaving `custom_tabs.name` untouched, orphaning that tab. Same class of
+     trust boundary this project already accepts for `rename_custom_tab`, just wider.
+  4. `registerDynamicTabs`/`unregisterDynamicTab`/`renameDynamicTab` (`src/lib/dynamicTabRegistry.ts`)
+     guard only against a `custom_tabs` row named after an ORIGINAL hardcoded tab name, not a
+     renamed tab's CURRENT name — reopens, for renamed names only, the exact hazard Task 232's own
+     fix wave closed for original names. The normal UI path can't trigger this
+     (`validateNewTabName` already blocks it via `OPERATIONAL_TABS.includes`).
 - **Correction (2026-08-20, verified live against the real Supabase project): most of this
   section's scattered "Pending manual deploy" bullets for `ai-assistant`, `generate-weekly-schedule`,
   `sync-schedule-pms`, and `review-removal-assessment` are stale — the actual functions were deployed
