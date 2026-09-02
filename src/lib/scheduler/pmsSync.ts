@@ -5,7 +5,7 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchTabEntriesWatermark, fetchSyncWatermark, upsertSyncWatermark, type SchedulePmsLink } from '../queries.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, type SchedulePmsLink } from '../queries.ts';
 import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
@@ -590,47 +590,33 @@ export async function enforcePmsColumns(
 // Mirrors what TabScheduleSection.tsx's status-sync effect used to compute
 // inline before this extraction.
 //
-// Watermark short-circuit: the 1-minute cron calls this for every active tab
-// every tick, whether or not anything actually changed -- without this
-// check, that means a full fetchRawEntriesByTab pull (some tabs 1,700+ rows
-// of heavy jsonb) every minute forever, even for a tab nobody has touched in
-// weeks. fetchTabEntriesWatermark is a cheap, index-backed "what's the
-// newest entries.updated_at for this tab right now" check; if it matches
-// what was recorded the last time this tab fully resolved with no failures,
-// nothing could have changed since, so the whole resolve is skipped. Scoped
-// deliberately to entries.updated_at only, not the exclusion-config tables
-// (removed_platform_brands, schedule_hidden_brands,
-// schedule_platform_restrictions, brand_platform_pause, brand_schedule) --
-// those change far less often, and a config-only change with no entries
-// write is still caught by the next entries change on that tab, or by the
-// on-visit trigger the next time someone opens it.
-//
-// force bypasses this short-circuit entirely (still records the watermark
-// normally afterward) -- the escape hatch for the daily audit sweep
-// (handleAuditAllStatuses/'auditAllStatuses' action below). The watermark
-// approach trusts "the last resolve completed with zero exceptions" as proof
-// every individual link was actually synced correctly; those aren't the same
-// thing, and this project has repeatedly found new, different ways for that
-// assumption to be wrong (Tasks 287, 288, 302 in docs/task-history.md), each
-// leaving some link's synced_status silently stuck until a human noticed and
-// a watermark was cleared by hand. force=true reproduces that manual
-// remediation automatically, on a schedule, regardless of whether today's
-// specific trigger is one already seen before.
+// No watermark short-circuit: an earlier version of this function skipped
+// the whole resolve when a cached "entries.updated_at hasn't moved since the
+// last successful sync" watermark matched, to avoid a full
+// fetchRawEntriesByTab pull (some tabs 1,700+ rows of heavy jsonb) every
+// single minute. That optimization was removed (see docs/task-history.md)
+// after it repeatedly and unpredictably marked a tab "already caught up"
+// when a link had, in fact, never been synced -- five distinct, independently
+// root-caused mechanisms over several weeks (Tasks 287, 288, 302, and one
+// more the same day the last of those shipped its own dedicated daily
+// force-audit safety net), each leaving some link's synced_status silently
+// stuck until a human noticed and manually cleared the watermark. Given how
+// small every tracked tab actually is (well under the 1,000-row page size
+// that would need pagination), the DB cost of a full resolve every tick is
+// negligible next to the reliability cost of a caching layer that kept
+// finding new ways to lie. Every tick now does a full, honest resolve.
 export async function resolveAndSyncTabStatuses(
   tab: string,
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch = fetch,
   isTabPaused = false,
-  force = false,
 ): Promise<PmsResolveResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
   if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
 
   // Whole-Brand-Tab pause (paused_tabs, see pausedTabRegistry.ts) forces every
-  // still-eligible link straight to 'paused', bypassing the entries watermark
-  // (a tab pause isn't reflected in entries.updated_at, so the short-circuit
-  // below would otherwise wrongly skip a just-paused tab) and the
+  // still-eligible link straight to 'paused', bypassing the
   // cancellation-detection block (a paused tab's held slots are deliberately
   // parked, not stale). The hidden/restricted/removed-platform-brand
   // eligibility filter still applies -- an already-excluded combo is left
@@ -657,26 +643,9 @@ export async function resolveAndSyncTabStatuses(
       if (!allowedPlatforms.includes(link.platform)) continue;
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date });
     }
-    // Unconditionally invalidates this tab's recorded watermark (an empty
-    // string can never equal a real entries.updated_at timestamp, nor the
-    // null a tab with no entries produces). While paused, synced_status is
-    // being force-managed independent of entries -- without this, the normal
-    // path's watermark short-circuit below would see an unchanged watermark
-    // the next time this tab goes active again (nothing about unpausing
-    // touches entries.updated_at) and skip resolving anything, leaving every
-    // link stuck on 'paused' forever unless entries happen to change first.
-    await upsertSyncWatermark(tab, '', client).catch(() => {});
     if (items.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
     const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
     return { ...result, cancelled: [], cancelFailed: [] };
-  }
-
-  const [currentWatermark, storedWatermark] = await Promise.all([
-    fetchTabEntriesWatermark(tab, client),
-    fetchSyncWatermark(tab, client),
-  ]);
-  if (!force && currentWatermark !== null && currentWatermark === storedWatermark) {
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
   }
 
   const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
@@ -750,40 +719,11 @@ export async function resolveAndSyncTabStatuses(
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date, description });
     }
   }
-  // Deliberately NOT currentWatermark (the separate, uncached
-  // fetchTabEntriesWatermark query above) -- that value can be fresher than
-  // what `entries` actually reflects, since fetchRawEntriesByTab's
-  // fetchAllTabEntries caches a tab's full row list for up to 60s
-  // (src/lib/queries.ts). Recording the separately-fetched fresher value
-  // regardless of what data was actually processed was a real, live bug: a
-  // resolve could compute against a stale cached snapshot, find nothing to
-  // change, then permanently mark the freshest real change as "already
-  // seen" without ever having synced it -- confirmed live 2026-08-27 (a
-  // SilverPlay/Silver Play/AskGamblers entry sat Done for ~5.7 hours while
-  // its PMS task stayed stuck in To Do; a full-board sweep afterward found
-  // 35 of 290 links similarly stuck). Deriving the recorded watermark from
-  // `entries`' own max updated_at instead means it can only ever record what
-  // was truly processed -- at worst falling one tick behind (self-corrects
-  // next resolve), never falsely claiming to be caught up.
-  const actualEntriesWatermark = entries.reduce<string | null>(
-    (max, e) => (max === null || e.updated_at > max ? e.updated_at : max),
-    null,
-  );
-  // A partial failure (a status move OR a cancellation) must NOT record it,
-  // so the next tick's watermark check still sees a mismatch and retries the
-  // still-failing item(s) instead of silently skipping them forever.
-  const recordWatermark = async (): Promise<void> => {
-    if (actualEntriesWatermark !== null) {
-      await upsertSyncWatermark(tab, actualEntriesWatermark, client).catch(() => {});
-    }
-  };
 
   if (items.length === 0) {
-    if (cancelFailed.length === 0) await recordWatermark();
     return { synced: [], failed: [], cancelled, cancelFailed };
   }
   const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-  if (result.failed.length === 0 && cancelFailed.length === 0) await recordWatermark();
   return { ...result, cancelled, cancelFailed };
 }
 

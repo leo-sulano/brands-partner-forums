@@ -7788,3 +7788,177 @@ live-verified via Playwright against real Supabase data across both views and bo
 (01/08–30/09, spanning a month boundary) and unfiltered (current week) cases. Frontend-only —
 nothing to redeploy.
 
+---
+
+## Task 304: Remove PMS Status-Sync Watermark Short-Circuit (Recurring Stuck-Card Bug, 6th Occurrence)
+
+**Date:** September 1, 2026
+
+Reported live: `BITP | Big Pirate Casino` and `BITP | Nomini Kasino` stuck in the legacy **In
+Progress** PMS column despite both entries being marked TP Done at 08:11 UTC that morning — over 3
+hours earlier. User asked for the underlying automatic-move behavior to be made reliable, not just
+patched again.
+
+**Diagnosis (same root cause class as Tasks 279/281/287/288/302, now a 6th occurrence, including on
+the very tab Task 302's same-day self-heal had just swept clean):** `resolveAndSyncTabStatuses`'s
+watermark short-circuit (`src/lib/scheduler/pmsSync.ts`) had recorded `TP Brand Injection`'s
+`schedule_pms_sync_watermarks` row as caught up to exactly the Nomini Kasino update's timestamp —
+proof a resolve pass *did* run with the correct, up-to-date entries — yet `schedule_pms_links`
+still showed both links `synced_status: 'active'`, and the real PMS activity log confirmed neither
+card had ever actually moved. Confirmed empirically (not just theorized) that the resolution logic
+itself is correct: clearing just this tab's watermark row and re-invoking the identical
+`syncAllStatuses` call immediately computed `'done'` for both links and moved both PMS cards to the
+real Done column (verified via direct PMS API `GET`). The exact trigger was not re-derived from
+scratch — per `systematic-debugging`'s "3+ fixes, question the architecture" heuristic, a 6th
+recurrence of the same "watermark says caught up, but wasn't" failure mode, on the same day a
+dedicated daily force-audit safety net (Task 302) was deployed specifically to catch it, is itself
+sufficient evidence that the short-circuit design is unreliable, not that today's specific mechanism
+needs isolating before acting.
+
+**User confirmed via `AskUserQuestion`** (options: remove the short-circuit entirely / leave
+architecture as-is and rely on the existing daily audit / shorten the daily audit's interval instead)
+to remove the short-circuit outright — the option that actually satisfies "must automatically move
+when status is set" rather than "self-heals within some window."
+
+**Fix:** `resolveAndSyncTabStatuses` no longer short-circuits on any cached watermark — every
+1-minute-cron tick now does a full, honest resolve for every active/paused tab, unconditionally.
+Removed entirely: the `currentWatermark`/`storedWatermark` comparison, the `force` param (and its
+plumbing through `syncAllTabStatuses`/`handleSyncAllStatuses`/`handleAuditAllStatuses` in
+`supabase/functions/sync-schedule-pms/index.ts`), the `isTabPaused` branch's watermark-invalidation
+upsert, and the post-resolve `recordWatermark` logic — along with the now-fully-unused
+`fetchTabEntriesWatermark`/`fetchSyncWatermark`/`upsertSyncWatermark` helpers in `src/lib/queries.ts`.
+The `schedule_pms_sync_watermarks` table itself is left in place, unused (no migration needed) —
+only the code that read/wrote it is gone. The `auditAllStatuses` action and its once-daily cron
+(Task 302) are kept as-is: no longer functionally different from a tab-unscoped `syncAllStatuses`
+call now that there's no short-circuit to force past, but harmless as a redundant belt-and-suspenders
+sweep, and keeping it avoids touching the cron/migration. Every tracked tab is well under the
+1,000-row page-size threshold, so the added per-tick DB cost (an entries pull + a handful of small
+config-table reads, once a minute, per active tab) is negligible — no added PMS API load, since PMS
+calls still only fire for links whose resolved status actually changed.
+
+**Test changes:** removed the tests that asserted the old skip-on-matching-watermark and
+force-bypass behaviors (both in `pmsSync.test.ts` and `supabase/functions/sync-schedule-pms/
+index_test.ts`), replacing the `resolveAndSyncTabStatuses` one with a regression lock proving two
+consecutive calls against unchanged data both perform a real resolve (no cached "already synced"
+state can survive between calls). Simplified the shared `fakeMultiTableClient` test helper
+(dropped the now-pointless `upsertCapture`/`entriesWatermarkOverride` params). Full suite (835
+tests in a clean worktree — this project's stray-nested-worktree test-count inflation, see prior
+task entries, does not apply here), `npm run build`, `deno check`, and `deno test` (18/18) all
+pass.
+
+**Process note — two real concurrent-session collisions during this task, both recovered cleanly:**
+(1) the shared main working directory took 3 unrelated commits mid-investigation from another
+active session (a Paused/Noted Brands feature), silently wiping an in-progress edit made directly
+in that shared directory before it was committed — recovered by isolating the rest of the work in a
+dedicated `git worktree` (per user confirmation) rather than continuing in the shared directory.
+(2) Rebasing the worktree branch onto a fast-moving `origin/main` produced a conflict whose marker
+content, cross-checked three different ways (`git show <ref>:path`, 3-way merge-stage `:1:`/`:2:`/
+`:3:` inspection, and a plain re-read of the working file), gave mutually contradictory answers for
+the exact same commit — most likely `rtk`'s git-command rewriting interfering with delicate
+plumbing (`git show :N:path`) rather than real repository corruption. Rather than trust a confusing
+rebase state, aborted it, reset the worktree hard to the actual current `origin/main` tip, and
+reapplied the (small, well-understood) diff fresh by re-reading each touched file's current content
+before editing — verified identical to the pre-collision target in every file except the one the
+concurrent session's own revert had already changed (which needed no attention from this fix at
+all). The remote `git push` was itself rejected twice more by further concurrent pushes before
+finally landing; each rejection was handled by re-fetching, confirming the new tip touched none of
+this fix's files, and a plain `git rebase` (clean, no conflicts) rather than assuming safety.
+
+**Deployed and live-verified same session:** `supabase functions deploy sync-schedule-pms`
+(version 34 → 35, confirmed `ACTIVE`). A direct call to the real deployed function with
+`{"action":"syncAllStatuses"}` (no `tab`, no force — the exact 1-minute-cron shape) swept all 11
+tracked tabs and returned `"ok"` with zero failures across the board, confirming the new
+unconditional-resolve code path runs cleanly in production. The two originally-reported cards were
+independently remediated live before the code fix (watermark cleared for `TP Brand Injection`,
+`syncAllStatuses` re-run, both cards confirmed moved to the real Done column via direct PMS API
+`GET` — `BITP | Big Pirate Casino` and `BITP | Nomini Kasino` both show `column.name: "Done"`).
+Pushed directly to `main` (`b199dcd`), no feature-branch PR, per this project's established
+deploy pattern.
+
+---
+
+## Task 305: Paused Brand Tabs Section on the Schedule Planner Landing Page
+
+**Date:** September 1, 2026
+
+Per direct user feedback, on top of the existing per-day Pause/Resume/Cancel controls
+(Tasks 296-301): a whole Brand Tab that's paused (`paused_tabs` / `pausedTabRegistry.ts` — the
+Sidebar's existing paused badges, e.g. Revolution Casino, SuprPlay Limited, HazEmirates UAE, GRG -
+Gulf Recovery) was invisible on the Schedule Planner landing page, and pausing a tab didn't clean
+up anything already in flight for it.
+
+**A misread, caught and reverted before shipping.** The first attempt built a new *per-brand*
+pause (`schedule_brand_pauses`, independent of the tab-level `paused_tabs`), because "Paused/Noted
+Brands" read as "individual brands," not "Brand Tabs." The user pointed at the Sidebar's existing
+paused-*tab* badges to correct this — this project's established proper noun is "Brand Tabs" for
+the per-tab pages themselves (see [[feedback_brand_tabs_terminology]]), and a whole-tab pause
+feature already existed; the request was to surface *that*, not build a new per-brand layer.
+Reverted cleanly (`schedule_brand_pauses` had zero real rows, confirmed live before dropping): the
+table (migration `20260901160000_drop_schedule_brand_pauses.sql`, undoing
+`20260901150000_add_schedule_brand_pauses.sql` from the same session), its `queries.ts` functions,
+the Pause button/modal/section in `TabScheduleSection.tsx`/`SchedulePlanner.tsx`, and the exclusion
+wiring in `scheduleBrandConfig.ts` call sites (`pmsSync.ts`, `generate-weekly-schedule`).
+`buildLastPostIndex` (`scheduleUtils.ts`) survived the revert — it never depended on the dropped
+table. Rebuilt on `paused_tabs` instead.
+
+**What shipped:**
+- `paused_tabs` gained `reason` and `paused_until` (migration
+  `20260901170000_add_paused_tabs_reason_and_until.sql`) — `paused_at` already covers "since," so
+  no redundant column was added — plus an admin `UPDATE` policy so those two fields can be edited
+  while a tab stays paused (the original table only supported insert/delete). `EditBrandTabModal`'s
+  pause form now captures both.
+- A new **"Paused Brand Tabs"** section on the Schedule Planner landing page
+  (`SchedulePlanner.tsx`), one card per tab in `getPausedOperationalTabs()`, showing reason and
+  since→until plus, per brand, its last known post per platform (`buildLastPostIndex`, itself fixed
+  earlier the same day — see the `d97be30` commit — to read from live entries rather than a stale
+  snapshot).
+- The card grid and mini weekly calendar were then unified with the active grid: a new shared
+  `TabPreviewCard` component (`src/components/TabPreviewCard.tsx`) extracts the active grid's
+  icon/name header + weekday mini-calendar (evidence chips only, never a plan) so both grids render
+  identically instead of the paused section using a separate stacked-card/status-text design. The
+  existing preview-fetch effect widened to also cover paused tabs — a paused tab's `scheduleRows`
+  naturally come back empty (nothing is ever generated for a paused tab), so its card shows pure
+  historical evidence with zero new fetch logic. Paused cards are deliberately non-clickable (no
+  chevron, no `onClick`): `TabScheduleSection`'s scheduler-invocation effect has no `isTabPaused`
+  guard today, and opening a paused tab's expanded view would be a new, previously-unreachable way
+  to trigger it — this keeps that path closed. A `cornerBadge` prop puts the same `PausedBadgeIcon`
+  the Sidebar already uses in the header's trailing slot (where the active grid's chevron sits,
+  otherwise empty on a non-clickable card).
+- Per direct user request, the inline **Resume** button was then removed from every Schedule
+  Planner surface — pausing/resuming a Brand Tab now only happens from Edit Brand Tab (Sidebar).
+  The reason/since→until line stays; only the action button was removed.
+- Per direct user request, the toolbar's TP/AG/CG/WO count badges (the same style the active grid
+  already shows) were added next to the "Paused Brand Tabs" heading — a fully separate
+  `pausedPlatformCounts` computation scoped to `getPausedOperationalTabs()` only, reusing
+  `countActivePlatformSlots`, so a paused tab's evidence can never be folded into or mistaken for
+  the active toolbar's own totals.
+- **`33436a1` — pausing a brand now cancels its in-flight work, not just stops new work.** Per
+  direct user feedback, a paused brand must not leave a schedule row or PMS task in flight.
+  Pausing a Brand Tab now cancels every active/paused day that brand has scheduled for the current
+  week, across all its platforms, reusing the existing per-day Cancel path (Task 296-297's
+  `schedule_cancellations` table) — writes the day blank, records the cancellation, deletes any
+  linked PMS task. Only fires on a brand-new pause; editing an already-paused brand's reason/dates
+  is a no-op here since `brandPlatforms()` already excludes it from generation.
+
+**Verification:** full scheduler test suite and `npm run build` pass at each step (per the
+individual commits above); `queries.test.ts`, `pmsSync.test.ts`, and `scheduleUtils.test.ts` all
+gained coverage for the new `paused_tabs` reason/until fields and the cancel-on-pause path. No live
+browser verification recorded this session.
+
+**Pending manual deploy — status not independently confirmed this session:**
+1. `supabase db push` — applies `20260901170000_add_paused_tabs_reason_and_until.sql` (the only
+   surviving schema change; the `schedule_brand_pauses` add/drop pair nets to no live schema
+   change if applied together, or to nothing at all if the add was never pushed before the drop was
+   written).
+2. `git push origin main` — this is frontend/shared-lib only; no Edge Function's *behavior*
+   changes from this task (the `pmsSync.ts`/`sync-schedule-pms/index.ts` diff in this range is
+   Task 304's already-deployed watermark removal, not new code from this task), so no separate
+   function redeploy is needed beyond what Task 304 already shipped.
+Follow the correction note near the top of the Known Issues section in `CLAUDE.md` for the general
+rule here: verify via `supabase migration list`/`db push` output rather than trusting this bullet,
+since several prior "pending deploy" notes in this project's history turned out stale.
+
+**Spec:** `docs/superpowers/specs/2026-09-01-schedule-planner-whole-tab-paused-section-design.md`
+(the earlier `2026-09-01-schedule-planner-paused-brands-design.md`, written for the reverted
+per-brand approach, was deleted in the same commit that rewrote this one).
+

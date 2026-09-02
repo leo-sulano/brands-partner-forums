@@ -1,7 +1,7 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab } from '../lib/queries';
+import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab, updatePausedTabDetails, fetchPausedTabDetails } from '../lib/queries';
 import {
   PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
@@ -54,8 +54,46 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
   const initialIconSelection = computeInitialIconSelection(tabName);
   const [iconSelection, setIconSelection] = useState<TabIconSelection>(initialIconSelection);
   const [status, setStatus] = useState<'active' | 'paused'>(initialPaused ? 'paused' : 'active');
+  // Reason/paused-until diff against these two once-per-open captures on
+  // submit, same pattern as initialIconSelection above — so saving an
+  // unrelated field while already paused doesn't rewrite reason/until with
+  // stale blanks before the fetch below resolves.
+  const [initialReason, setInitialReason] = useState<string | null>(null);
+  const [initialPausedUntil, setInitialPausedUntil] = useState<string | null>(null);
+  const [reason, setReason] = useState('');
+  const [pausedUntil, setPausedUntil] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Only the reason/until fields need a fetch — status/platforms/icon/filters
+  // are all already available synchronously from the client-side registries
+  // above. A tab that's already paused pre-fills from its real row; a tab
+  // that isn't starts blank (Reason/Until only render once Status is set to
+  // Paused anyway, per the form below).
+  useEffect(() => {
+    if (!initialPaused) return;
+    let canceled = false;
+    (async () => {
+      try {
+        const rows = await fetchPausedTabDetails();
+        if (canceled) return;
+        const row = rows.find((r) => r.tab === tabName);
+        if (row) {
+          setInitialReason(row.reason ?? '');
+          setInitialPausedUntil(row.pausedUntil ?? '');
+          setReason(row.reason ?? '');
+          setPausedUntil(row.pausedUntil ?? '');
+        }
+      } catch {
+        // best-effort — a failed fetch just leaves the fields blank,
+        // matching the "no data yet" state a brand-new pause already has
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -147,11 +185,16 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
       if (isAdmin) {
         const wantsPaused = status === 'paused';
         if (wantsPaused && !initialPaused) {
-          await pauseTab(currentTabName);
+          await pauseTab(currentTabName, { reason: reason.trim() || null, pausedUntil: pausedUntil || null });
           pauseTabLocally(currentTabName);
         } else if (!wantsPaused && initialPaused) {
           await unpauseTab(currentTabName);
           unpauseTabLocally(currentTabName);
+        } else if (wantsPaused && initialPaused && (reason !== initialReason || pausedUntil !== initialPausedUntil)) {
+          // Staying paused, but the reason/until fields changed -- a real
+          // UPDATE, not a pause/unpause transition, so paused_at/
+          // paused_by_email are left untouched.
+          await updatePausedTabDetails(currentTabName, { reason: reason.trim() || null, pausedUntil: pausedUntil || null });
         }
       }
       onUpdated(isRename ? currentTabName : undefined);
@@ -226,6 +269,30 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
               <p className="mt-1 text-xs text-slate-400">
                 Paused tabs stay visible and fully usable here, but are excluded from Overview, Score Summary, Schedule Planner, and Ask AI.
               </p>
+              {status === 'paused' && (
+                <div className="mt-3 space-y-3">
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-500">Reason</span>
+                    <textarea
+                      value={reason}
+                      onChange={(e) => setReason(e.target.value)}
+                      rows={2}
+                      placeholder="e.g. Client on hold pending contract renewal"
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-400 focus:outline-none"
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-slate-500">Paused until</span>
+                    <input
+                      type="date"
+                      value={pausedUntil}
+                      onChange={(e) => setPausedUntil(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-400 focus:outline-none"
+                    />
+                    <span className="mt-1 block text-xs text-slate-400">Blank means indefinite — it won't resume on its own; unpause manually when ready.</span>
+                  </label>
+                </div>
+              )}
             </div>
           )}
 

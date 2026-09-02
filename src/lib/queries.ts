@@ -1386,36 +1386,6 @@ export async function deleteSchedulePmsLink(id: string, client: SupabaseClient =
   if (error) throw error;
 }
 
-// Cheap stand-in for "has anything changed for this tab since we last
-// resolved it" -- entries_tab_updated_idx (schema.sql) makes this an
-// index-only scan, unlike fetchAllTabEntries's full `select *` jsonb pull.
-// Returns null when the tab has no entries at all.
-export async function fetchTabEntriesWatermark(tab: string, client: SupabaseClient = supabase): Promise<string | null> {
-  const { data, error } = await client
-    .from('entries')
-    .select('updated_at')
-    .eq('tab', tab)
-    .order('updated_at', { ascending: false })
-    .range(0, 0);
-  if (error) throw error;
-  return (data ?? [])[0]?.updated_at ?? null;
-}
-
-export async function fetchSyncWatermark(tab: string, client: SupabaseClient = supabase): Promise<string | null> {
-  const { data, error } = await client
-    .from('schedule_pms_sync_watermarks')
-    .select('last_seen_max_updated_at')
-    .eq('tab', tab)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.last_seen_max_updated_at ?? null;
-}
-
-export async function upsertSyncWatermark(tab: string, value: string, client: SupabaseClient = supabase): Promise<void> {
-  const { error } = await client.from('schedule_pms_sync_watermarks').upsert({ tab, last_seen_max_updated_at: value }, { onConflict: 'tab' });
-  if (error) throw error;
-}
-
 // ---------------------------------------------------------------------------
 // TP/AG/CG/WO review status check triggers
 // ---------------------------------------------------------------------------
@@ -2056,15 +2026,36 @@ export async function fetchRecentTabArchives(limit = 50): Promise<TabArchivedEve
   }));
 }
 
-// Brand Tab Pause (docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md):
-// a lightweight, reversible, current-state-only toggle -- deliberately
-// distinct from archiveTab/unarchiveTab above (no reason, no history, no
-// UPDATE policy on paused_tabs -- see that table's migration comment).
-export async function pauseTab(tab: string): Promise<void> {
+// Brand Tab Pause (docs/superpowers/specs/2026-08-20-brand-tab-pause-design.md,
+// extended by docs/superpowers/specs/2026-09-01-schedule-planner-whole-tab-paused-section-design.md):
+// a lightweight, reversible, current-state toggle -- deliberately distinct
+// from archiveTab/unarchiveTab above (no restored_at/history). Originally
+// had no reason/dates at all; reason + paused_until were added so the
+// Schedule Planner's "Paused Brand Tabs" section has something to show
+// beyond just the tab name. paused_at (unchanged, set once at insert time)
+// doubles as "paused since" -- no separate since-column, so the two can
+// never disagree.
+export async function pauseTab(tab: string, input?: { reason?: string | null; pausedUntil?: string | null }): Promise<void> {
   const { error } = await supabase
     .from('paused_tabs')
-    .insert({ tab, paused_by_email: (await currentUserEmail()) ?? '' });
+    .insert({
+      tab,
+      paused_by_email: (await currentUserEmail()) ?? '',
+      reason: input?.reason ?? null,
+      paused_until: input?.pausedUntil ?? null,
+    });
   if (error && error.code !== '23505') throw error;
+}
+
+// A real UPDATE (not a pause/unpause transition) -- edits reason/paused_until
+// on a tab that's already paused and staying paused, without touching
+// paused_at/paused_by_email (those still mark the original pause moment).
+export async function updatePausedTabDetails(tab: string, input: { reason: string | null; pausedUntil: string | null }): Promise<void> {
+  const { error } = await supabase
+    .from('paused_tabs')
+    .update({ reason: input.reason, paused_until: input.pausedUntil })
+    .eq('tab', tab);
+  if (error) throw error;
 }
 
 export async function unpauseTab(tab: string): Promise<void> {
@@ -2090,6 +2081,33 @@ export async function fetchPausedTabs(client: SupabaseClient = supabase): Promis
     .select('tab');
   if (error) throw error;
   return (data ?? []) as PausedTabRow[];
+}
+
+// Full rows (reason/dates/who), for the two surfaces that actually display
+// them (EditBrandTabModal's pause form, the Schedule Planner "Paused Brand
+// Tabs" section) -- kept separate from fetchPausedTabs above (name-only) so
+// pausedTabRegistry.ts's Deno-safe, exclusion-only bootstrap
+// (AuthContext.tsx, tabRegistryBootstrap.ts) never needs to change shape.
+export interface PausedTabDetail {
+  tab: string;
+  reason: string | null;
+  pausedUntil: string | null; // ISO date
+  pausedAt: string; // timestamptz
+  pausedByEmail: string;
+}
+
+export async function fetchPausedTabDetails(client: SupabaseClient = supabase): Promise<PausedTabDetail[]> {
+  const { data, error } = await client
+    .from('paused_tabs')
+    .select('tab, reason, paused_until, paused_at, paused_by_email');
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    tab: row.tab as string,
+    reason: (row.reason as string | null) ?? null,
+    pausedUntil: (row.paused_until as string | null) ?? null,
+    pausedAt: row.paused_at as string,
+    pausedByEmail: row.paused_by_email as string,
+  }));
 }
 
 export async function fetchHiddenTabPlatforms(client: SupabaseClient = supabase): Promise<{ tab: string; platform: Platform }[]> {

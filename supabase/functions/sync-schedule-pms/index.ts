@@ -30,23 +30,18 @@ function jsonResponse(body: unknown, status = 200): Response {
 // fetchRawEntriesByTab caches a tab's full entry list with no write-side
 // eviction, and this action can run every minute across every active tab.
 // resolveFn is injectable so tests can verify this loop's isolation/eviction
-// behavior without a real Supabase client or PMS API. force is passed
-// straight through to resolveFn's own force param (see
-// resolveAndSyncTabStatuses in pmsSync.ts) -- true only for the daily audit
-// sweep ('auditAllStatuses' below), which needs every tab fully re-resolved
-// regardless of its watermark.
+// behavior without a real Supabase client or PMS API.
 export async function syncAllTabStatuses(
   tabs: readonly { tab: string; paused: boolean }[],
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
-  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch, isTabPaused?: boolean, force?: boolean) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
-  force = false,
+  resolveFn: (tab: string, client: SupabaseClient, credentials: PmsCredentials, fetchFn: typeof fetch, isTabPaused?: boolean) => Promise<PmsResolveResult> = resolveAndSyncTabStatuses,
 ): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
   for (const { tab, paused } of tabs) {
     try {
-      const result = await resolveFn(tab, client, credentials, fetchFn, paused, force);
+      const result = await resolveFn(tab, client, credentials, fetchFn, paused);
       const failures: string[] = [];
       if (result.failed.length > 0) failures.push(`${result.failed.length} link(s) failed to move`);
       if (result.cancelFailed.length > 0) failures.push(`${result.cancelFailed.length} link(s) failed to cancel`);
@@ -106,18 +101,15 @@ export async function handleSyncAllStatuses(
 // The 'auditAllStatuses' action (its own once-daily pg_cron job, separate
 // from the 1-minute 'syncAllStatuses'). Always covers every active+paused
 // tab (no body.tab scoping -- a full board audit has no reason to run
-// narrower) and always forces every tab's resolve past its watermark short-
-// circuit. Exists because the watermark trusts "the last resolve completed
-// with zero exceptions" as proof every individual link was actually synced
-// correctly -- and this project has repeatedly found new, different ways for
-// that assumption to be wrong (Tasks 287, 288, 302 in docs/task-history.md),
-// each one only found because a human noticed a stuck PMS card and asked.
-// This reproduces that same manual remediation (clear the tab's watermark,
-// re-run syncAllStatuses) automatically once a day, so a future recurrence
-// self-heals within a day even if it's a cause nobody's seen yet, instead of
-// silently persisting until reported. Same bootstrapFn/getActiveTabsFn/
-// getPausedTabsFn injection points as handleSyncAllStatuses, for the same
-// testability reason.
+// narrower). Historically this was the only way to force every tab's resolve
+// past a watermark short-circuit that the 1-minute cron otherwise trusted;
+// that short-circuit is gone now (see resolveAndSyncTabStatuses in
+// pmsSync.ts -- every tick is a full, honest resolve, so this action is no
+// longer functionally different from a tab-unscoped 'syncAllStatuses' call).
+// Kept as its own action/cron so the existing daily schedule needs no
+// migration change, and as a cheap independent belt-and-suspenders sweep.
+// Same bootstrapFn/getActiveTabsFn/getPausedTabsFn injection points as
+// handleSyncAllStatuses, for the same testability reason.
 export async function handleAuditAllStatuses(
   client: SupabaseClient,
   credentials: PmsCredentials,
@@ -131,16 +123,16 @@ export async function handleAuditAllStatuses(
     ...getActiveTabsFn().map((tab) => ({ tab, paused: false })),
     ...getPausedTabsFn().map((tab) => ({ tab, paused: true })),
   ];
-  return syncAllTabStatuses(tabs, client, credentials, fetchFn, resolveAndSyncTabStatuses, true);
+  return syncAllTabStatuses(tabs, client, credentials, fetchFn);
 }
 
 // The 'reconcileColumns' action (its own 1-minute pg_cron job, separate from
 // syncAllStatuses). Unlike resolveAndSyncTabStatuses, this does NOT look at
-// entries/evidence or the watermark -- it just makes every linked PMS card
-// obey the column its schedule_pms_links.synced_status already maps to. That
-// covers the two drift classes the watermark-gated per-tab sweep can't: a
-// PMS_STATUS_COLUMN_IDS remap (synced_status unchanged, so nothing is ever
-// queued) and a human dragging a card in PMS. Runs over EVERY link, every
+// entries/evidence at all -- it just makes every linked PMS card obey the
+// column its schedule_pms_links.synced_status already maps to. That covers
+// two drift classes the status-resolve sweep can't: a PMS_STATUS_COLUMN_IDS
+// remap (synced_status unchanged, so nothing is ever queued) and a human
+// dragging a card in PMS. Runs over EVERY link, every
 // tab, including schedule-paused/archived ones. bootstrapFn/fetchLinksFn/
 // enforceFn are injectable so this orchestration is unit-testable without a
 // real Supabase client or PMS API, same pattern as handleSyncAllStatuses.

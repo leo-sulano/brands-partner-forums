@@ -314,6 +314,51 @@ export function buildAccountIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+export interface FirstLastPost {
+  firstDateISO: string;
+  lastDateISO: string;
+  lastStatus: string;
+}
+
+// First and last dated post per (brand, platform) — the Paused Brand Tabs
+// grid's per-brand detail row ("First ... → Last ..." across all
+// platforms), so a dormant tab's brands can be reviewed for their whole
+// history, not just the current week's mini-calendar. Same
+// most-recently-updated-entry building blocks buildDateStatusIndex already
+// uses (PLATFORM_STATUS_KEYS/PLATFORM_DATE_KEYS + parsePostDate), but keeps
+// only the earliest and latest dated entry per platform — this is a display
+// summary, not a date-matching index. Entries with no parseable post date
+// for a platform are ignored for that platform (a status with no date can't
+// be ordered against one that has one).
+export function buildFirstLastPostIndex(entries: Entry[]): Map<string, Partial<Record<Platform, FirstLastPost>>> {
+  const result = new Map<string, Partial<Record<Platform, FirstLastPost>>>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const brandKey = normalizeBrandKey(brand);
+    for (const platform of ALL_PLATFORMS) {
+      const status = (pick(entry.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim();
+      if (!status) continue;
+      const date = parsePostDate(pick(entry.data, PLATFORM_DATE_KEYS[platform]));
+      if (!date) continue;
+      const dateISO = toISODate(date);
+      const byPlatform = result.get(brandKey) ?? {};
+      const existing = byPlatform[platform];
+      if (!existing) {
+        byPlatform[platform] = { firstDateISO: dateISO, lastDateISO: dateISO, lastStatus: status };
+      } else {
+        byPlatform[platform] = {
+          firstDateISO: dateISO < existing.firstDateISO ? dateISO : existing.firstDateISO,
+          lastDateISO: dateISO > existing.lastDateISO ? dateISO : existing.lastDateISO,
+          lastStatus: dateISO >= existing.lastDateISO ? status : existing.lastStatus,
+        };
+      }
+      result.set(brandKey, byPlatform);
+    }
+  }
+  return result;
+}
+
 export interface BrandAgentAssignmentRow {
   tab: string;
   brand: string;

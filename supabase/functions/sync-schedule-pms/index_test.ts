@@ -71,33 +71,6 @@ Deno.test('syncAllTabStatuses passes each tab\'s paused flag through to resolveF
   assertEquals(calls, [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }]);
 });
 
-Deno.test('syncAllTabStatuses defaults force to false, passed through to resolveFn as the 6th argument', async () => {
-  const forceSeen: unknown[] = [];
-  const fakeResolve = async (_t: string, _c: unknown, _cr: unknown, _f: unknown, _p: unknown, force: unknown) => {
-    forceSeen.push(force);
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
-  };
-  await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
-  assertEquals(forceSeen, [false]);
-});
-
-Deno.test('syncAllTabStatuses passes an explicit force=true through to every tab\'s resolveFn call', async () => {
-  const forceSeen: unknown[] = [];
-  const fakeResolve = async (_t: string, _c: unknown, _cr: unknown, _f: unknown, _p: unknown, force: unknown) => {
-    forceSeen.push(force);
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
-  };
-  await syncAllTabStatuses(
-    [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }],
-    {} as SupabaseClient,
-    { apiToken: 'test-token' },
-    fetch,
-    fakeResolve as any,
-    true,
-  );
-  assertEquals(forceSeen, [true, true]);
-});
-
 // handleSyncAllStatuses tests below cover the Deno.serve handler's own
 // routing logic (bootstrap-then-select-tabs), which previously had zero
 // direct test coverage -- only the per-tab loop it delegates to
@@ -225,9 +198,10 @@ Deno.test('handleSyncAllStatuses resolves a requested body.tab that is currently
 
 // handleAuditAllStatuses tests: the once-daily audit ('auditAllStatuses'
 // action) always covers every active+paused tab (no body.tab scoping, unlike
-// handleSyncAllStatuses) and always forces resolveAndSyncTabStatuses past its
-// watermark short-circuit -- see the doc comment above the real function in
-// index.ts for why this exists (Tasks 287/288/302 in docs/task-history.md).
+// handleSyncAllStatuses) -- see the doc comment above the real function in
+// index.ts for why it's kept as its own action even though
+// resolveAndSyncTabStatuses no longer has a watermark short-circuit to force
+// past (Tasks 287/288/302 in docs/task-history.md).
 
 Deno.test('handleAuditAllStatuses bootstraps once and covers every active and paused tab, ignoring any tab scoping', async () => {
   let bootstrapCalls = 0;
@@ -245,11 +219,11 @@ Deno.test('handleAuditAllStatuses bootstraps once and covers every active and pa
   assertEquals(Object.keys(results).sort(), ['BITP', 'GRG - Gulf Recovery Group', 'Hanan']);
 });
 
-Deno.test('handleAuditAllStatuses forces every tab\'s resolve past its watermark, via the real syncAllTabStatuses loop', async () => {
+Deno.test('handleAuditAllStatuses delegates to the real syncAllTabStatuses loop, same as handleSyncAllStatuses', async () => {
   // No resolveFn injection at this layer (handleAuditAllStatuses has none,
-  // same as handleSyncAllStatuses) -- proves force=true actually reaches the
-  // real resolveAndSyncTabStatuses call through the real syncAllTabStatuses,
-  // not just that handleAuditAllStatuses's own signature accepts it.
+  // same as handleSyncAllStatuses) -- proves this reaches the real
+  // resolveAndSyncTabStatuses call through the real syncAllTabStatuses, not
+  // just that handleAuditAllStatuses's own signature is well-formed.
   const results = await handleAuditAllStatuses(
     {} as SupabaseClient,
     { apiToken: 'test-token' },

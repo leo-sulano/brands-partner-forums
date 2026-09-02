@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -529,6 +529,49 @@ describe('buildAgentIndex', () => {
     const entries = [entry({ Brands: '  WinMega  ', Agent: 'Jen' }, '2026-08-01T00:00:00Z')];
     const index = buildAgentIndex(entries);
     expect(index.get('winmega')).toBe('Jen');
+  });
+});
+
+describe('buildFirstLastPostIndex', () => {
+  const entry = (data: Record<string, string | null>, updatedAt: string): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: updatedAt, last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('maps a brand+platform to its one dated post as both first and last', () => {
+    const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Published', 'Trust Pilot': '2026-08-01' }, '2026-08-01T00:00:00Z')];
+    const index = buildFirstLastPostIndex(entries);
+    expect(index.get('winmega')?.tp).toEqual({ firstDateISO: '2026-08-01', lastDateISO: '2026-08-01', lastStatus: 'Published' });
+  });
+
+  it('tracks the earliest and latest post date independently, with lastStatus from the latest', () => {
+    const entries = [
+      entry({ Brands: 'Spinjo', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-01' }, '2026-07-01T00:00:00Z'),
+      entry({ Brands: 'Spinjo', 'TP Review Status': 'Published', 'Trust Pilot': '2026-08-10' }, '2026-08-10T00:00:00Z'),
+      entry({ Brands: 'Spinjo', 'TP Review Status': 'Pending', 'Trust Pilot': '2026-07-15' }, '2026-07-15T00:00:00Z'),
+    ];
+    const index = buildFirstLastPostIndex(entries);
+    expect(index.get('spinjo')?.tp).toEqual({ firstDateISO: '2026-07-01', lastDateISO: '2026-08-10', lastStatus: 'Published' });
+  });
+
+  it('keeps each platform independent for a multi-platform brand', () => {
+    const entries = [
+      entry({ Brands: 'Trybet.com', 'TP Review Status': 'Published', 'Trust Pilot': '2026-08-01', 'AG Review Status': 'Removed', 'Ask Gambler review added': '2026-07-20' }, '2026-08-01T00:00:00Z'),
+    ];
+    const index = buildFirstLastPostIndex(entries);
+    expect(index.get('trybet.com')?.tp).toEqual({ firstDateISO: '2026-08-01', lastDateISO: '2026-08-01', lastStatus: 'Published' });
+    expect(index.get('trybet.com')?.ag).toEqual({ firstDateISO: '2026-07-20', lastDateISO: '2026-07-20', lastStatus: 'Removed' });
+  });
+
+  it('ignores a status with no parseable post date for that platform', () => {
+    const entries = [entry({ Brands: 'NoDateBrand', 'TP Review Status': 'Published', 'Trust Pilot': '' }, '2026-08-01T00:00:00Z')];
+    const index = buildFirstLastPostIndex(entries);
+    expect(index.has('nodatebrand')).toBe(false);
+  });
+
+  it('has no entry for a brand with a blank status', () => {
+    const entries = [entry({ Brands: 'BlankStatus', 'TP Review Status': '' }, '2026-08-01T00:00:00Z')];
+    const index = buildFirstLastPostIndex(entries);
+    expect(index.has('blankstatus')).toBe(false);
   });
 });
 
