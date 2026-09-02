@@ -23,6 +23,7 @@ import { mergeCredentialsIntoData, preserveCredentialFields, type EntryCredentia
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
+import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
@@ -148,7 +149,7 @@ const PLATFORM_STAR_COLOR: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
 function linkColPlatform(header: string, tab: string): 'tp' | 'ag' | 'cg' | 'wo' | null {
   if (header === 'AG Review Link') return 'ag';
   if (header === 'CG Review Link') return 'cg';
-  if (header === 'Link to the profile') return tab === 'Wizard of Odds' ? 'wo' : 'tp';
+  if (header === 'Link to the profile') return resolveHardcodedTabKey(tab) === 'Wizard of Odds' ? 'wo' : 'tp';
   return null;
 }
 
@@ -1229,7 +1230,7 @@ export default function BrandGroup() {
   const uniqueBrands = brandCol
     ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
     : [];
-  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[decodedTab]) uniqueBrands.push(TAB_DEFAULT_BRAND[decodedTab]);
+  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]) uniqueBrands.push(TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]);
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
     if (!brandCol) return {};
@@ -2264,7 +2265,7 @@ export default function BrandGroup() {
             </div>
           )}
           <div className="h-4 w-px bg-slate-200 shrink-0" />
-          {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(decodedTab) && enabledFilters.includes('brand') && (
+          {uniqueBrands.length > 1 && !NO_BRAND_FILTER_TABS.has(resolveHardcodedTabKey(decodedTab)) && enabledFilters.includes('brand') && (
             <MultiSelectDropdown
               noun="brand"
               values={brandFilter}
@@ -2787,7 +2788,7 @@ export default function BrandGroup() {
                             value={
                               h === 'Country'
                                 ? (getEntryCountry(entry.data, decodedTab) || null)
-                                : entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[decodedTab] ?? null) : null)
+                                : entry.data[h] ?? (h === brandCol ? (TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)] ?? null) : null)
                             }
                             rowData={entry.data}
                             tab={decodedTab}
@@ -2908,7 +2909,7 @@ export default function BrandGroup() {
               const afterIdx = hdrs.indexOf(afterCol);
               if (afterIdx !== -1) hdrs.splice(afterIdx + 1, 0, field);
             }
-            if (decodedTab === 'Wizard of Odds') {
+            if (resolveHardcodedTabKey(decodedTab) === 'Wizard of Odds') {
               const unIdx = hdrs.indexOf('User Name');
               const asIdx = hdrs.findIndex((h) => h.trim() === 'Account Surname');
               if (unIdx !== -1 && asIdx !== -1) {

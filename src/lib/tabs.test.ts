@@ -56,9 +56,9 @@ describe('tabToSlug', () => {
     expect(tabToSlug('GRG - Gulf Recovery Group')).toBe('gulf-recovery-group');
   });
 
-  it('a renamed tab with a slug override keeps using the override, resolved by its original key', () => {
+  it('a true rename of a tab with a slug override supersedes the override, matching tabDisplayName\'s policy', () => {
     renameHardcodedTabLocally('GRG - Gulf Recovery Group', 'Gulf Group Renamed');
-    expect(tabToSlug('Gulf Group Renamed')).toBe('gulf-recovery-group');
+    expect(tabToSlug('Gulf Group Renamed')).toBe('gulf-group-renamed');
   });
 
   it('a renamed tab with no slug override slugifies its new name', () => {

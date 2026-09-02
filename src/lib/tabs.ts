@@ -1,5 +1,5 @@
 import { TAB_COLUMN_CONFIGS } from './tab-configs.ts';
-import { resolveHardcodedTabKey, isRenamedHardcodedTab } from './hardcodedTabRenameRegistry.ts';
+import { isRenamedHardcodedTab } from './hardcodedTabRenameRegistry.ts';
 
 // The canonical list of registered Brand Tabs — derived from TAB_COLUMN_CONFIGS
 // (src/lib/tab-configs.ts) so a tab only has to be added in one place to be
@@ -21,7 +21,15 @@ const SLUG_OVERRIDES: Partial<Record<OperationalTab, string>> = {
 };
 
 export function tabToSlug(tab: string): string {
-  return SLUG_OVERRIDES[resolveHardcodedTabKey(tab) as OperationalTab] ?? tab.toLowerCase().replace(/\s+/g, '-');
+  // A true rename (src/lib/hardcodedTabRenameRegistry.ts) supersedes a
+  // SLUG_OVERRIDES entry -- same "true rename wins" policy tabDisplayName
+  // uses above. Otherwise a tab renamed away from e.g. 'GRG - Gulf Recovery
+  // Group' would silently keep the old 'gulf-recovery-group' slug forever
+  // (contradicting the feature's own promise that the URL slug changes), and
+  // renaming it back to its original name would wrongly self-collide in
+  // validateNewTabName's slug-uniqueness check.
+  if (isRenamedHardcodedTab(tab)) return tab.toLowerCase().replace(/\s+/g, '-');
+  return SLUG_OVERRIDES[tab as OperationalTab] ?? tab.toLowerCase().replace(/\s+/g, '-');
 }
 
 export function slugToTab(slug: string): OperationalTab | null {

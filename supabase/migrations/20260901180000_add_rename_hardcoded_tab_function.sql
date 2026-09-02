@@ -5,7 +5,10 @@
 -- isolated worktree (this repo's own documented "Concurrent Sessions &
 -- Migrations" hazard). No content change beyond this comment and the
 -- filename -- purely a renumbering to the first free timestamp after the
--- concurrent work's own 20260901170000.
+-- concurrent work's own 20260901170000. This file was renumbered once
+-- before that, from its original 20260901140000 to 20260901150000, when a
+-- per-task review (Task 1's fix round) found it collided with the
+-- already-merged 20260901140000_add_pms_daily_status_audit_cron.sql.
 -- Atomically renames a hardcoded Brand Tab across every table keyed by its
 -- name. A sibling to rename_custom_tab (20260819110000), never a
 -- modification of it -- every existing dynamic-tab rename already depends

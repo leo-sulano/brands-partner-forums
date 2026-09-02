@@ -171,7 +171,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const isMulti = hasMultiPlatform(selectedTab);
   const showAgentField = getTabColumns(selectedTab)?.includes('Agent') ?? false;
   const availableBrands = selectedTab === currentTab
-    ? (Object.keys(brandProfiles).length > 0 ? Object.keys(brandProfiles).sort() : [TAB_DEFAULT_BRAND[selectedTab]].filter(Boolean) as string[])
+    ? (Object.keys(brandProfiles).length > 0 ? Object.keys(brandProfiles).sort() : [TAB_DEFAULT_BRAND[resolveHardcodedTabKey(selectedTab)]].filter(Boolean) as string[])
     : [];
 
   // The brand-identity and brand-link columns differ per tab (e.g. 'Brands' for

@@ -73,6 +73,19 @@ describe('validateNewTabName', () => {
     resetHardcodedTabRenames();
   });
 
+  it('allows a hardcoded tab with a slug override to rename itself back to its own original name', () => {
+    // Regression: tabToSlug used to keep applying SLUG_OVERRIDES (keyed by
+    // original name) even after a true rename, so reverting 'GRG - Gulf
+    // Recovery Group' back to itself from a renamed state compared its own
+    // still-overridden slug against itself and wrongly reported a collision.
+    renameOperationalTab('GRG - Gulf Recovery Group', 'Gulf Ops');
+    renameHardcodedTabLocally('GRG - Gulf Recovery Group', 'Gulf Ops');
+    expect(validateNewTabName('GRG - Gulf Recovery Group', 'Gulf Ops')).toBeNull();
+    // cleanup
+    renameOperationalTab('Gulf Ops', 'GRG - Gulf Recovery Group');
+    resetHardcodedTabRenames();
+  });
+
   it('still rejects a DIFFERENT tab claiming a reserved original name it does not own', () => {
     renameOperationalTab('Hanan', 'Hanan Renamed');
     renameHardcodedTabLocally('Hanan', 'Hanan Renamed');
