@@ -8053,17 +8053,15 @@ controller-applied migration:
 plus the BIF-view fix (`20260902100000_fix_bif_review_accounts_rename_resilience.sql`) are applied
 to production and confirmed present. The feature was live-tested end to end against real production
 data on two tabs (rename → URL/sidebar/header/data all correct → survives a full page reload →
-revert → confirmed fully restored, including the cosmetic alias). `git push origin main` for this
-branch is still pending as of this entry.
+revert → confirmed fully restored, including the cosmetic alias). Merged to `main` (fast-forward,
+3131 tests + build both green on the merged result) and pushed to `origin`. Same session,
+immediately after: `generate-weekly-schedule` and `sync-schedule-pms` were both redeployed
+(`deno check` clean on each first, then `supabase functions deploy`, confirmed `ACTIVE` — v14 and
+v36 respectively, with `hardcodedTabRenameRegistry.ts` visible in both deploy logs' bundled-asset
+lists) — closing what would otherwise have been this task's one real pending-deploy item. A
+hardcoded tab can now be renamed in production with no schedule/PMS-sync gap.
 
 **Known, deliberately-accepted gaps (not fixed this session):**
-- `generate-weekly-schedule` and `sync-schedule-pms` Edge Functions both already import
-  `bootstrapTabRegistries` (so they'll pick up a rename correctly once redeployed), but neither is
-  redeployed by this branch — until `supabase functions deploy generate-weekly-schedule` and
-  `supabase functions deploy sync-schedule-pms` both run, a renamed hardcoded tab's Monday schedule
-  generation, PMS status sync, and the daily `auditAllStatuses` cron will silently find zero
-  entries for that tab and do nothing, with no error. Deploy both before renaming any hardcoded tab
-  in production for real.
 - `AuthContext.tsx`'s browser bootstrap loop can theoretically leave `OPERATIONAL_TABS` and the
   resolver's maps briefly disagreeing if a session receives a Supabase `TOKEN_REFRESHED` event
   between two separate renames of the same tab performed from other sessions — narrow (needs two

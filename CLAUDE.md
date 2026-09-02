@@ -86,10 +86,12 @@ Brands Partner Forum/
   BIF Dashboard's `bif_review_accounts` view filtering on a literal `'TP Brand Injection'` string,
   which would have silently zeroed out that dashboard's data the moment BITP was ever renamed for
   real. All fixed with regression tests; full suite (869 tests) and build pass. Both of this
-  branch's schema migrations plus the BIF-view fix are applied to production and confirmed live;
-  `git push origin main` is still pending as of this entry. See Known Issues below for the
-  remaining accepted gaps (both PMS-adjacent Edge Functions need redeploying before a hardcoded tab
-  is renamed for real in production) and Task 306 in `docs/task-history.md` for full detail. Spec:
+  branch's schema migrations plus the BIF-view fix are applied to production and confirmed live.
+  Merged to `main` and pushed to `origin`; `generate-weekly-schedule` (v14) and `sync-schedule-pms`
+  (v36) were both redeployed the same day (`deno check` clean first, then confirmed `ACTIVE`,
+  `hardcodedTabRenameRegistry.ts` visible in both deploy logs) — a hardcoded tab can now be renamed
+  in production with no remaining pending-deploy caveat. See Known Issues below for the accepted,
+  deliberately-deferred narrow gaps and Task 306 in `docs/task-history.md` for full detail. Spec:
   `docs/superpowers/specs/2026-09-01-hardcoded-tab-rename-design.md`. Plan:
   `docs/superpowers/plans/2026-09-01-hardcoded-tab-rename.md`.
 - *2026-08-28 (prior):* AI Review Removal Assessment's Trustpilot policy prompt
@@ -1268,15 +1270,12 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
-- **Pending manual deploy (2026-09-02, Task 306) — deploy both before renaming any hardcoded
-  tab in production for real.** `generate-weekly-schedule` and `sync-schedule-pms` both already
-  import the shared `bootstrapTabRegistries` (so they'll pick up a rename correctly once
-  redeployed), but neither is redeployed by this task's branch — until
-  `supabase functions deploy generate-weekly-schedule` and
-  `supabase functions deploy sync-schedule-pms` both run, a renamed hardcoded tab's Monday schedule
-  generation, PMS status sync, and the daily `auditAllStatuses` cron will silently find zero
-  entries for that tab and do nothing, with no error surfaced anywhere. `git push origin main` for
-  this branch is also still pending as of this entry.
+- **Resolved (2026-09-02, same day as Task 306).** `generate-weekly-schedule` (now version 14) and
+  `sync-schedule-pms` (now version 36) were both redeployed the same day — `deno check` clean on
+  both first, then confirmed `ACTIVE` via `supabase functions list`, with `hardcodedTabRenameRegistry.ts`
+  visible in both deploy logs' bundled-asset lists. `git push origin main` for this branch is also
+  done. A hardcoded tab can now be renamed in production without silently breaking Monday schedule
+  generation, PMS status sync, or the daily `auditAllStatuses` cron for that tab.
 - **Accepted, deliberately deferred (2026-09-02, Task 306) — 4 narrow, non-blocking gaps in the
   new hardcoded-tab-rename feature, none reachable via the normal UI:**
   1. `AuthContext.tsx`'s browser bootstrap can theoretically leave `OPERATIONAL_TABS` and
