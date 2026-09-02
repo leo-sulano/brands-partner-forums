@@ -1031,7 +1031,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 <th
                   key={`${g.month}-${i}`}
                   colSpan={g.count}
-                  className="sticky z-[25] bg-slate-50 px-3 py-1 text-center text-xs font-medium text-slate-500 will-change-transform"
+                  className="sticky z-[25] bg-slate-50 px-3 py-1 text-left text-xs font-medium text-slate-500 will-change-transform"
                   style={{ top: toolbarHeight }}
                 >
                   {g.month}
@@ -1049,7 +1049,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               {columns.map((col) => (
                 <th
                   key={col.iso}
-                  className="sticky z-[25] bg-slate-50 px-3 py-2 text-center font-medium text-slate-600 whitespace-nowrap will-change-transform"
+                  className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
                   style={{ top: toolbarHeight + monthHeaderHeight }}
                 >
                   {WEEKDAY_LABELS[col.weekday][0]}
@@ -1072,7 +1072,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 return (
                   <th
                     key={col.iso}
-                    className={`sticky z-[25] px-3 py-1 text-center text-xs font-medium will-change-transform ${h ? 'bg-slate-200 text-slate-400' : 'bg-slate-50 text-slate-500'}`}
+                    className={`sticky z-[25] px-3 py-1 text-left text-xs font-medium will-change-transform ${h ? 'bg-slate-200 text-slate-400' : 'bg-slate-50 text-slate-500'}`}
                     style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
                     title={h ? `Public holiday · ${h.name}` : undefined}
                   >
