@@ -1,4 +1,11 @@
--- supabase/migrations/20260901150000_add_rename_hardcoded_tab_function.sql
+-- supabase/migrations/20260901180000_add_rename_hardcoded_tab_function.sql
+-- Renumbered from 20260901150000 -> 20260901180000: that timestamp collided
+-- with a concurrent session's 20260901150000_add_schedule_brand_pauses.sql
+-- migration, which landed on main while this feature was being built in an
+-- isolated worktree (this repo's own documented "Concurrent Sessions &
+-- Migrations" hazard). No content change beyond this comment and the
+-- filename -- purely a renumbering to the first free timestamp after the
+-- concurrent work's own 20260901170000.
 -- Atomically renames a hardcoded Brand Tab across every table keyed by its
 -- name. A sibling to rename_custom_tab (20260819110000), never a
 -- modification of it -- every existing dynamic-tab rename already depends
