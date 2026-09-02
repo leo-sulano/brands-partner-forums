@@ -7,6 +7,7 @@ import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from '
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
 import type { BrandScheduleRow, BrandScheduleUpsertRow, Weekday, DayStatus } from './scheduleBrands.ts';
+import type { PublicHoliday } from './publicHolidays.ts';
 import type { DynamicTabPlatform } from './dynamicTabRegistry.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
 import type { Entry } from '../types/entry.ts';
@@ -275,6 +276,45 @@ export async function fetchScheduleRestrictedBrands(
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as { tab: string; brand: string; allowed_platform: Platform }[];
+}
+
+export async function fetchPublicHolidays(
+  client: SupabaseClient = supabase,
+): Promise<(PublicHoliday & { id: string })[]> {
+  const { data, error } = await client
+    .from('public_holidays')
+    .select('id, date, name')
+    .order('date', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as (PublicHoliday & { id: string })[];
+}
+
+export async function addPublicHoliday(
+  date: string,
+  name: string,
+  actorEmail: string | null,
+  client: SupabaseClient = supabase,
+): Promise<void> {
+  const { error } = await client
+    .from('public_holidays')
+    .insert({ date, name: name.trim(), created_by: actorEmail });
+  if (error) throw error;
+}
+
+export async function deletePublicHoliday(
+  id: string,
+  client: SupabaseClient = supabase,
+): Promise<void> {
+  // Supabase silently no-ops an RLS-blocked delete — assert a row was removed.
+  const { data, error } = await client
+    .from('public_holidays')
+    .delete()
+    .eq('id', id)
+    .select('id');
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Holiday not deleted — you may not have permission.');
+  }
 }
 
 export interface BrandAgentAssignmentRow {
