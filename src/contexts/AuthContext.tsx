@@ -8,6 +8,7 @@ import { applyArchivedTabs } from '../lib/archivedTabRegistry';
 import { applyPausedTabs } from '../lib/pausedTabRegistry';
 import { registerTabIconOverrides } from '../lib/tabIconOverrideRegistry';
 import { registerHardcodedTabRenames } from '../lib/hardcodedTabRenameRegistry';
+import { renameOperationalTab } from '../lib/tabs';
 import type { Profile } from '../types/profile';
 
 interface AuthContextValue {
@@ -83,7 +84,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(true);
         // Intentionally separate from bootstrapTabRegistries
         // (src/lib/tabRegistryBootstrap.ts), which Edge Function isolates use
-        // for the same four registries plus this one's extra fifth (toolbar
+        // for the same five registries plus this one's extra sixth (toolbar
         // filters, no server-side reader). No resets here -- a fresh page
         // load has nothing stale to clear, unlike a reused Deno isolate. Kept
         // as two hand-written sequences on purpose; check the other one for
@@ -139,6 +140,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // rename applies to hardcoded tabs regardless of dynamic/archive/
           // pause state.
           registerHardcodedTabRenames(hardcodedTabRenames);
+          // registerHardcodedTabRenames only populates the resolver's own
+          // lookup maps -- OPERATIONAL_TABS itself needs its own splice per
+          // row, exactly like a live in-session rename (EditBrandTabModal.tsx)
+          // calls renameHardcodedTabLocally and renameOperationalTab as two
+          // explicit steps. Without this, a tab renamed in one browser
+          // session stays unreachable by its new name/slug in every other
+          // session (or after a reload) until this loop runs.
+          for (const row of hardcodedTabRenames) {
+            renameOperationalTab(row.original_name, row.current_name);
+          }
           setProfile(p);
           setLoading(false);
         });

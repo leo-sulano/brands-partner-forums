@@ -31,6 +31,16 @@ describe('tabDisplayName', () => {
     renameHardcodedTabLocally('Hanan', 'Hanan Group');
     expect(tabDisplayName('Hanan Group')).toBe('Hanan Group');
   });
+
+  it('renaming a tab back to its own original name restores its cosmetic alias', () => {
+    // Regression: found live while verifying the hardcoded-tab-rename
+    // feature — reverting 'BITP Team' back to 'TP Brand Injection' left the
+    // 'BITP' alias permanently suppressed until isRenamedHardcodedTab was
+    // fixed to distinguish "has a row" from "is currently renamed."
+    renameHardcodedTabLocally('TP Brand Injection', 'BITP Team');
+    renameHardcodedTabLocally('BITP Team', 'TP Brand Injection');
+    expect(tabDisplayName('TP Brand Injection')).toBe('BITP');
+  });
 });
 
 describe('tabToSlug', () => {

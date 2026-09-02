@@ -59,4 +59,29 @@ describe('validateNewTabName', () => {
     renameOperationalTab('Hanan Renamed', 'Hanan');
     resetHardcodedTabRenames();
   });
+
+  it('allows a hardcoded tab to rename itself back to its own original name', () => {
+    // Regression: found live while verifying the hardcoded-tab-rename
+    // feature — renaming a tab back to its own true original identity was
+    // wrongly rejected by the exact same permanent-reservation rule the
+    // test above confirms for every OTHER tab.
+    renameOperationalTab('Hanan', 'Hanan Renamed');
+    renameHardcodedTabLocally('Hanan', 'Hanan Renamed');
+    expect(validateNewTabName('Hanan', 'Hanan Renamed')).toBeNull();
+    // cleanup
+    renameOperationalTab('Hanan Renamed', 'Hanan');
+    resetHardcodedTabRenames();
+  });
+
+  it('still rejects a DIFFERENT tab claiming a reserved original name it does not own', () => {
+    renameOperationalTab('Hanan', 'Hanan Renamed');
+    renameHardcodedTabLocally('Hanan', 'Hanan Renamed');
+    // 'Trybet' trying to become 'Hanan' -- currentTabName's own original key
+    // ('Trybet') does not match the name being validated ('Hanan'), so the
+    // exemption must not apply.
+    expect(validateNewTabName('Hanan', 'Trybet')).toBe('A tab named "Hanan" already exists.');
+    // cleanup
+    renameOperationalTab('Hanan Renamed', 'Hanan');
+    resetHardcodedTabRenames();
+  });
 });

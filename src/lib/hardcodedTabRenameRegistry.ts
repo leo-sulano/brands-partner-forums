@@ -41,12 +41,21 @@ export function resolveHardcodedTabKey(tab: string): string {
   return currentToOriginalMap[tab] ?? tab;
 }
 
-// True once `tab` (a live/current name) is known to be the result of at
-// least one real rename -- used by tabDisplayName() in tabs.ts to let a
+// True when `tab` (a live/current name) is CURRENTLY different from its own
+// permanent original key -- used by tabDisplayName() in tabs.ts to let a
 // true rename supersede the older TAB_DISPLAY_NAMES cosmetic-alias
-// mechanism.
+// mechanism. Deliberately NOT "does a row exist for this tab" (a bare `tab
+// in currentToOriginalMap` check): the rename_hardcoded_tab RPC never
+// deletes a hardcoded_tab_renames row, only updates current_name -- so a
+// tab renamed and then renamed straight back to its own original spelling
+// still has a row (original_name === current_name). Found live while
+// verifying the hardcoded-tab-rename feature: without this distinction,
+// reverting 'BITP Team' back to 'TP Brand Injection' left the old cosmetic
+// 'BITP' alias permanently suppressed even though the tab was, at that
+// point, genuinely unrenamed.
 export function isRenamedHardcodedTab(tab: string): boolean {
-  return tab in currentToOriginalMap;
+  const original = currentToOriginalMap[tab];
+  return original !== undefined && original !== tab;
 }
 
 export function resetHardcodedTabRenames(): void {

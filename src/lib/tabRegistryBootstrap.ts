@@ -24,6 +24,7 @@ import { registerDynamicTabs, resetDynamicTabs } from './dynamicTabRegistry.ts';
 import { applyArchivedTabs, resetArchivedTabs } from './archivedTabRegistry.ts';
 import { applyPausedTabs, resetPausedTabs } from './pausedTabRegistry.ts';
 import { registerHardcodedTabRenames, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry.ts';
+import { renameOperationalTab } from './tabs.ts';
 
 export async function bootstrapTabRegistries(client: SupabaseClient, logPrefix: string): Promise<void> {
   const customTabs = await fetchCustomTabs(client).catch((err) => {
@@ -74,4 +75,24 @@ export async function bootstrapTabRegistries(client: SupabaseClient, logPrefix: 
   });
   resetHardcodedTabRenames();
   registerHardcodedTabRenames(hardcodedTabRenames);
+  // registerHardcodedTabRenames only populates the resolver's own lookup
+  // maps -- OPERATIONAL_TABS itself (the array every getTabPlatforms/
+  // getActiveOperationalTabs caller actually iterates) needs its own,
+  // separate splice per row, exactly like the live in-session rename flow
+  // in EditBrandTabModal.tsx calls renameHardcodedTabLocally and
+  // renameOperationalTab as two explicit steps. Found live: on a fresh
+  // bootstrap this step was missing entirely, so a hardcoded tab renamed in
+  // one session stayed unreachable by its new name/slug in every other
+  // session until this loop was added.
+  //
+  // Known limitation, accepted: on a warm Edge Function isolate, if a
+  // hardcoded tab is renamed a SECOND time while that isolate is still
+  // warm, this splice can no longer find `original_name` in
+  // OPERATIONAL_TABS (a prior invocation already renamed it away), so the
+  // array is left showing the isolate's last-seen name until it cold-starts
+  // -- narrow, self-correcting, and not reachable from the browser (which
+  // never reuses this bootstrap across sessions).
+  for (const row of hardcodedTabRenames) {
+    renameOperationalTab(row.original_name, row.current_name);
+  }
 }

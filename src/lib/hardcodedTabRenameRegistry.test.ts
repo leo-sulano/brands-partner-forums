@@ -43,6 +43,19 @@ describe('hardcodedTabRenameRegistry', () => {
     expect(isRenamedHardcodedTab('RP Group 2')).toBe(true);
   });
 
+  it('isRenamedHardcodedTab is false again after renaming a tab back to its own original name', () => {
+    // Regression: found live while verifying the hardcoded-tab-rename
+    // feature. rename_hardcoded_tab never deletes its row, only updates
+    // current_name -- renaming 'BITP Team' back to 'TP Brand Injection'
+    // leaves a row with original_name === current_name, which must read as
+    // "not currently renamed" (so the old TAB_DISPLAY_NAMES cosmetic alias
+    // applies again), not as "still renamed."
+    renameHardcodedTabLocally('TP Brand Injection', 'BITP Team');
+    renameHardcodedTabLocally('BITP Team', 'TP Brand Injection');
+    expect(resolveHardcodedTabKey('TP Brand Injection')).toBe('TP Brand Injection');
+    expect(isRenamedHardcodedTab('TP Brand Injection')).toBe(false);
+  });
+
   it('resetHardcodedTabRenames clears all registered renames', () => {
     registerHardcodedTabRenames([{ original_name: 'TP Brand Injection', current_name: 'BITP Team' }]);
     resetHardcodedTabRenames();

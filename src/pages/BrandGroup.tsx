@@ -1062,8 +1062,19 @@ export default function BrandGroup() {
         // without preserveCredentialFields, applying it wholesale would wipe
         // those fields from the table a few seconds after every save, once the
         // realtime event for that save's own `entries` write round-trips back.
+        //
+        // `updated.data` can itself be missing: Postgres/Supabase Realtime omits
+        // an unchanged TOASTed (large jsonb) column from a row's WAL payload
+        // unless the table's REPLICA IDENTITY is FULL, which `entries` isn't set
+        // to. A write that only touches other columns — e.g. a bulk tab rename's
+        // `UPDATE entries SET tab = ... WHERE tab = ...`, discovered live via the
+        // hardcoded-tab-rename feature's own verification — leaves `data`
+        // untouched but large, so the realtime payload can arrive with no `data`
+        // key at all. Falling back to this entry's own last-known `data` (already
+        // merged/correct) keeps the row's other columns (here, `tab`) applying
+        // live without crashing or discarding real content.
         setEntries((prev) => prev.map((e) => (e.id === updated.id
-          ? { ...updated, data: preserveCredentialFields(updated.data, e.data) }
+          ? { ...updated, data: updated.data ? preserveCredentialFields(updated.data, e.data) : e.data }
           : e)));
         return;
       }

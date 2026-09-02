@@ -1,16 +1,34 @@
 import { TAB_COLUMN_CONFIGS } from './tab-configs';
 import { OPERATIONAL_TABS, tabToSlug } from './tabs';
 import { isTabArchived } from './archivedTabRegistry';
+import { resolveHardcodedTabKey } from './hardcodedTabRenameRegistry';
 
-// Shared by AddBrandTabModal (create) and EditBrandTabModal (rename) so the
-// two can't drift on what makes a candidate Brand Tab name valid — both
-// write into custom_tabs.name, which becomes a live URL slug and a literal
-// key across a dozen other tables (see renameCustomTab / the
+// Shared by AddBrandTabModal (create) and EditBrandTabModal (rename/create)
+// so the two can't drift on what makes a candidate Brand Tab name valid —
+// both write into custom_tabs.name, which becomes a live URL slug and a
+// literal key across a dozen other tables (see renameCustomTab / the
 // rename_custom_tab RPC in queries.ts).
-export function validateNewTabName(name: string): string | null {
+//
+// `currentTabName` — the tab actually being edited, when this call is a
+// rename rather than a create — is what lets a hardcoded tab rename itself
+// BACK to its own permanently-reserved original name (see below) without
+// tripping over that same reservation. Omitted entirely for a create (no
+// current tab exists yet), where it's simply a no-op.
+export function validateNewTabName(name: string, currentTabName?: string): string | null {
   const trimmed = name.trim();
   if (!trimmed) return 'Enter a tab name.';
-  const collision = OPERATIONAL_TABS.includes(trimmed) || trimmed in TAB_COLUMN_CONFIGS;
+  // A hardcoded tab's original TAB_COLUMN_CONFIGS key is permanently
+  // reserved (see the `trimmed in TAB_COLUMN_CONFIGS` check below) so the
+  // reverse lookup in hardcodedTabRenameRegistry.ts never has to
+  // disambiguate two different current names both claiming the same
+  // original key — but that reservation must not block the one legitimate
+  // case of a tab reverting to its own true original identity. Found live
+  // while verifying the hardcoded-tab-rename feature: renaming 'BITP Team'
+  // back to 'TP Brand Injection' failed with "already exists" until this
+  // exemption was added.
+  const isOwnOriginalName = currentTabName !== undefined
+    && resolveHardcodedTabKey(currentTabName) === trimmed;
+  const collision = OPERATIONAL_TABS.includes(trimmed) || (!isOwnOriginalName && trimmed in TAB_COLUMN_CONFIGS);
   if (collision) return `A tab named "${trimmed}" already exists.`;
   // Once an archived *dynamic* tab is spliced out of OPERATIONAL_TABS, the
   // check above stops seeing it -- without this, a new tab could be created

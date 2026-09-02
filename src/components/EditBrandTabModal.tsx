@@ -120,7 +120,7 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
     const trimmedName = name.trim();
     const isRename = trimmedName !== tabName;
     if (isRename) {
-      const nameError = validateNewTabName(trimmedName);
+      const nameError = validateNewTabName(trimmedName, tabName);
       if (nameError) {
         setError(nameError);
         return;
