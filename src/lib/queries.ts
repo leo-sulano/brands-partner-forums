@@ -1205,8 +1205,8 @@ export async function setBrandPlatformOverride(
   if (error) throw error;
 }
 
-export async function clearBrandPlatformOverride(tab: string, brandKey: string, platform: Platform): Promise<void> {
-  const { error } = await supabase
+export async function clearBrandPlatformOverride(tab: string, brandKey: string, platform: Platform, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
     .from('brand_platform_override')
     .delete()
     .eq('tab', tab)

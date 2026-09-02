@@ -13,6 +13,7 @@ const queries = vi.hoisted(() => ({
   fetchActiveBrandPlatformPauses: vi.fn(),
   upsertBrandPlatformPause: vi.fn(),
   deleteBrandPlatformPause: vi.fn(),
+  clearBrandPlatformOverride: vi.fn(),
 }));
 vi.mock('../queries', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../queries')>();
@@ -366,7 +367,7 @@ describe('recalculatePauses', () => {
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
         ],
-        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'active', reason: null, resumeAt: null, setBy: null }]]),
       };
       const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.deleteBrandPlatformPause).toHaveBeenCalledWith('BITP', 'winmega', 'tp', undefined);
@@ -382,7 +383,7 @@ describe('recalculatePauses', () => {
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
         ],
-        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'active']]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'active', reason: null, resumeAt: null, setBy: null }]]),
       };
       const resumed = await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.deleteBrandPlatformPause).not.toHaveBeenCalled();
@@ -395,7 +396,7 @@ describe('recalculatePauses', () => {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [entry({ Brands: 'WinMega', 'TP Review Status': 'published', 'Trust Pilot': '2026-08-01' })],
-        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: null, resumeAt: null, setBy: null }]]),
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
@@ -411,7 +412,7 @@ describe('recalculatePauses', () => {
         brands: ['WinMega'],
         activePlatforms: ['tp'],
         entries: [],
-        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: null, resumeAt: null, setBy: null }]]),
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
@@ -425,7 +426,7 @@ describe('recalculatePauses', () => {
         activePlatforms: ['tp'],
         entries: [],
         removedPlatformBrandSet: new Set([platformRemovedKey('BITP', 'WinMega', 'tp')]),
-        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: null, resumeAt: null, setBy: null }]]),
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).not.toHaveBeenCalled();
@@ -440,13 +441,66 @@ describe('recalculatePauses', () => {
           entry({ Brands: 'WinMega', 'TP Review Status': 'removed', 'Trust Pilot': '2026-07-28' }),
           entry({ Brands: 'WinMega', 'TP Review Status': 'refused', 'Trust Pilot': '2026-07-24' }),
         ],
-        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), 'pause']]),
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: null, resumeAt: null, setBy: null }]]),
       };
       await recalculatePauses('BITP', '2026-08-03', ctx);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledTimes(1);
       expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
         'BITP', 'WinMega', 'tp', '2026-08-03', 'Manually paused', undefined,
       );
+    });
+
+    it("override 'pause' with a custom reason is upserted verbatim, not the generic fallback", async () => {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: 'Client requested a break', resumeAt: null, setBy: 'leo@optinetsolutions.com' }]]),
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith(
+        'BITP', 'WinMega', 'tp', '2026-08-03', 'Client requested a break', undefined,
+      );
+    });
+
+    it("a permanent override ('pause' with resumeAt: null) never auto-expires", async () => {
+      queries.fetchActiveBrandPlatformPauses.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', platform: 'tp', paused_week_start: '2026-08-03', reason: 'Client requested a break' },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: 'Client requested a break', resumeAt: null, setBy: 'leo@optinetsolutions.com' }]]),
+      };
+      // Simulate the following week too — a permanent override must still
+      // re-assert itself, never resuming on its own.
+      const resumedThisWeek = await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(resumedThisWeek).toEqual([]);
+      const resumedNextWeek = await recalculatePauses('BITP', '2026-08-10', ctx);
+      expect(resumedNextWeek).toEqual([]);
+      expect(queries.clearBrandPlatformOverride).not.toHaveBeenCalled();
+    });
+
+    it("a periodic override ('pause' with a resumeAt) auto-expires once its week's Sunday has passed, clearing the override and resuming", async () => {
+      queries.fetchActiveBrandPlatformPauses.mockResolvedValue([
+        { tab: 'BITP', brand_key: 'winmega', platform: 'tp', paused_week_start: '2026-08-03', reason: 'Two-week break' },
+      ]);
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['tp'],
+        entries: [],
+        // resumeAt is a Wednesday inside the week being evaluated below
+        // (2026-08-12, within the 2026-08-10..2026-08-16 week) — should
+        // already count as expired that same week, not one week later.
+        overrideMap: new Map([[overrideKey('BITP', 'winmega', 'tp'), { state: 'pause', reason: 'Two-week break', resumeAt: '2026-08-12', setBy: 'leo@optinetsolutions.com' }]]),
+      };
+      const resumedTooEarly = await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(resumedTooEarly).toEqual([]);
+      const resumed = await recalculatePauses('BITP', '2026-08-10', ctx);
+      expect(queries.clearBrandPlatformOverride).toHaveBeenCalledWith('BITP', 'winmega', 'tp', undefined);
+      expect(queries.deleteBrandPlatformPause).toHaveBeenCalledWith('BITP', 'winmega', 'tp', undefined);
+      expect(resumed).toEqual([{ brandKey: 'winmega', platform: 'tp' }]);
     });
   });
 });

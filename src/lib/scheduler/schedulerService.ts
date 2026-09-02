@@ -6,13 +6,14 @@ import {
   fetchActiveBrandPlatformPauses,
   upsertBrandPlatformPause,
   deleteBrandPlatformPause,
+  clearBrandPlatformOverride,
 } from '../queries.ts';
 import {
   PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
   computeSuccessRates, successRatePct, type SuccessRate, type DateRange,
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
-import { overrideKey, type OverrideState } from '../scheduleOverrides.ts';
+import { overrideKey, type OverrideDetails } from '../scheduleOverrides.ts';
 import { getSchedulableBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { holidayWeekdaysForDateSet } from '../publicHolidays.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
@@ -41,9 +42,10 @@ export interface TabContext {
   // Every (tab, brand_key, platform) with a manually-set override, beating
   // whatever the automatic checks below would otherwise compute. 'active'
   // forces continued posting (deletes/skips any pause); 'pause' forces a
-  // pause unconditionally. Optional, same "defaults to nothing overridden"
-  // convention as the other two sets.
-  overrideMap?: Map<string, OverrideState>;
+  // pause unconditionally (with a custom reason and an optional auto-resume
+  // date — see recalculatePauses below). Optional, same "defaults to nothing
+  // overridden" convention as the other two sets.
+  overrideMap?: Map<string, OverrideDetails>;
   // Keys from scheduleBrandKey(tab, brand) for every brand hidden from
   // Schedule Planner entirely (schedule_hidden_brands). Optional, same
   // "defaults to nothing hidden" convention as the other two sets/maps.
@@ -152,6 +154,20 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
 // deterministic for a fixed weekStart in tests. Parses weekStart as a
 // local date the same way shiftWeek below does, to avoid the
 // UTC-conversion bug documented on toISODate in scheduleBrands.ts.
+// The Sunday ending the week that starts on weekStart, as an ISO date
+// string — used to decide whether a periodic override's resumeAt has
+// "passed" for the week currently being evaluated (see recalculatePauses).
+// Parsed/formatted as a local date, matching last30DaysRange below, to avoid
+// the UTC-conversion bug documented on toISODate in scheduleBrands.ts.
+function weekEndSunday(weekStart: string): string {
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const sunday = new Date(y, m - 1, d + 6);
+  const yyyy = sunday.getFullYear();
+  const mm = String(sunday.getMonth() + 1).padStart(2, '0');
+  const dd = String(sunday.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function last30DaysRange(weekStart: string): DateRange {
   const [y, m, d] = weekStart.split('-').map(Number);
   const to = new Date(y, m - 1, d);
@@ -167,7 +183,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   ]);
   const resumed: PinnedCombo[] = [];
   const removedSet = ctx.removedPlatformBrandSet ?? new Set<string>();
-  const overrideMap = ctx.overrideMap ?? new Map<string, OverrideState>();
+  const overrideMap = ctx.overrideMap ?? new Map<string, OverrideDetails>();
   const hiddenSet = ctx.hiddenBrandSet ?? new Set<string>();
   const restrictionMap = ctx.platformRestrictionMap ?? new Map<string, Platform>();
 
@@ -208,15 +224,35 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // a row for it).
       const override = overrideMap.get(overrideKey(tab, brandKey, platform));
       const existingPause = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
-      if (override === 'active') {
+
+      // A periodic override ('pause' with a resumeAt) auto-expires once its
+      // resume date has passed relative to the week being evaluated — checked
+      // BEFORE the override === 'pause' branch below, so an expired periodic
+      // pause is treated as if the override no longer existed at all this
+      // week (falls through to the auto-detection chain further down, same
+      // as override === undefined), not re-applied. Week-granular, matching
+      // every other pause-lifecycle check in this function: a resumeAt
+      // anywhere within the week being evaluated already counts as
+      // "passed" (compared against that week's Sunday), so a periodic pause
+      // resumes as soon as this same week is next evaluated, not one week
+      // later.
+      if (override?.state === 'pause' && override.resumeAt && override.resumeAt <= weekEndSunday(weekStart)) {
+        await clearBrandPlatformOverride(tab, brandKey, platform, client);
         if (existingPause) {
           await deleteBrandPlatformPause(tab, brandKey, platform, client);
           resumed.push({ brandKey, platform });
         }
         continue;
       }
-      if (override === 'pause') {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, PERSISTENT_PAUSE_REASONS.manual, client);
+      if (override?.state === 'active') {
+        if (existingPause) {
+          await deleteBrandPlatformPause(tab, brandKey, platform, client);
+          resumed.push({ brandKey, platform });
+        }
+        continue;
+      }
+      if (override?.state === 'pause') {
+        await upsertBrandPlatformPause(tab, brand, platform, weekStart, override.reason?.trim() || PERSISTENT_PAUSE_REASONS.manual, client);
         continue;
       }
 
