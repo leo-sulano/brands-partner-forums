@@ -270,13 +270,23 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).toHaveBeenCalledWith('brand_agent_assignments');
   });
 
-  it('setBrandPlatformOverride upserts into brand_platform_override', async () => {
+  it('setBrandPlatformOverride upserts into brand_platform_override with reason/resume_at defaulting to null', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null });
     singletonFrom.mockReturnValue({ upsert });
     await setBrandPlatformOverride('X', 'WinMega', 'tp', 'pause');
     expect(singletonFrom).toHaveBeenCalledWith('brand_platform_override');
     expect(upsert).toHaveBeenCalledWith(
-      expect.objectContaining({ tab: 'X', brand: 'WinMega', platform: 'tp', override_state: 'pause' }),
+      expect.objectContaining({ tab: 'X', brand: 'WinMega', platform: 'tp', override_state: 'pause', reason: null, resume_at: null }),
+      { onConflict: 'tab,brand_key,platform' },
+    );
+  });
+
+  it('setBrandPlatformOverride persists a custom reason and resume_at when passed', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await setBrandPlatformOverride('X', 'WinMega', 'tp', 'pause', { reason: 'Client requested a break', resumeAt: '2026-09-30' });
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'X', brand: 'WinMega', platform: 'tp', override_state: 'pause', reason: 'Client requested a break', resume_at: '2026-09-30' }),
       { onConflict: 'tab,brand_key,platform' },
     );
   });
