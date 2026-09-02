@@ -8165,11 +8165,33 @@ Plan: `docs/superpowers/plans/2026-09-02-schedule-planner-public-holidays.md`
 - Movable national holidays and all local/city holidays are team-maintained through the modal, not
   auto-populated from any external source.
 
-**Pending manual deploy:**
-1. `supabase db push`  (creates + seeds `public_holidays`)
-2. `git push origin main`  (frontend)
-3. `supabase functions deploy generate-weekly-schedule`  (Monday cron respects holidays)
-4. `supabase functions deploy ai-assistant`  (`get_schedule` returns holidays)
-Frontend + cron degrade safely without 3/4: the page works fully after step 2; the cron just
-ignores holidays until step 3.
+A subsequent final whole-branch review (opus, the deeper pass this entry above deferred) found 0
+Critical, 1 Important, and 7 Minor issues — all resolved same-day in one fix round, re-reviewed
+clean. The one real bug: `PublicHolidaysModal`'s `onChanged` only refreshed `SchedulePlanner.tsx`'s
+own `holidays` state (feeding `TabPreviewCard`'s mini-calendar), while `TabScheduleSection.tsx` held
+a fully independent `holidays` fetch — adding/removing a holiday while a tab's grid was open left
+that grid stale until a tab switch, and (more seriously) could let a subsequent week-nav write a
+schedule row onto a day just marked a holiday. Fixed with a `holidayReloadSeq` counter (bumped by
+the modal, passed down as a prop, added to `TabScheduleSection`'s existing brand-loading effect's
+dependency array) rather than replacing the section's own fetch with a passed-down value — the
+section's fetch must stay independent because it's the one wrapped in `withFlagFallback`/
+`flagsLoaded` (fail-closed on a real fetch error), while the page's own fetch deliberately fails
+open (`.catch(() => {})`, purely cosmetic there); collapsing the two would have swapped a
+safety-critical fail-closed path for a fail-open one. Also fixed: `PublicHolidaysModal`'s `z-40`
+lost a same-z-index DOM-order tiebreak against `TabScheduleSection`'s own `z-40` sticky toolbar
+when a tab's grid was open (now `z-50`, matching every modal outside that component's subtree); a
+doc inaccuracy in this entry's own draft (`weekdayDatesOf` is module-private, not exported;
+`holidayWeekdaysForWeek` was omitted — both corrected above); and `public_holidays.created_by`'s
+anon-key readability folded into the existing `custom_tabs.created_by` Known Issues bullet as the
+same class of exposure, rather than a new standalone item. Full suite (587 affected tests, then the
+full 2278) and build stayed clean throughout.
+
+**Deployed the same day:**
+1. `git push origin main` — pushed.
+2. `supabase db push` — applied; live-verified via `supabase db query --linked`: 22 rows,
+   2026-01-01 through 2027-12-31.
+3. `supabase functions deploy generate-weekly-schedule` — confirmed `ACTIVE`, version 15.
+4. `supabase functions deploy ai-assistant` — confirmed `ACTIVE`, version 45.
+The Monday cron now respects holidays and Ask AI's `get_schedule` returns them; both deploy logs
+show `src/lib/publicHolidays.ts` bundled successfully with its `.ts`-extensioned import intact.
 

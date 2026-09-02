@@ -87,11 +87,15 @@ Brands Partner Forum/
   per-tab, no force-post override, past weeks aren't rewritten, PMS pull-direction is unguarded
   against writing a holiday day, movable/local holidays are team-maintained) are in Known Issues
   below. Spec: `docs/superpowers/specs/2026-09-02-schedule-planner-public-holidays-design.md`.
-  Plan: `docs/superpowers/plans/2026-09-02-schedule-planner-public-holidays.md`. **Pending manual
-  deploy:** `supabase db push` (creates + seeds `public_holidays`), `git push origin main`
-  (frontend), `supabase functions deploy generate-weekly-schedule` (Monday cron respects holidays),
-  `supabase functions deploy ai-assistant` (`get_schedule` returns holidays) — the frontend works
-  fully after just the `git push`; the cron simply ignores holidays until it's redeployed. Task 307.
+  Plan: `docs/superpowers/plans/2026-09-02-schedule-planner-public-holidays.md`. A same-day final
+  whole-branch review (opus) then caught and fixed 1 real Important bug in one round (a stale
+  second `holidays` copy in `TabScheduleSection.tsx` that the "Public Holidays" modal's refresh
+  never reached, closed with a `holidayReloadSeq` signal rather than collapsing the section's own
+  fail-closed fetch into the page's fail-open one) plus 3 worth-fixing Minors (a modal z-index/DOM-
+  order tie, a doc inaccuracy, folding an anon-read note into an existing bullet) — all re-reviewed
+  clean. **Deployed the same day:** `git push origin main`, `supabase db push` (22 rows live-
+  verified, 2026-01-01 – 2027-12-31), `supabase functions deploy generate-weekly-schedule` (ACTIVE
+  v15), `supabase functions deploy ai-assistant` (ACTIVE v45) — no longer pending. Task 307.
 - *2026-09-02 (prior):* Any of the 11 hardcoded Brand Tabs (BITP, FTP, Rooster Partners,
   Revolution Casino, Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan, Wizard of Odds,
   GRG - Gulf Recovery Group) can now be truly renamed from Edit Brand Tab — same real identity
