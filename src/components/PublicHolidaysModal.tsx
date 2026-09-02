@@ -96,7 +96,15 @@ export default function PublicHolidaysModal({ open, onClose, onChanged }: Props)
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+    // z-50, not z-40: this modal is rendered from SchedulePlanner.tsx, before
+    // (in DOM order) TabScheduleSection's own sticky z-40 toolbar in the same
+    // stacking context — at equal z-40 that later-in-DOM toolbar can paint
+    // over this backdrop and swallow its click-to-close. z-50 matches every
+    // other modal that lives outside TabScheduleSection's own subtree in this
+    // codebase (AddBrandTabModal, EditEntryModal, BrandTabsModal, etc.) —
+    // PauseDaysModal/AddPlatformModal's z-40 is correct only because they
+    // render from inside TabScheduleSection's own subtree, after its toolbar.
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between px-5 pt-5 pb-4">

@@ -250,6 +250,15 @@ export default function SchedulePlanner() {
   // any add/remove so the landing-grid preview cards pick up the change
   // without a page reload.
   const [holidaysModalOpen, setHolidaysModalOpen] = useState(false);
+  // Bumped alongside the holidays refetch above whenever the modal reports a
+  // change — forces TabScheduleSection's own independent holiday fetch (a
+  // separate, authoritative copy gating its scheduler-invocation effect via
+  // flagsLoaded) to re-run too, exactly like reloadSeq already does for the
+  // other exclusion sets. Deliberately NOT a replacement for that section's
+  // own fetch: this page's `holidays` state fails open (cosmetic-only), while
+  // TabScheduleSection's fetch must stay fail-closed — see this prop's own
+  // doc comment on TabScheduleSection's Props for the full reasoning.
+  const [holidayReloadSeq, setHolidayReloadSeq] = useState(0);
 
   // Shared date-range filter — used both by the landing-grid preview cards
   // (narrows each card's mini calendar to specific days instead of the whole
@@ -759,6 +768,7 @@ export default function SchedulePlanner() {
           fetchPublicHolidays().then(setHolidays).catch(() => {
             // same fail-open behavior as the initial fetch above — cosmetic-only
           });
+          setHolidayReloadSeq((s) => s + 1);
         }}
       />
 
@@ -872,6 +882,7 @@ export default function SchedulePlanner() {
               agentFilter={agentFilter}
               dateFrom={dateFrom}
               dateTo={dateTo}
+              holidayReloadSeq={holidayReloadSeq}
               onPlatformCounts={handlePlatformCounts}
               onRemove={() => removeTab(t)}
             />

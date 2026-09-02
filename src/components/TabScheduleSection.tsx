@@ -87,6 +87,16 @@ interface Props {
   // own default (no-filter) view.
   dateFrom: string;
   dateTo: string;
+  // Bumped by SchedulePlanner.tsx (a sibling `holidayReloadSeq` counter,
+  // separate from its own page-level `holidays` state) every time the Public
+  // Holidays modal reports a change. This section holds a fully independent
+  // holiday fetch (see the brand-loading effect below) that gates the
+  // scheduler-invocation effect via `flagsLoaded` and therefore must stay
+  // fail-closed — it deliberately does NOT read the page's own fail-open
+  // `holidays` state as a prop, only this reload signal, so a holiday
+  // added/removed elsewhere forces a fresh, still-fail-closed fetch here
+  // instead of silently going stale until the next tab switch.
+  holidayReloadSeq: number;
   onPlatformCounts?: (tab: string, counts: Partial<Record<Platform, number>>) => void;
   onRemove: () => void;
 }
@@ -95,7 +105,7 @@ interface Props {
 // overlays, export. Instantiated once per tab the Schedule Planner shell has
 // selected, each running its own independent data load/scheduler-invocation
 // cycle keyed by its own `tab` prop; multiple instances never share state.
-export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, dateFrom, dateTo, onPlatformCounts, onRemove }: Props) {
+export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, dateFrom, dateTo, holidayReloadSeq, onPlatformCounts, onRemove }: Props) {
   // Bundles brands/activePlatforms/entries/removedPlatformBrandSet together,
   // tagged with the tab they were loaded for. This lets the schedule-loading
   // effect below confirm the data it's about to hand to the scheduler
@@ -303,7 +313,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return () => {
       canceled = true;
     };
-  }, [tab, reloadSeq]);
+    // holidayReloadSeq: forces this effect (whose Promise.all already fetches
+    // fetchPublicHolidays() via withFlagFallback, see above) to re-run and
+    // refresh both `holidays` and `flagsLoaded` together whenever a holiday
+    // changes anywhere in the app during this session — see this prop's own
+    // doc comment on Props for why this can't just be a prop-drilled
+    // `holidays` value instead.
+  }, [tab, reloadSeq, holidayReloadSeq]);
 
   // Schedule rows depend on both tab and week — this is the only fetch that
   // should re-run on Prev/Next/Today navigation.

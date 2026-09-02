@@ -8106,7 +8106,7 @@ seeded — the team adds them through a new modal instead of depending on an ext
 a yearly code change.
 
 New pure, Deno-safe `src/lib/publicHolidays.ts` (`buildHolidayDateSet`, `holidayOn`,
-`holidaysInWeek`, `holidayWeekdaysForDateSet`, `weekdayDatesOf`) plus `fetchPublicHolidays`/
+`holidaysInWeek`, `holidayWeekdaysForDateSet`, `holidayWeekdaysForWeek`) plus `fetchPublicHolidays`/
 `addPublicHoliday`/`deletePublicHoliday` in `queries.ts` are the only way any surface reads or
 writes the table. `TabContext.holidayDates: Set<string>` (fetched alongside the existing
 hidden-brand/platform-restriction/removed-flag exclusion sets) is populated both client-side

@@ -1454,7 +1454,8 @@ Brands Partner Forum/
   public-readable via `anon` (see the `entries`/`bif_review_accounts` bullet further down) — it is
   not a new class of exposure, just one more column of internal-user data on the same footing. Worth
   folding into whatever deliberate decision is eventually made about tightening `anon` read access
-  project-wide, rather than fixing in isolation.
+  project-wide, rather than fixing in isolation. `public_holidays.created_by` (Task 307) is the same
+  class of exposure, same `using (true)` select policy, same reasoning.
 - **`deleteCustomTab`'s entries-count guard is a TOCTOU race, accepted as-is (Task 232).**
   `deleteCustomTab` (`src/lib/queries.ts`) counts `entries` rows for the tab and then deletes the
   `custom_tabs` row in a separate round-trip, so an entry inserted for that tab in the window between
