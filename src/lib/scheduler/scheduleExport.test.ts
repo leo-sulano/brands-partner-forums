@@ -23,10 +23,11 @@ function makePause(): BrandPlatformPause {
 }
 
 describe('SCHEDULE_EXPORT_HEADERS', () => {
-  it('has one column per weekday plus brand/platform/paused/removed/evidence', () => {
+  it('has one column per weekday plus brand/platform/paused/removed/evidence/holidays', () => {
     expect(SCHEDULE_EXPORT_HEADERS).toEqual([
       'Brand', 'Platform', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Paused This Week', 'Page Removed',
       'Mon Evidence', 'Tue Evidence', 'Wed Evidence', 'Thu Evidence', 'Fri Evidence',
+      'Holidays This Week',
     ]);
   });
 });
@@ -41,7 +42,7 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: [],
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'Trustpilot', 'Active', '', 'Paused', '', '', 'N', 'N', '', '', '', '', ''],
+      ['Acme', 'Trustpilot', 'Active', '', 'Paused', '', '', 'N', 'N', '', '', '', '', '', ''],
     ]);
   });
 
@@ -54,7 +55,7 @@ describe('buildScheduleExportRows', () => {
       removedPlatforms: ['tp'],
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'Trustpilot', '', '', '', '', '', 'Y', 'Y', '', '', '', '', ''],
+      ['Acme', 'Trustpilot', '', '', '', '', '', 'Y', 'Y', '', '', '', '', '', ''],
     ]);
   });
 
@@ -96,7 +97,32 @@ describe('buildScheduleExportRows', () => {
       evidenceByPlatform: { tp: { monday: 'confirmed', tuesday: 'removed', wednesday: 'pending', thursday: 'done', friday: null } },
     }];
     expect(buildScheduleExportRows(data)).toEqual([
-      ['Acme', 'Trustpilot', '', '', '', '', '', 'N', 'N', 'Confirmed', 'Removed', 'Pending', 'Done', ''],
+      ['Acme', 'Trustpilot', '', '', '', '', '', 'N', 'N', 'Confirmed', 'Removed', 'Pending', 'Done', '', ''],
     ]);
+  });
+
+  it('adds a Holidays This Week column carrying the joined holiday names', () => {
+    const data = [{
+      brand: 'WinMega',
+      platforms: ['tp' as const],
+      rowsByPlatform: {},
+      pausesByPlatform: {},
+      removedPlatforms: [],
+    }];
+    const rows = buildScheduleExportRows(data, "New Year's Day, Rizal Day");
+    expect(SCHEDULE_EXPORT_HEADERS[SCHEDULE_EXPORT_HEADERS.length - 1]).toBe('Holidays This Week');
+    expect(rows[0][rows[0].length - 1]).toBe("New Year's Day, Rizal Day");
+  });
+
+  it('leaves the Holidays This Week column blank when none passed', () => {
+    const data = [{
+      brand: 'WinMega',
+      platforms: ['tp' as const],
+      rowsByPlatform: {},
+      pausesByPlatform: {},
+      removedPlatforms: [],
+    }];
+    const rows = buildScheduleExportRows(data);
+    expect(rows[0][rows[0].length - 1]).toBe('');
   });
 });

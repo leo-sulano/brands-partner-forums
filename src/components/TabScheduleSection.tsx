@@ -22,7 +22,7 @@ import {
   type BrandAgentAssignmentRow,
   type ScheduleCancellation,
 } from '../lib/queries';
-import { buildHolidayDateSet, holidayOn, type PublicHoliday } from '../lib/publicHolidays';
+import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, buildOverrideSetByMap, overrideKey, type OverrideState } from '../lib/scheduleOverrides';
@@ -986,6 +986,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       evidenceByPlatform,
                     };
                   }),
+                  holidaysInWeek(weekStartISO, holidays).map((h) => h.name).join(', '),
                 )}
                 filenameBase={`schedule-planner-${tabToSlug(tab)}-${weekStartISO}`}
                 disabled={loading}

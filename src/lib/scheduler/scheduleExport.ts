@@ -6,6 +6,7 @@ import type { Platform } from '../removedPlatformBrands';
 export const SCHEDULE_EXPORT_HEADERS = [
   'Brand', 'Platform', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Paused This Week', 'Page Removed',
   'Mon Evidence', 'Tue Evidence', 'Wed Evidence', 'Thu Evidence', 'Fri Evidence',
+  'Holidays This Week',
 ];
 
 export interface ScheduleExportBrandData {
@@ -36,7 +37,10 @@ function evidenceLabel(kind: DateEvidenceKind | null | undefined): string {
   return '';
 }
 
-export function buildScheduleExportRows(data: ScheduleExportBrandData[]): string[][] {
+export function buildScheduleExportRows(
+  data: ScheduleExportBrandData[],
+  holidaysThisWeek = '',
+): string[][] {
   const rows: string[][] = [];
   for (const { brand, platforms, rowsByPlatform, pausesByPlatform, removedPlatforms, evidenceByPlatform } of data) {
     for (const platform of platforms) {
@@ -53,6 +57,7 @@ export function buildScheduleExportRows(data: ScheduleExportBrandData[]): string
         pausesByPlatform[platform] ? 'Y' : 'N',
         removedPlatforms.includes(platform) ? 'Y' : 'N',
         ...WEEKDAYS.map((wd) => evidenceLabel(evidence?.[wd])),
+        holidaysThisWeek,
       ]);
     }
   }
