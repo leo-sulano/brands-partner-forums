@@ -70,6 +70,7 @@ interface Props {
     newTab?: string,
     removedPlatforms?: Platform[],
     overrides?: Partial<Record<Platform, 'pause' | 'active'>>,
+    removedPlatformDateTexts?: Partial<Record<Platform, string>>,
   ) => Promise<void>;
   currentTab?: string;
   availableBrands?: string[];
@@ -107,6 +108,22 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   // newly-created tab missing from this dropdown until a page reload.
   const TAB_OPTS = OPERATIONAL_TABS.map((t) => ({ value: t, label: tabDisplayName(t) }));
   const [removedPlatforms, setRemovedPlatforms] = useState<Set<Platform>>(new Set(initialRemovedPlatforms ?? []));
+  // Editable Page Removed date per platform, seeded from the flag's current
+  // removed_at (formatted to the same DD/MM/YYYY display every other date
+  // field in this modal uses) — kept as free text like the rest of
+  // DATE_ENTRY_HEADERS, not a Date object, so a mid-edit invalid value can
+  // still round-trip through the input instead of being silently coerced.
+  const [removedPlatformDateTexts, setRemovedPlatformDateTexts] = useState<Partial<Record<Platform, string>>>(() => {
+    const init: Partial<Record<Platform, string>> = {};
+    if (initialRemovedPlatformDates) {
+      for (const p of Object.keys(initialRemovedPlatformDates) as Platform[]) {
+        const iso = initialRemovedPlatformDates[p];
+        if (iso) init[p] = formatCellValue(iso);
+      }
+    }
+    return init;
+  });
+  const [removedDateErrors, setRemovedDateErrors] = useState<Set<Platform>>(new Set());
   const [overrides, setOverrides] = useState<Partial<Record<Platform, 'pause' | 'active'>>>(initialOverrides ?? {});
   const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
   const [fields, setFields] = useState<Record<string, string>>(() => {
@@ -157,12 +174,23 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
       setError('Enter a valid date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.');
       return;
     }
+    // Only a checked (flagged-removed) platform's date needs to be a real
+    // date — an unchecked platform's leftover text (e.g. typed, then
+    // unticked) is never sent to onSave, so it's never validated.
+    const invalidRemovedDates = [...removedPlatforms].filter(
+      (p) => !isValidDateText(removedPlatformDateTexts[p] ?? ''),
+    );
+    if (invalidRemovedDates.length > 0) {
+      setRemovedDateErrors(new Set(invalidRemovedDates));
+      setError('Enter a valid Page Removed date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.');
+      return;
+    }
     setSaving(true);
     try {
       const out: Record<string, string | null> = {};
       for (const h of headers) out[h] = fields[h] || null;
       const tabChanged = selectedTab && selectedTab !== currentTab ? selectedTab : undefined;
-      await onSave(out, tabChanged, [...removedPlatforms], overrides);
+      await onSave(out, tabChanged, [...removedPlatforms], overrides, removedPlatformDateTexts);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -306,9 +334,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   }
 
   function renderPageRemovedField(platform: Platform) {
-    const date = removedPlatforms.has(platform) && initialRemovedPlatformDates?.[platform]
-      ? formatCellValue(initialRemovedPlatformDates[platform]!)
-      : null;
+    const checked = removedPlatforms.has(platform);
     return (
       <div key={`removed-${platform}`}>
         <label className="mb-1.5 block text-xs font-medium text-slate-500">
@@ -317,7 +343,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
         <div className="flex h-[38px] items-center gap-2 rounded-md border border-slate-200 px-3">
           <input
             type="checkbox"
-            checked={removedPlatforms.has(platform)}
+            checked={checked}
             disabled={saving}
             onChange={(e) =>
               setRemovedPlatforms((prev) => {
@@ -328,8 +354,31 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             }
             className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
           />
-          <span className="text-sm text-slate-700">{date ?? '—'}</span>
+          <input
+            type="text"
+            value={removedPlatformDateTexts[platform] ?? ''}
+            disabled={saving || !checked}
+            onChange={(e) => {
+              const val = e.target.value;
+              setRemovedPlatformDateTexts((prev) => ({ ...prev, [platform]: val }));
+            }}
+            onBlur={() =>
+              setRemovedDateErrors((prev) => {
+                const next = new Set(prev);
+                if (checked && !isValidDateText(removedPlatformDateTexts[platform] ?? '')) next.add(platform);
+                else next.delete(platform);
+                return next;
+              })
+            }
+            placeholder="DD/MM/YYYY"
+            className={`w-full min-w-0 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:text-slate-400 ${
+              removedDateErrors.has(platform) ? 'text-rose-600' : ''
+            }`}
+          />
         </div>
+        {removedDateErrors.has(platform) && (
+          <p className="mt-1 text-xs text-rose-600">Enter a valid date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.</p>
+        )}
       </div>
     );
   }

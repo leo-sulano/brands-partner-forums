@@ -87,3 +87,23 @@ function isRealCalendarDate(year: number, month: number, day: number): boolean {
   const d = new Date(year, month - 1, day);
   return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
 }
+
+// Converts free-typed DD/MM/YYYY or YYYY-MM-DD text (the same two formats
+// isValidDateText accepts) into a YYYY-MM-DD string a Postgres timestamptz
+// column will accept — used when a raw date column, itself validated by
+// isValidDateText, needs to be written into a real date/timestamp column
+// (e.g. removed_platform_brands.removed_at) rather than another free-text
+// field. Returns null for anything isValidDateText wouldn't also accept;
+// callers should validate first since blank input has no ISO equivalent.
+export function dateTextToIsoDate(value: string): string | null {
+  const trimmed = value.trim();
+  const slash = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (slash) {
+    const [, d, m, y] = slash;
+    if (!isRealCalendarDate(+y, +m, +d)) return null;
+    return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }
+  const iso = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso && isRealCalendarDate(+iso[1], +iso[2], +iso[3])) return trimmed;
+  return null;
+}

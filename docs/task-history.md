@@ -8195,3 +8195,47 @@ full 2278) and build stayed clean throughout.
 The Monday cron now respects holidays and Ask AI's `get_schedule` returns them; both deploy logs
 show `src/lib/publicHolidays.ts` bundled successfully with its `.ts`-extensioned import intact.
 
+---
+
+## Task 308: Editable Page Removed Date in Edit Entry
+**Date:** September 2, 2026
+
+The TP/AG/CG/WO "Page Removed Status" date shown in the Edit Entry modal (next to each platform's
+removed checkbox) was read-only — it always showed whatever moment the checkbox was first checked
+(`removed_platform_brands.removed_at`, DB-default `now()`), with no way to correct it to the real
+removal date, per a direct user request off a live screenshot (BITP's Niko entry, TP flagged
+01/09/2026).
+
+The date is now a free-text input next to the checkbox, following the same DD/MM/YYYY-or-YYYY-MM-DD
+convention every other date field in this modal already uses (`isValidDateText`/`DATE_ENTRY_HEADERS`
+pattern) — disabled and blank when the checkbox is unchecked, editable and validated on blur when
+checked. `setBrandPlatformRemoved` (`src/lib/queries.ts`) gained an optional `removedAt` (YYYY-MM-DD)
+param; passing it sets `removed_at` explicitly in the upsert instead of relying on the DB default,
+while omitting it (a freshly-checked platform with no date typed) keeps the original now()-on-insert
+behavior unchanged. New `dateTextToIsoDate` (`src/lib/dateUtils.ts`) converts the two accepted text
+formats to `YYYY-MM-DD` for that column. `BrandGroup.tsx`'s existing state-change diff (only calls
+`setBrandPlatformRemoved` when a checkbox actually flips, to avoid rewriting `removed_by`/`removed_at`
+on every routine save) was extended with a second, independent trigger: a platform that stays checked
+but whose date text differs from what it was seeded with also fires an update (with the new date, not
+a state flip) — so editing the date alone, without touching the checkbox, now persists. The removal
+notification email's `removedAtLabel` uses the user-entered date when one was given, falling back to
+"now" only for a fresh flag left blank, matching what actually gets saved.
+
+Scoped to Edit Entry / `removed_platform_brands` only — `removed_at` is display-only elsewhere
+(badge tooltips, CSV/Excel export's synthetic Page Removed Status columns) and isn't used by any
+filtering logic (Score Summary/Schedule Planner exclusion keys off `tab/brand/platform` only, not the
+date), and Ask AI's `get_removed_platform_flags` never reads `removed_at` — confirmed via a repo-wide
+search before scoping this as a bounded, self-contained change (Tier 2: implemented directly, one
+self-review pass, no spec/plan doc).
+
+New `dateTextToIsoDate` test suite (7 cases) added to `src/lib/dateUtils.test.ts`, appended alongside
+the existing `isValidDateText`/`DATE_ENTRY_HEADERS` tests — not a replacement of them. Full suite
+(3170 tests) and `npm run build` both pass.
+
+Note: this session ran concurrently in the same working directory (not a worktree) as another
+in-progress task, mid-flight on `setBrandPlatformOverride`'s `reason`/`resume_at` fields (see the
+untracked `docs/superpowers/plans/2026-09-02-brand-platform-pause-reason.md`) — a first full-suite
+run caught 2 transient failures from that other task's own in-progress edit, unrelated to this one;
+a re-run once its edit settled came back clean, and this task's diff never touched
+`setBrandPlatformOverride`.
+

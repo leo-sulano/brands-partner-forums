@@ -1137,12 +1137,21 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
 // this mirrors platformRemovedKey in src/lib/removedPlatformBrands.ts so a
 // stored brand value that differs only in case/whitespace from the one
 // passed in here still matches the existing row instead of silently no-oping.
-export async function setBrandPlatformRemoved(tab: string, brand: string, platform: Platform, removed: boolean): Promise<void> {
+// `removedAt` (YYYY-MM-DD) lets the caller record a specific removal date
+// instead of "now" — e.g. Edit Entry's Page Removed date field, editable
+// separately from the checkbox itself. Omit it to keep the original
+// insert-time default (`now()`) for a fresh flag, or leave an already-set
+// date untouched when only re-affirming the same flagged state.
+export async function setBrandPlatformRemoved(tab: string, brand: string, platform: Platform, removed: boolean, removedAt?: string): Promise<void> {
   const brandKey = normalizeBrandKey(brand);
   if (removed) {
+    const payload: { tab: string; brand: string; platform: Platform; removed_by: string | null; removed_at?: string } = {
+      tab, brand, platform, removed_by: await currentUserEmail(),
+    };
+    if (removedAt) payload.removed_at = removedAt;
     const { error } = await supabase
       .from('removed_platform_brands')
-      .upsert({ tab, brand, platform, removed_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
+      .upsert(payload, { onConflict: 'tab,brand_key,platform' });
     if (error) throw error;
   } else {
     const { error } = await supabase

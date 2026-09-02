@@ -33,7 +33,7 @@ import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
 import { SITE_URL } from '../lib/supabase';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
-import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
+import { isValidDateText, DATE_ENTRY_HEADERS, dateTextToIsoDate } from '../lib/dateUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
@@ -2929,7 +2929,7 @@ export default function BrandGroup() {
           initialRemovedPlatformDates={initialRemovedPlatformDatesForEditEntry}
           initialOverrides={initialOverridesForEditEntry}
           onClose={() => setEditEntry(null)}
-          onSave={async (fields, newTab, removedPlatforms, overrides) => {
+          onSave={async (fields, newTab, removedPlatforms, overrides, removedPlatformDateTexts) => {
             if (newTab && newTab !== editEntry.tab) {
               await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
             }
@@ -2960,24 +2960,34 @@ export default function BrandGroup() {
                   // brand-rename-during-save limitation documented near
                   // setBrandPlatformRemoved in src/lib/queries.ts).
                   for (const p of getTabPlatforms(decodedTab)) {
-                    if (wasRemoved.has(p) !== nowRemoved.has(p)) {
-                      const willBeRemoved = nowRemoved.has(p);
-                      await setBrandPlatformRemoved(targetTab, brandName, p, willBeRemoved);
-                      if (willBeRemoved) {
-                        try {
-                          await notifyBrandRemoved({
-                            brand: brandName,
-                            tabLabel: tabDisplayName(targetTab),
-                            platformShortLabel: PLATFORM_SHORT_LABEL[p],
-                            removedAtLabel: formatCellValue(new Date().toISOString()),
-                            brandTabUrl: `${SITE_URL}/brands/${tabToSlug(targetTab)}?brand=${encodeURIComponent(brandName)}`,
-                          });
-                        } catch {
-                          setToast({
-                            message: `${brandName}'s ${PLATFORM_LABEL[p]} page was flagged removed, but the notification email failed to send.`,
-                            kind: 'error',
-                          });
-                        }
+                    const willBeRemoved = nowRemoved.has(p);
+                    const stateChanged = wasRemoved.has(p) !== willBeRemoved;
+                    // A platform that stays checked can still have had its date
+                    // edited (the whole point of making it editable) — diffed
+                    // against the same display format the field was seeded
+                    // with, so re-saving an untouched date is a no-op.
+                    const dateText = removedPlatformDateTexts?.[p]?.trim();
+                    const priorDateDisplay = initialRemovedPlatformDatesForEditEntry[p]
+                      ? formatCellValue(initialRemovedPlatformDatesForEditEntry[p]!)
+                      : undefined;
+                    const dateChanged = willBeRemoved && !stateChanged && !!dateText && dateText !== priorDateDisplay;
+                    if (!stateChanged && !dateChanged) continue;
+                    const removedAtIso = willBeRemoved && dateText ? dateTextToIsoDate(dateText) ?? undefined : undefined;
+                    await setBrandPlatformRemoved(targetTab, brandName, p, willBeRemoved, removedAtIso);
+                    if (willBeRemoved && stateChanged) {
+                      try {
+                        await notifyBrandRemoved({
+                          brand: brandName,
+                          tabLabel: tabDisplayName(targetTab),
+                          platformShortLabel: PLATFORM_SHORT_LABEL[p],
+                          removedAtLabel: removedAtIso ? formatCellValue(removedAtIso) : formatCellValue(new Date().toISOString()),
+                          brandTabUrl: `${SITE_URL}/brands/${tabToSlug(targetTab)}?brand=${encodeURIComponent(brandName)}`,
+                        });
+                      } catch {
+                        setToast({
+                          message: `${brandName}'s ${PLATFORM_LABEL[p]} page was flagged removed, but the notification email failed to send.`,
+                          kind: 'error',
+                        });
                       }
                     }
                   }

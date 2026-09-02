@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidDateText, DATE_ENTRY_HEADERS } from './dateUtils';
+import { isValidDateText, DATE_ENTRY_HEADERS, dateTextToIsoDate } from './dateUtils';
 
 describe('isValidDateText', () => {
   it('accepts empty/blank values — these fields are optional', () => {
@@ -65,5 +65,35 @@ describe('DATE_ENTRY_HEADERS', () => {
     expect(DATE_ENTRY_HEADERS.has('Casino Guru review added')).toBe(true);
     expect(DATE_ENTRY_HEADERS.has('Wizard of Odds')).toBe(true);
     expect(DATE_ENTRY_HEADERS.has('Removed / Not Published / stil published date')).toBe(true);
+  });
+});
+
+describe('dateTextToIsoDate', () => {
+  it('converts DD/MM/YYYY to YYYY-MM-DD', () => {
+    expect(dateTextToIsoDate('01/09/2026')).toBe('2026-09-01');
+  });
+
+  it('pads single-digit day/month', () => {
+    expect(dateTextToIsoDate('1/9/2026')).toBe('2026-09-01');
+  });
+
+  it('passes through an already-ISO date unchanged', () => {
+    expect(dateTextToIsoDate('2026-09-01')).toBe('2026-09-01');
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(dateTextToIsoDate('  01/09/2026  ')).toBe('2026-09-01');
+  });
+
+  it('rejects an unreal calendar date', () => {
+    expect(dateTextToIsoDate('31/02/2026')).toBeNull();
+  });
+
+  it('rejects blank input', () => {
+    expect(dateTextToIsoDate('')).toBeNull();
+  });
+
+  it('rejects unrecognized text', () => {
+    expect(dateTextToIsoDate('TBD')).toBeNull();
   });
 });
