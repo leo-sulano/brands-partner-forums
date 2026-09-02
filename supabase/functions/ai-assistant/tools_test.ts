@@ -1020,6 +1020,37 @@ Deno.test("get_schedule excludes a brand whose platform page is flagged removed"
   assertEquals(result.schedule[0].platform, 'ag');
 });
 
+Deno.test('get_schedule returns an empty holidays array when none fall in the requested week', async () => {
+  const tables = {
+    brand_schedule: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Rooster Partners', week_start: '2026-08-03' });
+  assertEquals(Array.isArray(result.holidays), true);
+  assertEquals(result.holidays.length, 0);
+});
+
+Deno.test('get_schedule includes a public holiday that falls on a weekday in the requested week', async () => {
+  const tables = {
+    // 2026-08-03 is a Monday; 2026-08-05 is that week's Wednesday. No row here
+    // has wednesday: 'active' — the holiday is reported independently of any
+    // brand_schedule row, matching the tool's own description.
+    brand_schedule: [
+      { tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'tp', week_start: '2026-08-03', monday: 'active', tuesday: null, wednesday: null, thursday: 'active', friday: null },
+    ],
+    public_holidays: [
+      { date: '2026-08-05', name: 'Test Holiday' },
+      { date: '2026-01-01', name: "New Year's Day" }, // different week, must be excluded
+    ],
+  };
+  const result: any = await runTool(mockSupabaseTables(tables), 'get_schedule', { tab: 'Rooster Partners', week_start: '2026-08-03' });
+  assertEquals(result.holidays.length, 1);
+  assertEquals(result.holidays[0].date, '2026-08-05');
+  assertEquals(result.holidays[0].name, 'Test Holiday');
+  assertEquals(result.schedule[0].wednesday, null);
+});
+
 Deno.test("get_paused_combos excludes a brand whose platform page is flagged removed", async () => {
   const tables = {
     brand_platform_pause: [

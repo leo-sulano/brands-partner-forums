@@ -12,6 +12,7 @@ import { resolveProxyLabel, canonicalProxyKey, canonicalProxyName } from '../../
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, scheduleBrandKey } from '../../../src/lib/scheduleBrandConfig.ts';
 import { buildAgentIndex, buildAgentAssignmentMap, resolveAgentForBrand } from '../../../src/lib/scheduler/scheduleUtils.ts';
 import { getTabPlatforms } from '../../../src/lib/tab-configs.ts';
+import { holidaysInWeek } from '../../../src/lib/publicHolidays.ts';
 
 // --- field picking (ported from src/lib/queries.ts + scoreSummary.ts) ---
 // Matches src/lib/scoreSummary.ts's pick() exactly: blank is `v === ''`, no trim —
@@ -1136,7 +1137,9 @@ export const TOOL_DEFS = [
         'say it may be hidden, platform-restricted, or removed rather than concluding ' +
         'it was never scheduled or doesn\'t exist. A tab that has been archived or paused ' +
         'returns no rows at all here, for the same reason — say it may have been archived ' +
-        'or paused rather than concluding it has no schedule or doesn\'t exist.',
+        'or paused rather than concluding it has no schedule or doesn\'t exist. ' +
+        'Weekdays that fall on a public holiday are never scheduled; the "holidays" ' +
+        'array in the result lists any public holiday in the requested week.',
       parameters: {
         type: 'object',
         properties: {
@@ -1439,17 +1442,22 @@ export async function runTool(supabase: any, name: string, args: any): Promise<u
       .select('tab, brand, platform, week_start, monday, tuesday, wednesday, thursday, friday');
     if (args?.tab) q = q.eq('tab', args.tab);
     if (args?.week_start) q = q.eq('week_start', args.week_start);
-    const [{ data, error }, hiddenSet, restrictionMap, removedSet, archivedSet, pausedSet] = await Promise.all([
+    const [{ data, error }, hiddenSet, restrictionMap, removedSet, archivedSet, pausedSet, holidayRows] = await Promise.all([
       q,
       fetchScheduleHiddenSet(supabase),
       fetchScheduleRestrictionMap(supabase),
       fetchRemovedPlatformBrandSet(supabase),
       fetchArchivedTabNameSet(supabase),
       fetchPausedTabNameSet(supabase),
+      supabase.from('public_holidays').select('date, name'),
     ]);
     if (error) throw error;
     const rows = (data ?? []).filter((r: any) => !archivedSet.has(r.tab) && !pausedSet.has(r.tab));
-    return { schedule: filterHiddenOrRestricted(rows, hiddenSet, restrictionMap, removedSet) };
+    const holidays = holidaysInWeek(args.week_start, (holidayRows.data ?? []) as { date: string; name: string }[]);
+    return {
+      schedule: filterHiddenOrRestricted(rows, hiddenSet, restrictionMap, removedSet),
+      holidays,
+    };
   }
   if (name === 'get_paused_combos') {
     let q = supabase
