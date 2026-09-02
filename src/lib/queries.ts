@@ -1,4 +1,4 @@
-import type { SupabaseClient } from '@supabase/supabase-js';
+﻿import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
 import { passesPlatformDateFilter } from './scoreSummary.ts';
@@ -19,7 +19,7 @@ import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 import { extractCredentials, type EntryCredentials } from './entryCredentials.ts';
 
 // ---------------------------------------------------------------------------
-// Adapter — maps an Entry row to the Mention shape the UI expects.
+// Adapter â€” maps an Entry row to the Mention shape the UI expects.
 // Column names in `data` must match the exact column headers.
 // Falls back through common variants so minor header-name differences don't
 // break the display.
@@ -215,11 +215,11 @@ export interface TabCreatedEvent {
 
 // Reads custom_tabs directly for the "Recent Activity" feed, the same
 // "read the live table, don't log it separately" pattern fetchRecentEdits
-// already uses for entry edits — a tab creation has no "before" state to
+// already uses for entry edits â€” a tab creation has no "before" state to
 // snapshot into edit_log/delete_log, so it's purely informational (no
 // restore action), unlike a tab archival (which is recorded in its own
 // tab_archive_log table and IS restorable, see archiveTab/unarchiveTab
-// — tabs are no longer hard-deleted, so they never go through delete_log).
+// â€” tabs are no longer hard-deleted, so they never go through delete_log).
 export async function fetchRecentTabCreations(limit = 50): Promise<TabCreatedEvent[]> {
   const { data, error } = await supabase
     .from('custom_tabs')
@@ -305,7 +305,7 @@ export async function deletePublicHoliday(
   id: string,
   client: SupabaseClient = supabase,
 ): Promise<void> {
-  // Supabase silently no-ops an RLS-blocked delete — assert a row was removed.
+  // Supabase silently no-ops an RLS-blocked delete â€” assert a row was removed.
   const { data, error } = await client
     .from('public_holidays')
     .delete()
@@ -313,7 +313,7 @@ export async function deletePublicHoliday(
     .select('id');
   if (error) throw error;
   if (!data || data.length === 0) {
-    throw new Error('Holiday not deleted — you may not have permission.');
+    throw new Error('Holiday not deleted â€” you may not have permission.');
   }
 }
 
@@ -347,7 +347,7 @@ export async function fetchEntriesByTab(tab: string): Promise<BrandEntry[]> {
   return (data ?? []).map((row) => entryToBrandEntry(row as Entry));
 }
 
-// Simple in-memory cache for tab entries — avoids re-fetching on every navigation.
+// Simple in-memory cache for tab entries â€” avoids re-fetching on every navigation.
 const tabEntryCache = new Map<string, { entries: Entry[]; ts: number }>();
 const TAB_CACHE_TTL = 60_000; // 60 seconds
 
@@ -418,7 +418,7 @@ export async function fetchAllEntries(tabs?: readonly string[]): Promise<Entry[]
   // Each row carries a heavy `data` JSONB, so a single tab set can span several
   // 1000-row pages. Page sequentially and the round-trips add up (4k+ rows took
   // ~18s). Instead: one cheap count query, then fetch every page in parallel.
-  // Order by the unique primary key so parallel ranges never overlap or gap —
+  // Order by the unique primary key so parallel ranges never overlap or gap â€”
   // the caller aggregates regardless of order, so updated_at sorting isn't needed.
   function pageQuery(head: boolean) {
     let query = head
@@ -460,7 +460,7 @@ export async function fetchTabHeaders(tab: string, client: SupabaseClient = supa
   if (error) throw error;
   const headers = (data?.headers ?? []) as string[];
   const filtered = headers.filter((h) => h !== 'id' && h !== 'last_sync_tag' && h !== '');
-  // Dashboard-only tabs (no Google Sheet backing) never get a tab_schemas row —
+  // Dashboard-only tabs (no Google Sheet backing) never get a tab_schemas row â€”
   // fall back to the tab's configured column whitelist so KPI/status queries
   // still find their status columns instead of silently zeroing out.
   if (filtered.length === 0) return getTabColumns(tab) ?? [];
@@ -474,7 +474,7 @@ function isLiveStatus(s: string) {
 function isRemovedStatus(s: string) {
   return s.includes('remove') || s.includes('refus') || s.includes('reject');
 }
-// Mirrored (by hand) in src/lib/scoreSummary.ts as isPendingStatus/isDoneStatus — keep in sync if either changes.
+// Mirrored (by hand) in src/lib/scoreSummary.ts as isPendingStatus/isDoneStatus â€” keep in sync if either changes.
 export function isDoneStatus(s: string) { return s === 'done'; }
 function isPendingStatus(s: string) { return s.includes('pending') || s === 'not published'; }
 function isOnPauseStatus(s: string) { return s.includes('pause'); }
@@ -529,11 +529,11 @@ function resolveReviewColumns(rawHeaders: string[], tab: string): {
 
   // A platform hidden via the Edit Platforms modal (src/lib/tab-configs.ts's
   // hidden-platform registry) must stop contributing to this tab's KPI
-  // totals here too, not just on BrandGroup.tsx's own cards — otherwise
+  // totals here too, not just on BrandGroup.tsx's own cards â€” otherwise
   // Overview and BrandGroup silently disagree on the same tab's numbers the
   // moment a platform is hidden. Nulling the column reference makes
   // classifyEntry (below) treat a hidden platform exactly like one this tab
-  // never tracked at all — no other code path needs to change.
+  // never tracked at all â€” no other code path needs to change.
   const visible = new Set(getTabPlatforms(tab));
   const tpCol = visible.has('tp') ? rawTpCol : null;
   const agCol = visible.has('ag') ? rawAgCol : null;
@@ -560,7 +560,7 @@ interface EntryClassification {
 }
 
 // Single source of truth for "what is this one entry, per-platform and
-// overall" — computeTabKpisFromEntries (whole-tab total) and
+// overall" â€” computeTabKpisFromEntries (whole-tab total) and
 // computeBrandKpisFromEntries (per-brand breakdown) both call this so the
 // two views can never disagree about what counts as live/removed/etc.
 function classifyEntry(
@@ -607,7 +607,7 @@ function classifyEntry(
 
   // Union the selected platforms' own date/flag-gated status values into the
   // same statuses array the omitted-filter (all-platform) branch already
-  // used — this is the combined-total rule: a row counts as live if ANY
+  // used â€” this is the combined-total rule: a row counts as live if ANY
   // selected platform's status says so.
   const statuses: string[] = platformFilter?.length
     ? platformFilter
@@ -664,7 +664,7 @@ export function computeTabKpisFromEntries(
   const cols = resolveReviewColumns(rawHeaders, tab);
   const { activePlatforms } = cols;
 
-  // A tab is excluded only if it tracks NONE of the selected platforms — it's
+  // A tab is excluded only if it tracks NONE of the selected platforms â€” it's
   // included (and scoped to just the tracked subset below) if it tracks at
   // least one, which is what makes "TP + AG selected" a combined total
   // rather than an intersection.
@@ -710,7 +710,7 @@ export function computeTabKpisFromEntries(
   }
 
   // activePlatforms drives which platform rows Overview renders per tab/brand
-  // card — when a platform filter is active, only the selected platform(s)
+  // card â€” when a platform filter is active, only the selected platform(s)
   // should render, not every platform the tab structurally tracks.
   const visiblePlatforms = platformFilter?.length
     ? activePlatforms.filter((p) => platformFilter.includes(p))
@@ -745,7 +745,7 @@ export async function fetchTabKpis(
 }
 
 // Same per-entry classification as computeTabKpisFromEntries, bucketed by
-// brand name instead of collapsed into one tab-wide total — powers
+// brand name instead of collapsed into one tab-wide total â€” powers
 // Overview's "Brands" view. Brand names are grouped case/whitespace-
 // insensitively via normalizeBrandKey (the same key removed-platform-brand
 // flags already match on), and the first-seen casing is kept as the display
@@ -817,7 +817,7 @@ export function computeBrandKpisFromEntries(
 
   return Array.from(buckets.values())
     // A brand whose every *visible* (filter-scoped) platform is flagged
-    // page-removed has nothing left to show — drop it from the "Brands" view
+    // page-removed has nothing left to show â€” drop it from the "Brands" view
     // entirely rather than rendering an empty card. A brand with only SOME
     // visible platforms flagged still shows, just without those specific
     // platform rows (below).
@@ -899,7 +899,7 @@ async function logChange(
 
 // Upserts whichever credential fields are actually present in `credentials`
 // (a field is absent, not merely null, when that tab has no header for it at
-// all — see extractCredentials) — columns omitted from the upsert payload
+// all â€” see extractCredentials) â€” columns omitted from the upsert payload
 // keep their existing stored value rather than being reset, so a save on one
 // tab can never wipe a concept only some other tab's entries carry.
 async function upsertEntryCredentials(
@@ -915,7 +915,7 @@ async function upsertEntryCredentials(
   if (error) throw error;
 }
 
-// Paginates in 1 000-row batches like fetchAllTabEntries above — a tab with
+// Paginates in 1 000-row batches like fetchAllTabEntries above â€” a tab with
 // more than 1 000 entries (e.g. Rooster Partners' 1791) would otherwise be
 // silently truncated to Postgrest's default page size, dropping whichever
 // rows happen to sort past the cutoff. Caught live: an unpaginated version of
@@ -955,13 +955,13 @@ export async function updateEntryData(
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
-  if (!existing) throw new Error('Entry not found — it may have been deleted.');
+  if (!existing) throw new Error('Entry not found â€” it may have been deleted.');
 
   const actor = await currentActor();
   await logChange('edit_log', 'entry', id, existing, actor, existing.tab as string);
 
   // Credential-shaped fields never reach entries.data (public via the anon
-  // key) — they're upserted into entry_credentials instead. Without this,
+  // key) â€” they're upserted into entry_credentials instead. Without this,
   // every Edit Entry save (which resends the full form, including whatever
   // the credential inputs currently hold) would write them straight back
   // into the public table on the very next edit.
@@ -988,10 +988,10 @@ export interface EntryReviewAnalysisRow {
   analyzed_at: string;
 }
 
-// Caches a generated AI Review Removal Assessment, one row per (entry, platform) — a
+// Caches a generated AI Review Removal Assessment, one row per (entry, platform) â€” a
 // multi-platform entry (Rooster Partners, Revolution Casino, SilverPlay, Hanan) can have
 // independent cached analyses for TP/AG/CG without one overwriting another. Deliberately
-// not routed through logChange/edit_log — this is a derived/cached artifact regenerated
+// not routed through logChange/edit_log â€” this is a derived/cached artifact regenerated
 // from the entry's own existing fields, not a user edit to business data.
 export async function saveReviewAnalysis(
   entryId: string,
@@ -1030,7 +1030,7 @@ export async function updateMentionStatus(id: string, status: MentionStatus): Pr
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
-  if (!existing) throw new Error('Entry not found — it may have been deleted.');
+  if (!existing) throw new Error('Entry not found â€” it may have been deleted.');
 
   const actor = await currentActor();
   await logChange('edit_log', 'entry', id, existing, actor, existing.tab as string);
@@ -1054,7 +1054,7 @@ export async function insertEntry(
 ): Promise<void> {
   const sheetRowId = `dashboard-${crypto.randomUUID()}`;
   const syncTag = crypto.randomUUID();
-  // See updateEntryData's matching comment — credential-shaped fields go to
+  // See updateEntryData's matching comment â€” credential-shaped fields go to
   // entry_credentials, never into entries.data.
   const { credentials, rest } = extractCredentials(fields);
   const { data: inserted, error } = await supabase
@@ -1108,7 +1108,7 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
-  if (!existing) throw new Error('Entry not found — it may have been deleted.');
+  if (!existing) throw new Error('Entry not found â€” it may have been deleted.');
 
   const actor = await currentActor();
   await logChange('edit_log', 'entry', id, existing, actor, oldTab);
@@ -1116,24 +1116,24 @@ export async function moveEntryToTab(id: string, oldTab: string, newTab: string)
   const { error } = await supabase.from('entries').update({ tab: newTab }).eq('id', id);
   if (error) throw error;
   // Keep entry_credentials.tab (denormalized for fetchEntryCredentials'
-  // per-tab lookup) from silently going stale — a no-op if this entry has no
+  // per-tab lookup) from silently going stale â€” a no-op if this entry has no
   // credentials row at all.
   await supabase.from('entry_credentials').update({ tab: newTab }).eq('entry_id', id);
   invalidateTabCache(oldTab);
   invalidateTabCache(newTab);
 }
 
-// Toggle-off is a hard DELETE and toggle-on is a fresh INSERT/upsert — so
+// Toggle-off is a hard DELETE and toggle-on is a fresh INSERT/upsert â€” so
 // removed_by/removed_at always reflect the most recent (re-)flagging, not the
 // original flagger/time; re-enabling loses that history. Accepted tradeoff of
 // the "row existence = flagged" model (see the migration's header comment),
 // not a bug. Also: if a brand is renamed on the same Edit Entry save that also
-// toggles the flag, the flag is written against the *new* name — the old
+// toggles the flag, the flag is written against the *new* name â€” the old
 // name's flag row (if any) is left untouched. Accepted, documented limitation;
 // no rename-detection logic is planned for it.
 //
 // Matching is done via the generated `brand_key` column (lower+trim of
-// `brand`, see the 20260729140000 migration), not the raw `brand` value —
+// `brand`, see the 20260729140000 migration), not the raw `brand` value â€”
 // this mirrors platformRemovedKey in src/lib/removedPlatformBrands.ts so a
 // stored brand value that differs only in case/whitespace from the one
 // passed in here still matches the existing row instead of silently no-oping.
@@ -1164,21 +1164,44 @@ export interface BrandPlatformOverride {
   // Schedule Planner tooltip so a forced pause/active can say who forced it,
   // not just that it's forced.
   set_by: string | null;
+  // reason/resume_at (docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md)
+  // are only ever meaningful when override_state === 'pause'. Both null for
+  // the pre-existing Edit Entry "Force Paused" path and for any 'active'
+  // override.
+  reason: string | null;
+  resume_at: string | null;
 }
 
 export async function fetchBrandPlatformOverrides(tab: string, client: SupabaseClient = supabase): Promise<BrandPlatformOverride[]> {
   const { data, error } = await client
     .from('brand_platform_override')
-    .select('tab, brand_key, platform, override_state, set_by')
+    .select('tab, brand_key, platform, override_state, set_by, reason, resume_at')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as BrandPlatformOverride[];
 }
 
-export async function setBrandPlatformOverride(tab: string, brand: string, platform: Platform, state: 'pause' | 'active'): Promise<void> {
+export async function setBrandPlatformOverride(
+  tab: string,
+  brand: string,
+  platform: Platform,
+  state: 'pause' | 'active',
+  opts?: { reason?: string | null; resumeAt?: string | null },
+): Promise<void> {
   const { error } = await supabase
     .from('brand_platform_override')
-    .upsert({ tab, brand, platform, override_state: state, set_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
+    .upsert(
+      {
+        tab,
+        brand,
+        platform,
+        override_state: state,
+        set_by: await currentUserEmail(),
+        reason: opts?.reason ?? null,
+        resume_at: opts?.resumeAt ?? null,
+      },
+      { onConflict: 'tab,brand_key,platform' },
+    );
   if (error) throw error;
 }
 
@@ -1202,11 +1225,11 @@ export async function fetchBrandSchedule(tab: string, weekStart: string, client:
   return (data ?? []) as BrandScheduleRow[];
 }
 
-// Upserts on (tab, brand_key, platform, week_start) — only the one `day`
+// Upserts on (tab, brand_key, platform, week_start) â€” only the one `day`
 // column (plus updated_at) is included in the payload, so PostgREST's
 // generated ON CONFLICT ... DO UPDATE SET only touches that column, leaving
 // the other four weekdays on that row exactly as they were. `platform` is
-// always a real platform here — manual clicks (the only caller) always
+// always a real platform here â€” manual clicks (the only caller) always
 // target one specific platform's cell, never a legacy platform-less row.
 export async function setBrandScheduleDay(
   tab: string,
@@ -1291,7 +1314,7 @@ export interface ScheduleCancellation {
   weekday: Weekday;
 }
 
-// Pure display/audit trail (see the migration's own doc comment) — never
+// Pure display/audit trail (see the migration's own doc comment) â€” never
 // read by the scheduler engine, generation logic, or PMS sync. Only the
 // Schedule Status column's "Cancelled" icon reads this.
 export async function fetchScheduleCancellations(tab: string, weekStart: string, client: SupabaseClient = supabase): Promise<ScheduleCancellation[]> {
@@ -1319,7 +1342,7 @@ export async function recordScheduleCancellation(tab: string, brand: string, pla
 }
 
 // Called whenever a previously-cancelled day is reactivated (Resume, or the
-// "+" button setting Active/Paused on a blank cell) — clears the marker so
+// "+" button setting Active/Paused on a blank cell) â€” clears the marker so
 // the Schedule Status column stops showing "Cancelled" for it. A no-op
 // (zero rows deleted) when the day was never cancelled, which is the common
 // case, so callers don't need to check first.
@@ -1431,11 +1454,11 @@ export async function deleteSchedulePmsLink(id: string, client: SupabaseClient =
 // ---------------------------------------------------------------------------
 
 // Every field mirrors one of the dashboard's own multi-select filter dropdowns
-// — set to opt into re-checking entries a platform normally skips (e.g.
+// â€” set to opt into re-checking entries a platform normally skips (e.g.
 // statusFilters:['live'] re-checks Published entries for a Published ->
 // Removed transition) or to scope a check to exactly what's currently
 // filtered in the table. Each field matches an entry if it hits ANY of the
-// given values (OR within a field, AND across fields) — same semantics as the
+// given values (OR within a field, AND across fields) â€” same semantics as the
 // dashboard's own filter chain. Omit a field (or the whole object) for the
 // platform's normal default sweep.
 export interface StatusCheckScope {
@@ -1447,7 +1470,7 @@ export interface StatusCheckScope {
   countries?: string[];
   // 'YYYY-MM-DD', same shape the dashboard's own DatePicker/dateFrom+dateTo
   // state already uses. Matched against the platform's own post-date column
-  // (mirrors passesPlatformDateFilter in scoreSummary.ts) — an entry with no
+  // (mirrors passesPlatformDateFilter in scoreSummary.ts) â€” an entry with no
   // date, or an unparseable one, is still included rather than excluded.
   dateFrom?: string;
   dateTo?: string;
@@ -1469,7 +1492,7 @@ function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<st
 }
 
 // A 504 here means whatever fronts status_server.py (ngrok/load balancer) gave
-// up waiting for a response — it says nothing about the check itself. The
+// up waiting for a response â€” it says nothing about the check itself. The
 // check runs synchronously and only releases _global_run_lock when the scrape
 // truly finishes, so a large/unscoped run can easily outlast the proxy's
 // timeout while still succeeding server-side. Callers should treat this
@@ -1477,7 +1500,7 @@ function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<st
 // since /active-checks will correctly keep reporting it as running.
 export class StatusCheckTimeoutError extends Error {}
 const STATUS_CHECK_TIMEOUT_MESSAGE =
-  'No response — the request timed out waiting for the server, but the check may still be running in the background.';
+  'No response â€” the request timed out waiting for the server, but the check may still be running in the background.';
 
 export async function triggerStatusCheck(
   tab: string,
@@ -1485,7 +1508,7 @@ export async function triggerStatusCheck(
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
   if (!CHECK_STATUS_URL) {
     throw new Error(
-      'VITE_CHECK_STATUS_URL is not configured — check .env',
+      'VITE_CHECK_STATUS_URL is not configured â€” check .env',
     );
   }
   const res = await fetch(CHECK_STATUS_URL, {
@@ -1511,7 +1534,7 @@ export async function triggerAgStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
-  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
+  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured â€” check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
     headers: {
@@ -1534,7 +1557,7 @@ export async function triggerCgStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
-  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
+  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured â€” check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
     headers: {
@@ -1557,7 +1580,7 @@ export async function triggerWoStatusCheck(
   tab: string,
   scope: StatusCheckScope = {},
 ): Promise<{ checked: number; updated: number; errors: number; sheet_errors?: number; skipped_group?: number }> {
-  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured — check .env');
+  if (!CHECK_AG_STATUS_URL) throw new Error('VITE_CHECK_AG_STATUS_URL (or VITE_CHECK_STATUS_URL) is not configured â€” check .env');
   const res = await fetch(CHECK_AG_STATUS_URL, {
     method: 'POST',
     headers: {
@@ -1602,7 +1625,7 @@ export async function getActiveChecks(): Promise<string[]> {
 }
 
 // Mirrors status_server.py's `tab_key` construction exactly (see check_status()/
-// check_ag_status()/check_cg_status()/check_wo_status()) — TP keeps its legacy
+// check_ag_status()/check_cg_status()/check_wo_status()) â€” TP keeps its legacy
 // bare-tab key, AG/CG/WO are namespaced by platform. Used to match this tab's own
 // entries in getActiveChecks()'s result so the UI can tell whether a check it (or
 // another session) started is still running server-side, independent of whether
@@ -1612,7 +1635,7 @@ export function statusCheckTabKeys(tab: string, platforms: ('tp' | 'ag' | 'cg' |
 }
 
 // ---------------------------------------------------------------------------
-// Admin — profile management
+// Admin â€” profile management
 // ---------------------------------------------------------------------------
 
 export async function getProfiles(): Promise<Profile[]> {
@@ -1634,7 +1657,7 @@ export async function updateProfile(
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
-  if (!existing) throw new Error('Account not found — it may have been deleted.');
+  if (!existing) throw new Error('Account not found â€” it may have been deleted.');
 
   const actor = await currentActor();
   await logChange('edit_log', 'account', id, existing, actor);
@@ -1653,7 +1676,7 @@ export async function deleteProfile(id: string): Promise<void> {
     .eq('id', id)
     .maybeSingle();
   if (selErr) throw selErr;
-  if (!existing) throw new Error('Account not found — it may already be deleted.');
+  if (!existing) throw new Error('Account not found â€” it may already be deleted.');
 
   const actor = await currentActor();
   await logChange('delete_log', 'account', id, existing, actor);
@@ -1663,7 +1686,7 @@ export async function deleteProfile(id: string): Promise<void> {
     .delete({ count: 'exact' })
     .eq('id', id);
   if (error) throw error;
-  if (count === 0) throw new Error('Delete had no effect — the "admins can delete profiles" RLS policy may not be applied in your Supabase project.');
+  if (count === 0) throw new Error('Delete had no effect â€” the "admins can delete profiles" RLS policy may not be applied in your Supabase project.');
 }
 
 export type AdminAction = 'approve' | 'revoke' | 'remove' | 'make_admin' | 'remove_admin';
@@ -1765,7 +1788,7 @@ export async function restoreDeletedEntity(logId: string): Promise<void> {
   const table = log.entity_type === 'account' ? 'profiles' : log.entity_type === 'tab' ? 'custom_tabs' : 'entries';
 
   // Accounts and tabs have no sync-related bookkeeping fields, so the
-  // snapshot can be reinserted verbatim. Entries do — restoring should
+  // snapshot can be reinserted verbatim. Entries do â€” restoring should
   // refresh those to reflect the restore happening now, not backdate them to
   // the deleted row's old state (same rationale as restoreEditedEntity).
   const insertPayload =
@@ -1810,14 +1833,14 @@ export async function restoreEditedEntity(logId: string): Promise<void> {
     .eq('id', log.entity_id)
     .maybeSingle();
   if (curErr) throw curErr;
-  if (!current) throw new Error('This row no longer exists — restore the delete first.');
+  if (!current) throw new Error('This row no longer exists â€” restore the delete first.');
 
   const actor = await currentActor();
 
   // Snapshot the state right before the restore so the restore itself can be undone later.
   await logChange('edit_log', log.entity_type as AuditEntityType, log.entity_id, current, actor, log.tab ?? undefined);
 
-  // Only revert the fields an edit can actually change — never blindly copy
+  // Only revert the fields an edit can actually change â€” never blindly copy
   // back sync-internal bookkeeping (last_sync_tag, updated_at, sheet_row_id):
   // an old last_sync_tag could confuse the Sheet sync's echo-loop protection,
   // and updated_at should reflect the restore happening now, not the past.
@@ -1878,7 +1901,7 @@ export async function createCustomTab(
     throw error;
   }
   // Only write a tab_toolbar_filters row when the creator actually narrowed
-  // from the default — keeps the table sparse, matching tab_hidden_platforms'
+  // from the default â€” keeps the table sparse, matching tab_hidden_platforms'
   // "no row means default" shape, and means most tab creations (which never
   // touch this section of the modal) write nothing extra at all.
   if (enabledFilters && !isDefaultFilterSet(enabledFilters)) {
@@ -1892,12 +1915,12 @@ function isDefaultFilterSet(filters: ToolbarFilterKey[]): boolean {
 }
 
 // Updates which platforms a dynamic Brand Tab tracks. Never touches
-// `entries.data` — a removed platform's columns simply stop being generated
+// `entries.data` â€” a removed platform's columns simply stop being generated
 // by buildDynamicTabColumns (dynamicTabRegistry.ts), so any values already
 // saved under them are preserved but hidden, and reappear if the platform is
 // re-added later. Callers must also call registerDynamicTabs([{ name,
 // platforms }]) afterward to refresh the in-memory column registry for the
-// current session — this function only writes the DB row.
+// current session â€” this function only writes the DB row.
 export async function updateCustomTabPlatforms(name: string, platforms: DynamicTabPlatform[]): Promise<void> {
   const { error } = await supabase
     .from('custom_tabs')
@@ -1924,11 +1947,11 @@ export async function fetchTabIconOverrides(client: SupabaseClient = supabase): 
   }));
 }
 
-// Sets tab (hardcoded or dynamic) `tab`'s icon override — the three fields
+// Sets tab (hardcoded or dynamic) `tab`'s icon override â€” the three fields
 // are mutually exclusive by construction (IconPicker's source toggle always
 // supplies exactly one non-null value and nulls the other two). Callers must
 // also call registerTabIconOverrides([{ tab, ...selection }]) afterward to
-// refresh the in-memory registry for the current session — this function
+// refresh the in-memory registry for the current session â€” this function
 // only writes the DB row.
 export async function upsertTabIconOverride(
   tab: string,
@@ -1949,7 +1972,7 @@ export async function upsertTabIconOverride(
 
 // Uploads a compressed tab-icon image to the `tab-icons` Storage bucket and
 // returns its public URL. Path uses a random id rather than the tab's name
-// (unlike uploadAvatar's fixed `<userId>/avatar` path) — a brand-new tab in
+// (unlike uploadAvatar's fixed `<userId>/avatar` path) â€” a brand-new tab in
 // AddBrandTabModal has no confirmed name yet, and a dynamic tab can be
 // renamed later; the tab_icon_overrides row is the only link between a tab
 // and its image URL.
@@ -2159,7 +2182,7 @@ export async function fetchHiddenTabPlatforms(client: SupabaseClient = supabase)
 }
 
 // Hides or un-hides one platform on one tab (any tab, though in practice
-// only ever called for a hardcoded tab — a dynamic tab keeps using
+// only ever called for a hardcoded tab â€” a dynamic tab keeps using
 // updateCustomTabPlatforms/registerDynamicTabs instead, see Task 236).
 // Never touches entries.data: a hidden platform's columns still exist and
 // still hold real data, they simply stop being reported by
@@ -2179,3 +2202,4 @@ export async function setTabPlatformHidden(tab: string, platform: Platform, hidd
     if (error) throw error;
   }
 }
+
