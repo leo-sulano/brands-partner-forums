@@ -8088,3 +8088,88 @@ hardcoded tab can now be renamed in production with no schedule/PMS-sync gap.
 **Spec:** `docs/superpowers/specs/2026-09-01-hardcoded-tab-rename-design.md`.
 **Plan:** `docs/superpowers/plans/2026-09-01-hardcoded-tab-rename.md`.
 
+---
+
+## Task 307: Schedule Planner — block public holidays + rebalance weekly workload
+**Date:** September 2, 2026
+
+Schedule Planner previously had no concept of a non-working day — a national or local holiday
+would still get chips generated on it like any ordinary weekday. New `public_holidays` table
+(migration `20260902120000_add_public_holidays.sql`: `date` unique + `name`, 4 RLS policies via
+`public.is_approved()` — anyone can read, approved users can insert/update/delete) is seeded with
+fixed-date PH national non-working holidays for 2026-2027 (New Year's Day, Araw ng Kagitingan,
+Labor Day, Independence Day, Ninoy Aquino Day, All Saints' Day, Bonifacio Day, Feast of the
+Immaculate Conception, Christmas Day, Rizal Day, Last Day of the Year — `on conflict (date) do
+nothing`, safe to re-run). Movable national holidays (Holy Week, National Heroes Day, Eid'l Fitr,
+Eid'l Adha, Chinese New Year, EDSA anniversary) and all local/city holidays are deliberately not
+seeded — the team adds them through a new modal instead of depending on an external holiday API or
+a yearly code change.
+
+New pure, Deno-safe `src/lib/publicHolidays.ts` (`buildHolidayDateSet`, `holidayOn`,
+`holidaysInWeek`, `holidayWeekdaysForDateSet`, `weekdayDatesOf`) plus `fetchPublicHolidays`/
+`addPublicHoliday`/`deletePublicHoliday` in `queries.ts` are the only way any surface reads or
+writes the table. `TabContext.holidayDates: Set<string>` (fetched alongside the existing
+hidden-brand/platform-restriction/removed-flag exclusion sets) is populated both client-side
+(`TabScheduleSection.tsx`, routed through the existing `withFlagFallback` fail-open wrapper — a
+transient fetch failure degrades to "no holidays known" rather than breaking the page) and inside
+the `generate-weekly-schedule` edge function's own `buildTabContext` (fetched unconditionally, not
+`.catch()`-swallowed, since a holiday silently missing from the Monday cron's context would
+actively generate wrong chips rather than merely omit a nice-to-have). `ensureWeekGenerated`
+(`schedulerService.ts`) converts the target week's holidays into `SchedulerInput.unavailableDays:
+Weekday[]`, a new field the pure `generateWeekSchedule` engine's `leastLoadedDay` assignment now
+excludes from consideration — a platform's weekly post count is preserved and redistributed across
+the remaining working days, only reduced when `postsPerWeek` exceeds the days actually left in the
+week. Every `generateWeekSchedule(` call site (engine tests included) passes `unavailableDays`
+explicitly.
+
+The calendar grid, the weekday-number header, `TabPreviewCard`'s mini-calendar, and the CSV/Excel
+export all key off the same `holidays`/`holidayDateSet` data for the same dates, so none of them
+can disagree about which day is a holiday. `ScheduleCell` gained a `holidayName?: string` prop:
+a holiday column renders greyed and fully read-only (same `isApproved={false}` pattern already
+used for legacy pre-platform weeks — no click-to-cycle, no "+ Add Platform"), with the holiday's
+name surfaced via the dashboard's existing shared `Tooltip` component rather than a new one. A
+holiday that already has chips on it (a legacy week, or a chip added before the date was listed)
+still renders those chips read-only rather than auto-deleting them. New "Public Holidays"
+management modal on the Schedule Planner toolbar lets any approved user add or remove a date —
+local/city holidays included — with no code change or deploy. The export gained one new "Holidays
+This Week" column; Ask AI's `get_schedule` tool now returns the week's holidays and its tool
+description notes holiday weekdays are never scheduled.
+
+`recalculatePauses` and every entry-status-based surface (Overview, Score Summary, Brand Tabs) are
+untouched — they read real entry status, not the generated plan, so a holiday changes nothing about
+what's already been posted or removed.
+
+Built via 12 Subagent-Driven-Development tasks (pure helpers → query layer → engine
+`unavailableDays` + rebalance, TDD'd with a two-brand non-vacuous regression fixture → service
+`TabContext.holidayDates` → edge-function fetch → read-only greyed cells → grid/header wiring →
+mini-calendar/preview greying → management modal → export column → Ask AI tool), each individually
+reviewed clean (0 Critical/Important findings across all 12 task reviews; a handful of trivial,
+no-action Minors — e.g. a redundant empty-guard, a thin test title, an idiomatic ~4-line pattern
+already repeated project-wide). This task (13) covers documentation and local verification only,
+per explicit controller scope — a separate, deeper final whole-branch review is being run
+independently rather than duplicated here, and no deploy/live-Playwright step was run. Full suite
+(2278 tests, 133 files) and `npm run build` both pass clean.
+
+Spec: `docs/superpowers/specs/2026-09-02-schedule-planner-public-holidays-design.md`
+Plan: `docs/superpowers/plans/2026-09-02-schedule-planner-public-holidays.md`
+
+**Accepted limitations (from the spec, not fixed by this feature):**
+- Past/already-generated weeks are not rewritten — adding a holiday only affects weeks generated
+  after the change, matching the project's standing "never rewrite history" norm.
+- PMS pull-direction is unguarded: a human dragging a linked PMS task's due date onto a holiday
+  still writes that `brand_schedule` day via `weekdayAndWeekStartFor`/`setBrandScheduleDay`, same
+  as the existing "due date moved onto a weekend" nuance.
+- No force-post-on-holiday override — holiday cells are fully read-only, per the approved design.
+- Region is global, not per-tab — a "local" holiday stops the whole team's workload regardless of
+  which tab is being scheduled, since it's local to where the team sits, not to a brand.
+- Movable national holidays and all local/city holidays are team-maintained through the modal, not
+  auto-populated from any external source.
+
+**Pending manual deploy:**
+1. `supabase db push`  (creates + seeds `public_holidays`)
+2. `git push origin main`  (frontend)
+3. `supabase functions deploy generate-weekly-schedule`  (Monday cron respects holidays)
+4. `supabase functions deploy ai-assistant`  (`get_schedule` returns holidays)
+Frontend + cron degrade safely without 3/4: the page works fully after step 2; the cron just
+ignores holidays until step 3.
+

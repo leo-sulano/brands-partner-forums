@@ -61,7 +61,38 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-02 (newest):* Any of the 11 hardcoded Brand Tabs (BITP, FTP, Rooster Partners,
+- *2026-09-02 (newest):* Schedule Planner now blocks public holidays and rebalances that week's
+  workload around them instead of scheduling a chip on a non-working day. New `public_holidays`
+  table (date + name, 4 RLS policies via `public.is_approved()`) is seeded with fixed-date PH
+  national non-working holidays for 2026-2027; movable national holidays (Holy Week, National
+  Heroes Day, Eid'l Fitr/Adha, Chinese New Year, EDSA anniversary) and all local/city holidays are
+  deliberately not seeded — a new "Public Holidays" modal on the Schedule Planner toolbar lets any
+  approved user add or remove a date with no code change or deploy. `TabContext.holidayDates` is
+  fetched both client-side (`TabScheduleSection.tsx`, via the existing `withFlagFallback` fail-open
+  wrapper) and inside `generate-weekly-schedule`'s own `buildTabContext` (unconditional, not
+  `.catch()`-swallowed, since a missed holiday there would actively generate wrong chips, not just
+  omit a nicety); `ensureWeekGenerated` converts a week's holidays into a new
+  `SchedulerInput.unavailableDays`, which the pure `generateWeekSchedule` engine's `leastLoadedDay`
+  balancing now excludes — a platform's weekly post count is preserved and redistributed across the
+  remaining working days, only reduced when the post frequency exceeds the days actually left. The
+  calendar grid, weekday header, `TabPreviewCard` mini-calendar, and the CSV/Excel export (`Holidays
+  This Week` column) all key off the same holiday-date data, and a holiday `ScheduleCell` is fully
+  read-only (same `isApproved={false}` pattern as a legacy week) with the name shown via the
+  dashboard's existing shared `Tooltip`. Ask AI's `get_schedule` tool now returns the week's
+  holidays too. `recalculatePauses` and every entry-status-based surface (Overview, Score Summary,
+  Brand Tabs) are untouched — they read real entry status, not the generated plan. Built via 12 SDD
+  tasks, each reviewed clean (0 Critical/Important findings); this session's own contribution was
+  documentation + local verification only (a separate whole-branch review ran independently). Full
+  suite (2278 tests, 133 files) and build pass. Accepted limitations (region is global not
+  per-tab, no force-post override, past weeks aren't rewritten, PMS pull-direction is unguarded
+  against writing a holiday day, movable/local holidays are team-maintained) are in Known Issues
+  below. Spec: `docs/superpowers/specs/2026-09-02-schedule-planner-public-holidays-design.md`.
+  Plan: `docs/superpowers/plans/2026-09-02-schedule-planner-public-holidays.md`. **Pending manual
+  deploy:** `supabase db push` (creates + seeds `public_holidays`), `git push origin main`
+  (frontend), `supabase functions deploy generate-weekly-schedule` (Monday cron respects holidays),
+  `supabase functions deploy ai-assistant` (`get_schedule` returns holidays) — the frontend works
+  fully after just the `git push`; the cron simply ignores holidays until it's redeployed. Task 307.
+- *2026-09-02 (prior):* Any of the 11 hardcoded Brand Tabs (BITP, FTP, Rooster Partners,
   Revolution Casino, Trybet, SilverPlay, SuprPlay Limited, HazEmirates UAE, Hanan, Wizard of Odds,
   GRG - Gulf Recovery Group) can now be truly renamed from Edit Brand Tab — same real identity
   change (URL slug, `entries.tab`, every other tab-keyed table) a dynamic tab rename already gave,
@@ -1270,6 +1301,19 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
+- **Schedule Planner public-holiday blocking (2026-09-02, Task 307) — accepted limitations, per
+  the spec, not bugs:** past/already-generated weeks are never rewritten when a holiday is added
+  later (matches the project's standing "never rewrite history" norm — a holiday's effect only
+  starts with the next generation of that week); the PMS pull-direction reconciliation
+  (`weekdayAndWeekStartFor`/`setBrandScheduleDay`) is unguarded against a human dragging a linked
+  PMS task's due date onto a holiday, which still writes that `brand_schedule` day, same as the
+  existing "due date moved onto a weekend" nuance; there is no force-post-on-holiday override —
+  holiday cells are fully read-only by design; and movable national holidays (Holy Week, National
+  Heroes Day, Eid'l Fitr/Adha, Chinese New Year, EDSA anniversary) plus all local/city holidays are
+  not auto-populated from any external source — the team maintains them through the new Public
+  Holidays modal. See Task 307 in `docs/task-history.md` for the full feature writeup and the
+  pending-manual-deploy checklist (`supabase db push` / `git push origin main` /
+  `supabase functions deploy generate-weekly-schedule` / `supabase functions deploy ai-assistant`).
 - **Resolved (2026-09-02, same day as Task 306).** `generate-weekly-schedule` (now version 14) and
   `sync-schedule-pms` (now version 36) were both redeployed the same day — `deno check` clean on
   both first, then confirmed `ACTIVE` via `supabase functions list`, with `hardcodedTabRenameRegistry.ts`
