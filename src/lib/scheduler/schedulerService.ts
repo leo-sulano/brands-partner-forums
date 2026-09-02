@@ -14,6 +14,7 @@ import {
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
 import { overrideKey, type OverrideState } from '../scheduleOverrides.ts';
 import { getSchedulableBrandPlatforms } from '../scheduleBrandConfig.ts';
+import { holidayWeekdaysForDateSet } from '../publicHolidays.ts';
 import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
@@ -51,6 +52,11 @@ export interface TabContext {
   // scheduled on (schedule_platform_restrictions). Optional, same
   // "defaults to unrestricted" convention.
   platformRestrictionMap?: Map<string, Platform>;
+  // ISO date strings ('YYYY-MM-DD') of every public holiday. Any that falls
+  // on a Mon-Fri of the week being generated becomes an unavailable day for
+  // the engine. Optional — defaults to "no holidays" — same convention as
+  // removedPlatformBrandSet / overrideMap / hiddenBrandSet above.
+  holidayDates?: Set<string>;
 }
 
 function brandOf(entry: Entry): string {
@@ -363,6 +369,8 @@ export async function ensureWeekGenerated(
 
   const carryover = await buildCarryover(tab, weekStart, ctx, client);
 
+  const unavailableDays = holidayWeekdaysForDateSet(weekStart, ctx.holidayDates ?? new Set());
+
   const slots = generateWeekSchedule({
     brands: ctx.brands,
     activePlatforms: ctx.activePlatforms,
@@ -370,7 +378,7 @@ export async function ensureWeekGenerated(
     pausedBrandPlatforms,
     resumingBrandPlatforms: resumedThisWeek,
     carryover,
-    unavailableDays: [],
+    unavailableDays,
   });
 
   if (slots.length === 0) return [];

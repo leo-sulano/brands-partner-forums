@@ -670,4 +670,30 @@ describe('ensureWeekGenerated', () => {
     const activated = await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
     expect(activated).toEqual([]);
   });
+
+  // weekStart Monday 2026-09-07; 2026-09-09 (Wed) is a public holiday. AG is
+  // 2/week with no preferred days and no day-load skew across two brands, so
+  // its normal load-balancing (least-loaded-day) picks Monday+Tuesday for
+  // the first brand and then Wednesday+Thursday for the second — i.e.
+  // WITHOUT this holiday exclusion the second brand's row would genuinely
+  // land on Wednesday, making this test discriminate real behavior rather
+  // than passing vacuously. With the exclusion, both brands' full weekly
+  // count of 2 lands on the remaining Mon/Tue/Thu/Fri days instead.
+  it('never writes an active status on a holiday weekday, but still hits the normal weekly count', async () => {
+    const ctx: TabContext = {
+      brands: ['WinMega', 'BrandB'],
+      activePlatforms: ['ag'],
+      entries: [],
+      holidayDates: new Set(['2026-09-09']),
+    };
+    await ensureWeekGenerated('BITP', '2026-09-07', ctx, []);
+    expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+    const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+    expect(rows).toHaveLength(2);
+    for (const row of rows) {
+      expect(row.wednesday).toBeNull();
+      const activeDays = ['monday', 'tuesday', 'thursday', 'friday'].filter((d) => row[d] === 'active');
+      expect(activeDays).toHaveLength(2);
+    }
+  });
 });
