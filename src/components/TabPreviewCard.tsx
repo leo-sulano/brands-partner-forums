@@ -19,6 +19,10 @@ interface Props {
   dateHeaderMonthGroups: { month: string; count: number }[];
   todayISO: string;
   previewLoading: boolean;
+  // Public-holiday dates (Task 9) — a column whose col.iso is in this set is
+  // greyed in both header rows and the body cells, in every card this
+  // component renders (active and paused grids alike).
+  holidayDateSet: Set<string>;
   // Undefined disables the card's whole-card click/keyboard nav and the
   // trailing chevron — used for a whole-tab-paused card, which must never
   // be reachable through the normal tab-selection flow (opening
@@ -53,7 +57,7 @@ interface Props {
 // so planActive below is always false for it — every chip a paused card
 // shows is real evidence, never a plan, with no separate "missed" concept
 // needed for that case.
-export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, onClick, cornerBadge, headerExtra, renderBrandDetail }: Props) {
+export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, holidayDateSet, onClick, cornerBadge, headerExtra, renderBrandDetail }: Props) {
   const clickable = !!onClick;
   return (
     <div
@@ -103,7 +107,10 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
               <tr className="bg-slate-50 text-slate-400">
                 <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-1 text-left font-medium">Brand</th>
                 {allRangeColumns.map((col) => (
-                  <th key={col.iso} className="px-1 py-1 text-center font-medium whitespace-nowrap">
+                  <th
+                    key={col.iso}
+                    className={`px-1 py-1 text-center font-medium whitespace-nowrap ${holidayDateSet.has(col.iso) ? 'bg-slate-200 text-slate-400' : ''}`}
+                  >
                     {WEEKDAY_LABELS[col.weekday][0]}
                   </th>
                 ))}
@@ -112,7 +119,10 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                 <tr className="bg-slate-50 text-slate-400">
                   <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-0.5" />
                   {allRangeColumns.map((col) => (
-                    <th key={col.iso} className="px-1 py-0.5 text-center font-medium">
+                    <th
+                      key={col.iso}
+                      className={`px-1 py-0.5 text-center font-medium ${holidayDateSet.has(col.iso) ? 'bg-slate-200 text-slate-400' : ''}`}
+                    >
                       {Number(col.iso.slice(8, 10))}
                     </th>
                   ))}
@@ -159,7 +169,10 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                           ? brandPlatforms.filter((p) => planActive(p) && !executedEntries.some((e) => e.platform === p))
                           : [];
                         return (
-                          <td key={col.iso} className="px-0.5 py-1 text-center">
+                          <td
+                            key={col.iso}
+                            className={`px-0.5 py-1 text-center ${holidayDateSet.has(col.iso) ? 'bg-slate-100' : ''}`}
+                          >
                             <span className="flex flex-wrap items-center justify-center gap-0.5">
                               {executedEntries.map(({ platform: p, kind }) => (
                                 <Tooltip key={p} content={PLATFORM_BADGE[p].label}>

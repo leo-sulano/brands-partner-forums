@@ -4,6 +4,7 @@ import { tabDisplayName } from '../lib/tabs';
 import { getActiveOperationalTabs, getPausedOperationalTabs } from '../lib/pausedTabRegistry';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow } from '../lib/scheduleBrands';
+import { buildHolidayDateSet, type PublicHoliday } from '../lib/publicHolidays';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
@@ -16,6 +17,7 @@ import {
   fetchRemovedPlatformBrands,
   fetchBrandAgentAssignments,
   fetchPausedTabDetails,
+  fetchPublicHolidays,
 } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
@@ -219,6 +221,29 @@ export default function SchedulePlanner() {
   // plan-chip ghosting each section's ScheduleCell does, so it doesn't need
   // to track the actual clock across a long-lived tab.
   const todayISO = useMemo(() => toISODate(new Date()), []);
+
+  // Public holidays for the landing-grid preview cards' mini calendars —
+  // fetched once, page-level, independent of tab/week (one global list).
+  // Deliberately a separate fetch from TabScheduleSection's own (Task 8),
+  // since this feeds a different rendering surface (the multi-tab overview
+  // cards, not the single-tab grid) — mirrors the existing previewByTab/
+  // tabCtx separation. A transient failure here only affects cosmetic
+  // greying, so it's swallowed rather than surfaced as an error.
+  const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
+  const holidayDateSet = useMemo(() => buildHolidayDateSet(holidays), [holidays]);
+  useEffect(() => {
+    let canceled = false;
+    fetchPublicHolidays()
+      .then((rows) => {
+        if (!canceled) setHolidays(rows);
+      })
+      .catch(() => {
+        // preview greying is cosmetic — ignore a transient failure
+      });
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   // Shared date-range filter — used both by the landing-grid preview cards
   // (narrows each card's mini calendar to specific days instead of the whole
@@ -727,6 +752,7 @@ export default function SchedulePlanner() {
               dateHeaderMonthGroups={dateHeaderMonthGroups}
               todayISO={todayISO}
               previewLoading={previewLoading}
+              holidayDateSet={holidayDateSet}
               onClick={() => setSelectedTabs([t])}
             />
           ))}
@@ -776,6 +802,7 @@ export default function SchedulePlanner() {
                     dateHeaderMonthGroups={dateHeaderMonthGroups}
                     todayISO={todayISO}
                     previewLoading={previewLoading}
+                    holidayDateSet={holidayDateSet}
                     cornerBadge={<PausedBadgeIcon className="size-4 shrink-0" />}
                     renderBrandDetail={(brand) => {
                       const byPlatform = firstLastIndex.get(normalizeBrandKey(brand));
