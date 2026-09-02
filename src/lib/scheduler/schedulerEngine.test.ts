@@ -12,6 +12,7 @@ const baseInput: SchedulerInput = {
   pausedBrandPlatforms: [],
   resumingBrandPlatforms: [],
   carryover: [],
+  unavailableDays: [],
 };
 
 describe('generateWeekSchedule', () => {
@@ -81,6 +82,7 @@ describe('generateWeekSchedule', () => {
       pausedBrandPlatforms: [],
       resumingBrandPlatforms: [],
       carryover: [],
+      unavailableDays: [],
     };
     const slots = generateWeekSchedule(input);
     const counts: Record<string, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
@@ -132,5 +134,62 @@ describe('generateWeekSchedule', () => {
     expect(slots.length).toBeLessThanOrEqual(5);
     const days = slots.map((s) => s.day);
     expect(new Set(days).size).toBe(days.length); // no duplicate days
+  });
+
+  it('never assigns a slot on an unavailable (holiday) weekday', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['tp'],
+      unavailableDays: ['thursday'],
+    };
+    const days = slotsFor(generateWeekSchedule(input), 'WinMega', 'tp').map((s) => s.day);
+    expect(days).not.toContain('thursday');
+  });
+
+  it('preserves the weekly post count when a preferred day is unavailable (redistributes)', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['tp'], // 2 posts/week
+      unavailableDays: ['thursday'],
+    };
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'tp')).toHaveLength(2);
+  });
+
+  it('balances load across only the available days', () => {
+    const input: SchedulerInput = {
+      brands: ['A', 'B', 'C', 'D', 'E'],
+      activePlatforms: ['ag'], // 2/week each -> 10 slots
+      pinnedBrandPlatforms: [],
+      pausedBrandPlatforms: [],
+      resumingBrandPlatforms: [],
+      carryover: [],
+      unavailableDays: ['friday'],
+    };
+    const counts: Record<string, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
+    for (const s of generateWeekSchedule(input)) counts[s.day] += 1;
+    expect(counts.friday).toBe(0);
+    // 10 slots across 4 available days, balanced: within 1 of each other.
+    const active = [counts.monday, counts.tuesday, counts.wednesday, counts.thursday];
+    expect(Math.max(...active) - Math.min(...active)).toBeLessThanOrEqual(1);
+  });
+
+  it('caps posts when fewer available days remain than the platform frequency', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['wo'], // 1/week — unaffected
+      unavailableDays: ['monday', 'tuesday', 'wednesday', 'thursday'],
+    };
+    const slots = slotsFor(generateWeekSchedule(input), 'WinMega', 'wo');
+    expect(slots).toHaveLength(1);
+    expect(slots[0].day).toBe('friday');
+  });
+
+  it('returns no slots at all when every weekday is unavailable', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['tp', 'ag', 'cg', 'wo'],
+      unavailableDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
+    };
+    expect(generateWeekSchedule(input)).toHaveLength(0);
   });
 });

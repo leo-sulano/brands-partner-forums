@@ -370,6 +370,7 @@ export async function ensureWeekGenerated(
     pausedBrandPlatforms,
     resumingBrandPlatforms: resumedThisWeek,
     carryover,
+    unavailableDays: [],
   });
 
   if (slots.length === 0) return [];

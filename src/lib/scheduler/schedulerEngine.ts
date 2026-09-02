@@ -34,23 +34,33 @@ export interface SchedulerInput {
   pausedBrandPlatforms: PinnedCombo[];
   resumingBrandPlatforms: PinnedCombo[];
   carryover: CarryoverItem[];
+  // Weekdays that fall on a public holiday this week — receive zero slots.
+  // The engine redistributes each platform's normal weekly post count across
+  // the remaining days via the same leastLoadedDay balancing.
+  unavailableDays: Weekday[];
 }
 
 function hasCombo(list: PinnedCombo[], brandKey: string, platform: Platform): boolean {
   return list.some((c) => c.brandKey === brandKey && c.platform === platform);
 }
 
-function selectDays(rule: PlatformRule, numSlots: number, dayCounts: Record<Weekday, number>): Weekday[] {
-  const preferredPool: Weekday[] = rule.preferredDayPairs
+function selectDays(
+  rule: PlatformRule,
+  numSlots: number,
+  dayCounts: Record<Weekday, number>,
+  availableDays: Weekday[],
+): Weekday[] {
+  const preferredPool: Weekday[] = (rule.preferredDayPairs
     ? [...new Set(rule.preferredDayPairs.flat())]
     : rule.preferredDays
       ? [...rule.preferredDays]
-      : [...WEEKDAYS];
+      : [...WEEKDAYS]
+  ).filter((d) => availableDays.includes(d));
 
   const chosen: Weekday[] = [];
   for (let i = 0; i < numSlots; i++) {
-    const overallAvailable = WEEKDAYS.filter((d) => !chosen.includes(d));
-    if (overallAvailable.length === 0) break; // more slots than weekdays exist; can't place more.
+    const overallAvailable = availableDays.filter((d) => !chosen.includes(d));
+    if (overallAvailable.length === 0) break; // more slots than available weekdays exist; can't place more.
     const preferredAvailable = preferredPool.filter((d) => !chosen.includes(d));
 
     let pick: Weekday;
@@ -69,6 +79,7 @@ function selectDays(rule: PlatformRule, numSlots: number, dayCounts: Record<Week
 
 export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
   const dayCounts: Record<Weekday, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
+  const availableDays = WEEKDAYS.filter((d) => !input.unavailableDays.includes(d));
   const slots: ScheduledSlot[] = [];
   const brandKeys = input.brands.map((brand) => ({ brand, brandKey: normalizeBrandKey(brand) }));
 
@@ -84,7 +95,8 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
 
   function assign(brand: string, brandKey: string, platform: Platform, numSlots: number) {
     if (numSlots <= 0) return;
-    const days = selectDays(PLATFORM_RULES[platform], numSlots, dayCounts);
+    if (availableDays.length === 0) return;
+    const days = selectDays(PLATFORM_RULES[platform], numSlots, dayCounts, availableDays);
     for (const day of days) slots.push({ brand, brandKey, platform, day });
   }
 
