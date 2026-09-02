@@ -17,10 +17,12 @@ import {
   fetchScheduleCancellations,
   recordScheduleCancellation,
   clearScheduleCancellation,
+  fetchPublicHolidays,
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
   type ScheduleCancellation,
 } from '../lib/queries';
+import { buildHolidayDateSet, holidayOn, type PublicHoliday } from '../lib/publicHolidays';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, buildOverrideSetByMap, overrideKey, type OverrideState } from '../lib/scheduleOverrides';
@@ -126,6 +128,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
   const [cancellations, setCancellations] = useState<ScheduleCancellation[]>([]);
+  const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
+  const holidayDateSet = useMemo(() => buildHolidayDateSet(holidays), [holidays]);
   const [brandsLoading, setBrandsLoading] = useState(true);
   const [scheduleLoading, setScheduleLoading] = useState(true);
   const loading = brandsLoading || scheduleLoading;
@@ -252,7 +256,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       });
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, agentAssignmentRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, agentAssignmentRows, holidayRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           withFlagFallback(fetchRemovedPlatformBrands()),
@@ -267,6 +271,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           // other brand_agent_assignments reader (SchedulePlanner.tsx's two
           // effects, generate-weekly-schedule/index.ts).
           fetchBrandAgentAssignments(tab).catch(() => []),
+          withFlagFallback(fetchPublicHolidays()),
         ]);
         if (canceled) return;
         const uniqueBrands = deriveTabBrands(tab, rawEntries, headers);
@@ -288,6 +293,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           agentAssignmentRows,
           flagsLoaded,
         });
+        setHolidays(holidayRows);
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -340,6 +346,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             overrideMap: tabCtx!.overrideMap,
             hiddenBrandSet: tabCtx!.hiddenBrandSet,
             platformRestrictionMap: tabCtx!.platformRestrictionMap,
+            holidayDates: holidayDateSet,
           };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
           const activated = await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);
@@ -374,7 +381,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return () => {
       canceled = true;
     };
-  }, [tab, weekStartISO, tabCtx, isApproved]);
+  }, [tab, weekStartISO, tabCtx, isApproved, holidayDateSet]);
 
   // Fetches every OTHER week a picked date range touches (weekStartISO's own
   // week is always owned by the effect above, including its scheduler-
@@ -1043,15 +1050,19 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 className="sticky left-0 z-30 bg-slate-50 px-3 py-1 will-change-transform"
                 style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
               />
-              {columns.map((col) => (
-                <th
-                  key={col.iso}
-                  className="sticky z-[25] bg-slate-50 px-3 py-1 text-center text-xs font-medium text-slate-500 will-change-transform"
-                  style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
-                >
-                  {Number(col.iso.slice(8, 10))}
-                </th>
-              ))}
+              {columns.map((col) => {
+                const h = holidayOn(col.iso, holidays);
+                return (
+                  <th
+                    key={col.iso}
+                    className={`sticky z-[25] px-3 py-1 text-center text-xs font-medium will-change-transform ${h ? 'bg-slate-200 text-slate-400' : 'bg-slate-50 text-slate-500'}`}
+                    style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
+                    title={h ? `Public holiday · ${h.name}` : undefined}
+                  >
+                    {Number(col.iso.slice(8, 10))}
+                  </th>
+                );
+              })}
               <th
                 className="sticky z-[25] bg-slate-50 px-3 py-1 will-change-transform"
                 style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
@@ -1119,6 +1130,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                     </td>
                     {columns.map((col) => {
                       const dayISO = col.iso;
+                      const holidayName = holidayOn(dayISO, holidays)?.name;
                       const { rowsByPlatform, pausesByPlatform, pausedByPlatform } = computeCellData(brand, col.weekStartISO);
                       const removedByPlatform = computeRemovedByPlatform(brand, dayISO);
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
@@ -1155,6 +1167,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             // section, since a multi-week range can mix legacy and
                             // platform-tracked weeks.
                             isApproved={isApproved && !isLegacyWeekAt(col.weekStartISO)}
+                            holidayName={holidayName}
                             onToggle={(platform) => handleCellClick(brand, platform, col)}
                             onSetStatus={(platform, status) => handleSetDayStatus(brand, platform, col, status)}
                             onCancel={(platform) => handleCancelDay(brand, platform, col)}
