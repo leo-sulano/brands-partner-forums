@@ -87,9 +87,12 @@ Brands Partner Forum/
   `seed: \`${tab}::${weekStart}\`` into its one engine call — nothing else there changed.
   Verification: scheduler suite (619) green, `npm run build` clean, `deno check` clean on
   `generate-weekly-schedule`, full suite 2316 passed (1 unrelated flaky 5s timeout in
-  `queries.publicHolidays.test.ts`, passes in isolation). Live browser check (see the evened-out
-  spread on a not-yet-generated / future week) deferred — no Supabase credentials this session.
-  Spec:
+  `queries.publicHolidays.test.ts`, passes in isolation). **Deployed the same session:**
+  `git push origin main` and `supabase functions deploy generate-weekly-schedule` (confirmed
+  `ACTIVE` version 17, `seededRandom.ts` visible in the bundled-asset list) — so the Monday cron
+  now generates evened-out weeks too, not just the browser page-visit path. Live browser check
+  (see the evened-out spread on a not-yet-generated / future week) deferred — no Supabase login
+  credentials this session. Spec:
   `docs/superpowers/specs/2026-09-03-schedule-planner-even-platform-distribution-design.md`. No
   plan doc — implemented directly after spec approval. Task 313.
 - *2026-09-03 (prior):* Same-day follow-up to Task 311 directly below: live-verified the

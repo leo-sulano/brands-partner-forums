@@ -8572,8 +8572,15 @@ its one `generateWeekSchedule` call; nothing else in that file changed.
 Verification: full scheduler suite (619 tests) green; `npm run build` clean (exit 0); `deno
 check` clean on `generate-weekly-schedule`; full frontend suite 2316 passed (1 unrelated flaky
 5s timeout in `queries.publicHolidays.test.ts` that passes in isolation — no scheduler import).
-Live browser check deferred to whoever has Supabase credentials: open a tab whose current week
-isn't yet generated (or a future week), confirm AG/CG/WO/TP days are visibly spread Mon–Fri
+
+Deployed the same session: `git push origin main`, and `supabase functions deploy
+generate-weekly-schedule` (confirmed `ACTIVE` version 17 via `supabase functions list`, with
+`src/lib/scheduler/seededRandom.ts` in the bundled-asset upload list) — so the Monday
+01:00 UTC cron generates evened-out weeks too, not only the browser page-visit trigger. No
+schema change, no new env var.
+
+Live browser check deferred to whoever has Supabase login credentials: open a tab whose current
+week isn't yet generated (or a future week), confirm AG/CG/WO/TP days are visibly spread Mon–Fri
 rather than front-loaded, and that reloading produces the same layout.
 
 Spec: `docs/superpowers/specs/2026-09-03-schedule-planner-even-platform-distribution-design.md`.
