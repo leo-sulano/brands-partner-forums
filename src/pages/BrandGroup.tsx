@@ -3000,10 +3000,11 @@ export default function BrandGroup() {
                   }
                   // Fire-and-forget: routes through the same server-side
                   // resolveAndSyncTabStatuses path the every-minute cron already
-                  // calls, which prunes any now-orphaned unstarted/in-flight PMS
-                  // card for this combo (pruneRemovedPageCards, pmsSync.ts)
-                  // within seconds instead of up to a minute. A failure here is
-                  // silent — the cron still covers it on its own next tick.
+                  // calls, which parks any now-orphaned unstarted/in-flight PMS
+                  // card for this combo in the Page Removed column
+                  // (moveRemovedPageCards, pmsSync.ts) within seconds instead of
+                  // up to a minute. A failure here is silent — the cron still
+                  // covers it on its own next tick.
                   if (flaggedAnyRemoved) syncTabStatusToPms(targetTab).catch(() => {});
                 }
 

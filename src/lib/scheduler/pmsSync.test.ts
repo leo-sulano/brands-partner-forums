@@ -766,7 +766,7 @@ describe('resolveAndSyncTabStatuses', () => {
       },
     } as any;
     const result = await resolveAndSyncTabStatuses('Empty Tab', client, { apiToken: 'test-token' });
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(calls).toEqual(['schedule_pms_links']);
   });
 
@@ -987,7 +987,7 @@ describe('resolveAndSyncTabStatuses', () => {
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -1005,7 +1005,7 @@ describe('resolveAndSyncTabStatuses', () => {
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -1094,7 +1094,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch, true);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -1112,7 +1112,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch, true);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -1130,7 +1130,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     });
     const fetchFn = vi.fn();
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn as unknown as typeof fetch, true);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
@@ -1163,14 +1163,19 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
 
 const IN_PROGRESS_COL = 'cmsoh1uxz000304l4zynwy7vw';
 const BLOCKED_COL = 'cmsoh1uxz000504l46ytlrxes';
+const PAGE_REMOVED_COL = 'cmtl7ao36000004kypos6pxkt';
 
 // A brand+platform whose review page is flagged removed (removed_platform_brands)
 // no longer exists anywhere on the Schedule Planner -- any linked PMS card for
 // it that's still unstarted/in-flight (To Do / In Progress / Blocked) is
-// pruned outright; a card already Done, Project Paused, or sitting in an
-// unrecognized column is left alone as a historical record. See Task
-// "auto-delete PMS cards for removed-page combos".
-describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
+// moved to the dedicated Page Removed column, keeping both the task and the
+// link (a later un-flag can reactivate it); a card already Done, Project
+// Paused, already in Page Removed, or sitting in an unrecognized column is
+// left alone as a historical record or already-settled placement. Per an
+// explicit user request (2026-09-03), this supersedes the earlier
+// delete-outright behavior. See Task "move PMS cards for removed-page combos
+// to Page Removed instead of deleting them".
+describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
   beforeEach(() => {
     invalidateTabCache('TP Brand Injection');
   });
@@ -1196,23 +1201,26 @@ describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
     ['To Do', TODO_COL],
     ['In Progress', IN_PROGRESS_COL],
     ['Blocked', BLOCKED_COL],
-  ])('deletes the linked PMS task and link when its card sits in %s', async (_label, columnId) => {
+  ])('moves the linked PMS task to Page Removed, keeping the task and link, when its card sits in %s', async (_label, columnId) => {
     const deletes: { table: string; id: string }[] = [];
     const client = removedPageClient(deletes);
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
-      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result.cancelled).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.pageRemoved).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.pageRemovedFailed).toEqual([]);
+    expect(result.cancelled).toEqual([]);
     expect(result.cancelFailed).toEqual([]);
     expect(result.synced).toEqual([]);
-    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+    expect(deletes).toEqual([]);
   });
 
   it.each([
     ['Done', DONE_COL],
     ['Project Paused', PAUSED_COL],
+    ['Page Removed', PAGE_REMOVED_COL],
   ])('leaves the linked PMS task and link untouched when its card already sits in %s', async (_label, columnId) => {
     const deletes: { table: string; id: string }[] = [];
     const client = removedPageClient(deletes);
@@ -1220,7 +1228,7 @@ describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
       { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(deletes).toEqual([]);
   });
 
@@ -1231,24 +1239,25 @@ describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
       { url: /\/tasks$/, method: 'GET', body: [] },
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] });
     expect(deletes).toEqual([]);
   });
 
-  it('records a delete failure in cancelFailed and never deletes the link', async () => {
+  it('records a move failure in pageRemovedFailed and never deletes the task or link', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = removedPageClient(deletes);
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId: TODO_COL, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
-      { url: /\/tasks\/task-1$/, method: 'DELETE', body: {}, status: 500 },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {}, status: 500 },
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.pageRemoved).toEqual([]);
+    expect(result.pageRemovedFailed).toEqual([{ item: { tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }, error: 'PMS task move failed: 500' }]);
     expect(result.cancelled).toEqual([]);
-    expect(result.cancelFailed).toEqual([{ item: { tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }, error: 'PMS task delete failed: 500' }]);
     expect(deletes).toEqual([]);
   });
 
-  it('degrades gracefully (no deletion, no crash) when the project task-list fetch itself fails, and still resolves other links normally', async () => {
+  it('degrades gracefully (no move, no crash) when the project task-list fetch itself fails, and still resolves other links normally', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
@@ -1264,10 +1273,12 @@ describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
     }, deletes);
     const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
       const method = init.method ?? 'GET';
-      if (method === 'GET') return { ok: false, status: 500, json: async () => ({}) }; // prune's task-list fetch fails every time it's called
+      if (method === 'GET') return { ok: false, status: 500, json: async () => ({}) }; // moveRemovedPageCards' task-list fetch fails every time it's called
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.pageRemoved).toEqual([]);
+    expect(result.pageRemovedFailed).toEqual([]);
     expect(result.cancelled).toEqual([]);
     expect(result.cancelFailed).toEqual([]);
     expect(deletes).toEqual([]);
@@ -1277,7 +1288,7 @@ describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
     expect(result.synced).toEqual([{ linkId: 'link-2', pmsTaskId: 'task-2', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27', description: 'Account: \nCountry: \nProxy: ' }]);
   });
 
-  it('prunes a flagged combo and independently syncs a non-flagged combo in the same batch', async () => {
+  it('parks a flagged combo in Page Removed and independently syncs a non-flagged combo in the same batch', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
@@ -1301,25 +1312,27 @@ describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
           ],
         };
       }
-      return { ok: true, status: method === 'DELETE' ? 204 : 200, json: async () => ({}) };
+      return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
-    expect(result.cancelled).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.pageRemoved).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.cancelled).toEqual([]);
     expect(result.synced).toEqual([{ linkId: 'link-2', pmsTaskId: 'task-2', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27', description: 'Account: \nCountry: \nProxy: ' }]);
-    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+    expect(deletes).toEqual([]);
   });
 
-  it('prunes an eligible deletable card even when the whole tab is paused (isTabPaused=true)', async () => {
+  it('parks an eligible flagged card in Page Removed even when the whole tab is paused (isTabPaused=true)', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = removedPageClient(deletes);
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId: TODO_COL, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
-      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} },
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
-    expect(result.cancelled).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.pageRemoved).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.cancelled).toEqual([]);
     expect(result.synced).toEqual([]);
-    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+    expect(deletes).toEqual([]);
   });
 });
 

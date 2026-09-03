@@ -45,6 +45,7 @@ export async function syncAllTabStatuses(
       const failures: string[] = [];
       if (result.failed.length > 0) failures.push(`${result.failed.length} link(s) failed to move`);
       if (result.cancelFailed.length > 0) failures.push(`${result.cancelFailed.length} link(s) failed to cancel`);
+      if (result.pageRemovedFailed.length > 0) failures.push(`${result.pageRemovedFailed.length} link(s) failed to move to Page Removed`);
       results[tab] = failures.length > 0 ? `error: ${failures.join(', ')}` : 'ok';
     } catch (err) {
       console.error(`[sync-schedule-pms] syncAllStatuses ${tab} failed:`, err);

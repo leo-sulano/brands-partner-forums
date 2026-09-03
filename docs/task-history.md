@@ -8293,3 +8293,67 @@ Note: this session found the working tree already carrying other in-progress, un
 above) — this task's commit was scoped to only the 3 files it actually touched
 (`src/lib/scheduler/pmsSync.ts`, `src/lib/scheduler/pmsSync.test.ts`, `src/pages/BrandGroup.tsx`).
 
+---
+
+## Task 310: Park Removed-Page PMS Cards in a Dedicated Column Instead of Deleting Them
+
+**Date:** September 3, 2026
+
+Direct user follow-up to Task 309, reported live: "Page removed instead of deleted the task card on
+pms, move it to page Removed column." Task 309's `pruneRemovedPageCards` deleted a linked PMS
+task+`schedule_pms_links` row outright once a brand+platform's review page was flagged removed and
+its card was still in To Do / In Progress / Blocked. The user wants the card kept, moved to a
+dedicated "Page Removed" column instead — confirmed live via the PMS API's own columns endpoint that
+this column already exists on the real "Forum Team" project (position 6, id
+`cmtl7ao36000004kypos6pxkt`, created by the user directly in the PMS UI ahead of this request).
+
+Renamed `pruneRemovedPageCards` to `moveRemovedPageCards` (`src/lib/scheduler/pmsSync.ts`): for each
+flagged combo whose live PMS column is still To Do / In Progress / Blocked
+(`PMS_REMOVED_PAGE_MOVABLE_COLUMN_IDS`, renamed from `..._DELETABLE_...`), it now calls the existing
+`movePmsTask` into the new `PMS_PAGE_REMOVED_COLUMN_ID` (grouped/sorted via the same
+`computeGroupedInsertPosition` helper `syncScheduleStatusToPms` already uses) instead of
+`deletePmsTask` + `deleteSchedulePmsLink`. Neither the task nor the `schedule_pms_links` row is
+deleted — deliberately: keeping the link means a later un-flag (the page comes back) can reactivate
+the same card through the normal resolve path, and avoids `pushScheduleToPms` creating a duplicate
+task for the same combo. The link's `synced_status`/`synced_column_id` are left untouched by this
+move on purpose — `resolveBrandPlatforms` already excludes a flagged combo from the normal per-link
+resolve loop regardless of which column its card sits in, and leaving those two columns as they were
+before the flag was set is exactly what keeps `enforcePmsColumns`' own drift check
+(`synced_column_id === want`) reading this as an already-intentional placement instead of fighting to
+drag the card back out of Page Removed on its next 1-minute tick.
+
+`PmsResolveResult` gained two new fields, `pageRemoved`/`pageRemovedFailed`, kept deliberately
+separate from the pre-existing `cancelled`/`cancelFailed` pair (which still means what it always
+did — an outright delete, for the unrelated "day cycled back to blank with no evidence" self-heal
+case a few lines further down in the same function). `syncAllTabStatuses`
+(`supabase/functions/sync-schedule-pms/index.ts`) now also folds `pageRemovedFailed` into its
+per-tab error string.
+
+Live-verified directly against production, not just unit tests: queried `schedule_pms_links` /
+`removed_platform_brands` for a real currently-flagged combo with a linked card
+(BIT/RollingSlots Casino/tp, 2026-09-02) — its live PMS task was already sitting in the Page Removed
+column (the user's own manual move, made just before sending this request, is what confirmed the
+column ID this task uses). Invoked the freshly-deployed function's `syncAllStatuses` action directly
+against the real `BIT` tab (`curl` to the deployed URL) and confirmed: the response reported `"BIT":
+"ok"` with no errors, the PMS task stayed in Page Removed, and the `schedule_pms_links` row was left
+completely untouched (same `synced_status`/`synced_column_id` as before the call) — proving the new
+code correctly treats an already-parked card as a no-op rather than re-processing or erroring on it.
+
+11 existing Vitest cases in the `resolveAndSyncTabStatuses — removed-page card` describe block
+(renamed from "...pruning" to "...parking") rewritten to assert a `PATCH .../move` call into the
+Page Removed column instead of a `DELETE`, plus a new case confirming a card already sitting in Page
+Removed is left alone (added to the existing Done/Project-Paused "leaves it untouched" `it.each`).
+`supabase/functions/sync-schedule-pms/index_test.ts`'s fake resolvers updated for the two new
+`PmsResolveResult` fields, plus one new test for the `pageRemovedFailed` error-string path. Full
+suite (3184 tests) and `npm run build` both pass; `deno check` and the Deno test suite (19 tests)
+clean on `sync-schedule-pms`; `deno check` clean on `generate-weekly-schedule` too (imports the
+shared module for an unrelated function, unaffected either way).
+
+**Deployed the same session:** `supabase functions deploy sync-schedule-pms` (confirmed `ACTIVE`,
+version 38) — the deploy log shows `pmsSync.ts` bundled cleanly. No schema/migration change, no new
+Vercel env var, no frontend deploy needed (this feature is entirely server-side). Not yet committed
+to git — per this session's standing instruction to only commit when explicitly asked, and the
+working tree still carries the same unrelated concurrent uncommitted work Task 309 noted
+(`TabPreviewCard.tsx`, `TabScheduleSection.tsx`, `scheduleUtils.ts`/`.test.ts`, `SchedulePlanner.tsx`,
+`calendarRenderer.tsx`).
+

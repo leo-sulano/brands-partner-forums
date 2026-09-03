@@ -7,7 +7,7 @@ Deno.test('syncAllTabStatuses processes every given tab independently, isolating
   const fakeResolve = async (tab: string) => {
     calls.push(tab);
     if (tab === 'Trybet') throw new Error('boom');
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
   };
   const results = await syncAllTabStatuses(
     [{ tab: 'BITP', paused: false }, { tab: 'Trybet', paused: false }, { tab: 'Hanan', paused: false }],
@@ -28,17 +28,34 @@ Deno.test('syncAllTabStatuses reports both move and cancel failure counts in one
     failed: [{ item: {} as any, error: 'move boom' }],
     cancelled: [],
     cancelFailed: [{ item: {} as any, error: 'cancel boom' }, { item: {} as any, error: 'cancel boom 2' }],
+    pageRemoved: [],
+    pageRemovedFailed: [],
   });
   const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'error: 1 link(s) failed to move, 2 link(s) failed to cancel');
 });
 
-Deno.test('syncAllTabStatuses reports ok when only cancelled items are non-empty, with zero failures', async () => {
+Deno.test('syncAllTabStatuses reports a page-removed move failure alongside the other two failure counts', async () => {
+  const fakeResolve = async () => ({
+    synced: [],
+    failed: [],
+    cancelled: [],
+    cancelFailed: [],
+    pageRemoved: [],
+    pageRemovedFailed: [{ item: {} as any, error: 'move-to-page-removed boom' }],
+  });
+  const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  assertEquals(results['BITP'], 'error: 1 link(s) failed to move to Page Removed');
+});
+
+Deno.test('syncAllTabStatuses reports ok when only cancelled/pageRemoved items are non-empty, with zero failures', async () => {
   const fakeResolve = async () => ({
     synced: [],
     failed: [],
     cancelled: [{ tab: 'BITP', brand: 'X', platform: 'tp' as const, date: '2026-08-27' }],
     cancelFailed: [],
+    pageRemoved: [{ tab: 'BITP', brand: 'Y', platform: 'tp' as const, date: '2026-08-27' }],
+    pageRemovedFailed: [],
   });
   const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'ok');
@@ -48,7 +65,7 @@ Deno.test('syncAllTabStatuses processes only the given tab when the list has one
   const calls: string[] = [];
   const fakeResolve = async (tab: string) => {
     calls.push(tab);
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
   };
   const results = await syncAllTabStatuses([{ tab: 'Wizard of Odds', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(calls, ['Wizard of Odds']);
@@ -59,7 +76,7 @@ Deno.test('syncAllTabStatuses passes each tab\'s paused flag through to resolveF
   const calls: { tab: string; paused: unknown }[] = [];
   const fakeResolve = async (tab: string, _c: unknown, _cr: unknown, _f: unknown, paused: unknown) => {
     calls.push({ tab, paused });
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
   };
   await syncAllTabStatuses(
     [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }],

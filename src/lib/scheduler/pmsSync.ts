@@ -21,6 +21,11 @@ const PMS_PROJECT_ID = 'cmsoh1uvs000004l4fbdvqmir';
 const PMS_TODO_COLUMN_ID = 'cmsoh1uxz000204l46gf88k3f';
 const PMS_DONE_COLUMN_ID = 'cmsoh1uxz000604l4j5loen7g';
 const PMS_PAUSED_COLUMN_ID = 'cmt8eih3x000004lazna3tbmz';
+// Confirmed live against the real "Forum Team" project (2026-09-03): a
+// dedicated "Page Removed" column already exists there (position 6, after
+// Project Paused) for exactly this case -- moveRemovedPageCards below parks a
+// flagged combo's card here instead of deleting it.
+const PMS_PAGE_REMOVED_COLUMN_ID = 'cmtl7ao36000004kypos6pxkt';
 const PMS_TEAM_ID = 'cmsd98mtx000204lgyb0abodx';
 const PMS_CLIENT_LABEL_NAME = 'Client';
 const PMS_PLATFORM_LABEL_NAMES: Record<Platform, string> = { tp: 'TP', ag: 'AG', cg: 'CG', wo: 'WO' };
@@ -33,13 +38,14 @@ const WO_LABEL_COLOR = 'blue';
 // no longer exists on any Schedule Planner surface. A linked PMS card for it
 // still sitting in one of these not-yet-settled columns (confirmed live
 // against the real "Forum Team" project's own columns response) represents
-// planned/in-flight work that will now never happen, and pruneRemovedPageCards
-// below deletes it outright. Done, Project Paused, and any other column
-// (including the unmanaged "BIT | BIF | FTP" column) are left alone -- a card
-// there is either settled history or a deliberate human placement.
+// planned/in-flight work that will now never happen, and moveRemovedPageCards
+// below parks it in the dedicated Page Removed column instead. Done, Project
+// Paused, Page Removed itself, and any other column (including the unmanaged
+// "BIT | BIF | FTP" column) are left alone -- a card there is either settled
+// history, already parked, or a deliberate human placement.
 const PMS_IN_PROGRESS_COLUMN_ID = 'cmsoh1uxz000304l4zynwy7vw';
 const PMS_BLOCKED_COLUMN_ID = 'cmsoh1uxz000504l46ytlrxes';
-const PMS_REMOVED_PAGE_DELETABLE_COLUMN_IDS = new Set<string>([
+const PMS_REMOVED_PAGE_MOVABLE_COLUMN_IDS = new Set<string>([
   PMS_TODO_COLUMN_ID,
   PMS_IN_PROGRESS_COLUMN_ID,
   PMS_BLOCKED_COLUMN_ID,
@@ -280,13 +286,20 @@ export interface PmsStatusSyncResult {
 
 // resolveAndSyncTabStatuses's own return type -- a superset of
 // PmsStatusSyncResult (syncScheduleStatusToPms's plain result type, kept
-// unchanged so its own tests/callers are untouched) adding the self-healing
-// cancellation outcome. cancelled/cancelFailed mirror PmsCancelResult's own
-// deleted/failed shape (see cancelScheduleInPms further below), just named
-// to match this function's own synced/failed pair.
+// unchanged so its own tests/callers are untouched) adding two distinct
+// self-healing outcomes: cancelled/cancelFailed for a day cycled back to
+// blank with no evidence (the linked PMS task+link are deleted outright, see
+// the inline block inside resolveAndSyncTabStatuses below) -- mirroring
+// PmsCancelResult's own deleted/failed shape (see cancelScheduleInPms further
+// below) -- and pageRemoved/pageRemovedFailed for a combo whose review page
+// is flagged removed (the card is moved to the Page Removed column, see
+// moveRemovedPageCards; task and link are both kept). Deliberately not
+// merged into one bucket: only the former actually deletes anything.
 export interface PmsResolveResult extends PmsStatusSyncResult {
   cancelled: PmsCancelItem[];
   cancelFailed: { item: PmsCancelItem; error: string }[];
+  pageRemoved: PmsCancelItem[];
+  pageRemovedFailed: { item: PmsCancelItem; error: string }[];
 }
 
 async function movePmsTask(taskId: string, columnId: string, position: number, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
@@ -597,57 +610,75 @@ export async function enforcePmsColumns(
   return { moved, resorted, failed };
 }
 
-// Deletes linked PMS cards for any brand+platform whose review page is
-// flagged removed (removed_platform_brands) -- but only when the card is
-// still sitting in a not-yet-settled column (To Do / In Progress / Blocked,
-// see PMS_REMOVED_PAGE_DELETABLE_COLUMN_IDS above). A card already Done,
-// Project Paused, or anywhere else is left untouched -- the combo is gone
-// from every Schedule Planner surface either way, so a plan-only/in-flight
-// card for it is just noise, while a settled card is history worth keeping.
+// Moves linked PMS cards for any brand+platform whose review page is flagged
+// removed (removed_platform_brands) into the dedicated Page Removed column --
+// but only when the card is still sitting in a not-yet-settled column (To Do
+// / In Progress / Blocked, see PMS_REMOVED_PAGE_MOVABLE_COLUMN_IDS above). A
+// card already Done, Project Paused, already in Page Removed, or anywhere
+// else is left untouched -- the combo is gone from every Schedule Planner
+// surface either way, so a plan-only/in-flight card for it just needs to be
+// parked somewhere visibly distinct from active work, while a settled card is
+// history worth keeping exactly where it is.
+//
+// Per an explicit user request (2026-09-03), this supersedes the earlier
+// delete-outright behavior: both the PMS task and its schedule_pms_links row
+// are kept. Deleting either would leave a later un-flag (the page comes back)
+// with nothing to reactivate, and would risk pushScheduleToPms creating a
+// duplicate task for the same combo. Neither the link's synced_status nor
+// synced_column_id is written here, deliberately -- resolveBrandPlatforms
+// already excludes a flagged combo from the normal per-link resolve loop
+// below regardless of this move, so those columns stay whatever they were
+// before the flag was set, which is exactly what keeps enforcePmsColumns'
+// "synced_column_id === want" drift check treating this as an
+// already-intentional placement instead of fighting to move the card back.
+//
 // One GET /tasks for the whole tab (skipped entirely when nothing is
-// flagged); a DELETE only per card actually pruned. A task-list fetch
-// failure degrades to a no-op for this pass (retried on the next tick/visit,
-// same spirit as syncScheduleStatusToPms's own ungrouped-position fallback);
-// a per-card delete failure is isolated into cancelFailed, same batch
-// resilience as the rest of this module. Returns the ids of links it pruned
-// so the caller can exclude them from its own resolve loop -- a pruned combo
-// has nothing left to move/cancel/pause.
-async function pruneRemovedPageCards(
+// flagged); a move only per card actually parked. A task-list fetch failure
+// degrades to a no-op for this pass (retried on the next tick/visit, same
+// spirit as syncScheduleStatusToPms's own ungrouped-position fallback); a
+// per-card move failure is isolated into moveFailed, same batch resilience as
+// the rest of this module. Returns the ids of links it moved so the caller
+// can exclude them from its own resolve loop this same tick -- a just-parked
+// combo has nothing left to resolve/pause for it this pass (it would be
+// filtered out via resolveBrandPlatforms regardless, this is purely an
+// optimization to skip the redundant per-link work below).
+async function moveRemovedPageCards(
   links: SchedulePmsLink[],
   removedPlatformBrandSet: Set<string>,
-  client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
-): Promise<{ prunedLinkIds: Set<string>; cancelled: PmsCancelItem[]; cancelFailed: { item: PmsCancelItem; error: string }[] }> {
-  const prunedLinkIds = new Set<string>();
-  const cancelled: PmsCancelItem[] = [];
-  const cancelFailed: { item: PmsCancelItem; error: string }[] = [];
+): Promise<{ movedLinkIds: Set<string>; moved: PmsCancelItem[]; moveFailed: { item: PmsCancelItem; error: string }[] }> {
+  const movedLinkIds = new Set<string>();
+  const moved: PmsCancelItem[] = [];
+  const moveFailed: { item: PmsCancelItem; error: string }[] = [];
 
   const flagged = links.filter((l) => removedPlatformBrandSet.has(platformRemovedKey(l.tab, l.brand, l.platform)));
-  if (flagged.length === 0) return { prunedLinkIds, cancelled, cancelFailed };
+  if (flagged.length === 0) return { movedLinkIds, moved, moveFailed };
 
-  let tasksById: Map<string, PmsTaskListed>;
+  let tasks: PmsTaskListed[];
   try {
-    const tasks = await fetchPmsProjectTasks(credentials, fetchFn);
-    tasksById = new Map(tasks.map((t) => [t.id, t]));
+    tasks = await fetchPmsProjectTasks(credentials, fetchFn);
   } catch {
-    return { prunedLinkIds, cancelled, cancelFailed };
+    return { movedLinkIds, moved, moveFailed };
   }
 
   for (const link of flagged) {
-    const task = tasksById.get(link.pms_task_id);
-    if (!task || !PMS_REMOVED_PAGE_DELETABLE_COLUMN_IDS.has(task.columnId)) continue;
+    const task = tasks.find((t) => t.id === link.pms_task_id);
+    if (!task || !PMS_REMOVED_PAGE_MOVABLE_COLUMN_IDS.has(task.columnId)) continue;
     const item: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
     try {
-      await deletePmsTask(link.pms_task_id, credentials, fetchFn);
-      await deleteSchedulePmsLink(link.id, client);
-      prunedLinkIds.add(link.id);
-      cancelled.push(item);
+      const tabLabel = tabDisplayName(link.tab);
+      const position = computeGroupedInsertPosition(tasks, PMS_PAGE_REMOVED_COLUMN_ID, link.date, tabLabel, link.brand, link.pms_task_id);
+      await movePmsTask(link.pms_task_id, PMS_PAGE_REMOVED_COLUMN_ID, position, credentials, fetchFn);
+      tasks = tasks.filter((t) => t.id !== link.pms_task_id);
+      tasks.push({ id: link.pms_task_id, title: `${tabLabel} | ${link.brand}`, columnId: PMS_PAGE_REMOVED_COLUMN_ID, position, dueDate: link.date, assignees: [] });
+      movedLinkIds.add(link.id);
+      moved.push(item);
     } catch (err) {
-      cancelFailed.push({ item, error: err instanceof Error ? err.message : String(err) });
+      moveFailed.push({ item, error: err instanceof Error ? err.message : String(err) });
     }
   }
-  return { prunedLinkIds, cancelled, cancelFailed };
+  return { movedLinkIds, moved, moveFailed };
 }
 
 // The one place the full dashboard -> PMS status resolution rules are
@@ -682,22 +713,22 @@ export async function resolveAndSyncTabStatuses(
   isTabPaused = false,
 ): Promise<PmsResolveResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
-  if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+  if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
 
   // Fetched once here (rather than inside each branch below, as before) so
-  // pruneRemovedPageCards can run ahead of the paused/normal split and both
+  // moveRemovedPageCards can run ahead of the paused/normal split and both
   // branches can reuse the same set with no second fetch.
   const removedPlatformBrandRows = await fetchRemovedPlatformBrands(client);
   const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
 
-  // Prune any linked card for a now-removed-page combo before either branch
-  // below ever considers it -- see pruneRemovedPageCards for exactly which
-  // cards that deletes. A pruned link is excluded from the rest of this
-  // resolve entirely (nothing left to move/cancel/pause for it); its
-  // deletion is folded into whichever branch's own cancelled/cancelFailed
-  // result below.
-  const prune = await pruneRemovedPageCards(links, removedPlatformBrandSet, client, credentials, fetchFn);
-  const liveLinks = prune.prunedLinkIds.size > 0 ? links.filter((l) => !prune.prunedLinkIds.has(l.id)) : links;
+  // Park any linked card for a now-removed-page combo before either branch
+  // below ever considers it -- see moveRemovedPageCards for exactly which
+  // cards that moves. A parked link is excluded from the rest of this
+  // resolve entirely (nothing left to move/cancel/pause for it this tick);
+  // the move outcome is folded into whichever branch's own
+  // pageRemoved/pageRemovedFailed result below.
+  const parked = await moveRemovedPageCards(links, removedPlatformBrandSet, credentials, fetchFn);
+  const liveLinks = parked.movedLinkIds.size > 0 ? links.filter((l) => !parked.movedLinkIds.has(l.id)) : links;
 
   // Whole-Brand-Tab pause (paused_tabs, see pausedTabRegistry.ts) forces every
   // still-eligible link straight to 'paused', bypassing the
@@ -725,9 +756,9 @@ export async function resolveAndSyncTabStatuses(
       if (!allowedPlatforms.includes(link.platform)) continue;
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date });
     }
-    if (items.length === 0) return { synced: [], failed: [], cancelled: prune.cancelled, cancelFailed: prune.cancelFailed };
+    if (items.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
     const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-    return { ...result, cancelled: prune.cancelled, cancelFailed: prune.cancelFailed };
+    return { ...result, cancelled: [], cancelFailed: [], pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
   }
 
   const [entries, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
@@ -750,8 +781,8 @@ export async function resolveAndSyncTabStatuses(
   const manualPauseRows = rowsPerWeek.flat();
 
   const items: PmsStatusSyncItem[] = [];
-  const cancelled: PmsCancelItem[] = [...prune.cancelled];
-  const cancelFailed: { item: PmsCancelItem; error: string }[] = [...prune.cancelFailed];
+  const cancelled: PmsCancelItem[] = [];
+  const cancelFailed: { item: PmsCancelItem; error: string }[] = [];
   for (const link of liveLinks) {
     const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
     if (!allowedPlatforms.includes(link.platform)) continue;
@@ -801,10 +832,10 @@ export async function resolveAndSyncTabStatuses(
   }
 
   if (items.length === 0) {
-    return { synced: [], failed: [], cancelled, cancelFailed };
+    return { synced: [], failed: [], cancelled, cancelFailed, pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
   }
   const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-  return { ...result, cancelled, cancelFailed };
+  return { ...result, cancelled, cancelFailed, pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
 }
 
 export interface PmsDriftedItem {
