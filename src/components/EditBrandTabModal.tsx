@@ -19,14 +19,18 @@ import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTa
 import { renameOperationalTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import IconPicker from './IconPicker';
+import TabPausedBrandsSection from './TabPausedBrandsSection';
 
 interface Props {
   tabName: string;
+  // Distinct brand display strings for this tab (BrandGroup's uniqueBrands),
+  // passed straight through to TabPausedBrandsSection so it needs no fetch.
+  brands: string[];
   onUpdated: (renamedTo?: string) => void;
   onClose: () => void;
 }
 
-export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props) {
+export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose }: Props) {
   const { isAdmin } = useAuth();
   const dynamic = isDynamicTab(tabName);
   // Captured once at modal-open time: what to diff the Status select against
@@ -64,6 +68,10 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
   const [pausedUntil, setPausedUntil] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // True while TabPausedBrandsSection's PlatformPauseModal child is open — the
+  // outer modal must not close on Escape then (PlatformPauseModal has its own
+  // Escape-to-close).
+  const [pauseChildOpen, setPauseChildOpen] = useState(false);
 
   // Only the reason/until fields need a fetch — status/platforms/icon/filters
   // are all already available synchronously from the client-side registries
@@ -97,11 +105,11 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !submitting) onClose();
+      if (e.key === 'Escape' && !submitting && !pauseChildOpen) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, submitting]);
+  }, [onClose, submitting, pauseChildOpen]);
 
   function handleRequestClose() {
     if (submitting) return;
@@ -295,6 +303,12 @@ export default function EditBrandTabModal({ tabName, onUpdated, onClose }: Props
               )}
             </div>
           )}
+
+          <TabPausedBrandsSection
+            tabName={tabName}
+            brands={brands}
+            onChildModalOpenChange={setPauseChildOpen}
+          />
 
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1.5">Toolbar Filters</label>

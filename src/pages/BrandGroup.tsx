@@ -2019,6 +2019,7 @@ export default function BrandGroup() {
       {showEditPlatformsModal && (
         <EditBrandTabModal
           tabName={decodedTab}
+          brands={uniqueBrands}
           onClose={() => setShowEditPlatformsModal(false)}
           onUpdated={(renamedTo) => {
             setShowEditPlatformsModal(false);
