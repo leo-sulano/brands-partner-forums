@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { tabDisplayName, tabToSlug } from '../lib/tabs';
@@ -97,6 +97,13 @@ interface Props {
   // added/removed elsewhere forces a fresh, still-fail-closed fetch here
   // instead of silently going stale until the next tab switch.
   holidayReloadSeq: number;
+  // The toolbar's user-toggled platform-visibility set — a platform not in
+  // this list still renders its chip (day cells) and icon (Schedule Status
+  // column) exactly as it otherwise would, just dimmed/grayscaled. Purely
+  // cosmetic: brandPlatforms(), filteredBrands, the export, PMS sync, and
+  // the platform-count strip are all untouched, so toggling a pill off never
+  // changes what's tracked/counted/synced/addable, only how it looks.
+  visiblePlatforms: Platform[];
   onPlatformCounts?: (tab: string, counts: Partial<Record<Platform, number>>) => void;
   onRemove: () => void;
 }
@@ -105,7 +112,7 @@ interface Props {
 // overlays, export. Instantiated once per tab the Schedule Planner shell has
 // selected, each running its own independent data load/scheduler-invocation
 // cycle keyed by its own `tab` prop; multiple instances never share state.
-export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, dateFrom, dateTo, holidayReloadSeq, onPlatformCounts, onRemove }: Props) {
+export default function TabScheduleSection({ tab, weekStart, weekStartISO, todayISO, search, agentFilter, dateFrom, dateTo, holidayReloadSeq, visiblePlatforms, onPlatformCounts, onRemove }: Props) {
   // Bundles brands/activePlatforms/entries/removedPlatformBrandSet together,
   // tagged with the tab they were loaded for. This lets the schedule-loading
   // effect below confirm the data it's about to hand to the scheduler
@@ -1190,6 +1197,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             onCancel={(platform) => handleCancelDay(brand, platform, col)}
                             onAddPlatform={() => setAddPlatformTarget({ brand, col })}
                             iconOnly={hasDateFilter}
+                            visiblePlatforms={visiblePlatforms}
                           />
                         </td>
                       );
@@ -1211,36 +1219,40 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                         {brandPlatforms(brand).map((platform) => {
                           const clickable = isApproved && !isLegacyWeekAt(weekStartISO);
                           const onClick = () => setPauseDaysTarget({ brand, platform });
+                          // Toolbar overview toggle — dims a platform's icon
+                          // here too (same as its day-cell chips) rather than
+                          // removing it, so it stays fully clickable/managed.
+                          const dimmed = !visiblePlatforms.includes(platform);
+                          let icon: ReactNode;
                           if (weekPausesByPlatform[platform]) {
-                            return (
+                            icon = (
                               <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} pausedBy={weekPausedByPlatform[platform]} clickable={clickable} onClick={onClick} />
                             );
-                          }
-                          if (cancelledPlatformSet.has(platform)) {
+                          } else if (cancelledPlatformSet.has(platform)) {
                             const days = cancelledPlatforms.find((x) => x.platform === platform)!.days;
                             // Clickable again, same PauseDaysModal every other
                             // variant opens — per direct user request, the
                             // modal now shows this platform's cancelled days
                             // too (see pauseDaysModalData's cancelledDays),
                             // not just its paused ones.
-                            return (
+                            icon = (
                               <ScheduleStatusIcon key={platform} platform={platform} source="cancelled" days={days} agent={agent} clickable={clickable} onClick={onClick} />
                             );
-                          }
-                          if (manuallyPausedPlatformSet.has(platform)) {
+                          } else if (manuallyPausedPlatformSet.has(platform)) {
                             const days = manualPausedPlatforms.find((x) => x.platform === platform)!.days;
-                            return (
+                            icon = (
                               <ScheduleStatusIcon key={platform} platform={platform} source="manual" days={days} agent={agent} clickable={clickable} onClick={onClick} />
                             );
-                          }
-                          if (noSchedulePlatforms.includes(platform)) {
-                            return (
+                          } else if (noSchedulePlatforms.includes(platform)) {
+                            icon = (
                               <ScheduleStatusIcon key={platform} platform={platform} source="no-schedule" agent={agent} clickable={clickable} onClick={onClick} />
                             );
+                          } else {
+                            icon = (
+                              <ScheduleStatusIcon key={platform} platform={platform} source="active" agent={agent} clickable={clickable} onClick={onClick} />
+                            );
                           }
-                          return (
-                            <ScheduleStatusIcon key={platform} platform={platform} source="active" agent={agent} clickable={clickable} onClick={onClick} />
-                          );
+                          return dimmed ? <span key={platform} className="grayscale">{icon}</span> : icon;
                         })}
                       </div>
                     </td>

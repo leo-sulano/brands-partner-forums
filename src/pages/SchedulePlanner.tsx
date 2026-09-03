@@ -36,6 +36,8 @@ const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
 const DATE_FROM_STORAGE_KEY = 'schedulePlanner.dateFrom';
 const DATE_TO_STORAGE_KEY = 'schedulePlanner.dateTo';
 const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
+const VISIBLE_PLATFORMS_STORAGE_KEY = 'schedulePlanner.visiblePlatforms';
+const ALL_PLATFORMS: Platform[] = ['tp', 'ag', 'cg', 'wo'];
 
 export interface TabPreview {
   // Already filtered to brands with at least one schedulable, non-removed
@@ -175,6 +177,26 @@ export default function SchedulePlanner() {
       return [];
     }
   });
+  // Which platforms' chips render at full opacity vs. dimmed/grayscaled in
+  // the calendar grid and preview cards -- a purely visual overview toggle,
+  // never a data filter: nothing is removed from the DOM, and the toolbar's
+  // own count badges, KPI/PMS/pause logic, and export are all untouched.
+  // Defaults to all four so a first visit (or a wiped/unavailable
+  // sessionStorage) shows everything at full opacity, same as before this
+  // toggle existed.
+  const [visiblePlatforms, setVisiblePlatforms] = useState<Platform[]>(() => {
+    try {
+      const raw = sessionStorage.getItem(VISIBLE_PLATFORMS_STORAGE_KEY);
+      if (raw === null) return ALL_PLATFORMS;
+      const parsed = raw.split(',').filter((p): p is Platform => (ALL_PLATFORMS as string[]).includes(p));
+      return parsed;
+    } catch {
+      return ALL_PLATFORMS;
+    }
+  });
+  const togglePlatformVisible = (p: Platform) => {
+    setVisiblePlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+  };
   // The full set of Agent values across every tab, for the filter dropdown's
   // option list — fetched once on mount, independent of showGrid/selectedTabs,
   // so the dropdown isn't empty when the page restores directly into a
@@ -362,6 +384,14 @@ export default function SchedulePlanner() {
       // same as above
     }
   }, [agentFilter]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(VISIBLE_PLATFORMS_STORAGE_KEY, visiblePlatforms.join(','));
+    } catch {
+      // same as above
+    }
+  }, [visiblePlatforms]);
 
   useEffect(() => {
     try {
@@ -689,22 +719,34 @@ export default function SchedulePlanner() {
 
         {displayedPlatforms.length > 0 && (
           <div className="flex shrink-0 items-center gap-1.5">
-            {displayedPlatforms.map((p) => (
-              <Tooltip
-                key={p}
-                content={`${PLATFORM_BADGE[p].label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'}`}
-              >
-                <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold ${PLATFORM_BADGE[p].className}`}>
-                  <img
-                    src={PLATFORM_FAVICON[p]}
-                    alt=""
-                    className="size-3 rounded-[1px]"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
-                  {PLATFORM_BADGE[p].label} <span className="text-slate-900">{displayedPlatformCounts[p] ?? 0}</span>
-                </span>
-              </Tooltip>
-            ))}
+            {displayedPlatforms.map((p) => {
+              const visible = visiblePlatforms.includes(p);
+              return (
+                <Tooltip
+                  key={p}
+                  content={
+                    visible
+                      ? `${PLATFORM_BADGE[p].label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — click to dim its chips in the grid`
+                      : `${PLATFORM_BADGE[p].label} chips dimmed in the grid — click to restore them`
+                  }
+                >
+                  <button
+                    type="button"
+                    onClick={() => togglePlatformVisible(p)}
+                    aria-pressed={visible}
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-opacity ${PLATFORM_BADGE[p].className} ${visible ? '' : 'opacity-40 grayscale hover:opacity-70'}`}
+                  >
+                    <img
+                      src={PLATFORM_FAVICON[p]}
+                      alt=""
+                      className="size-3 rounded-[1px]"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                    {PLATFORM_BADGE[p].label} <span className="text-slate-900">{displayedPlatformCounts[p] ?? 0}</span>
+                  </button>
+                </Tooltip>
+              );
+            })}
           </div>
         )}
 
@@ -787,6 +829,7 @@ export default function SchedulePlanner() {
               todayISO={todayISO}
               previewLoading={previewLoading}
               holidayDateSet={holidayDateSet}
+              visiblePlatforms={visiblePlatforms}
               onClick={() => setSelectedTabs([t])}
             />
           ))}
@@ -797,22 +840,34 @@ export default function SchedulePlanner() {
               <h2 className="text-sm font-semibold text-slate-700">Paused Brand Tabs</h2>
               {pausedDisplayedPlatforms.length > 0 && (
                 <div className="flex flex-wrap items-center gap-1.5">
-                  {pausedDisplayedPlatforms.map((p) => (
-                    <Tooltip
-                      key={p}
-                      content={`${PLATFORM_BADGE[p].label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above`}
-                    >
-                      <span className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold opacity-70 ${PLATFORM_BADGE[p].className}`}>
-                        <img
-                          src={PLATFORM_FAVICON[p]}
-                          alt=""
-                          className="size-3 rounded-[1px]"
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                        />
-                        {PLATFORM_BADGE[p].label} <span className="text-slate-900">{pausedPlatformCounts[p] ?? 0}</span>
-                      </span>
-                    </Tooltip>
-                  ))}
+                  {pausedDisplayedPlatforms.map((p) => {
+                    const visible = visiblePlatforms.includes(p);
+                    return (
+                      <Tooltip
+                        key={p}
+                        content={
+                          visible
+                            ? `${PLATFORM_BADGE[p].label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above. Click to dim its chips.`
+                            : `${PLATFORM_BADGE[p].label} chips dimmed in the grid — click to restore them`
+                        }
+                      >
+                        <button
+                          type="button"
+                          onClick={() => togglePlatformVisible(p)}
+                          aria-pressed={visible}
+                          className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-opacity ${PLATFORM_BADGE[p].className} ${visible ? 'opacity-70' : 'opacity-40 grayscale hover:opacity-60'}`}
+                        >
+                          <img
+                            src={PLATFORM_FAVICON[p]}
+                            alt=""
+                            className="size-3 rounded-[1px]"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                          {PLATFORM_BADGE[p].label} <span className="text-slate-900">{pausedPlatformCounts[p] ?? 0}</span>
+                        </button>
+                      </Tooltip>
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -837,10 +892,16 @@ export default function SchedulePlanner() {
                     todayISO={todayISO}
                     previewLoading={previewLoading}
                     holidayDateSet={holidayDateSet}
+                    visiblePlatforms={visiblePlatforms}
                     cornerBadge={<PausedBadgeIcon className="size-4 shrink-0" />}
                     renderBrandDetail={(brand) => {
                       const byPlatform = firstLastIndex.get(normalizeBrandKey(brand));
                       if (!byPlatform) return null;
+                      // Deliberately unaffected by visiblePlatforms — this is
+                      // a supplementary all-time text line, not a calendar
+                      // chip, and the toggle's whole point is to dim/de-
+                      // emphasize chips without losing information, not to
+                      // drop text out of a detail line.
                       const segments = preview.activePlatforms
                         .filter((p) => byPlatform[p])
                         .map((p) => {
@@ -883,6 +944,7 @@ export default function SchedulePlanner() {
               dateFrom={dateFrom}
               dateTo={dateTo}
               holidayReloadSeq={holidayReloadSeq}
+              visiblePlatforms={visiblePlatforms}
               onPlatformCounts={handlePlatformCounts}
               onRemove={() => removeTab(t)}
             />
