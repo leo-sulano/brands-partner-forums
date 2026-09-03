@@ -892,6 +892,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     }
   }
 
+  // Mirrored by pauseModalInitial in TabPausedBrandsSection.tsx (the Edit Brand
+  // Tab modal's "Paused brands" section). This is the fuller original — it also
+  // reports autoPauseReasonByPlatform for auto-detected pauses, which that
+  // section never shows. Keep the "seed reason/resumeAt from the first paused
+  // platform" behavior in sync between the two.
   function computePauseModalData(brand: string): { platforms: Platform[]; checkedPlatforms: Platform[]; autoPauseReasonByPlatform: Partial<Record<Platform, string>>; initialReason: string; initialResumeAt: string | null } {
     const brandKey = normalizeBrandKey(brand);
     const platforms = brandPlatforms(brand);
@@ -920,6 +925,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // pre-fills reason/until as editable fields, so editing just those on an
   // already-paused platform has to write, even though the checked state itself
   // didn't change.
+  //
+  // Mirrored by handleSavePause in TabPausedBrandsSection.tsx (this is the
+  // fuller original). The override-write + deleteBrandPlatformPause sequence on
+  // the resume (uncheck) branch must stay in sync between the two.
   async function handleSavePauseModal(brand: string, checkedPlatforms: Platform[], reason: string, resumeAt: string | null) {
     const brandKey = normalizeBrandKey(brand);
     const nowChecked = new Set(checkedPlatforms);

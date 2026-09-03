@@ -8841,6 +8841,18 @@ modal's "Save Changes" batch). The section never writes `brand_platform_pause` �
 `recalculatePauses` rebuilds that materialized weekly cache on the next Schedule Planner visit /
 the Monday + daily crons.
 
+A **Resume** from this section additionally deletes the combo's materialized
+`brand_platform_pause` row (mirroring `TabScheduleSection.tsx`'s own `handleResumeNow` /
+`handleSavePauseModal`), so a resume is immediate on every surface. This is a deliberate,
+approved deviation from the plan's "never write `brand_platform_pause`" line — deleting a stale
+cache row is not materializing a pause, and without it a cleared permanent override leaves the
+pause row in place for the rest of the week (`recalculatePauses` then sees
+`paused_week_start === weekStart`, not `<`), which `TabScheduleSection`'s Resume Now would
+mis-treat as an auto-detected pause and answer with a permanent `override_state='active'` row.
+A NEW pause created here still only writes `brand_platform_override` (materialized onto
+`brand_platform_pause` by the next `recalculatePauses` run) — see the accepted-limitation
+paragraph below.
+
 `PlatformPauseModal` gained one additive `overlayZClass` prop (default `z-40` unchanged;
 `z-[60]` from here so it sits above the z-50 Edit Brand Tab modal); `EditBrandTabModal`
 suppresses its own Escape-to-close while that child is open.
@@ -8856,16 +8868,36 @@ Live browser verification deferred — not run this session; worth confirming th
 resume round trip and the Schedule Planner cross-check (same brand+platform shows paused there
 after that page's own `recalculatePauses` runs, with the same reason) before full trust.
 
-Accepted limitation (see Known Issues): the Edit Brand Tab list (from the override table) and
-the Schedule Planner's Paused Brands list (from the materialized `brand_platform_pause` cache)
-can briefly disagree until the tab's next `recalculatePauses` run; the pause itself is in effect
-immediately. Auto-detected pauses are not shown here (no override row) — they stay
-Schedule-Planner-only. Three Minor findings from Task 3's review were parked for the final
-whole-branch review to triage: `pauseModalInitial` seeds reason/resumeAt from the first paused
-platform (differing per-platform reasons can be overwritten on save — matches the Schedule
-Planner's own behavior, spec-sanctioned); a failed post-write `refresh()` leaves the picker
-modal open because `setPickerBrand(null)` runs unconditionally after it; `onChildModalOpenChange`
-tracks only `PlatformPauseModal`, not the native picker `<select>` (non-issue).
+Accepted limitation (see Known Issues): a NEW pause created here writes only
+`brand_platform_override`, so the Schedule Planner grid, PMS status sync, and Ask AI's
+`get_paused_combos` — all of which read the materialized `brand_platform_pause` cache — do NOT
+reflect it until that tab's next `recalculatePauses` run (a Schedule Planner tab visit, or the
+Monday `generate-weekly-schedule` cron). The pause is real in the source-of-truth override table
+immediately, but those three surfaces lag; a Resume here does not lag (it deletes the cache row
+directly). Auto-detected pauses are not shown here (no override row) — they stay
+Schedule-Planner-only. A combo paused here that is later flagged removed
+(`removed_platform_brands`) drops off this list (and the Schedule Planner panel) with no in-UI
+way to clear its lingering `brand_platform_override` row — same accepted behavior as the Schedule
+Planner's Paused Brands panel.
+
+Final whole-branch review fix wave (C1/I1–I4/M2/M4): C1 — Resume (and the modal's uncheck-a-
+platform path) now also calls `deleteBrandPlatformPause`, so a resume clears the materialized
+cache row instead of leaving it live for the rest of the week. I1 — `setPickerBrand(null)` now
+runs immediately after the write loop and before the (best-effort, wrapped) `refresh()`, so a
+failed post-write refetch can no longer strand the picker modal, and write failures surface on
+the now-visible `{error}` line. I2 — an `fetchBrandPlatformOverrides` load failure sets a
+`loadError` and renders "Failed to load paused brands." instead of the "No brands paused on this
+tab." empty state (the three exclusion fetches still fail open). I3 — helper text + these docs
+corrected to state the new-pause-lags / resume-is-immediate asymmetry. I4 — reciprocal
+mirror-of-each-other cross-reference comments added to `pauseModalInitial`/`handleSavePause`
+(here) and `computePauseModalData`/`handleSavePauseModal` (`TabScheduleSection.tsx`, comments
+only — no logic change). M2 — `aria-label="Brand to pause"` on the picker `<select>`. M4 —
+the removed-flag sentence above. Parked (finding M1, needs the same fix in BOTH this file and
+`TabScheduleSection.tsx:907`): `pauseModalInitial` / `computePauseModalData` seed reason/resumeAt
+from the first paused platform, so differing per-platform reasons can be overwritten on save —
+identical to the Schedule Planner's own long-standing, spec-sanctioned behavior.
+`onChildModalOpenChange` tracking only `PlatformPauseModal` and not the native picker `<select>`
+is a non-issue — a native select needs no Escape suppression.
 
 Built via 4 SDD tasks (helper + tests, `overlayZClass` prop, component + wiring, this
 verification/docs task). Spec:
