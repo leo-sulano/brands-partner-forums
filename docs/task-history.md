@@ -8729,3 +8729,52 @@ week push skipped, approved week push creates + idempotent, cancelSchedule clean
 
 **Deploy:** `supabase db push` (migration `20260903130000`) + `git push origin main`. No edge
 function redeploy needed — `pushScheduleToPms` is unchanged.
+
+---
+
+## Task 316: super_admin role — gate weekly schedule approval + super-admin assignment
+
+Added a `super_admin` role tier above `admin`. Per user request: only a super_admin can
+**approve/revoke a weekly schedule approval**, and only a super_admin can **grant or remove the
+super_admin role** on another user. `leo@optinetsolutions.com` is seeded as the first
+super_admin. A plain admin keeps every existing power except it can no longer act on a row whose
+role is (or would become) super_admin.
+
+**Migration `20260903140000_add_super_admin_role.sql`** (profiles.role / is_admin() / the
+profiles RLS policies were all created in the Supabase dashboard, no prior migration, so this
+redefines them in place against their live form):
+- `is_admin()` → `role in ('admin', 'super_admin')` — **super_admin is a strict superset of
+  admin**.
+- New `is_super_admin()` → `approved and role = 'super_admin'`.
+- `weekly_schedule_approvals` insert/update/delete policies: `is_admin()` → `is_super_admin()`.
+- `profiles` UPDATE + DELETE policies: a plain admin may only act on a row where **both** the
+  existing role (USING) and resulting role (WITH CHECK) are `<> 'super_admin'`; a super_admin
+  bypasses that. Self-edit stays blocked (`id <> auth.uid()`), so a super_admin can't demote
+  themselves through the UI — protects the last super_admin from lock-out.
+- `profiles_role_check` CHECK widened to `('super_admin','admin','member')`.
+- `update profiles set role = 'super_admin' where email = 'leo@optinetsolutions.com'`.
+
+**Frontend:**
+- `Profile.role` type → `'super_admin' | 'admin' | 'member'`.
+- `AuthContext` → new `isSuperAdmin` (`role === 'super_admin'`); `isAdmin` now true for both
+  roles. `isAdmin` remains the single chokepoint for every existing admin gate (Sidebar link,
+  `AdminUsers` route guard, etc.), so a super_admin passes all of them for free.
+- `TabScheduleSection.tsx` → the "Approve week" / "Revoke" buttons and their two handler guards
+  gate on `isSuperAdmin` instead of `isAdmin`. The Draft/Approved pill still shows for everyone.
+- `AdminUsers.tsx` → violet `super admin` badge; role ladder is member → admin → super_admin,
+  where the super_admin rung is only offered to a super_admin viewer ("Make Super Admin" from an
+  admin row, "Remove Super Admin" from a super_admin row → back to admin). A plain-admin viewer
+  sees `—` (no approve/revoke/role/delete controls) on a super_admin row. `patch()` derives the
+  new `make_super_admin` / `remove_super_admin` audit actions from the pre-change role.
+- `AdminAction` union + `ActivityLog` `ACTION_META` gain `make_super_admin` /
+  `remove_super_admin` (violet).
+
+No `queries.ts` `updateProfile` signature change (role type widens; RLS enforces). No edge
+function code change (`AdminAction` is a tree-shaken type; `deno check` on `sync-schedule-pms`
+clean).
+
+Verification: `npm run build` clean; full suite 2326 passed; `deno check` clean.
+
+**Deploy:** `supabase db push` (`20260903140000`) + `git push origin main`. No edge-function
+redeploy. Live-verify after: `is_admin()`/`is_super_admin()` defs, `leo@` role, the swapped
+`weekly_schedule_approvals` + `profiles` policies, the widened role CHECK.

@@ -61,7 +61,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* Same-session follow-up to Task 314 below (weekly approval gate), per
+- *2026-09-03 (newest):* Added a **`super_admin`** role tier above `admin`. Only a super_admin
+  can approve/revoke a weekly schedule approval (Task 314/315) and only a super_admin can grant/
+  remove the super_admin role on another user; `leo@optinetsolutions.com` is seeded as the
+  first. `super_admin` is a strict superset of `admin` — `is_admin()` is redefined to
+  `role in ('admin','super_admin')`, new `is_super_admin()` = `role = 'super_admin'`, so a
+  super_admin passes every existing `isAdmin`/`is_admin()` gate for free. Migration
+  `20260903140000_add_super_admin_role.sql` (profiles.role/is_admin()/profiles RLS were all
+  dashboard-created, no prior migration — redefined in place): swaps
+  `weekly_schedule_approvals` writes to `is_super_admin()`; tightens `profiles` UPDATE+DELETE so
+  a plain admin can only act on rows where both the existing and resulting role are
+  `<> 'super_admin'` (self-edit still blocked, so no last-super-admin lockout); widens the
+  `profiles_role_check` CHECK; seeds `leo@`. Frontend: `Profile.role` type; `AuthContext`
+  `isSuperAdmin` + widened `isAdmin`; `TabScheduleSection.tsx` Approve/Revoke buttons + guards
+  → `isSuperAdmin`; `AdminUsers.tsx` violet "super admin" badge + a member→admin→super_admin
+  ladder where the super_admin rung is super-admin-only, and a plain admin sees `—` on a
+  super_admin row; `AdminAction` + `ActivityLog` gain `make_super_admin`/`remove_super_admin`.
+  No `queries.ts`/edge-function code change. `npm run build` clean; full suite 2326; `deno
+  check` clean. Deploy: `supabase db push` (`20260903140000`) + `git push origin main`. Task 316.
+- *2026-09-03 (prior):* Same-session follow-up to Task 314 below (weekly approval gate), per
   direct user decision: **the approval gate now controls ONLY whether a `(tab, week)` reaches
   the PMS board — it no longer locks editing.** An approved week stays editable by any approved
   user; a mid-week adjustment syncs live exactly as before (cancel a day → its PMS card is

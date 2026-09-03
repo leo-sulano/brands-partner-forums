@@ -165,7 +165,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [pauseModalBusy, setPauseModalBusy] = useState(false);
   const [pausedBrandsOpen, setPausedBrandsOpen] = useState(false);
   const [pausedBrandsBusy, setPausedBrandsBusy] = useState(false);
-  const { isApproved, isAdmin, profile } = useAuth();
+  const { isApproved, isSuperAdmin, profile } = useAuth();
 
   // Weekly schedule approval state. Approval gates ONE thing: whether a
   // (tab, week)'s plan is allowed onto the PMS board. Editing stays open to
@@ -1123,7 +1123,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }
 
   async function handleApproveWeek() {
-    if (!isAdmin || approveBusy) return;
+    if (!isSuperAdmin || approveBusy) return;
     setApproveBusy(true);
     try {
       await approveWeek(tab, weekStartISO, profile?.email ?? 'unknown');
@@ -1150,7 +1150,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }
 
   async function handleRevokeWeek() {
-    if (!isAdmin || approveBusy) return;
+    if (!isSuperAdmin || approveBusy) return;
     setApproveBusy(true);
     try {
       await revokeWeekApproval(tab, weekStartISO);
@@ -1271,7 +1271,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 </Tooltip>
               )
             )}
-            {isAdmin && !isLegacyWeekAt(weekStartISO) && (
+            {isSuperAdmin && !isLegacyWeekAt(weekStartISO) && (
               isDisplayedWeekApproved ? (
                 <button
                   type="button"

@@ -38,6 +38,8 @@ const ACTION_META: Record<AdminAction, { label: string; icon: React.ReactNode; c
   remove:       { label: 'User removed',         icon: <Trash2 className="size-4 shrink-0" />,     color: 'text-rose-500' },
   make_admin:   { label: 'Promoted to admin',    icon: <ShieldCheck className="size-4 shrink-0" />, color: 'text-blue-500' },
   remove_admin: { label: 'Admin role removed',   icon: <ShieldOff className="size-4 shrink-0" />,  color: 'text-slate-400' },
+  make_super_admin:   { label: 'Promoted to super admin', icon: <ShieldCheck className="size-4 shrink-0" />, color: 'text-violet-500' },
+  remove_super_admin: { label: 'Super admin role removed', icon: <ShieldOff className="size-4 shrink-0" />,  color: 'text-slate-400' },
 };
 
 function ActivityFeed() {

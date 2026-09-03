@@ -1803,7 +1803,7 @@ export async function deleteProfile(id: string): Promise<void> {
   if (count === 0) throw new Error('Delete had no effect — the "admins can delete profiles" RLS policy may not be applied in your Supabase project.');
 }
 
-export type AdminAction = 'approve' | 'revoke' | 'remove' | 'make_admin' | 'remove_admin';
+export type AdminAction = 'approve' | 'revoke' | 'remove' | 'make_admin' | 'remove_admin' | 'make_super_admin' | 'remove_super_admin';
 
 export interface AdminLogEvent {
   id: string;

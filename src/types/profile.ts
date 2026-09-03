@@ -2,7 +2,7 @@ export interface Profile {
   id: string;
   email: string;
   approved: boolean;
-  role: 'admin' | 'member';
+  role: 'super_admin' | 'admin' | 'member';
   created_at: string;
   avatar_url: string | null;
   sso_provisioned: boolean;

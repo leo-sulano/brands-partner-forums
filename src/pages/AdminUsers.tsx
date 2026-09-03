@@ -28,7 +28,7 @@ function ProfileAvatar({ profile }: { profile: Profile }) {
 }
 
 export default function AdminUsers() {
-  const { isAdmin, profile: self, session, refreshProfile } = useAuth();
+  const { isAdmin, isSuperAdmin, profile: self, session, refreshProfile } = useAuth();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -99,10 +99,17 @@ export default function AdminUsers() {
     setError(null);
     try {
       await updateProfile(id, changes);
-      const action: AdminAction =
-        'approved' in changes
-          ? changes.approved ? 'approve' : 'revoke'
-          : changes.role === 'admin' ? 'make_admin' : 'remove_admin';
+      const prevRole = profiles.find((p) => p.id === id)?.role;
+      let action: AdminAction;
+      if ('approved' in changes) {
+        action = changes.approved ? 'approve' : 'revoke';
+      } else if (changes.role === 'super_admin') {
+        action = 'make_super_admin';
+      } else if (changes.role === 'admin') {
+        action = prevRole === 'super_admin' ? 'remove_super_admin' : 'make_admin';
+      } else {
+        action = 'remove_admin'; // -> member (only offered from an admin row)
+      }
       logAction(action, targetEmail);
       setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, ...changes } : p)));
     } catch (err) {
@@ -185,9 +192,11 @@ export default function AdminUsers() {
                   <td className="px-4 py-3">
                     <span className={[
                       'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
-                      p.role === 'admin' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600',
+                      p.role === 'super_admin' ? 'bg-violet-100 text-violet-700'
+                        : p.role === 'admin' ? 'bg-blue-100 text-blue-700'
+                        : 'bg-slate-100 text-slate-600',
                     ].join(' ')}>
-                      {p.role}
+                      {p.role === 'super_admin' ? 'super admin' : p.role}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -205,9 +214,12 @@ export default function AdminUsers() {
                     <div className="flex items-center gap-2">
                       {busy ? (
                         <Loader2 className="size-4 animate-spin text-slate-400" />
+                      ) : isSelf ? null : !(isSuperAdmin || p.role !== 'super_admin') ? (
+                        // A plain admin has no controls over a super admin row.
+                        <span className="text-xs text-slate-400">&mdash;</span>
                       ) : (
                         <>
-                          {!isSelf && (p.approved ? (
+                          {p.approved ? (
                             <button
                               onClick={() => patch(p.id, { approved: false }, p.email)}
                               className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50 transition-colors"
@@ -223,17 +235,18 @@ export default function AdminUsers() {
                               <UserCheck className="size-3.5" />
                               Approve
                             </button>
-                          ))}
-                          {!isSelf && (
-                            p.role === 'member' ? (
-                              <button
-                                onClick={() => patch(p.id, { role: 'admin' }, p.email)}
-                                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
-                              >
-                                <ShieldCheck className="size-3.5" />
-                                Make Admin
-                              </button>
-                            ) : (
+                          )}
+                          {p.role === 'member' && (
+                            <button
+                              onClick={() => patch(p.id, { role: 'admin' }, p.email)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 transition-colors"
+                            >
+                              <ShieldCheck className="size-3.5" />
+                              Make Admin
+                            </button>
+                          )}
+                          {p.role === 'admin' && (
+                            <>
                               <button
                                 onClick={() => patch(p.id, { role: 'member' }, p.email)}
                                 className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-blue-50 transition-colors"
@@ -241,9 +254,27 @@ export default function AdminUsers() {
                                 <ShieldOff className="size-3.5" />
                                 Remove Admin
                               </button>
-                            )
+                              {isSuperAdmin && (
+                                <button
+                                  onClick={() => patch(p.id, { role: 'super_admin' }, p.email)}
+                                  className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-violet-600 hover:bg-violet-50 transition-colors"
+                                >
+                                  <ShieldCheck className="size-3.5" />
+                                  Make Super Admin
+                                </button>
+                              )}
+                            </>
                           )}
-                          {!isSelf && (
+                          {p.role === 'super_admin' && (
+                            <button
+                              onClick={() => patch(p.id, { role: 'admin' }, p.email)}
+                              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-500 hover:bg-violet-50 transition-colors"
+                            >
+                              <ShieldOff className="size-3.5" />
+                              Remove Super Admin
+                            </button>
+                          )}
+                          {(
                             confirmRemove === p.id ? (
                               <span className="inline-flex items-center gap-1">
                                 <button

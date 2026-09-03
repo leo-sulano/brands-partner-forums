@@ -15,7 +15,9 @@ interface AuthContextValue {
   session: Session | null;
   profile: Profile | null;
   isApproved: boolean;
+  // super_admin is a strict superset of admin: isAdmin is true for both roles.
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   loading: boolean;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -176,10 +178,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const isApproved = profile?.approved === true;
-  const isAdmin = isApproved && profile?.role === 'admin';
+  const isSuperAdmin = isApproved && profile?.role === 'super_admin';
+  const isAdmin = isApproved && (profile?.role === 'admin' || profile?.role === 'super_admin');
 
   return (
-    <AuthContext.Provider value={{ session, profile, isApproved, isAdmin, loading, signOut, refreshProfile }}>
+    <AuthContext.Provider value={{ session, profile, isApproved, isAdmin, isSuperAdmin, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );
