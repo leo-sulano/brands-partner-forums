@@ -8521,3 +8521,61 @@ currently failing their actual success-rate/consecutive-removed checks, which th
 deliberately avoided disturbing. Migration, deploys, and the corrected Ask AI tool description are
 all otherwise confirmed live as of this task; see Task 311 above for the full feature writeup.
 
+---
+
+## Task 313: Even Platform Distribution Across the Week (Schedule Planner)
+
+Auto-generated Schedule Planner weeks clumped each platform toward the front of the week —
+AG reviews piling Mon–Wed, a disproportionate chunk of TP on Friday — reported off a
+Rooster Partners screenshot. Root cause was three structural biases in `generateWeekSchedule`
+(`src/lib/scheduler/schedulerEngine.ts`), all pushing work early: `leastLoadedDay` broke every
+tie by candidate order (always Mon→Fri); brands were processed in list order so the first
+brand always claimed the earliest least-loaded days, with paused/removed/hidden/restricted
+combos dropping out asymmetrically instead of averaging back out; and TP pooled all four of its
+preferred days (`Mon,Tue,Thu,Fri`) and picked least-loaded individually, so it drifted off its
+`Mon+Thu` / `Tue+Fri` pairing and Friday caught the `DAY_SLACK` spillover.
+
+Fix, confined to `generateWeekSchedule` day placement only — one deterministic PRNG seeded from
+`` `${tab}::${weekStart}` `` drives three changes:
+1. **Seeded Fisher–Yates shuffle of brand processing order**, applied once and reused by both
+   priority loops (resuming-from-pause, everyone-else).
+2. **Seeded tie-breaks** — new `leastLoadedDayRandom` gathers every day tied for minimum load
+   and picks one via the PRNG, instead of `candidates[0]`.
+3. **TP pair pick per brand** — `selectDays` picks exactly one configured `preferredDayPairs`
+   entry per brand as that brand's TP pool, instead of flattening both pairs, so roughly half
+   the tab's brands land on Mon+Thu and half on Tue+Fri.
+
+Seed is a pure function of `(tab, weekStart)`: regenerating the same week is byte-identical (no
+thrash between a page visit and the Monday cron; both runtimes agree — `xmur3` + `mulberry32`,
+integer-only, identical under Node and Deno), while each new week reshuffles so a brand's
+platform days rotate week to week ("windowing"). Already-generated / pinned weeks are never
+re-run, so nothing existing changes — the evened-out distribution appears only on weeks
+generated after this ships (**new weeks only**, no migration, no rewrite).
+
+Explicitly untouched, per the constraint that the change stay inside day placement:
+`recalculatePauses` and all pause detection, `buildCarryover` / carryover math, holiday
+`unavailableDays` computation and redistribution, the `DAY_SLACK` spillover structure,
+duplicate-day avoidance, the priority-loop order and every skip rule, the persisted
+`brand_schedule` schema, PMS sync, CSV/Excel export, `calendarRenderer.tsx`, and Ask AI's
+`get_schedule` — none of which recompute the engine (they read persisted rows).
+`leastLoadedDay` stays in `scheduleUtils.ts` (with its own tests) even though the engine no
+longer imports it — removing it was out of scope.
+
+New `src/lib/scheduler/seededRandom.ts` (`makeRng` / `shuffle` / `pickIndex`, dependency-free)
++ `seededRandom.test.ts` (10 tests: seed reproducibility, permutation correctness, rough
+uniformity). `schedulerEngine.test.ts` updated — the single-brand "TP on Monday+Thursday"
+assertion became "TP's two days are one of the configured pairs"; new tests cover same-seed
+reproducibility, different-seed divergence, AG spread within 1 across a 10-brand tab, and TP
+splitting across both pairs. `schedulerService.ts` passes `seed: \`${tab}::${weekStart}\`` into
+its one `generateWeekSchedule` call; nothing else in that file changed.
+
+Verification: full scheduler suite (619 tests) green; `npm run build` clean (exit 0); `deno
+check` clean on `generate-weekly-schedule`; full frontend suite 2316 passed (1 unrelated flaky
+5s timeout in `queries.publicHolidays.test.ts` that passes in isolation — no scheduler import).
+Live browser check deferred to whoever has Supabase credentials: open a tab whose current week
+isn't yet generated (or a future week), confirm AG/CG/WO/TP days are visibly spread Mon–Fri
+rather than front-loaded, and that reloading produces the same layout.
+
+Spec: `docs/superpowers/specs/2026-09-03-schedule-planner-even-platform-distribution-design.md`.
+No plan doc — implemented directly at the user's direction after spec approval.
+

@@ -61,7 +61,38 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* Same-day follow-up to Task 311 directly below: live-verified the
+- *2026-09-03 (newest):* Schedule Planner auto-generation now spreads each platform evenly
+  across Mon–Fri instead of front-loading it (too many AG reviews Mon–Wed, a big chunk of TP on
+  Friday — reported off a Rooster Partners screenshot). Root cause was three biases in
+  `generateWeekSchedule` (`src/lib/scheduler/schedulerEngine.ts`): `leastLoadedDay` broke every
+  tie Mon→Fri, brands were processed in list order (first brand always grabbed the earliest
+  least-loaded days; paused/removed/hidden combos dropping out asymmetrically compounded it),
+  and TP pooled all four preferred days so it drifted off its Mon+Thu / Tue+Fri pairing and
+  Friday caught the `DAY_SLACK` spillover. Fix, confined to day placement only: one
+  deterministic PRNG seeded from `${tab}::${weekStart}` (new dependency-free
+  `src/lib/scheduler/seededRandom.ts` — `xmur3`+`mulberry32`, integer-only, identical under Node
+  and Deno) drives (1) a seeded Fisher–Yates shuffle of brand processing order, reused by both
+  priority loops; (2) seeded tie-breaks — new `leastLoadedDayRandom` gathers all days tied for
+  min load and picks one; (3) a per-brand TP pair pick — `selectDays` picks one configured
+  `preferredDayPairs` entry per brand instead of flattening both, so ~half the tab's brands land
+  Mon+Thu and half Tue+Fri. Seed is a pure function of `(tab, weekStart)`: regenerating the same
+  week is byte-identical (page visit and Monday cron agree), each new week reshuffles so a
+  brand's platform days rotate ("windowing"). **New weeks only** — already-generated/pinned weeks
+  are never re-run, so nothing existing changes; no migration. Deliberately untouched:
+  `recalculatePauses` and all pause detection, `buildCarryover`, holiday `unavailableDays` +
+  redistribution, `DAY_SLACK` spillover structure, duplicate-day avoidance, priority-loop order
+  and skip rules, `brand_schedule` schema, PMS sync, export, `calendarRenderer.tsx`, Ask AI's
+  `get_schedule` (none recompute the engine). `leastLoadedDay` stays in `scheduleUtils.ts`
+  (engine no longer imports it; removal was out of scope). `schedulerService.ts` passes
+  `seed: \`${tab}::${weekStart}\`` into its one engine call — nothing else there changed.
+  Verification: scheduler suite (619) green, `npm run build` clean, `deno check` clean on
+  `generate-weekly-schedule`, full suite 2316 passed (1 unrelated flaky 5s timeout in
+  `queries.publicHolidays.test.ts`, passes in isolation). Live browser check (see the evened-out
+  spread on a not-yet-generated / future week) deferred — no Supabase credentials this session.
+  Spec:
+  `docs/superpowers/specs/2026-09-03-schedule-planner-even-platform-distribution-design.md`. No
+  plan doc — implemented directly after spec approval. Task 313.
+- *2026-09-03 (prior):* Same-day follow-up to Task 311 directly below: live-verified the
   brand+platform pause feature end to end against production, using a throwaway Node script
   driving a real `playwright` browser (the Playwright MCP tool was unavailable this session, but
   this repo already depends on the `playwright` npm package for `scripts/capture-getting-started.mjs`,

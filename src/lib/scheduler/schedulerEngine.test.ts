@@ -13,13 +13,15 @@ const baseInput: SchedulerInput = {
   resumingBrandPlatforms: [],
   carryover: [],
   unavailableDays: [],
+  seed: 'test-seed',
 };
 
 describe('generateWeekSchedule', () => {
-  it('assigns TP its 2 posts on the first preferred pair (Monday+Thursday) when the week is empty', () => {
-    const slots = generateWeekSchedule(baseInput);
-    const days = slotsFor(slots, 'WinMega', 'tp').map((s) => s.day).sort();
-    expect(days).toEqual(['monday', 'thursday']);
+  it('assigns TP its 2 posts on exactly one of its configured preferred pairs', () => {
+    const days = new Set(slotsFor(generateWeekSchedule(baseInput), 'WinMega', 'tp').map((s) => s.day));
+    const isMonThu = days.size === 2 && days.has('monday') && days.has('thursday');
+    const isTueFri = days.size === 2 && days.has('tuesday') && days.has('friday');
+    expect(isMonThu || isTueFri).toBe(true);
   });
 
   it('assigns WO exactly 1 post, load-balanced with no fixed preferred day', () => {
@@ -83,6 +85,7 @@ describe('generateWeekSchedule', () => {
       resumingBrandPlatforms: [],
       carryover: [],
       unavailableDays: [],
+      seed: 'test-seed',
     };
     const slots = generateWeekSchedule(input);
     const counts: Record<string, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
@@ -164,6 +167,7 @@ describe('generateWeekSchedule', () => {
       resumingBrandPlatforms: [],
       carryover: [],
       unavailableDays: ['friday'],
+      seed: 'test-seed',
     };
     const counts: Record<string, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
     for (const s of generateWeekSchedule(input)) counts[s.day] += 1;
@@ -191,5 +195,67 @@ describe('generateWeekSchedule', () => {
       unavailableDays: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'],
     };
     expect(generateWeekSchedule(input)).toHaveLength(0);
+  });
+
+  const manyBrands = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+
+  it('produces an identical schedule when regenerated with the same seed', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      brands: manyBrands,
+      activePlatforms: ['tp', 'ag', 'cg'],
+      seed: 'Rooster Partners::2026-09-07',
+    };
+    const first = generateWeekSchedule(input);
+    const second = generateWeekSchedule(input);
+    expect(second).toEqual(first);
+  });
+
+  it('produces a different day layout for a different seed', () => {
+    const base: SchedulerInput = {
+      ...baseInput,
+      brands: manyBrands,
+      activePlatforms: ['ag'],
+    };
+    const layout = (seed: string) =>
+      generateWeekSchedule({ ...base, seed })
+        .map((s) => `${s.brandKey}:${s.day}`)
+        .sort()
+        .join('|');
+    expect(layout('Rooster Partners::2026-09-07')).not.toEqual(layout('Rooster Partners::2026-09-14'));
+  });
+
+  it('spreads AG evenly across the week for a large tab (no day carries more than ~1/5 + slack)', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      brands: manyBrands, // 10 brands * 2 AG/wk = 20 slots
+      activePlatforms: ['ag'],
+      seed: 'Rooster Partners::2026-09-07',
+    };
+    const counts: Record<string, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
+    for (const s of generateWeekSchedule(input)) counts[s.day] += 1;
+    const values = Object.values(counts);
+    expect(Math.max(...values) - Math.min(...values)).toBeLessThanOrEqual(1);
+  });
+
+  it('splits TP across both preferred pairs when many brands are scheduled', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      brands: manyBrands, // 10 brands * 2 TP/wk = 20 slots
+      activePlatforms: ['tp'],
+      seed: 'Rooster Partners::2026-09-07',
+    };
+    const counts: Record<string, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
+    for (const s of generateWeekSchedule(input)) counts[s.day] += 1;
+    // Both configured pairs carry real load — the point of the per-brand pair
+    // pick is that Tue/Fri isn't starved while Mon/Thu (or Friday alone) soaks
+    // up everything.
+    expect(counts.monday + counts.thursday).toBeGreaterThan(3);
+    expect(counts.tuesday + counts.friday).toBeGreaterThan(3);
+    // Wednesday is never a preferred TP day — only reachable via DAY_SLACK
+    // spillover, so it stays a small minority, never a primary bucket.
+    expect(counts.wednesday).toBeLessThanOrEqual(4);
+    // No single day soaks up the bulk of TP (20 slots / 4 preferred days = 5 ideal).
+    expect(Math.max(...Object.values(counts))).toBeLessThanOrEqual(7);
   });
 });

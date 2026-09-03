@@ -1,12 +1,29 @@
 import { WEEKDAYS, type Weekday } from '../scheduleBrands.ts';
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
 import { PLATFORM_RULES, type PlatformRule } from './schedulerRules.ts';
-import { leastLoadedDay } from './scheduleUtils.ts';
+import { makeRng, shuffle, pickIndex } from './seededRandom.ts';
 
 // If the least-loaded preferred day is at least this much more loaded than
 // the week's overall least-loaded day, spill over to the overall best day
 // instead of forcing every post onto an already-saturated preferred day.
 const DAY_SLACK = 2;
+
+// Least-loaded day among `candidates`, breaking ties by a seeded random pick
+// rather than by `candidates` order. This is what keeps a platform from
+// piling onto Monday/Tuesday every week: with a shared dayCounts accumulator,
+// most picks early in a week are ties, and a positional tie-break (the old
+// `leastLoadedDay`) always resolved them toward the front of the week.
+// `candidates` is assumed non-empty (every call site guards).
+function leastLoadedDayRandom(
+  dayCounts: Record<Weekday, number>,
+  candidates: Weekday[],
+  rng: () => number,
+): Weekday {
+  let min = Infinity;
+  for (const d of candidates) if (dayCounts[d] < min) min = dayCounts[d];
+  const tied = candidates.filter((d) => dayCounts[d] === min);
+  return tied[pickIndex(tied.length, rng)];
+}
 
 export interface ScheduledSlot {
   brand: string;
@@ -36,8 +53,13 @@ export interface SchedulerInput {
   carryover: CarryoverItem[];
   // Weekdays that fall on a public holiday this week — receive zero slots.
   // The engine redistributes each platform's normal weekly post count across
-  // the remaining days via the same leastLoadedDay balancing.
+  // the remaining days via the same load balancing.
   unavailableDays: Weekday[];
+  // Seed for this run's deterministic PRNG — pass `${tab}::${weekStart}` so a
+  // regenerate of the same week is byte-identical while each new week gets a
+  // fresh shuffle (platform days rotate week to week). Drives the brand-order
+  // shuffle, the day tie-breaks, and the TP preferred-pair pick.
+  seed: string;
 }
 
 function hasCombo(list: PinnedCombo[], brandKey: string, platform: Platform): boolean {
@@ -49,13 +71,18 @@ function selectDays(
   numSlots: number,
   dayCounts: Record<Weekday, number>,
   availableDays: Weekday[],
+  rng: () => number,
 ): Weekday[] {
-  const preferredPool: Weekday[] = (rule.preferredDayPairs
-    ? [...new Set(rule.preferredDayPairs.flat())]
-    : rule.preferredDays
-      ? [...rule.preferredDays]
-      : [...WEEKDAYS]
-  ).filter((d) => availableDays.includes(d));
+  // For a platform defined by preferred PAIRS (TP), pick exactly ONE pair for
+  // this brand's run rather than pooling every preferred day. Half the tab's
+  // brands then land on Mon+Thu and half on Tue+Fri, instead of the old
+  // flattened pool letting Friday soak up all the DAY_SLACK spillover.
+  const preferredSource: Weekday[] | null = rule.preferredDayPairs
+    ? rule.preferredDayPairs[pickIndex(rule.preferredDayPairs.length, rng)]
+    : rule.preferredDays ?? null;
+  const preferredPool: Weekday[] = (preferredSource ?? [...WEEKDAYS]).filter((d) =>
+    availableDays.includes(d),
+  );
 
   const chosen: Weekday[] = [];
   for (let i = 0; i < numSlots; i++) {
@@ -65,10 +92,10 @@ function selectDays(
 
     let pick: Weekday;
     if (preferredAvailable.length === 0) {
-      pick = leastLoadedDay(dayCounts, overallAvailable);
+      pick = leastLoadedDayRandom(dayCounts, overallAvailable, rng);
     } else {
-      const preferredBest = leastLoadedDay(dayCounts, preferredAvailable);
-      const overallBest = leastLoadedDay(dayCounts, overallAvailable);
+      const preferredBest = leastLoadedDayRandom(dayCounts, preferredAvailable, rng);
+      const overallBest = leastLoadedDayRandom(dayCounts, overallAvailable, rng);
       pick = dayCounts[preferredBest] - dayCounts[overallBest] >= DAY_SLACK ? overallBest : preferredBest;
     }
     chosen.push(pick);
@@ -78,10 +105,17 @@ function selectDays(
 }
 
 export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
+  const rng = makeRng(input.seed);
   const dayCounts: Record<Weekday, number> = { monday: 0, tuesday: 0, wednesday: 0, thursday: 0, friday: 0 };
   const availableDays = WEEKDAYS.filter((d) => !input.unavailableDays.includes(d));
   const slots: ScheduledSlot[] = [];
-  const brandKeys = input.brands.map((brand) => ({ brand, brandKey: normalizeBrandKey(brand) }));
+  // Shuffle brand processing order (seeded) so no single brand always claims
+  // the earliest least-loaded days. Applied once, reused by both priority
+  // loops below.
+  const brandKeys = shuffle(
+    input.brands.map((brand) => ({ brand, brandKey: normalizeBrandKey(brand) })),
+    rng,
+  );
 
   // Build carryover lookup map from valid combos only (those in brands × activePlatforms).
   // This prevents carryover from introducing rows for brand/platform combos the tab doesn't track.
@@ -96,7 +130,7 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
   function assign(brand: string, brandKey: string, platform: Platform, numSlots: number) {
     if (numSlots <= 0) return;
     if (availableDays.length === 0) return;
-    const days = selectDays(PLATFORM_RULES[platform], numSlots, dayCounts, availableDays);
+    const days = selectDays(PLATFORM_RULES[platform], numSlots, dayCounts, availableDays, rng);
     for (const day of days) slots.push({ brand, brandKey, platform, day });
   }
 

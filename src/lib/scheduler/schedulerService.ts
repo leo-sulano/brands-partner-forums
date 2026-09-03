@@ -417,6 +417,9 @@ export async function ensureWeekGenerated(
     resumingBrandPlatforms: resumedThisWeek,
     carryover,
     unavailableDays,
+    // Deterministic per (tab, week): a regenerate of the same week is
+    // byte-identical, while each new week reshuffles so platform days rotate.
+    seed: `${tab}::${weekStart}`,
   });
 
   if (slots.length === 0) return [];
