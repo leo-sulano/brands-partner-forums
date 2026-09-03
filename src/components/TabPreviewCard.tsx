@@ -6,7 +6,7 @@ import { tabDisplayName } from '../lib/tabs';
 import { scheduleFor, WEEKDAY_LABELS } from '../lib/scheduleBrands';
 import { normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, resolveDateEvidenceKind, type ScheduleColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, resolveDateEvidenceKind, filterVisiblePlatforms, type ScheduleColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
 import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
 import type { TabPreview } from '../pages/SchedulePlanner';
 
@@ -23,11 +23,11 @@ interface Props {
   // greyed in both header rows and the body cells, in every card this
   // component renders (active and paused grids alike).
   holidayDateSet: Set<string>;
-  // The toolbar's user-toggled platform-visibility set. A platform not in
-  // this list still renders its calendar-cell chip exactly as it otherwise
-  // would, just dimmed/grayscaled — mirrors TabScheduleSection's own
-  // visiblePlatforms treatment so the overview grid and the expanded
-  // single-tab grid can't disagree about what's currently dimmed.
+  // The toolbar's user-toggled platform-visibility set — narrows which
+  // platforms this card draws a chip for (calendar cells). Mirrors
+  // TabScheduleSection's own visiblePlatforms filtering so the overview
+  // grid and the expanded single-tab grid can't disagree about what's
+  // currently hidden.
   visiblePlatforms: Platform[];
   // Undefined disables the card's whole-card click/keyboard nav and the
   // trailing chevron — used for a whole-tab-paused card, which must never
@@ -144,8 +144,9 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                 </tr>
               ) : (
                 previewBrands.map((brand) => {
-                  const brandPlatforms = resolveBrandPlatforms(
-                    tab, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+                  const brandPlatforms = filterVisiblePlatforms(
+                    resolveBrandPlatforms(tab, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
+                    visiblePlatforms,
                   );
                   const brandKey = normalizeBrandKey(brand);
                   const detail = renderBrandDetail?.(brand);
@@ -180,40 +181,22 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                             className={`px-0.5 py-1 text-center ${holidayDateSet.has(col.iso) ? 'bg-slate-100' : ''}`}
                           >
                             <span className="flex flex-wrap items-center justify-center gap-0.5">
-                              {executedEntries.map(({ platform: p, kind }) => {
-                                // Toolbar overview toggle — desaturates a
-                                // hidden platform's chip in place rather than
-                                // omitting it (same treatment as
-                                // TabScheduleSection's day-cell chips).
-                                // Grayscale-only, no opacity reduction — these
-                                // icons are already tiny (size-2.5), and a
-                                // faded copy on top of that reads as "gone,"
-                                // not "de-emphasized."
-                                const dimmed = !visiblePlatforms.includes(p);
-                                return (
-                                  <Tooltip key={p} content={PLATFORM_BADGE[p].label}>
-                                    <span
-                                      className={`relative inline-flex items-center rounded-[2px] p-px ${PLATFORM_BADGE[p].className} ${dimmed ? 'grayscale' : ''}`}
-                                    >
-                                      <img
-                                        src={PLATFORM_FAVICON[p]}
-                                        alt={PLATFORM_BADGE[p].label}
-                                        className="size-2.5 rounded-[1px]"
-                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                      />
-                                      {kind && <EvidenceCornerBadge kind={kind} />}
-                                    </span>
-                                  </Tooltip>
-                                );
-                              })}
+                              {executedEntries.map(({ platform: p, kind }) => (
+                                <Tooltip key={p} content={PLATFORM_BADGE[p].label}>
+                                  <span
+                                    className={`relative inline-flex items-center rounded-[2px] p-px ${PLATFORM_BADGE[p].className}`}
+                                  >
+                                    <img
+                                      src={PLATFORM_FAVICON[p]}
+                                      alt={PLATFORM_BADGE[p].label}
+                                      className="size-2.5 rounded-[1px]"
+                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                    {kind && <EvidenceCornerBadge kind={kind} />}
+                                  </span>
+                                </Tooltip>
+                              ))}
                               {missed.map((p) => (
-                                // Deliberately unaffected by the toggle — a
-                                // "missed" chip (dashed border, grayscale
-                                // image, 60% opacity) is already the most
-                                // de-emphasized look this card has; fading it
-                                // further when also toggled off would vanish
-                                // it entirely, same problem the toggle itself
-                                // was just fixed for.
                                 <Tooltip key={p} content={`${PLATFORM_BADGE[p].label}: Planned — no confirmed activity found`}>
                                   <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 p-px opacity-60">
                                     <img

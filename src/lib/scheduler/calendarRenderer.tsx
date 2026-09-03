@@ -105,12 +105,6 @@ interface ScheduleCellProps {
   // Planner landing-grid preview's own chips. The current single-week view
   // has room to keep the label, so this defaults to false there.
   iconOnly?: boolean;
-  // The toolbar's user-toggled platform-visibility set. A platform not in
-  // this list still renders its chip in full (evidence, pause state, click
-  // behavior, "+ Add Platform" candidacy — everything — is unaffected) but
-  // dimmed/grayscaled, per direct user request: toggling a pill off is an
-  // overview aid, not a way to lose sight of what's actually scheduled.
-  visiblePlatforms: Platform[];
 }
 
 interface PlatformChipProps {
@@ -254,7 +248,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, holidayName, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly, visiblePlatforms }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, holidayName, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   const cell = (
     <div
@@ -288,23 +282,11 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         // "Paused (scheduler)" placeholder rather than being masked by it —
         // so the pause is only "effective" for a day while status is unset.
         const effectivePaused = isPaused && status == null;
-        // Toolbar overview toggle — desaturates the chip without changing
-        // anything else about it (evidence badges, click-to-cycle, tooltip
-        // content, and full opacity all stay exactly as they'd be if
-        // visible). Deliberately grayscale-only, no opacity reduction — an
-        // opacity fade on top of an already-small chip reads as "gone" at a
-        // glance rather than "de-emphasized" (confirmed against a real
-        // screenshot). Wins over the state-based opacity below rather than
-        // stacking with it, so a dimmed chip always reads as "hidden by the
-        // toggle" regardless of its own paused/unconfirmed look.
-        const dimmed = !visiblePlatforms.includes(platform);
-        const stateClassName = dimmed
-          ? `${badge.className} grayscale`
-          : effectivePaused
-            ? `${badge.className} opacity-30`
-            : isActiveLook
-              ? badge.className
-              : `${badge.className} opacity-40`;
+        const stateClassName = effectivePaused
+          ? `${badge.className} opacity-30`
+          : isActiveLook
+            ? badge.className
+            : `${badge.className} opacity-40`;
         // Always clickable when approved: a week-level pause is a
         // recommendation to skip, not a lock — ops can still manually
         // schedule/pause an individual day within a paused week.

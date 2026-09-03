@@ -551,3 +551,15 @@ export function countActivePlatformSlots(
   }
   return counts;
 }
+
+// Narrows a brand's already-resolved platform list (hidden/restricted/
+// flagged-removed already excluded) down to the toolbar's user-toggled
+// visibility set -- shared by TabScheduleSection's grid, its Schedule
+// Status column, and TabPreviewCard's overview mini-calendars, so toggling
+// a platform pill off can't hide chips on one surface while leaving them on
+// another. Deliberately never touches the toolbar's own count badges (those
+// read the full, unfiltered resolution) -- a toggled-off pill still shows
+// what it's hiding, only the chips disappear.
+export function filterVisiblePlatforms(platforms: Platform[], visiblePlatforms: Platform[]): Platform[] {
+  return platforms.filter((p) => visiblePlatforms.includes(p));
+}

@@ -7,7 +7,7 @@ import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow 
 import { buildHolidayDateSet, type PublicHoliday } from '../lib/publicHolidays';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -177,13 +177,12 @@ export default function SchedulePlanner() {
       return [];
     }
   });
-  // Which platforms' chips render at full opacity vs. dimmed/grayscaled in
-  // the calendar grid and preview cards -- a purely visual overview toggle,
-  // never a data filter: nothing is removed from the DOM, and the toolbar's
-  // own count badges, KPI/PMS/pause logic, and export are all untouched.
-  // Defaults to all four so a first visit (or a wiped/unavailable
-  // sessionStorage) shows everything at full opacity, same as before this
-  // toggle existed.
+  // Which platforms' chips are drawn in the calendar grid/preview cards --
+  // an overview toggle only, never a data filter: the toolbar's own count
+  // badges, KPI/PMS/pause logic, and export are all untouched by this, see
+  // filterVisiblePlatforms's doc comment. Defaults to all four so a first
+  // visit (or a wiped/unavailable sessionStorage) shows everything, same as
+  // before this toggle existed.
   const [visiblePlatforms, setVisiblePlatforms] = useState<Platform[]>(() => {
     try {
       const raw = sessionStorage.getItem(VISIBLE_PLATFORMS_STORAGE_KEY);
@@ -650,6 +649,13 @@ export default function SchedulePlanner() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewByTab, agentFilter, allRangeColumns, todayISO]);
   const pausedDisplayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in pausedPlatformCounts);
+  // Same "nothing left to show" hide the active-tabs grid applies below --
+  // a paused tab whose every tracked platform is currently toggled off (a
+  // TP-only tab with TP hidden) would otherwise render as an empty-looking
+  // card. Checked against the tab's static platform list (getTabPlatforms),
+  // not any per-tab preview data, so it can never disagree with the
+  // active-tabs grid's own filter over the exact same set of tabs.
+  const visiblePausedTabs = getPausedOperationalTabs().filter((t) => getTabPlatforms(t).some((p) => visiblePlatforms.includes(p)));
 
   // Specific-tab-mode platform counts: summed across every currently
   // selected tab's own reported counts (see handlePlatformCounts above).
@@ -726,8 +732,8 @@ export default function SchedulePlanner() {
                   key={p}
                   content={
                     visible
-                      ? `${PLATFORM_BADGE[p].label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — click to dim its chips in the grid`
-                      : `${PLATFORM_BADGE[p].label} chips dimmed in the grid — click to restore them`
+                      ? `${PLATFORM_BADGE[p].label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — click to hide its chips from the grid`
+                      : `${PLATFORM_BADGE[p].label} chips hidden from the grid — click to show them again`
                   }
                 >
                   <button
@@ -817,7 +823,18 @@ export default function SchedulePlanner() {
       {showGrid ? (
         <>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {getActiveOperationalTabs().map((t) => (
+          {getActiveOperationalTabs()
+            // A tab with nothing left to show once hidden platforms are
+            // excluded (e.g. a TP-only tab like BITP with TP toggled off)
+            // would otherwise render an empty-looking card -- dropped from
+            // the grid entirely instead, per direct user request. Checked
+            // against the tab's static, always-known platform list
+            // (getTabPlatforms), not preview.activePlatforms, which starts
+            // out empty (EMPTY_PREVIEW) before this tab's data has loaded --
+            // using the live preview here would flash every card away on
+            // first render.
+            .filter((t) => getTabPlatforms(t).some((p) => visiblePlatforms.includes(p)))
+            .map((t) => (
             <TabPreviewCard
               key={t}
               tab={t}
@@ -834,7 +851,7 @@ export default function SchedulePlanner() {
             />
           ))}
         </div>
-        {getPausedOperationalTabs().length > 0 && (
+        {visiblePausedTabs.length > 0 && (
           <div className="mt-4">
             <div className="mb-2 flex flex-wrap items-center gap-3">
               <h2 className="text-sm font-semibold text-slate-700">Paused Brand Tabs</h2>
@@ -847,8 +864,8 @@ export default function SchedulePlanner() {
                         key={p}
                         content={
                           visible
-                            ? `${PLATFORM_BADGE[p].label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above. Click to dim its chips.`
-                            : `${PLATFORM_BADGE[p].label} chips dimmed in the grid — click to restore them`
+                            ? `${PLATFORM_BADGE[p].label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above. Click to hide its chips.`
+                            : `${PLATFORM_BADGE[p].label} chips hidden from the grid — click to show them again`
                         }
                       >
                         <button
@@ -872,7 +889,7 @@ export default function SchedulePlanner() {
               )}
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {getPausedOperationalTabs().map((t) => {
+              {visiblePausedTabs.map((t) => {
                 const detail = pausedTabDetails[t];
                 const preview = previewByTab[t] ?? EMPTY_PREVIEW;
                 // All-time (not range/week-scoped, unlike the mini calendar
@@ -897,12 +914,7 @@ export default function SchedulePlanner() {
                     renderBrandDetail={(brand) => {
                       const byPlatform = firstLastIndex.get(normalizeBrandKey(brand));
                       if (!byPlatform) return null;
-                      // Deliberately unaffected by visiblePlatforms — this is
-                      // a supplementary all-time text line, not a calendar
-                      // chip, and the toggle's whole point is to dim/de-
-                      // emphasize chips without losing information, not to
-                      // drop text out of a detail line.
-                      const segments = preview.activePlatforms
+                      const segments = filterVisiblePlatforms(preview.activePlatforms, visiblePlatforms)
                         .filter((p) => byPlatform[p])
                         .map((p) => {
                           const fl = byPlatform[p]!;

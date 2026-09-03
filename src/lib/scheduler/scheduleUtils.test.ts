@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -815,5 +815,23 @@ describe('countActivePlatformSlots', () => {
     const todayISO = '2026-08-17'; // Monday itself is "today"
     const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
     expect(counts).toEqual({ tp: 0 }); // evidence present but ignored -- no plan, and not past yet
+  });
+});
+
+describe('filterVisiblePlatforms', () => {
+  it('keeps only platforms present in visiblePlatforms, preserving the input order', () => {
+    expect(filterVisiblePlatforms(['tp', 'ag', 'cg'], ['cg', 'tp'])).toEqual(['tp', 'cg']);
+  });
+
+  it('returns the full list unchanged when every platform is visible', () => {
+    expect(filterVisiblePlatforms(['tp', 'ag'], ['tp', 'ag', 'cg', 'wo'])).toEqual(['tp', 'ag']);
+  });
+
+  it('returns an empty array when no platforms are visible', () => {
+    expect(filterVisiblePlatforms(['tp', 'ag'], [])).toEqual([]);
+  });
+
+  it('returns an empty array when the input platform list is empty', () => {
+    expect(filterVisiblePlatforms([], ['tp'])).toEqual([]);
   });
 });
