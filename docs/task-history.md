@@ -8239,3 +8239,57 @@ run caught 2 transient failures from that other task's own in-progress edit, unr
 a re-run once its edit settled came back clean, and this task's diff never touched
 `setBrandPlatformOverride`.
 
+---
+
+## Task 309: Auto-Delete Unstarted PMS Cards for Removed-Page Brand+Platform Combos
+**Date:** September 3, 2026
+
+Reported directly by the user off a live example: BITP's RollingSlots Casino TP page was flagged
+removed, dropping that brand+platform from every Schedule Planner surface as designed — but its
+already-created PMS task (a Sept 4 To Do card) was left behind forever. `resolveAndSyncTabStatuses`
+(`src/lib/scheduler/pmsSync.ts`), reached by both the every-minute `syncAllStatuses` cron and the
+on-visit browser trigger, already excludes a removed-page combo from status resolution via
+`resolveBrandPlatforms`, but that exclusion was a bare `continue` — nothing ever cleaned up the
+card itself.
+
+New `pruneRemovedPageCards()` deletes a linked card for a removed-page combo, but only when its
+live PMS column (fetched fresh, not `schedule_pms_links.synced_status`, so a human-dragged card is
+still caught) is To Do, In Progress, or Blocked (confirmed live via the "Forum Team" project's own
+columns endpoint — two new hardcoded IDs alongside the existing To Do/Done/Project Paused
+constants). A card already in Done or Project Paused is left untouched — deliberately narrower than
+"delete everything for the combo," per direct user confirmation during design: Done represents real
+completed work, and Project Paused is a deliberate parked state, neither of which should be erased
+just because the page was later found removed. Runs ahead of the paused/normal resolve split in
+`resolveAndSyncTabStatuses` so both paths honor it, with `fetchRemovedPlatformBrands` hoisted to a
+single call (previously fetched separately inside each branch) so pruning doesn't add a second
+round-trip. A task-list-fetch failure degrades to a no-op for that pass (retried next tick); a
+per-card delete failure is isolated into the existing `cancelFailed` result array, same
+batch-resilience pattern the rest of this module already uses.
+
+`BrandGroup.tsx`'s Edit Entry save handler now also fires `syncTabStatusToPms(targetTab)`
+(fire-and-forget) immediately after flagging any platform removed this save, so the linked card's
+cleanup lands within seconds instead of waiting for the next minute's cron tick — which still
+covers it independently either way.
+
+TDD'd: 10 new Deno-shared Vitest cases in `pmsSync.test.ts` cover deletion across all 3 deletable
+columns (`it.each`), no-op across both protected columns (`it.each`), a task missing from PMS
+entirely (left for `pullScheduleFromPms`'s own stale-link cleanup), a delete failure landing in
+`cancelFailed`, a task-list-fetch failure degrading gracefully while a different, non-flagged link
+in the same batch still resolves normally, a flagged and a non-flagged combo coexisting correctly
+in one resolve pass, and pruning still firing when the whole tab is paused (`isTabPaused=true`).
+Full suite (verified with the session's pre-existing stray `.worktrees/*` duplication excluded —
+unrelated infra noise, not a regression) and `npm run build` both pass; `deno check` clean on both
+Deno consumers of the shared module (`sync-schedule-pms`, `generate-weekly-schedule` — the latter
+imports the module but never calls this function, so it's unaffected either way).
+
+**Deployed the same session:** `supabase functions deploy sync-schedule-pms` (confirmed `ACTIVE`,
+version 37) — the deploy log shows `pmsSync.ts` bundled cleanly alongside the rest of the shared
+`src/lib` chain. `git push origin main` done first. No schema/migration change, no new Vercel env
+var.
+
+Note: this session found the working tree already carrying other in-progress, uncommitted work
+(`TabPreviewCard.tsx`, `TabScheduleSection.tsx`, `scheduleUtils.ts`/`.test.ts`, `SchedulePlanner.tsx`
+— the same concurrent `brand-platform-pause-reason` work flagged in Task 308's own note directly
+above) — this task's commit was scoped to only the 3 files it actually touched
+(`src/lib/scheduler/pmsSync.ts`, `src/lib/scheduler/pmsSync.test.ts`, `src/pages/BrandGroup.tsx`).
+

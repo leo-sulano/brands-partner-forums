@@ -61,7 +61,20 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-02 (newest):* Schedule Planner now blocks public holidays and rebalances that week's
+- *2026-09-03 (newest):* A brand+platform's PMS task card is now auto-deleted once its review page
+  is flagged removed (`removed_platform_brands`) — reported directly by the user off a live example
+  (BITP's RollingSlots Casino TP page flagged removed, its future To Do PMS card left behind). New
+  `pruneRemovedPageCards()` (`src/lib/scheduler/pmsSync.ts`), reached by `resolveAndSyncTabStatuses`
+  ahead of the paused/normal resolve split, deletes a linked card only when its live PMS column (not
+  `synced_status`, so a human-dragged card is still caught) is To Do, In Progress, or Blocked — Done
+  and Project Paused are deliberately left alone as settled/parked state, per direct user
+  confirmation during design. `BrandGroup.tsx`'s Edit Entry save also fires
+  `syncTabStatusToPms(targetTab)` immediately on flagging a platform removed, so cleanup lands in
+  seconds instead of waiting for the next minute's cron tick (which still covers it either way). 10
+  new Deno-shared Vitest cases in `pmsSync.test.ts`; full suite and build pass; `deno check` clean on
+  both Deno consumers. **Deployed the same session:** `supabase functions deploy sync-schedule-pms`
+  (confirmed `ACTIVE`, version 37). Task 309.
+- *2026-09-02 (prior):* Schedule Planner now blocks public holidays and rebalances that week's
   workload around them instead of scheduling a chip on a non-working day. New `public_holidays`
   table (date + name, 4 RLS policies via `public.is_approved()`) is seeded with fixed-date PH
   national non-working holidays for 2026-2027; movable national holidays (Holy Week, National
