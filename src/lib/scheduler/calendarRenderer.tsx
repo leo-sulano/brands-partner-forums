@@ -62,10 +62,13 @@ interface ScheduleCellProps {
   country?: string;
   account?: string;
   // Who forced the current scheduler-level pause for a platform, keyed by
-  // platform — only populated when that platform's active brand_platform_pause
-  // reason is PERSISTENT_PAUSE_REASONS.manual (a forced override, not an
-  // auto-detected one), resolved from brand_platform_override.set_by. Absent
-  // (or no entry) means "unknown/not applicable," never rendered as blank.
+  // platform — only populated when that platform's active pause is
+  // override-driven (a forced override, not an auto-detected one), determined
+  // by the caller's own brand_platform_override map lookup rather than by
+  // comparing the pause's reason text against a generic constant (see
+  // titleFor's comment for why that string comparison was replaced), and
+  // resolved from brand_platform_override.set_by. Absent (or no entry) means
+  // "unknown/not applicable," never rendered as blank.
   pausedByPlatform?: Partial<Record<Platform, string>>;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
@@ -439,8 +442,10 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // day-cell chip's own tooltip is where Country/Account belong, gated on that
 // exact day having real evidence — see ScheduleCellProps' doc comment).
 // pausedBy: who forced the pause, resolved from brand_platform_override.set_by
-// — only meaningful (and only ever passed) for the 'system' variant when its
-// pause.reason is PERSISTENT_PAUSE_REASONS.manual; undefined otherwise. Shown
+// — only meaningful (and only ever passed) for the 'system' variant when that
+// pause is override-driven per the caller's brand_platform_override map lookup,
+// not per any comparison of pause.reason against a generic constant (see
+// titleFor's comment below); undefined otherwise. Shown
 // alongside the reason lines (see ScheduleStatusIcon below) since "who forced
 // it" is part of the reasoning, not a separate detail.
 // onClick/clickable: every variant (including 'active', a platform with no

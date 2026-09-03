@@ -228,9 +228,11 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // A periodic override ('pause' with a resumeAt) auto-expires once its
       // resume date has passed relative to the week being evaluated — checked
       // BEFORE the override === 'pause' branch below, so an expired periodic
-      // pause is treated as if the override no longer existed at all this
-      // week (falls through to the auto-detection chain further down, same
-      // as override === undefined), not re-applied. Week-granular, matching
+      // pause is cleared and resumed rather than re-applied. Note this
+      // `continue`s, so it skips the rest of this pass for this combo:
+      // auto-detection only applies on the NEXT recalculatePauses run, once
+      // the override row is actually gone from a freshly-fetched
+      // `overrideMap`. Week-granular, matching
       // every other pause-lifecycle check in this function: a resumeAt
       // anywhere within the week being evaluated already counts as
       // "passed" (compared against that week's Sunday), so a periodic pause

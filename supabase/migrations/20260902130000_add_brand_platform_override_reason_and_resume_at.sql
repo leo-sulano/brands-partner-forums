@@ -16,5 +16,5 @@
 -- "Explicitly out of scope" section.
 
 alter table public.brand_platform_override
-  add column reason text,
-  add column resume_at date;
+  add column if not exists reason text,
+  add column if not exists resume_at date;
