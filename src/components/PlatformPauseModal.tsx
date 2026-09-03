@@ -21,6 +21,10 @@ interface Props {
   // it's next evaluated, so allowing it here would let a save look successful
   // while silently never actually taking effect.
   minResumeAt: string;
+  // Tailwind z-index class for the full-screen overlay. Default keeps every
+  // Schedule Planner call site (z-40) byte-identical; Edit Brand Tab opens
+  // this from inside its own z-50 modal and passes z-[60].
+  overlayZClass?: string;
   busy: boolean;
   onSave: (checkedPlatforms: Platform[], reason: string, resumeAt: string | null) => void;
   onClose: () => void;
@@ -32,7 +36,7 @@ interface Props {
 // of brand_platform_override. Distinct from PauseDaysModal (a per-day toggle
 // scoped only to the currently-viewed week) — this is the mechanism that
 // actually persists across weeks, which is the whole point of this feature.
-export default function PlatformPauseModal({ brand, platforms, initialCheckedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt, minResumeAt, busy, onSave, onClose }: Props) {
+export default function PlatformPauseModal({ brand, platforms, initialCheckedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt, minResumeAt, overlayZClass = 'z-40', busy, onSave, onClose }: Props) {
   const [checked, setChecked] = useState<Set<Platform>>(() => new Set(initialCheckedPlatforms));
   const [durationMode, setDurationMode] = useState<'permanent' | 'until'>(initialResumeAt ? 'until' : 'permanent');
   const [resumeAt, setResumeAt] = useState(initialResumeAt ?? '');
@@ -67,7 +71,7 @@ export default function PlatformPauseModal({ brand, platforms, initialCheckedPla
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+    <div className={`fixed inset-0 ${overlayZClass} flex items-center justify-center p-4`}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between px-5 pt-5 pb-4">
