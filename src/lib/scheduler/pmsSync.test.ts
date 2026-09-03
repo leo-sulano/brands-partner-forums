@@ -1007,6 +1007,65 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(result.synced[0]?.targetStatus).toBe('done');
   });
 
+  it('aborts the whole resolve (throws) when a brand_schedule week fetch fails -- never swallows it into an empty week that would mass-delete non-evidenced links', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const base = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    }, deletes);
+    const client = {
+      from: (table: string) => {
+        if (table === 'brand_schedule') {
+          const chain: Record<string, unknown> = {
+            select: () => chain,
+            eq: () => chain,
+            then: (_res: unknown, rej: (e: unknown) => unknown) =>
+              Promise.reject(new Error('brand_schedule fetch failed')).catch(rej),
+          };
+          return chain;
+        }
+        return base.from(table);
+      },
+    } as unknown as Parameters<typeof resolveAndSyncTabStatuses>[1];
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    await expect(
+      resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn),
+    ).rejects.toThrow(/brand_schedule fetch failed/);
+    expect(deletes).toEqual([]);
+  });
+
+  it('does not cancel a non-evidenced link when its week has zero brand_schedule rows -- an empty week is a regen window, not a mass cancellation', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    }, deletes);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([]);
+    expect(deletes).toEqual([]);
+  });
+
   it('records a per-link cancellation failure without blocking others', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({

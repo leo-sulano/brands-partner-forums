@@ -796,8 +796,25 @@ export async function resolveAndSyncTabStatuses(
   const distinctWeeks = [...new Set(
     liveLinks.map((l) => weekdayAndWeekStartFor(l.date)?.weekStart).filter((w): w is string => w != null),
   )];
-  const rowsPerWeek = await Promise.all(
-    distinctWeeks.map((w) => fetchBrandSchedule(tab, w, client).catch(() => [] as BrandScheduleRow[])),
+  // Deliberately NOT `.catch(() => [])`'d: a transient brand_schedule fetch
+  // failure must abort this tab's whole resolve for this tick (it retries on
+  // the next 1-minute run) rather than be silently swallowed into an empty
+  // week. An empty week here makes every non-evidenced, non-paused link in it
+  // read as a blank day, and the cancellation branch below would then DELETE
+  // its PMS card + schedule_pms_links row irreversibly -- one swallowed error
+  // = mass card loss for that week, with nothing server-side to recreate it.
+  // Same "fail loud, never a silent destructive no-op" rule as enforcePmsColumns
+  // (Task 279).
+  const rowsPerWeek: BrandScheduleRow[][] = await Promise.all(
+    distinctWeeks.map((w) => fetchBrandSchedule(tab, w, client)),
+  );
+  // Weeks we actually got schedule rows back for. A week that came back
+  // genuinely empty (rows not generated yet, or a mid-regeneration window) is
+  // NOT treated as "every slot cancelled" -- the cancellation branch is
+  // skipped for its links, which then resolve normally (an active plan slot
+  // stays a To Do card, recoverable) instead of being torn down.
+  const weeksWithScheduleRows = new Set(
+    distinctWeeks.filter((_, i) => rowsPerWeek[i].length > 0),
   );
   const manualPauseRows = rowsPerWeek.flat();
 
@@ -830,8 +847,12 @@ export async function resolveAndSyncTabStatuses(
     // to blank) deletes the card, via cancelScheduleInPms below/client-side.
     // Requires a parseable date (loc != null); an unparseable link.date falls
     // through to the normal resolve path below, unchanged from before this
-    // check existed.
-    if (loc != null && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
+    // check existed. Also requires the link's week to have actually returned
+    // brand_schedule rows (weeksWithScheduleRows) -- a blank day is only a
+    // real cancellation signal when the rest of that week's schedule is
+    // present to compare against; an entirely-empty week is a fetch/regen
+    // artifact, not "every slot cancelled".
+    if (loc != null && weeksWithScheduleRows.has(loc.weekStart) && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
       const cancelItem: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
       try {
         await deletePmsTask(link.pms_task_id, credentials, fetchFn);
