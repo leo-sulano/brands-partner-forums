@@ -4,7 +4,6 @@ import { WEEKDAY_LABELS } from '../scheduleBrands';
 import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
 import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
-import { PERSISTENT_PAUSE_REASONS } from './schedulerRules';
 import Tooltip, { useTooltip } from '../../components/Tooltip';
 import PausedBadgeIcon from '../../components/PausedBadgeIcon';
 
@@ -63,10 +62,13 @@ interface ScheduleCellProps {
   country?: string;
   account?: string;
   // Who forced the current scheduler-level pause for a platform, keyed by
-  // platform — only populated when that platform's active brand_platform_pause
-  // reason is PERSISTENT_PAUSE_REASONS.manual (a forced override, not an
-  // auto-detected one), resolved from brand_platform_override.set_by. Absent
-  // (or no entry) means "unknown/not applicable," never rendered as blank.
+  // platform — only populated when that platform's active pause is
+  // override-driven (a forced override, not an auto-detected one), determined
+  // by the caller's own brand_platform_override map lookup rather than by
+  // comparing the pause's reason text against a generic constant (see
+  // titleFor's comment for why that string comparison was replaced), and
+  // resolved from brand_platform_override.set_by. Absent (or no entry) means
+  // "unknown/not applicable," never rendered as blank.
   pausedByPlatform?: Partial<Record<Platform, string>>;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
@@ -440,8 +442,10 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // day-cell chip's own tooltip is where Country/Account belong, gated on that
 // exact day having real evidence — see ScheduleCellProps' doc comment).
 // pausedBy: who forced the pause, resolved from brand_platform_override.set_by
-// — only meaningful (and only ever passed) for the 'system' variant when its
-// pause.reason is PERSISTENT_PAUSE_REASONS.manual; undefined otherwise. Shown
+// — only meaningful (and only ever passed) for the 'system' variant when that
+// pause is override-driven per the caller's brand_platform_override map lookup,
+// not per any comparison of pause.reason against a generic constant (see
+// titleFor's comment below); undefined otherwise. Shown
 // alongside the reason lines (see ScheduleStatusIcon below) since "who forced
 // it" is part of the reasoning, not a separate detail.
 // onClick/clickable: every variant (including 'active', a platform with no
@@ -460,7 +464,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // cancelled day has no brand_schedule row to check/uncheck. Un-cancelling
 // still goes through the day cell itself (the "+" button, or Resume once
 // it's been reactivated), not this icon.
-type ScheduleStatusIconProps = { agent?: string; pausedBy?: string; clickable: boolean; onClick: () => void } & (
+type ScheduleStatusIconProps = { agent?: string; pausedBy?: string; pauseResumeAt?: string | null; clickable: boolean; onClick: () => void } & (
   | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
   | { platform: Platform; source: 'manual'; days: Weekday[] }
   | { platform: Platform; source: 'cancelled'; days: Weekday[] }
@@ -475,6 +479,11 @@ function resumeWeekLabel(pausedWeekStart: string): string {
   return resume.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+function resumeAtLabel(resumeAt: string): string {
+  const [y, m, d] = resumeAt.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // The manual and no-schedule branches are both deliberately terse with no
 // resume/expiry line: unlike a brand_platform_pause row, neither is a
 // tracked, auto-expiring state — they're just this week's brand_schedule
@@ -483,16 +492,25 @@ function resumeWeekLabel(pausedWeekStart: string): string {
 // either "ends."
 function titleFor(props: ScheduleStatusIconProps): string {
   if (props.source === 'system') {
-    const { pause } = props;
-    // "Manually paused" (Task 7) persists for as long as the override stays
-    // set -- its paused_week_start gets re-upserted to the current week on
-    // every recalculatePauses run, so unlike a real auto-detected pause it
-    // doesn't actually auto-resume next week. Showing "Resumes week of ..."
-    // for it would be misleading.
-    const autoExpires = pause.reason !== PERSISTENT_PAUSE_REASONS.manual;
-    return autoExpires
-      ? `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`
-      : `Reason: ${pause.reason}\nStays paused until manually cleared`;
+    const { pause, pauseResumeAt } = props;
+    // pauseResumeAt is only ever passed (even as null) when this pause is
+    // driven by a brand_platform_override row — resolved directly from the
+    // override map by the caller, NOT by comparing pause.reason against the
+    // generic PERSISTENT_PAUSE_REASONS.manual string. That string comparison
+    // is what this replaced: once a manual override can carry a custom
+    // reason (docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md),
+    // every custom-reason pause would otherwise misreport as auto-detected.
+    // undefined -> auto-detected, unchanged "Resumes week of ..." wording.
+    // null -> override-driven, permanent. A date string -> override-driven,
+    // periodic, with its own real resume date instead of the generic
+    // one-week-later estimate the auto-detected branch uses.
+    if (pauseResumeAt === undefined) {
+      return `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`;
+    }
+    if (pauseResumeAt === null) {
+      return `Reason: ${pause.reason}\nStays paused until manually cleared`;
+    }
+    return `Reason: ${pause.reason}\nResumes ${resumeAtLabel(pauseResumeAt)}`;
   }
   if (props.source === 'manual') {
     return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;

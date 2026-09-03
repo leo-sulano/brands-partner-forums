@@ -61,7 +61,45 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* A brand+platform's PMS task card is now auto-deleted once its review page
+- *2026-09-03 (newest):* Added a durable "Pause Brand" flow to the Schedule Planner — a
+  per-brand-row button opens a modal to pause one or more platforms (Permanent or Until a date,
+  reason required only when newly pausing), and a new "Paused Brands" toolbar panel lists every
+  currently-paused brand+platform (reason/until/who-set-it/Resume Now), both sourced from
+  `brand_platform_override`, which gained `reason`/`resume_at` columns. Prompted by a report that a
+  brand thought to be paused (Spinjo, Rooster Partners) showed active again the next week — root
+  cause was that the only mechanism reachable from the Schedule Planner itself
+  (`PauseDaysModal`'s Pause/Resume buttons) is scoped to the currently-displayed week only, while
+  the one mechanism that actually persists (`brand_platform_override`) had no reason field and was
+  only reachable via an unlabeled dropdown in the Edit Entry modal. `recalculatePauses`
+  (`schedulerService.ts`) now threads the real reason into the `brand_platform_pause` row and
+  auto-expires a periodic override once its `resume_at` date passes (week-granular, evaluated
+  lazily — no new cron). Also fixed a real bug this branch would otherwise have introduced: two
+  places decided "is this pause manually forced" by comparing the pause's reason TEXT against a
+  hardcoded constant, which breaks the moment reasons become custom text — both now check the
+  override map directly. A final whole-branch review caught and fixed one real Critical,
+  cross-task-only bug: the new `refreshPauseState` helper called `recalculatePauses` with no
+  current-week guard, so acting on a *non-current* navigated week could sweep and rewrite/delete
+  every other brand's pause row on the tab, not just the one acted on — now gated on
+  `isCurrentWeekStart`. Same review also fixed: a stale-override-map bug that made the write only
+  work by accident (via an unrelated effect re-trigger, which also caused an extra unwanted PMS-push
+  cycle per click); an "Until a date" picker that allowed a self-expiring no-op save inside the
+  current week; "Resume Now" on an auto-detected pause immediately re-triggering itself; the Paused
+  Brands panel listing hidden/restricted/flagged-removed combos the grid and Ask AI both correctly
+  exclude; and editing an already-paused platform's reason/date through the modal silently writing
+  nothing. Ask AI's `get_paused_combos` description was also corrected — it previously told the
+  model a stale `paused_week_start` "may mean expired," true for auto-detected pauses but false for
+  a permanent override-driven one (a verbatim reproduction of the reported Spinjo problem inside
+  the AI surface). Migration applied live and round-tripped directly against production (insert as
+  an authenticated approved user → read → delete, RLS correctly rejected the same write
+  anonymously first, zero residual test data left behind). **No browser-driven UI verification
+  performed this session — Playwright wasn't available/connected in this environment** — worth
+  doing before full trust, especially the multi-week-isolation behavior the Critical fix addresses.
+  **Pending manual deploy:** `supabase functions deploy ai-assistant` (corrected tool description)
+  and `supabase functions deploy generate-weekly-schedule` (so the Monday cron picks up the
+  reason-threading/auto-expiry logic). See Known Issues below for parked minors. Spec:
+  `docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md`. Plan:
+  `docs/superpowers/plans/2026-09-02-brand-platform-pause-reason.md`. Task 311.
+- *2026-09-03 (prior):* A brand+platform's PMS task card is now auto-deleted once its review page
   is flagged removed (`removed_platform_brands`) — reported directly by the user off a live example
   (BITP's RollingSlots Casino TP page flagged removed, its future To Do PMS card left behind). New
   `pruneRemovedPageCards()` (`src/lib/scheduler/pmsSync.ts`), reached by `resolveAndSyncTabStatuses`
@@ -1318,6 +1356,30 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
+- **Pending manual deploy (2026-09-03, Task 311):** `supabase functions deploy ai-assistant`
+  (ships the corrected `get_paused_combos` tool description — text-only, no schema/logic change)
+  and `supabase functions deploy generate-weekly-schedule` (so the Monday cron's own
+  `recalculatePauses` call picks up reason-threading and periodic auto-expiry — until deployed, the
+  cron keeps running its pre-Task-311 logic, no worse than before, just not yet reason-aware).
+  **Not yet live-verified via browser** — no Playwright tool was available/connected this session;
+  the data layer was verified directly (an authenticated insert→read→delete round-trip of the new
+  `reason`/`resume_at` columns against production, RLS correctly rejected the same write
+  anonymously first). Worth a real UI walkthrough before full trust, specifically: pause a brand
+  while viewing a non-current week and confirm no other brand's pause is disturbed (the exact
+  Critical bug this task's final review caught and fixed); pick an "Until" date inside the current
+  week and confirm the pause actually takes effect rather than silently no-op'ing; Resume Now an
+  auto-detected pause and confirm it doesn't immediately reappear.
+- **Accepted, deliberately deferred (2026-09-03, Task 311)** — 3 narrow, low-impact gaps found by
+  that task's final whole-branch review and parked rather than fixed: `ScheduleStatusIcon`'s
+  per-week pause tooltip still says "Click to manage pause days" even for an override-driven pause,
+  where that click opens `PauseDaysModal` (which edits per-day schedule state and cannot clear an
+  override) rather than the new Pause Brand/Paused Brands controls that actually can — a
+  discoverability gap in the one feature whose whole premise is discoverability, but not a
+  correctness bug. PMS status sync's pause detection matches a linked task's own recorded week
+  rather than checking explicitly for a permanent pause, a pre-existing nuance (present before this
+  task) that a permanent pause makes marginally more likely to be hit. `refreshPauseState`
+  (`TabScheduleSection.tsx`) discards `recalculatePauses`'s own `resumed` list and never explicitly
+  clears a stale error banner on a successful pause/resume action — both cosmetic.
 - **Schedule Planner public-holiday blocking (2026-09-02, Task 307) — accepted limitations, per
   the spec, not bugs:** past/already-generated weeks are never rewritten when a holiday is added
   later (matches the project's standing "never rewrite history" norm — a holiday's effect only

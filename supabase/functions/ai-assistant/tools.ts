@@ -1155,14 +1155,24 @@ export const TOOL_DEFS = [
     function: {
       name: 'get_paused_combos',
       description:
-        'Lists brand+platform combos currently auto-paused (2 consecutive Removed/' +
-        'Refused posts, or an all-time success rate below the pause threshold), with ' +
-        'the reason and the week the pause started. Not week-scoped — a pause is a ' +
-        'standing state, not tied to one week\'s calendar. Optionally filtered to one tab. ' +
-        'A pause row is only cleaned up when someone opens that tab in the app, so a ' +
-        'paused_week_start from a week before the current one may be an expired pause no ' +
-        'longer actually in effect — compare it against the current-date system message ' +
-        'before asserting a combo is still paused. The same hidden/restricted/removed ' +
+        'Lists brand+platform combos currently paused, with the reason and the week the ' +
+        'pause started. Not week-scoped — a pause is a standing state, not tied to one ' +
+        'week\'s calendar. Optionally filtered to one tab. A pause is either ' +
+        'auto-detected (2 consecutive Removed/Refused posts, or a success rate over a ' +
+        'rolling 30-day window below the pause threshold) or operator-set by someone ' +
+        'using the Schedule Planner\'s Pause Brand action, in which case the reason is ' +
+        'whatever custom text they wrote. An operator-set pause is permanent unless it ' +
+        'carries an explicit "resumes on" date, and the reason text alone does not say ' +
+        'which it is — but the row still being here at all does, since a permanent one ' +
+        'never disappears until someone resumes it. A pause row is only cleaned up when ' +
+        'someone opens that tab in the app, so a paused_week_start from a week before the ' +
+        'current one may be an expired pause no longer in effect — compare it against the ' +
+        'current-date system message before asserting such a combo is still paused. But ' +
+        'that applies ONLY to an auto-detected pause (both auto rules auto-resume after ' +
+        'about a week). Never ' +
+        'tell a user an operator-set pause may have expired: it stays in effect ' +
+        'indefinitely no matter how stale paused_week_start looks, because that field only ' +
+        'advances when someone opens the tab. The same hidden/restricted/removed ' +
         'filtering as get_schedule applies here too — a combo missing from this list may ' +
         'be excluded for one of those reasons rather than genuinely not paused. A tab that ' +
         'has been archived or paused is excluded entirely too — an empty result for that ' +

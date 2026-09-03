@@ -1173,26 +1173,49 @@ export interface BrandPlatformOverride {
   // Schedule Planner tooltip so a forced pause/active can say who forced it,
   // not just that it's forced.
   set_by: string | null;
+  // reason/resume_at (docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md)
+  // are only ever meaningful when override_state === 'pause'. Both null for
+  // the pre-existing Edit Entry "Force Paused" path and for any 'active'
+  // override.
+  reason: string | null;
+  resume_at: string | null;
 }
 
 export async function fetchBrandPlatformOverrides(tab: string, client: SupabaseClient = supabase): Promise<BrandPlatformOverride[]> {
   const { data, error } = await client
     .from('brand_platform_override')
-    .select('tab, brand_key, platform, override_state, set_by')
+    .select('tab, brand_key, platform, override_state, set_by, reason, resume_at')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as BrandPlatformOverride[];
 }
 
-export async function setBrandPlatformOverride(tab: string, brand: string, platform: Platform, state: 'pause' | 'active'): Promise<void> {
+export async function setBrandPlatformOverride(
+  tab: string,
+  brand: string,
+  platform: Platform,
+  state: 'pause' | 'active',
+  opts?: { reason?: string | null; resumeAt?: string | null },
+): Promise<void> {
   const { error } = await supabase
     .from('brand_platform_override')
-    .upsert({ tab, brand, platform, override_state: state, set_by: await currentUserEmail() }, { onConflict: 'tab,brand_key,platform' });
+    .upsert(
+      {
+        tab,
+        brand,
+        platform,
+        override_state: state,
+        set_by: await currentUserEmail(),
+        reason: opts?.reason ?? null,
+        resume_at: opts?.resumeAt ?? null,
+      },
+      { onConflict: 'tab,brand_key,platform' },
+    );
   if (error) throw error;
 }
 
-export async function clearBrandPlatformOverride(tab: string, brandKey: string, platform: Platform): Promise<void> {
-  const { error } = await supabase
+export async function clearBrandPlatformOverride(tab: string, brandKey: string, platform: Platform, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
     .from('brand_platform_override')
     .delete()
     .eq('tab', tab)
