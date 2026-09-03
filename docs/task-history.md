@@ -8903,3 +8903,52 @@ Built via 4 SDD tasks (helper + tests, `overlayZClass` prop, component + wiring,
 verification/docs task). Spec:
 `docs/superpowers/specs/2026-09-03-edit-brand-tab-paused-brands-section-design.md`. Plan:
 `docs/superpowers/plans/2026-09-03-edit-brand-tab-paused-brands-section.md`.
+
+---
+
+## Task 319: PMS status sync deleted a scheduled card on a transient brand_schedule fetch
+
+**Date:** September 4, 2026
+
+Reported live: today's Schedule Planner slots that should have moved to a PMS column were
+"gone" instead. Confirmed against the live board — every Sep 3 slot marked done was correctly
+in the PMS **Done** column (just sorted to the bottom of a 226-card column, which is why it
+looked absent) EXCEPT **BITP | Amonbet Casino / tp / Thu Sep 3**, which had no card and no
+`schedule_pms_links` row at all. A full current-week scan found 3–4 active scheduled slots in
+the same state.
+
+**Root cause:** `resolveAndSyncTabStatuses` (`src/lib/scheduler/pmsSync.ts`) wrapped its
+per-week `fetchBrandSchedule` call in `.catch(() => [])`. A transient fetch failure — or a
+mid-regeneration window — makes that week come back empty; every non-confirmed, non-paused link
+in it then reads `dayStatus == null`, and the cancellation branch **deletes the PMS card +
+`schedule_pms_links` row** for all of them. Irreversible: nothing server-side recreates a
+legit active slot's card (only a manual cell click does), and the daily audit only reconciles
+links that still exist. One swallowed error = mass card loss for that week. Amonbet is a
+`brand_platform_override` force-active combo, so it should carry a card every scheduled day —
+its last real TP entry is dated 13/07/2026, so there was no Sep 3 evidence to protect it from
+the blank-day check.
+
+**Fix:**
+- `fetchBrandSchedule` week fetches are no longer `.catch`-swallowed — a failure aborts that
+  tab's resolve for the tick (retries next minute), surfaced as a per-tab `error:` string by
+  `syncAllTabStatuses`' existing try/catch. Same "fail loud, never a silent destructive no-op"
+  rule as `enforcePmsColumns` (Task 279).
+- The cancellation branch now also requires the link's week to have returned ≥1 `brand_schedule`
+  row (`weeksWithScheduleRows`). An entirely-empty week is a fetch/regen artifact, not "every
+  slot cancelled" — its links resolve normally (an active plan slot stays a To Do card,
+  recoverable) instead of being torn down.
+
+2 regression tests in `pmsSync.test.ts` (fetch-throws-aborts-no-deletes; empty-week-does-not-
+cancel). Full suite 2333 green, `npm run build` clean, `deno check` + `deno test` (19) clean.
+
+**Deployed same session:** `git push origin main` (`4d94f9b`), `supabase functions deploy
+sync-schedule-pms` (v40 ACTIVE) + `generate-weekly-schedule` (v19 ACTIVE, imports `pmsSync.ts`).
+
+**Data remediation:** recreated `BITP | Amonbet Casino / tp / 2026-09-03` via the deployed
+`push` action (card + link, To Do, assignee ANN→Ann). A follow-up `syncAllStatuses` for BIT
+left it `active`/To Do — correct, since there is no Sep 3 review evidence for Amonbet; it moves
+to Done only once an entry dated Sep 3 exists. Still open, flagged to the user, not recreated:
+`Rooster Partners | Rollero / tp` and `Wizard of Odds | Fortuneplay / wo`, both Mon Aug 31 (same
+bug, but 4-day-old backdated slots — user's call whether to restore); `BITP | RollingSlots
+Casino / tp / Fri Sep 4` has no card by design (its TP page is flagged removed, card parked in
+Page Removed).
