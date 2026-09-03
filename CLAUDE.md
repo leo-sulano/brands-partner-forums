@@ -92,9 +92,14 @@ Brands Partner Forum/
   `20260903120000` live — verified: 53 grandfathered `approved` rows, `brand_schedule` now
   carries the 3 `... (approved week is admin-only)` write policies), then
   `supabase functions deploy sync-schedule-pms` (`ACTIVE` v39) + `generate-weekly-schedule`
-  (`ACTIVE` v18), then `git push origin main` (Vercel redeploy). Live browser behaviour check
-  (admin approve → flush, non-admin read-only, revoke) still pending — needs real admin +
-  non-admin sessions. Spec:
+  (`ACTIVE` v18), then `git push origin main` (Vercel redeploy). **Backend live-verified** via a
+  throwaway Node script against the deployed `sync-schedule-pms` + prod DB (real admin sign-in,
+  fake brand on a 2027 week, full cleanup — 0 residue, `approved` total back to 53): 11/11 —
+  unapproved week `push` → item `skipped`, no link, no PMS card; admin approval-row `insert`
+  works (RLS); identical `push` after approval → `created`, link + task written; re-push
+  idempotent; `cancelSchedule` cleaned up. Still pending: **browser UI only** — the
+  Draft/Approved pill, Approve/Revoke buttons, non-admin read-only cells (the `canEditWeek` +
+  RLS write-lock underneath are code/live-verified). Spec:
   `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
   implemented directly after spec approval. Task 314.
 - *2026-09-03 (prior):* Schedule Planner auto-generation now spreads each platform evenly

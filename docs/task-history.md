@@ -8670,10 +8670,24 @@ full frontend suite 2326 passed.
    `supabase functions list`.
 3. `git push origin main` — Vercel redeploys the frontend from this push.
 
-**Live behaviour verification still pending** (needs a real browser session with an admin and a
-non-admin account): fresh un-approved week creates no PMS tasks on chip activation; admin
-"Approve week" flushes them; non-admin sees the week read-only after approval; revoke stops new
-pushes and leaves existing tasks.
+**Backend live-verified the same session** via a throwaway Node script (signed in as the real
+admin `leo@optinetsolutions.com`, drove the deployed `sync-schedule-pms` function + production
+DB, fake brand `__approval_gate_test__` on a 2027 week, every artifact cleaned up — final check:
+0 residual links, 0 residual approval rows, `approved` total back to exactly 53). 11/11
+assertions passed:
+- **unapproved week → `push` returns the item as `skipped`, `created: []`, and writes NO
+  `schedule_pms_links` row / creates NO PMS card** — the gate works;
+- admin `insert` into `weekly_schedule_approvals` succeeds (RLS insert policy);
+- **after the approval row exists, the identical `push` returns `created: [item]` and writes the
+  link + PMS task** — flush works;
+- a second identical `push` returns `skipped` (idempotent via `schedule_pms_links`, no
+  duplicate card);
+- `cancelSchedule` cleanup removed the link + PMS task; the approval row deleted cleanly.
+
+**Still pending — browser UI only:** the per-week Draft/Approved pill, the "Approve week" /
+"Revoke" buttons, and a non-admin seeing an approved week's cells as read-only. The underlying
+`canEditWeek` gate and the RLS write-lock are code- and (for the RLS insert path) live-verified;
+this is a visual/interaction confirmation, best done with a real admin + non-admin session.
 
 Spec: `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
 implemented directly at the user's direction after spec approval.
