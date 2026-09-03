@@ -14,7 +14,13 @@ interface Props {
   autoPauseReasonByPlatform: Partial<Record<Platform, string>>;
   initialReason: string;
   initialResumeAt: string | null;
-  todayISO: string;
+  // The earliest date the "Until a date" picker will accept — must be past
+  // the CURRENT week's Sunday (not just "today"), since resume_at expiry is
+  // week-granular (see recalculatePauses/weekEndSunday in schedulerService.ts):
+  // any date within the current week already counts as "passed" the moment
+  // it's next evaluated, so allowing it here would let a save look successful
+  // while silently never actually taking effect.
+  minResumeAt: string;
   busy: boolean;
   onSave: (checkedPlatforms: Platform[], reason: string, resumeAt: string | null) => void;
   onClose: () => void;
@@ -26,7 +32,7 @@ interface Props {
 // of brand_platform_override. Distinct from PauseDaysModal (a per-day toggle
 // scoped only to the currently-viewed week) — this is the mechanism that
 // actually persists across weeks, which is the whole point of this feature.
-export default function PlatformPauseModal({ brand, platforms, initialCheckedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt, todayISO, busy, onSave, onClose }: Props) {
+export default function PlatformPauseModal({ brand, platforms, initialCheckedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt, minResumeAt, busy, onSave, onClose }: Props) {
   const [checked, setChecked] = useState<Set<Platform>>(() => new Set(initialCheckedPlatforms));
   const [durationMode, setDurationMode] = useState<'permanent' | 'until'>(initialResumeAt ? 'until' : 'permanent');
   const [resumeAt, setResumeAt] = useState(initialResumeAt ?? '');
@@ -115,7 +121,7 @@ export default function PlatformPauseModal({ brand, platforms, initialCheckedPla
             <input
               type="date"
               value={resumeAt}
-              min={todayISO}
+              min={minResumeAt}
               onChange={(e) => setResumeAt(e.target.value)}
               className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none"
             />

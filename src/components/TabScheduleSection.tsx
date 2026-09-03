@@ -26,7 +26,7 @@ import {
   type ScheduleCancellation,
 } from '../lib/queries';
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
-import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, toISODate, mondayOf, addDays, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
@@ -1485,7 +1485,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             autoPauseReasonByPlatform={data.autoPauseReasonByPlatform}
             initialReason={data.initialReason}
             initialResumeAt={data.initialResumeAt}
-            todayISO={todayISO}
+            // Next Monday after the REAL current week's Sunday — not just
+            // "tomorrow" — since a resume date anywhere within the current
+            // week would self-expire the instant recalculatePauses next
+            // evaluates it (week-granular expiry, see schedulerService.ts's
+            // weekEndSunday). Computed fresh each render (never memoized),
+            // matching isCurrentWeekStart's own doc comment on why "the
+            // current week" must always be derived from a live Date, not a
+            // stale snapshot.
+            minResumeAt={toISODate(addDays(mondayOf(new Date()), 7))}
             busy={pauseModalBusy}
             onSave={(checked, reason, resumeAt) => handleSavePauseModal(pauseModalTarget.brand, checked, reason, resumeAt)}
             onClose={() => setPauseModalTarget(null)}
