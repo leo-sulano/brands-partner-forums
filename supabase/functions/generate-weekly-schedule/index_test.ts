@@ -72,10 +72,12 @@ Deno.test('buildTabContext populates overrideMap from its table', async () => {
     entries: [entry('Hanan', '1', { Brands: 'WinMega' })],
     tab_schemas: [{ headers: ['Brands'] }],
     removed_platform_brands: [],
-    brand_platform_override: [{ tab: 'Hanan', brand_key: 'winmega', platform: 'tp', override_state: 'pause' }],
+    brand_platform_override: [{ tab: 'Hanan', brand_key: 'winmega', platform: 'tp', override_state: 'pause', reason: 'Client requested a break', resume_at: null, set_by: 'leo@optinetsolutions.com' }],
   });
   const ctx = await buildTabContext('Hanan', client);
-  assertEquals(ctx.overrideMap?.get('Hanan::winmega::tp'), 'pause');
+  assertEquals(ctx.overrideMap?.get('Hanan::winmega::tp'), {
+    state: 'pause', reason: 'Client requested a break', resumeAt: null, setBy: 'leo@optinetsolutions.com',
+  });
 });
 
 Deno.test('buildTabContext populates hiddenBrandSet from schedule_hidden_brands', async () => {
