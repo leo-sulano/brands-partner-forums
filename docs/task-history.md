@@ -8195,3 +8195,111 @@ full 2278) and build stayed clean throughout.
 The Monday cron now respects holidays and Ask AI's `get_schedule` returns them; both deploy logs
 show `src/lib/publicHolidays.ts` bundled successfully with its `.ts`-extensioned import intact.
 
+---
+
+## Task 311: Brand+Platform Pause — Reason, Duration, and a Discoverable Summary
+
+User report: Spinjo and other Rooster Partners brands (Novodream, etc.) were "previously decided"
+to be paused, but showed up active again in the Schedule Planner for the week of 2026-08-31.
+Investigation found this app already had 3 independent pause mechanisms and only one
+(`brand_platform_override`) actually persists across weeks — the one almost certainly used
+(the Schedule Planner's own Pause/Resume buttons, `PauseDaysModal`) only pauses specific weekdays
+*within the currently-displayed week*; the next week generates fresh and is active by default,
+exactly matching the reported symptom. The durable mechanism existed but had no reason field and
+was only reachable via an unlabeled "Force Paused/Force Active" dropdown buried in the Edit Entry
+modal — never visible or settable from the Schedule Planner itself.
+
+Shipped: `brand_platform_override` gained `reason text`/`resume_at date` (both nullable). A new
+"Pause Brand" action on the Schedule Planner (per-brand-row button next to the existing removed-
+platform badges) lets an approved user pause one or more platforms at once — Permanent or Until a
+date — with a reason required whenever the save adds a newly-paused platform (never required for a
+pure resume). A new "Paused Brands" summary panel (toolbar button, shows a live count) lists every
+brand+platform currently paused on the tab — both auto-detected and manual — with its reason,
+until-date (if periodic), who set it, and a Resume Now action; this is the piece that directly
+answers the reported problem, since a **permanent** pause never expires and stays listed here
+indefinitely instead of silently reverting with nothing to notice it by. `recalculatePauses`
+(`schedulerService.ts`) now threads the real custom reason into the `brand_platform_pause` row it
+writes (falling back to the old generic "Manually paused" string only when no reason was given —
+covers the still-unchanged Edit Entry dropdown), and auto-expires a periodic override once its
+`resume_at` date has passed relative to the week being evaluated (week-granular — a date anywhere
+in the currently-evaluated week already counts as "passed"), evaluated lazily on tab visit or the
+existing Monday `generate-weekly-schedule` cron — no new cron. Also fixed a real, newly-exposed bug
+this branch would otherwise have introduced: two places (`TabScheduleSection.tsx`'s
+`computeCellData`, `calendarRenderer.tsx`'s `titleFor`) decided "is this pause forced by a manual
+override" by comparing the pause's `reason` text against the hardcoded "Manually paused" string —
+correct only while every manual pause shared that exact string. Both now check the real override
+map directly, with `calendarRenderer.tsx` threading a new 3-state `pauseResumeAt` prop
+(`undefined`=auto-detected / `null`=override-driven permanent / date=override-driven periodic)
+instead of the old string comparison.
+
+Deliberately unrelated to, and untouched by, this task: `paused_tabs` (a different whole-**tab**
+pause feature that shipped the day before this spec was written, Task 306's predecessor day) has
+its own `reason`/`paused_until` pair whose `until` is explicitly informational and does not
+auto-clear — `brand_platform_override.resume_at` is intentionally different (it genuinely
+auto-resumes), a deliberate divergence between the two features, not an inconsistency. The Edit
+Entry modal's existing raw "Force Paused" dropdown keeps working exactly as before (immediate, no
+reason, no duration) by explicit user decision, alongside the new richer flow.
+
+Built via a 9-task Subagent-Driven Development plan (spec + plan docs below) with per-task review;
+one task hit a real, unrelated incident along the way — an implementer subagent twice accidentally
+operated against the shared `main` checkout instead of its assigned worktree (once producing a
+whole-file UTF-8 encoding corruption in `queries.ts`, fully caught and fixed by that task's own
+review loop before merging; once landing a stray commit directly on local `main`, discovered and
+cleanly reverted with the user's explicit sign-off before any push — main was confirmed to exactly
+match origin afterward, nothing lost). A final whole-branch review (opus) then found and fixed one
+real Critical, cross-task-only bug no per-task review could have seen: the new `refreshPauseState`
+helper both new UI actions funnel through called `recalculatePauses` with no current-week guard,
+so pausing/resuming on a *non-current* navigated week could sweep and rewrite/delete *every other*
+brand+platform's pause row on the tab, not just the one acted on — now gated on
+`isCurrentWeekStart`, with both actions toasting "takes effect once you're viewing the current
+week" when they wrote something that isn't immediately visible. The same review also caught and
+fixed: the helper was passing a stale pre-write override map into `recalculatePauses` (the write
+it exists to materialize only worked by accident, via an unrelated effect re-trigger that also
+caused an extra unwanted PMS-push cycle on every click); the "Until a date" picker allowed picking
+a date inside the current week that would self-expire the instant it was evaluated, a silent no-op
+save; "Resume Now" on an auto-detected (no-override) pause just deleted the pause row, which
+auto-detection immediately re-created; the Paused Brands panel listed hidden/restricted/flagged-
+removed combos the grid and Ask AI's own `get_paused_combos` both correctly exclude; and editing an
+already-paused platform's reason/until-date through the pre-filled modal silently wrote nothing
+since the per-platform diff only checked whether the *checked state* changed. Also closed, in the
+same fix wave: Ask AI's `get_paused_combos` tool description told the model a stale
+`paused_week_start` "may be an expired pause no longer in effect" — true for an auto-detected
+pause, but false for a permanent override-driven one, which is a verbatim reproduction of the
+reported Spinjo problem relocated into the AI surface (fixed text-only; deploy still pending, see
+below). Full suite (888 tests) and build stayed clean throughout every round.
+
+Live-verified: applied the migration to production (`supabase db push`, confirmed via
+`supabase migration list`) and round-tripped a real insert→read→delete of the new
+`reason`/`resume_at` columns directly against the live database as an authenticated approved user
+(RLS correctly rejected the same write anonymously first), cleaned up afterward with zero residual
+rows. **Full browser-driven UI verification (the actual Pause Brand/Paused Brands modals, and
+specifically the multi-week-isolation behavior the Critical fix above addresses) was not performed
+this session — no Playwright browser tool was available/connected in this environment.** Worth
+doing before this is fully trusted in production, especially: pause a brand while viewing a
+different week than the current one and confirm no other brand's pause is disturbed; pick an
+"Until" date inside the current week and confirm the pause actually takes effect (not a silent
+no-op); Resume Now an auto-detected pause and confirm it doesn't immediately reappear.
+
+**Pending manual deploy:** `supabase functions deploy ai-assistant` (ships the corrected
+`get_paused_combos` description — text-only, no tool/schema change) and
+`supabase functions deploy generate-weekly-schedule` (so the Monday cron's own `recalculatePauses`
+call picks up the reason-threading and auto-expiry logic — until then the cron still runs the
+pre-this-task logic, degrading no worse than before). **Deploy order matters going forward from
+here on any future change to this area:** `fetchBrandPlatformOverrides` now selects the 2 new
+columns, and both call sites fail open through the existing `withFlagFallback`/try-catch pattern —
+but in `TabScheduleSection.tsx` that failure sets `flagsLoaded = false`, which gates the entire
+scheduler-invocation effect. A frontend deploy landing *before* the migration would silently stop
+all schedule generation, pause recalculation, and PMS activation pushes for every tab, with no
+error surfaced — same shape as the incident already documented for Task 247. This session's own
+migration + frontend are already applied/committed together in the right order; flagging the
+constraint for whoever runs a *future* change here. Known, deliberately parked (not fixed, not
+forgotten): `ScheduleStatusIcon`'s per-week tooltip still says "Click to manage pause days" for an
+override-driven pause even though that click opens `PauseDaysModal`, which can't clear an
+override — the correct control now exists (Pause Brand / Paused Brands) but nothing in that
+specific tooltip points at it yet; PMS status sync's pause detection matches a linked task's own
+recorded week rather than checking for a permanent pause explicitly, a pre-existing nuance this
+feature makes marginally more reachable; `refreshPauseState` discards `recalculatePauses`'s own
+`resumed` list and never explicitly clears a stale error banner on success, both low-impact. Spec:
+`docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md`. Plan:
+`docs/superpowers/plans/2026-09-02-brand-platform-pause-reason.md`.
+
