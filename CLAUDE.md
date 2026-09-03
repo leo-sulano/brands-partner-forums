@@ -61,7 +61,26 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* Added a weekly approval gate to the Schedule Planner — every Monday an
+- *2026-09-03 (newest):* Same-session follow-up to Task 314 below (weekly approval gate), per
+  direct user decision: **the approval gate now controls ONLY whether a `(tab, week)` reaches
+  the PMS board — it no longer locks editing.** An approved week stays editable by any approved
+  user; a mid-week adjustment syncs live exactly as before (cancel a day → its PMS card is
+  deleted; activate/move a day → a card is created, gate passes because the week is approved).
+  Reverted from Task 314: `canEditWeek()`/`approvedWeekSet` deleted from `TabScheduleSection.tsx`
+  (the 3 cell handlers, the `ScheduleCell` prop, and the status-icon `clickable` are back to the
+  plain `isApproved` guard); new migration
+  `20260903130000_restore_brand_schedule_open_write_policies.sql` drops the 3
+  `... (approved week is admin-only)` policies and recreates the original
+  approved-users-can-write ones. Kept: the `weekly_schedule_approvals` table + 53 grandfather
+  rows, the PMS-push gate in `pushScheduleToPms`, the `queries.ts` approval functions, the
+  Draft/Approved header pill, and the admin-only "Approve week" / "Revoke" buttons + flush
+  handler — so a freshly-generated **pending** week still creates zero PMS tasks until an admin
+  approves. The Task 314 "approved week + new brand + non-admin first visitor → Failed to load
+  schedule" edge case is gone (no write-lock RLS left to reject it). `npm run build` clean;
+  gate + approval query tests unchanged and green; full suite green. Deploy: `supabase db push`
+  (`20260903130000`) + `git push origin main` — no edge-function redeploy (`pushScheduleToPms`
+  unchanged). Task 315.
+- *2026-09-03 (prior):* Added a weekly approval gate to the Schedule Planner — every Monday an
   admin must approve each Brand Tab's week before its plan populates the external PMS board.
   Until a `(tab, week)` is approved the draft still auto-generates (cron + page visit) but never
   reaches the PMS; once approved, only an admin can make further MANUAL changes to that week

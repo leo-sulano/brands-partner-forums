@@ -9,7 +9,11 @@ function mockClient(rows: unknown[]) {
 }
 
 describe('fetchPublicHolidays', () => {
-  it('selects id,date,name ordered by date and returns the rows', async () => {
+  // Generous timeout: this test dynamically imports the large queries.ts
+  // module; under full-suite parallel transform load its cold compile can
+  // exceed the default 5s (it runs in ~2.5s in isolation). Raising it here
+  // rather than globally keeps the tight default for every other test.
+  it('selects id,date,name ordered by date and returns the rows', { timeout: 20000 }, async () => {
     const { fetchPublicHolidays } = await import('./queries');
     const rows = [{ id: 'a', date: '2026-01-01', name: "New Year's Day" }];
     const client = mockClient(rows);

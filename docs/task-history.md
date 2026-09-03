@@ -8691,3 +8691,41 @@ this is a visual/interaction confirmation, best done with a real admin + non-adm
 
 Spec: `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
 implemented directly at the user's direction after spec approval.
+
+---
+
+## Task 315: Approval Gate — drop the post-approval edit lock (PMS-push gate only)
+
+Same-session follow-up to Task 314, per direct user decision: the weekly approval gate must
+control **only** whether a `(tab, week)`'s plan reaches the PMS board — not whether the week can
+be edited. An approved week stays editable by any approved user, and a mid-week adjustment syncs
+live exactly like the pre-approval behaviour: cancelling a scheduled day deletes its PMS task
+card (`handleCancelDay` → `cancelScheduleActivations`, already wired), and activating/moving a
+day creates a card (`pushScheduleActivations`, which now passes the gate because the week is
+approved).
+
+Reverted from Task 314:
+- `TabScheduleSection.tsx` — deleted `canEditWeek()` / `approvedWeekSet`; the three cell
+  handlers (`handleCellClick`/`handleSetDayStatus`/`handleCancelDay`), the `ScheduleCell`
+  `isApproved` prop, and the Schedule Status icon `clickable` flag are back to the plain
+  `isApproved` guard. `isDisplayedWeekApproved` now derives straight from
+  `currentWeekApproval?.status`.
+- New migration `20260903130000_restore_brand_schedule_open_write_policies.sql` — drops the
+  three `... (approved week is admin-only)` policies and recreates the original
+  `20260730120000` "approved users can insert/update/delete brand_schedule" policies.
+
+Kept from Task 314, unchanged: the `weekly_schedule_approvals` table + its RLS + the 53
+grandfather rows; the PMS-push gate in `pushScheduleToPms`; the `queries.ts` approval functions;
+the Draft/Approved header pill; the admin-only "Approve week" / "Revoke" buttons and their
+flush-to-PMS handler. So a freshly-generated **pending** week still creates zero PMS tasks until
+an admin clicks Approve — that checkpoint is intact. The Task 314 "approved week + new brand +
+non-admin first visitor → Failed to load schedule" edge case is now gone (no write-lock RLS to
+reject the generation write).
+
+Verification: `npm run build` clean; `pmsSync.test.ts` gate cases + `queries.test.ts` approval
+cases unchanged and green; full suite green. The Task 314 backend live test (11/11 — unapproved
+week push skipped, approved week push creates + idempotent, cancelSchedule cleanup) still holds
+— that test only exercised the push gate, which is unchanged.
+
+**Deploy:** `supabase db push` (migration `20260903130000`) + `git push origin main`. No edge
+function redeploy needed — `pushScheduleToPms` is unchanged.
