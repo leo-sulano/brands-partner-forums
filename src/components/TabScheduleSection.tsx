@@ -751,45 +751,80 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }, [tab, platformCounts, onPlatformCounts]);
 
   // Re-applies the override table's current effect onto brand_platform_pause
-  // for the current week (the same write path recalculatePauses already
-  // performs on every tab load) and refetches this component's own copies of
-  // `pauses`/`tabCtx.overrideMap`, so a Pause Brand save or a Resume Now
-  // click is reflected on the grid immediately rather than waiting for the
-  // next tab visit. Both PlatformPauseModal's save handler (Task 7) and the
-  // Paused Brands summary's Resume Now action (Task 8) call this after their
-  // own direct writes.
-  async function refreshPauseState() {
-    if (!tabCtx) return;
-    await recalculatePauses(tab, weekStartISO, tabCtx);
-    const [freshPauses, freshOverrideRows] = await Promise.all([
-      fetchActiveBrandPlatformPauses(tab),
-      fetchBrandPlatformOverrides(tab),
-    ]);
+  // and refetches this component's own copies of `pauses`/`tabCtx.overrideMap`,
+  // so a Pause Brand save or a Resume Now click is reflected on the grid
+  // immediately rather than waiting for the next tab visit. Both
+  // PlatformPauseModal's save handler (Task 7) and the Paused Brands summary's
+  // Resume Now action (Task 8) call this after their own direct writes.
+  //
+  // Three things this deliberately gets right:
+  //   - recalculatePauses only runs when the write should actually take effect
+  //     on the currently-navigated week. It sweeps EVERY brand+platform combo
+  //     on the tab against the week it's given, so running it while the user
+  //     has navigated (Prev/Next) to some other week would delete/rewrite
+  //     unrelated combos' pause rows against a week they don't belong to.
+  //   - it passes the freshly-refetched override map rather than the stale
+  //     `tabCtx` (whose overrideMap still predates the write that just
+  //     happened), so the write this function exists to materialize is applied
+  //     by design — not by relying on the scheduler-invocation effect's own
+  //     re-fire, which would also cost an unwanted ensureWeekGenerated/PMS-push
+  //     cycle and discard accumulated `liveEntries`.
+  //   - the return value tells callers whether the change is visible on the
+  //     current view, or will only apply once the user is back on the real
+  //     current week (so they can say so instead of appearing to no-op).
+  async function refreshPauseState(): Promise<boolean> {
+    if (!tabCtx) return false;
+    const freshOverrideRows = await fetchBrandPlatformOverrides(tab);
+    const freshOverrideMap = buildOverrideMap(freshOverrideRows);
+    const appliedNow = isCurrentWeekStart(weekStartISO);
+    if (appliedNow) {
+      await recalculatePauses(tab, weekStartISO, { ...tabCtx, overrideMap: freshOverrideMap });
+    }
+    const freshPauses = await fetchActiveBrandPlatformPauses(tab);
     setPauses(freshPauses);
-    setTabCtx((prev) => (prev ? { ...prev, overrideMap: buildOverrideMap(freshOverrideRows) } : prev));
+    setTabCtx((prev) => (prev ? { ...prev, overrideMap: freshOverrideMap } : prev));
+    return appliedNow;
   }
 
-  const pausedBrandsRows: PausedBrandRow[] = pauses.map((p) => {
-    const override = tabCtx?.overrideMap.get(overrideKey(tab, p.brand_key, p.platform));
-    const isOverrideDriven = override?.state === 'pause';
-    return {
-      brand: brandByKey.get(p.brand_key) ?? p.brand_key,
-      brandKey: p.brand_key,
-      platform: p.platform,
-      reason: p.reason,
-      since: p.paused_week_start,
-      until: isOverrideDriven ? override.resumeAt : null,
-      setBy: isOverrideDriven ? override.setBy : null,
-      isOverrideDriven,
-    };
-  });
+  // Filtered through the same brandPlatforms() exclusion the grid itself uses,
+  // so a hidden / platform-restricted / flagged-removed combo can't be listed
+  // here (recalculatePauses deliberately leaves a flagged-removed combo's pause
+  // row untouched, so such rows persist indefinitely) — matching both the grid
+  // and Ask AI's get_paused_combos.
+  const pausedBrandsRows: PausedBrandRow[] = pauses
+    .map((p) => {
+      const override = tabCtx?.overrideMap.get(overrideKey(tab, p.brand_key, p.platform));
+      const isOverrideDriven = override?.state === 'pause';
+      return {
+        brand: brandByKey.get(p.brand_key) ?? p.brand_key,
+        brandKey: p.brand_key,
+        platform: p.platform,
+        reason: p.reason,
+        since: p.paused_week_start,
+        until: isOverrideDriven ? override.resumeAt : null,
+        setBy: isOverrideDriven ? override.setBy : null,
+        isOverrideDriven,
+      };
+    })
+    .filter((row) => brandPlatforms(row.brand).includes(row.platform));
 
   async function handleResumeNow(row: PausedBrandRow) {
     setPausedBrandsBusy(true);
     try {
-      if (row.isOverrideDriven) await clearBrandPlatformOverride(tab, row.brandKey, row.platform);
+      if (row.isOverrideDriven) {
+        await clearBrandPlatformOverride(tab, row.brandKey, row.platform);
+      } else {
+        // An auto-detected pause has no override row to clear, and
+        // recalculatePauses' own detection (2 consecutive Removed/Refused, or a
+        // low rolling-30-day success rate) would immediately re-create the
+        // identical pause. So an explicit Resume Now here is recorded as a
+        // deliberate "keep this active regardless of auto-detection" decision,
+        // exactly like the Edit Entry modal's existing Force Active control.
+        await setBrandPlatformOverride(tab, row.brand, row.platform, 'active');
+      }
       await deleteBrandPlatformPause(tab, row.brandKey, row.platform);
-      await refreshPauseState();
+      const appliedNow = await refreshPauseState();
+      if (!appliedNow) setToast({ message: "Resumed — takes effect once you're viewing the current week.", kind: 'info' });
     } catch (e) {
       setToast({ message: e instanceof Error ? e.message : 'Failed to resume', kind: 'error' });
     } finally {
@@ -820,25 +855,38 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return { platforms, checkedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt };
   }
 
+  // Diffs against each platform's CURRENT override values (state + reason +
+  // resumeAt), not merely against whether it was checked before — the modal
+  // pre-fills reason/until as editable fields, so editing just those on an
+  // already-paused platform has to write, even though the checked state itself
+  // didn't change.
   async function handleSavePauseModal(brand: string, checkedPlatforms: Platform[], reason: string, resumeAt: string | null) {
     const brandKey = normalizeBrandKey(brand);
     const nowChecked = new Set(checkedPlatforms);
-    const { checkedPlatforms: previouslyChecked } = computePauseModalData(brand);
-    const wasChecked = new Set(previouslyChecked);
     setPauseModalBusy(true);
     try {
+      let pausedAny = false;
       for (const platform of brandPlatforms(brand)) {
-        const was = wasChecked.has(platform);
         const now = nowChecked.has(platform);
-        if (was === now) continue;
+        const existingOverride = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform));
+        const wasPaused = existingOverride?.state === 'pause';
         if (now) {
+          const unchanged = wasPaused && existingOverride.reason === reason && existingOverride.resumeAt === resumeAt;
+          if (unchanged) continue;
           await setBrandPlatformOverride(tab, brand, platform, 'pause', { reason, resumeAt });
-        } else {
+          pausedAny = true;
+        } else if (wasPaused) {
           await clearBrandPlatformOverride(tab, brandKey, platform);
           await deleteBrandPlatformPause(tab, brandKey, platform);
         }
       }
-      await refreshPauseState();
+      const appliedNow = await refreshPauseState();
+      // Only worth saying for a pause that was actually written: a pure resume
+      // (unchecking platforms) deletes its pause rows directly, so it's already
+      // visible regardless of which week is on screen.
+      if (pausedAny && !appliedNow) {
+        setToast({ message: "Paused — takes effect once you're viewing the current week.", kind: 'info' });
+      }
       setPauseModalTarget(null);
     } catch (e) {
       setToast({ message: e instanceof Error ? e.message : 'Failed to update pause', kind: 'error' });
@@ -1268,15 +1316,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
                       {isApproved && (
-                        <button
-                          type="button"
-                          onClick={() => setPauseModalTarget({ brand })}
-                          className="ml-1.5 shrink-0 rounded-md p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
-                          title={`Pause ${brand}`}
-                          aria-label={`Pause ${brand}`}
-                        >
-                          <PausedBadgeIcon className="size-3.5" />
-                        </button>
+                        <Tooltip content={`Pause ${brand}`} className="ml-1.5 shrink-0 items-center">
+                          <button
+                            type="button"
+                            onClick={() => setPauseModalTarget({ brand })}
+                            className="rounded-md p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
+                            aria-label={`Pause ${brand}`}
+                          >
+                            <PausedBadgeIcon className="size-3.5" />
+                          </button>
+                        </Tooltip>
                       )}
                     </td>
                     {columns.map((col) => {

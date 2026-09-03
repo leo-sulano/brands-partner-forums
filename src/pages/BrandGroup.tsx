@@ -1220,8 +1220,8 @@ export default function BrandGroup() {
     const brandKey = normalizeBrandKey(brandName);
     const out: Partial<Record<Platform, OverrideState>> = {};
     for (const p of getTabPlatforms(decodedTab)) {
-      const state = overrideMap.get(overrideKey(decodedTab, brandKey, p));
-      if (state) out[p] = state.state;
+      const override = overrideMap.get(overrideKey(decodedTab, brandKey, p));
+      if (override) out[p] = override.state;
     }
     return out;
   }
