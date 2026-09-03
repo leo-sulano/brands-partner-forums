@@ -8658,16 +8658,22 @@ full frontend suite 2326 passed.
   tab (or the Monday cron, service-role, fills it). Rare; same banner any transient generation
   failure already produces.
 
-**Not yet deployed — strict order (Task 247 lesson):**
-1. `supabase db push` — MUST be first. `pushScheduleToPms`'s new `select` on
-   `weekly_schedule_approvals` throws `42P01` if the table is missing, which would break ALL
-   PMS pushes (including the two already-live sync directions).
-2. `supabase functions deploy sync-schedule-pms` and `supabase functions deploy
-   generate-weekly-schedule`.
-3. `git push origin main` (frontend).
-4. Live-verify: fresh un-approved week creates no PMS tasks on chip activation; admin "Approve
-   week" flushes them; non-admin sees the week read-only after approval; revoke stops new
-   pushes and leaves existing tasks.
+**Deployed the same session, in order (Task 247 lesson):**
+1. `supabase db push` — migration `20260903120000` applied to production. Verified live via
+   `supabase db query --linked`: `weekly_schedule_approvals` holds **53 grandfathered
+   `approved` rows** (zero `pending`, as expected — the next newly-generated week will be the
+   first pending one); `pg_policies` for `brand_schedule` shows exactly the 4 expected policies
+   — `anyone can read` (SELECT) plus the 3 new `... (approved week is admin-only)`
+   INSERT/UPDATE/DELETE — with the old `approved users can ...` policies gone.
+2. `supabase functions deploy sync-schedule-pms` (confirmed `ACTIVE` version 39) and
+   `supabase functions deploy generate-weekly-schedule` (confirmed `ACTIVE` version 18) via
+   `supabase functions list`.
+3. `git push origin main` — Vercel redeploys the frontend from this push.
+
+**Live behaviour verification still pending** (needs a real browser session with an admin and a
+non-admin account): fresh un-approved week creates no PMS tasks on chip activation; admin
+"Approve week" flushes them; non-admin sees the week read-only after approval; revoke stops new
+pushes and leaves existing tasks.
 
 Spec: `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
 implemented directly at the user's direction after spec approval.

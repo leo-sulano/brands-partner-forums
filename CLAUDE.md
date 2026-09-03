@@ -88,10 +88,13 @@ Brands Partner Forum/
   pill covers it); the per-brand "Pause Brand" button stays `isApproved`-gated post-approval
   (durable override, same exempt category as auto-pause); approved-week + brand-added-later +
   non-admin-first-visitor can hit a "Failed to load schedule" banner until an admin/cron fills
-  the new combo. **Not yet deployed — strict order:** `supabase db push` FIRST (the gate's new
-  `select` throws `42P01` and breaks ALL PMS pushes if the table is missing), then
-  `supabase functions deploy sync-schedule-pms` + `generate-weekly-schedule`, then
-  `git push origin main`. Spec:
+  the new combo. **Deployed the same session, in order:** `supabase db push` (migration
+  `20260903120000` live — verified: 53 grandfathered `approved` rows, `brand_schedule` now
+  carries the 3 `... (approved week is admin-only)` write policies), then
+  `supabase functions deploy sync-schedule-pms` (`ACTIVE` v39) + `generate-weekly-schedule`
+  (`ACTIVE` v18), then `git push origin main` (Vercel redeploy). Live browser behaviour check
+  (admin approve → flush, non-admin read-only, revoke) still pending — needs real admin +
+  non-admin sessions. Spec:
   `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
   implemented directly after spec approval. Task 314.
 - *2026-09-03 (prior):* Schedule Planner auto-generation now spreads each platform evenly
