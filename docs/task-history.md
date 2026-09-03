@@ -8817,3 +8817,57 @@ concurrent session's `tabPausedBrands` commit — unrelated to this task); full 
 
 **Deploy:** `supabase db push` (`20260903150000`) + `git push origin main`. No edge-function
 redeploy.
+
+---
+
+## Task 318: Paused brands section in the Edit Brand Tab modal
+
+Surfaced the existing per-brand+platform pause (`brand_platform_override`, reason + optional
+resume date, Task 311) in the Edit Brand Tab modal (pencil icon on a Brand Tab), so an operator
+can pause one brand on one platform without navigating to the Schedule Planner and hunting for
+its row. New "Paused brands" section: a list of every override-driven pause on the tab
+(brand — platform — reason — resumes/permanent — set by) with a Resume button, plus a brand
+picker that opens the existing `PlatformPauseModal` unchanged.
+
+New pure `deriveTabPausedBrandRows` (`src/lib/tabPausedBrands.ts`, 5 unit tests) shapes the
+rows, filtered through the same `resolveBrandPlatforms` (`src/lib/scheduleBrandConfig.ts`)
+hidden/restricted/flagged-removed exclusion the Schedule Planner grid and Ask AI's
+`get_paused_combos` already use — no re-derived copy. New
+`src/components/TabPausedBrandsSection.tsx` mounts in `EditBrandTabModal` (new `brands` prop
+fed by `BrandGroup`'s `uniqueBrands`), outside the admin-only block — any approved user,
+matching the Schedule Planner flow. Writes go straight to `brand_platform_override` via the
+existing `setBrandPlatformOverride` / `clearBrandPlatformOverride`, immediately (not part of the
+modal's "Save Changes" batch). The section never writes `brand_platform_pause` —
+`recalculatePauses` rebuilds that materialized weekly cache on the next Schedule Planner visit /
+the Monday + daily crons.
+
+`PlatformPauseModal` gained one additive `overlayZClass` prop (default `z-40` unchanged;
+`z-[60]` from here so it sits above the z-50 Edit Brand Tab modal); `EditBrandTabModal`
+suppresses its own Escape-to-close while that child is open.
+
+No schema, migration, or Edge Function change — `get_paused_combos` already reads
+`brand_platform_override`, so `tools.ts` is untouched and `ai-assistant` needs no redeploy.
+`npm run build` clean; full Vitest suite green (2331 passed, 0 failed — the known
+`queries.publicHolidays.test.ts` 5s flake did not recur this run; suite count reads inflated per
+this project's known stray-worktree scan quirk). Deploy: `git push origin main` (frontend only)
+— deferred to after the final whole-branch review.
+
+Live browser verification deferred — not run this session; worth confirming the add-pause /
+resume round trip and the Schedule Planner cross-check (same brand+platform shows paused there
+after that page's own `recalculatePauses` runs, with the same reason) before full trust.
+
+Accepted limitation (see Known Issues): the Edit Brand Tab list (from the override table) and
+the Schedule Planner's Paused Brands list (from the materialized `brand_platform_pause` cache)
+can briefly disagree until the tab's next `recalculatePauses` run; the pause itself is in effect
+immediately. Auto-detected pauses are not shown here (no override row) — they stay
+Schedule-Planner-only. Three Minor findings from Task 3's review were parked for the final
+whole-branch review to triage: `pauseModalInitial` seeds reason/resumeAt from the first paused
+platform (differing per-platform reasons can be overwritten on save — matches the Schedule
+Planner's own behavior, spec-sanctioned); a failed post-write `refresh()` leaves the picker
+modal open because `setPickerBrand(null)` runs unconditionally after it; `onChildModalOpenChange`
+tracks only `PlatformPauseModal`, not the native picker `<select>` (non-issue).
+
+Built via 4 SDD tasks (helper + tests, `overlayZClass` prop, component + wiring, this
+verification/docs task). Spec:
+`docs/superpowers/specs/2026-09-03-edit-brand-tab-paused-brands-section-design.md`. Plan:
+`docs/superpowers/plans/2026-09-03-edit-brand-tab-paused-brands-section.md`.
