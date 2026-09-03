@@ -37,6 +37,7 @@ import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, bu
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import PlatformPauseModal from './PlatformPauseModal';
+import PausedBrandsModal, { type PausedBrandRow } from './PausedBrandsModal';
 import PausedBadgeIcon from './PausedBadgeIcon';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
@@ -149,6 +150,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
   const [pauseModalTarget, setPauseModalTarget] = useState<{ brand: string } | null>(null);
   const [pauseModalBusy, setPauseModalBusy] = useState(false);
+  const [pausedBrandsOpen, setPausedBrandsOpen] = useState(false);
+  const [pausedBrandsBusy, setPausedBrandsBusy] = useState(false);
   const { isApproved } = useAuth();
 
   // Bumped by the live-entries subscription below on an INSERT (or any
@@ -766,6 +769,34 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     setTabCtx((prev) => (prev ? { ...prev, overrideMap: buildOverrideMap(freshOverrideRows) } : prev));
   }
 
+  const pausedBrandsRows: PausedBrandRow[] = pauses.map((p) => {
+    const override = tabCtx?.overrideMap.get(overrideKey(tab, p.brand_key, p.platform));
+    const isOverrideDriven = override?.state === 'pause';
+    return {
+      brand: brandByKey.get(p.brand_key) ?? p.brand_key,
+      brandKey: p.brand_key,
+      platform: p.platform,
+      reason: p.reason,
+      since: p.paused_week_start,
+      until: isOverrideDriven ? override.resumeAt : null,
+      setBy: isOverrideDriven ? override.setBy : null,
+      isOverrideDriven,
+    };
+  });
+
+  async function handleResumeNow(row: PausedBrandRow) {
+    setPausedBrandsBusy(true);
+    try {
+      if (row.isOverrideDriven) await clearBrandPlatformOverride(tab, row.brandKey, row.platform);
+      await deleteBrandPlatformPause(tab, row.brandKey, row.platform);
+      await refreshPauseState();
+    } catch (e) {
+      setToast({ message: e instanceof Error ? e.message : 'Failed to resume', kind: 'error' });
+    } finally {
+      setPausedBrandsBusy(false);
+    }
+  }
+
   function computePauseModalData(brand: string): { platforms: Platform[]; checkedPlatforms: Platform[]; autoPauseReasonByPlatform: Partial<Record<Platform, string>>; initialReason: string; initialResumeAt: string | null } {
     const brandKey = normalizeBrandKey(brand);
     const platforms = brandPlatforms(brand);
@@ -1058,6 +1089,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           <div className="flex items-center gap-3 px-3 py-2">
             <h2 className="text-sm font-semibold text-slate-800">{tabDisplayName(tab)}</h2>
             <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setPausedBrandsOpen(true)}
+                className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                <PausedBadgeIcon className="size-3.5" />
+                Paused Brands{pausedBrandsRows.length > 0 && ` (${pausedBrandsRows.length})`}
+              </button>
               {/* Deliberately still exports only weekStartISO's single Mon–Fri
                   week (computeCellData's own default), not the wider range
                   the grid may currently be showing — scheduleExport.ts's
@@ -1385,6 +1424,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           />
         );
       })()}
+      <PausedBrandsModal
+        open={pausedBrandsOpen}
+        rows={pausedBrandsRows}
+        busy={pausedBrandsBusy}
+        onResume={handleResumeNow}
+        onClose={() => setPausedBrandsOpen(false)}
+      />
     </div>
   );
 }
