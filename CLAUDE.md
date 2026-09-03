@@ -94,9 +94,10 @@ Brands Partner Forum/
   anonymously first, zero residual test data left behind). **No browser-driven UI verification
   performed this session — Playwright wasn't available/connected in this environment** — worth
   doing before full trust, especially the multi-week-isolation behavior the Critical fix addresses.
-  **Pending manual deploy:** `supabase functions deploy ai-assistant` (corrected tool description)
-  and `supabase functions deploy generate-weekly-schedule` (so the Monday cron picks up the
-  reason-threading/auto-expiry logic). See Known Issues below for parked minors. Spec:
+  **Deployed the same day:** `supabase functions deploy ai-assistant` (corrected tool description,
+  confirmed `ACTIVE` version 46) and `supabase functions deploy generate-weekly-schedule` (Monday
+  cron now picks up the reason-threading/auto-expiry logic, confirmed `ACTIVE` version 16). See
+  Known Issues below for parked minors. Spec:
   `docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md`. Plan:
   `docs/superpowers/plans/2026-09-02-brand-platform-pause-reason.md`. Task 311.
 - *2026-09-03 (prior):* A brand+platform's PMS task card is now auto-deleted once its review page
@@ -1356,12 +1357,17 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
-- **Pending manual deploy (2026-09-03, Task 311):** `supabase functions deploy ai-assistant`
-  (ships the corrected `get_paused_combos` tool description — text-only, no schema/logic change)
-  and `supabase functions deploy generate-weekly-schedule` (so the Monday cron's own
-  `recalculatePauses` call picks up reason-threading and periodic auto-expiry — until deployed, the
-  cron keeps running its pre-Task-311 logic, no worse than before, just not yet reason-aware).
-  **Not yet live-verified via browser** — no Playwright tool was available/connected this session;
+- **Resolved (2026-09-03, same day as Task 311).** `supabase functions deploy ai-assistant`
+  (ships the corrected `get_paused_combos` tool description — text-only, no schema/logic change,
+  confirmed `ACTIVE` version 46) and `supabase functions deploy generate-weekly-schedule`
+  (confirmed `ACTIVE` version 16, `deno check` clean beforehand) are both deployed — the Monday
+  cron's own `recalculatePauses` call now picks up reason-threading and periodic auto-expiry.
+  **Still not live-verified via browser** — no Playwright tool was available/connected in either
+  session that worked on this task; the data layer was verified directly (an authenticated
+  insert→read→delete round-trip of the new `reason`/`resume_at` columns against production, RLS
+  correctly rejected the same write anonymously first). Worth a real UI walkthrough before full
+  trust in the feature's UI paths specifically (the deploy/data-layer pieces above are confirmed
+  live, this is about the actual modals/buttons):
   the data layer was verified directly (an authenticated insert→read→delete round-trip of the new
   `reason`/`resume_at` columns against production, RLS correctly rejected the same write
   anonymously first). Worth a real UI walkthrough before full trust, specifically: pause a brand

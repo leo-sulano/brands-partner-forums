@@ -8442,11 +8442,12 @@ different week than the current one and confirm no other brand's pause is distur
 "Until" date inside the current week and confirm the pause actually takes effect (not a silent
 no-op); Resume Now an auto-detected pause and confirm it doesn't immediately reappear.
 
-**Pending manual deploy:** `supabase functions deploy ai-assistant` (ships the corrected
-`get_paused_combos` description — text-only, no tool/schema change) and
-`supabase functions deploy generate-weekly-schedule` (so the Monday cron's own `recalculatePauses`
-call picks up the reason-threading and auto-expiry logic — until then the cron still runs the
-pre-this-task logic, degrading no worse than before). **Deploy order matters going forward from
+**Deployed the same day (2026-09-03):** `supabase functions deploy ai-assistant` (ships the
+corrected `get_paused_combos` description — text-only, no tool/schema change; confirmed `ACTIVE`
+version 46 via `supabase functions list`) and `supabase functions deploy generate-weekly-schedule`
+(`deno check` clean beforehand; confirmed `ACTIVE` version 16 — the Monday cron's own
+`recalculatePauses` call now picks up the reason-threading and auto-expiry logic). **Deploy order
+matters going forward from
 here on any future change to this area:** `fetchBrandPlatformOverrides` now selects the 2 new
 columns, and both call sites fail open through the existing `withFlagFallback`/try-catch pattern —
 but in `TabScheduleSection.tsx` that failure sets `flagsLoaded = false`, which gates the entire
