@@ -8466,3 +8466,58 @@ feature makes marginally more reachable; `refreshPauseState` discards `recalcula
 `docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md`. Plan:
 `docs/superpowers/plans/2026-09-02-brand-platform-pause-reason.md`.
 
+---
+
+## Task 312: Live Verification of the Brand+Platform Pause Feature (Task 311 follow-up)
+
+Same-day follow-up to Task 311: both deployments (`ai-assistant` v46, `generate-weekly-schedule`
+v16) confirmed `ACTIVE`, and the feature was live-verified end to end — the one piece Task 311
+itself couldn't complete, since no Playwright MCP tool was connected in that session.
+
+The Playwright MCP tool was still unavailable this session too. Instead of skipping verification,
+this reused a pattern the repo already has precedent for (`scripts/capture-getting-started.mjs`):
+a throwaway Node script driving a real `playwright` browser directly (the `playwright` npm package
+is already a devDependency), against the real dev server and real production Supabase, logged in
+as the actual user. Not committed to the repo — lived in the session's scratchpad only.
+
+Round-tripped a real permanent pause on Rooster Partners' Spinjo/TrustPilot through the actual UI
+(Pause Brand modal → Save), then verified via direct REST calls that the `brand_platform_override`
+row, the materialized `brand_platform_pause` row (with the real custom reason, not the generic
+fallback), and the Paused Brands panel's on-screen text all agreed. Then ran the scenario the final
+whole-branch review's Critical fix (C1) exists for: paused a second brand (Novadreams2/TP),
+navigated the calendar two weeks into the future, and clicked Resume Now on Spinjo from that future
+week — confirmed Spinjo's override was cleared while Novadreams2's override row came back
+byte-identical (same reason, same `resume_at`), proving the future-week action didn't sweep or
+rewrite the unrelated combo. Screenshot evidence: the Paused Brands panel correctly showed a toast
+("Resumed — takes effect once you're viewing the current week.") confirming the `appliedNow`
+signal from Task 311's `refreshPauseState` fix reaches the UI as designed.
+
+**This pass caught one real, live bug**: the "Until a date" picker's `min` was still `todayISO`
+(`PlatformPauseModal.tsx`), letting an operator pick any date through the end of the current
+week — but `recalculatePauses`' periodic-expiry check is week-granular, so such a date was already
+"passed" the moment it was next evaluated, silently deleting the override with no error surfaced.
+Task 311's own final review had already named this exact gap as finding I2 — it was simply dropped
+when that review's fix-wave dispatch was composed, and slipped through both the fix wave and its
+scoped re-review undetected, since neither was ever asked to check for it. Fixed directly (a small,
+self-contained UI change, not re-run through the full SDD process): `min` is now
+`toISODate(addDays(mondayOf(new Date()), 7))` — the next Monday after the real current week's
+Sunday — computed fresh each render in `TabScheduleSection.tsx` (never memoized, matching
+`isCurrentWeekStart`'s own established precedent for why "the current week" must always derive
+from a live `Date`), threaded to `PlatformPauseModal` as a renamed `minResumeAt` prop. Verified
+live afterward: the date input correctly read one week out (`2026-09-07` against a
+`2026-09-03` "today"), and the previously-possible self-expiring no-op save can no longer be
+entered at all.
+
+Full suite (2303 tests) and build pass. The "3191" figure reported right after Task 311's merge
+was itself a measurement artifact, not a real count — Vitest was also scanning this task's
+now-removed worktree at that exact moment (a full duplicate checkout of the same test files),
+inflating the total by exactly this branch's own ~888 tests; the real, correct total is 2303,
+confirmed consistent across two fresh runs after the worktree was gone.
+
+Not directly live-tested: Resume Now on a genuinely auto-detected (no-override) pause not
+immediately re-triggering itself (finding I3) — verified only by code re-review (the original
+final review, plus the scoped re-review of its fix), not by touching real production combos
+currently failing their actual success-rate/consecutive-removed checks, which this session
+deliberately avoided disturbing. Migration, deploys, and the corrected Ask AI tool description are
+all otherwise confirmed live as of this task; see Task 311 above for the full feature writeup.
+

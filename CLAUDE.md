@@ -61,7 +61,31 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* Added a durable "Pause Brand" flow to the Schedule Planner — a
+- *2026-09-03 (newest):* Same-day follow-up to Task 311 directly below: live-verified the
+  brand+platform pause feature end to end against production, using a throwaway Node script
+  driving a real `playwright` browser (the Playwright MCP tool was unavailable this session, but
+  this repo already depends on the `playwright` npm package for `scripts/capture-getting-started.mjs`,
+  so this reuses that same pattern rather than skipping verification). Logged in as the real user,
+  opened Rooster Partners' Schedule Planner, and round-tripped a real permanent pause on Spinjo/TP
+  through the actual UI — confirmed the override row, the materialized `brand_platform_pause` row
+  with the real custom reason (not the generic fallback), and the Paused Brands panel's display, all
+  matched. Then ran the exact scenario the final whole-branch review's Critical fix (C1) was written
+  for: paused a second brand (Novadreams2/TP), navigated to a week two weeks in the future, and
+  clicked Resume Now on Spinjo from there — confirmed via direct REST assertions that Spinjo's
+  override was cleared while Novadreams2's pause row came back byte-identical, untouched. **This
+  same pass caught one real bug the whole SDD process had missed**: the "Until a date" picker's
+  `min` was still `todayISO`, letting an operator pick a date inside the current week that
+  `recalculatePauses`' week-granular expiry check would silently treat as already-expired the
+  moment it next ran — a silent no-op save with no error shown. The final review's own finding list
+  (I2) had already named this exact gap, but it was dropped when the fix-wave dispatch was composed
+  and slipped through both the fix wave and its re-review undetected — live verification is what
+  finally caught it. Fixed: `min` is now the next Monday after the real current week's Sunday
+  (`toISODate(addDays(mondayOf(new Date()), 7))` in `TabScheduleSection.tsx`, threaded to
+  `PlatformPauseModal` as a renamed `minResumeAt` prop), verified live afterward — the date input
+  correctly reads one week out and a self-expiring date can no longer be entered. Full suite (2303
+  tests — the earlier post-merge "3191" figure was inflated by Vitest also scanning this task's
+  now-removed worktree, per this project's known stray-worktree test-count quirk) and build pass.
+- *2026-09-03 (prior):* Added a durable "Pause Brand" flow to the Schedule Planner — a
   per-brand-row button opens a modal to pause one or more platforms (Permanent or Until a date,
   reason required only when newly pausing), and a new "Paused Brands" toolbar panel lists every
   currently-paused brand+platform (reason/until/who-set-it/Resume Now), both sourced from
@@ -1362,19 +1386,18 @@ Brands Partner Forum/
   confirmed `ACTIVE` version 46) and `supabase functions deploy generate-weekly-schedule`
   (confirmed `ACTIVE` version 16, `deno check` clean beforehand) are both deployed — the Monday
   cron's own `recalculatePauses` call now picks up reason-threading and periodic auto-expiry.
-  **Still not live-verified via browser** — no Playwright tool was available/connected in either
-  session that worked on this task; the data layer was verified directly (an authenticated
-  insert→read→delete round-trip of the new `reason`/`resume_at` columns against production, RLS
-  correctly rejected the same write anonymously first). Worth a real UI walkthrough before full
-  trust in the feature's UI paths specifically (the deploy/data-layer pieces above are confirmed
-  live, this is about the actual modals/buttons):
-  the data layer was verified directly (an authenticated insert→read→delete round-trip of the new
-  `reason`/`resume_at` columns against production, RLS correctly rejected the same write
-  anonymously first). Worth a real UI walkthrough before full trust, specifically: pause a brand
-  while viewing a non-current week and confirm no other brand's pause is disturbed (the exact
-  Critical bug this task's final review caught and fixed); pick an "Until" date inside the current
-  week and confirm the pause actually takes effect rather than silently no-op'ing; Resume Now an
-  auto-detected pause and confirm it doesn't immediately reappear.
+  **Live browser verification also now done** (same day, a throwaway Playwright Node script —
+  see the Recent Changes entry above): the basic pause/reason/Paused-Brands-panel round trip and,
+  specifically, the multi-week-isolation scenario the Critical fix (C1) exists for — pausing/
+  resuming from a navigated future week was confirmed to leave every other brand's pause row
+  byte-identical. That same pass caught and fixed one real gap the whole SDD process (final review,
+  fix wave, and its re-review) had missed: the "Until a date" picker's `min` was still `todayISO`,
+  a bug the final review had actually already named (finding I2) but which got dropped when the fix
+  wave's dispatch was composed — see the Recent Changes entry above for the fix. **Not directly
+  live-tested**: Resume Now on a genuinely auto-detected (no-override) pause not immediately
+  re-triggering itself — verified only by code re-review (twice), not by touching real auto-paused
+  production combos live, since doing so would have meant deliberately interfering with brands
+  actually failing their real success-rate/consecutive-removed checks.
 - **Accepted, deliberately deferred (2026-09-03, Task 311)** — 3 narrow, low-impact gaps found by
   that task's final whole-branch review and parked rather than fixed: `ScheduleStatusIcon`'s
   per-week pause tooltip still says "Click to manage pause days" even for an override-driven pause,
