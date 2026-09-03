@@ -4,7 +4,7 @@
 // token never reaches the browser. Same "one src/lib module, multiple
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { normalizeBrandKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
+import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
 import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, type SchedulePmsLink } from '../queries.ts';
 import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
@@ -28,6 +28,22 @@ const PMS_PLATFORM_LABEL_NAMES: Record<Platform, string> = { tp: 'TP', ag: 'AG',
 // the one platform with no label yet in the live project, auto-created the
 // first time a WO item needs tagging.
 const WO_LABEL_COLOR = 'blue';
+
+// A brand+platform whose review page is flagged removed (removed_platform_brands)
+// no longer exists on any Schedule Planner surface. A linked PMS card for it
+// still sitting in one of these not-yet-settled columns (confirmed live
+// against the real "Forum Team" project's own columns response) represents
+// planned/in-flight work that will now never happen, and pruneRemovedPageCards
+// below deletes it outright. Done, Project Paused, and any other column
+// (including the unmanaged "BIT | BIF | FTP" column) are left alone -- a card
+// there is either settled history or a deliberate human placement.
+const PMS_IN_PROGRESS_COLUMN_ID = 'cmsoh1uxz000304l4zynwy7vw';
+const PMS_BLOCKED_COLUMN_ID = 'cmsoh1uxz000504l46ytlrxes';
+const PMS_REMOVED_PAGE_DELETABLE_COLUMN_IDS = new Set<string>([
+  PMS_TODO_COLUMN_ID,
+  PMS_IN_PROGRESS_COLUMN_ID,
+  PMS_BLOCKED_COLUMN_ID,
+]);
 
 export interface PmsCredentials {
   apiToken: string;
@@ -581,6 +597,59 @@ export async function enforcePmsColumns(
   return { moved, resorted, failed };
 }
 
+// Deletes linked PMS cards for any brand+platform whose review page is
+// flagged removed (removed_platform_brands) -- but only when the card is
+// still sitting in a not-yet-settled column (To Do / In Progress / Blocked,
+// see PMS_REMOVED_PAGE_DELETABLE_COLUMN_IDS above). A card already Done,
+// Project Paused, or anywhere else is left untouched -- the combo is gone
+// from every Schedule Planner surface either way, so a plan-only/in-flight
+// card for it is just noise, while a settled card is history worth keeping.
+// One GET /tasks for the whole tab (skipped entirely when nothing is
+// flagged); a DELETE only per card actually pruned. A task-list fetch
+// failure degrades to a no-op for this pass (retried on the next tick/visit,
+// same spirit as syncScheduleStatusToPms's own ungrouped-position fallback);
+// a per-card delete failure is isolated into cancelFailed, same batch
+// resilience as the rest of this module. Returns the ids of links it pruned
+// so the caller can exclude them from its own resolve loop -- a pruned combo
+// has nothing left to move/cancel/pause.
+async function pruneRemovedPageCards(
+  links: SchedulePmsLink[],
+  removedPlatformBrandSet: Set<string>,
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+): Promise<{ prunedLinkIds: Set<string>; cancelled: PmsCancelItem[]; cancelFailed: { item: PmsCancelItem; error: string }[] }> {
+  const prunedLinkIds = new Set<string>();
+  const cancelled: PmsCancelItem[] = [];
+  const cancelFailed: { item: PmsCancelItem; error: string }[] = [];
+
+  const flagged = links.filter((l) => removedPlatformBrandSet.has(platformRemovedKey(l.tab, l.brand, l.platform)));
+  if (flagged.length === 0) return { prunedLinkIds, cancelled, cancelFailed };
+
+  let tasksById: Map<string, PmsTaskListed>;
+  try {
+    const tasks = await fetchPmsProjectTasks(credentials, fetchFn);
+    tasksById = new Map(tasks.map((t) => [t.id, t]));
+  } catch {
+    return { prunedLinkIds, cancelled, cancelFailed };
+  }
+
+  for (const link of flagged) {
+    const task = tasksById.get(link.pms_task_id);
+    if (!task || !PMS_REMOVED_PAGE_DELETABLE_COLUMN_IDS.has(task.columnId)) continue;
+    const item: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
+    try {
+      await deletePmsTask(link.pms_task_id, credentials, fetchFn);
+      await deleteSchedulePmsLink(link.id, client);
+      prunedLinkIds.add(link.id);
+      cancelled.push(item);
+    } catch (err) {
+      cancelFailed.push({ item, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return { prunedLinkIds, cancelled, cancelFailed };
+}
+
 // The one place the full dashboard -> PMS status resolution rules are
 // implemented (evidence precedence, pause exclusion, hidden/restricted/
 // removed-platform exclusion) -- both the on-visit browser trigger and the
@@ -615,6 +684,21 @@ export async function resolveAndSyncTabStatuses(
   const links = await fetchSchedulePmsLinks(tab, client);
   if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
 
+  // Fetched once here (rather than inside each branch below, as before) so
+  // pruneRemovedPageCards can run ahead of the paused/normal split and both
+  // branches can reuse the same set with no second fetch.
+  const removedPlatformBrandRows = await fetchRemovedPlatformBrands(client);
+  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
+
+  // Prune any linked card for a now-removed-page combo before either branch
+  // below ever considers it -- see pruneRemovedPageCards for exactly which
+  // cards that deletes. A pruned link is excluded from the rest of this
+  // resolve entirely (nothing left to move/cancel/pause for it); its
+  // deletion is folded into whichever branch's own cancelled/cancelFailed
+  // result below.
+  const prune = await pruneRemovedPageCards(links, removedPlatformBrandSet, client, credentials, fetchFn);
+  const liveLinks = prune.prunedLinkIds.size > 0 ? links.filter((l) => !prune.prunedLinkIds.has(l.id)) : links;
+
   // Whole-Brand-Tab pause (paused_tabs, see pausedTabRegistry.ts) forces every
   // still-eligible link straight to 'paused', bypassing the
   // cancellation-detection block (a paused tab's held slots are deliberately
@@ -626,43 +710,39 @@ export async function resolveAndSyncTabStatuses(
   // never touches brand_schedule -- the calendar itself is unaffected by a
   // tab pause, per the feature's design.
   if (isTabPaused) {
-    const [removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
-      fetchRemovedPlatformBrands(client),
+    const [hiddenBrandRows, restrictedBrandRows] = await Promise.all([
       fetchScheduleHiddenBrands(tab, client),
       fetchScheduleRestrictedBrands(tab, client),
     ]);
-    const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
     const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
     const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
     const tabPlatforms = getTabPlatforms(tab);
 
     const items: PmsStatusSyncItem[] = [];
-    for (const link of links) {
+    for (const link of liveLinks) {
       if (link.synced_status === 'paused') continue;
       const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
       if (!allowedPlatforms.includes(link.platform)) continue;
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date });
     }
-    if (items.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [] };
+    if (items.length === 0) return { synced: [], failed: [], cancelled: prune.cancelled, cancelFailed: prune.cancelFailed };
     const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-    return { ...result, cancelled: [], cancelFailed: [] };
+    return { ...result, cancelled: prune.cancelled, cancelFailed: prune.cancelFailed };
   }
 
-  const [entries, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
+  const [entries, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
     fetchRawEntriesByTab(tab, client),
-    fetchRemovedPlatformBrands(client),
     fetchScheduleHiddenBrands(tab, client),
     fetchScheduleRestrictedBrands(tab, client),
     fetchActiveBrandPlatformPauses(tab, client),
   ]);
   const dateStatusIndex = buildDateStatusIndex(entries);
-  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
   const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
   const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
   const tabPlatforms = getTabPlatforms(tab);
 
   const distinctWeeks = [...new Set(
-    links.map((l) => weekdayAndWeekStartFor(l.date)?.weekStart).filter((w): w is string => w != null),
+    liveLinks.map((l) => weekdayAndWeekStartFor(l.date)?.weekStart).filter((w): w is string => w != null),
   )];
   const rowsPerWeek = await Promise.all(
     distinctWeeks.map((w) => fetchBrandSchedule(tab, w, client).catch(() => [] as BrandScheduleRow[])),
@@ -670,9 +750,9 @@ export async function resolveAndSyncTabStatuses(
   const manualPauseRows = rowsPerWeek.flat();
 
   const items: PmsStatusSyncItem[] = [];
-  const cancelled: PmsCancelItem[] = [];
-  const cancelFailed: { item: PmsCancelItem; error: string }[] = [];
-  for (const link of links) {
+  const cancelled: PmsCancelItem[] = [...prune.cancelled];
+  const cancelFailed: { item: PmsCancelItem; error: string }[] = [...prune.cancelFailed];
+  for (const link of liveLinks) {
     const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
     if (!allowedPlatforms.includes(link.platform)) continue;
     const loc = weekdayAndWeekStartFor(link.date);

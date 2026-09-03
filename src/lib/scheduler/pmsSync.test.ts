@@ -1161,6 +1161,168 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
 
 });
 
+const IN_PROGRESS_COL = 'cmsoh1uxz000304l4zynwy7vw';
+const BLOCKED_COL = 'cmsoh1uxz000504l46ytlrxes';
+
+// A brand+platform whose review page is flagged removed (removed_platform_brands)
+// no longer exists anywhere on the Schedule Planner -- any linked PMS card for
+// it that's still unstarted/in-flight (To Do / In Progress / Blocked) is
+// pruned outright; a card already Done, Project Paused, or sitting in an
+// unrecognized column is left alone as a historical record. See Task
+// "auto-delete PMS cards for removed-page combos".
+describe('resolveAndSyncTabStatuses — removed-page card pruning', () => {
+  beforeEach(() => {
+    invalidateTabCache('TP Brand Injection');
+  });
+
+  const REMOVED_LINK = {
+    id: 'link-1', tab: 'TP Brand Injection', brand: 'RollingSlots Casino', brand_key: 'rollingslots casino',
+    platform: 'tp' as const, date: '2026-09-04', pms_task_id: 'task-1', synced_status: 'active' as const,
+  };
+
+  function removedPageClient(deletes?: { table: string; id: string }[]) {
+    return fakeMultiTableClient({
+      schedule_pms_links: [REMOVED_LINK],
+      entries: [],
+      removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    }, deletes);
+  }
+
+  it.each([
+    ['To Do', TODO_COL],
+    ['In Progress', IN_PROGRESS_COL],
+    ['Blocked', BLOCKED_COL],
+  ])('deletes the linked PMS task and link when its card sits in %s', async (_label, columnId) => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = removedPageClient(deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.cancelFailed).toEqual([]);
+    expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+  });
+
+  it.each([
+    ['Done', DONE_COL],
+    ['Project Paused', PAUSED_COL],
+  ])('leaves the linked PMS task and link untouched when its card already sits in %s', async (_label, columnId) => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = removedPageClient(deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(deletes).toEqual([]);
+  });
+
+  it('does nothing when the linked task is absent from PMS -- leaves that cleanup to pullScheduleFromPms', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = removedPageClient(deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result).toEqual({ synced: [], failed: [], cancelled: [], cancelFailed: [] });
+    expect(deletes).toEqual([]);
+  });
+
+  it('records a delete failure in cancelFailed and never deletes the link', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = removedPageClient(deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId: TODO_COL, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: {}, status: 500 },
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([]);
+    expect(result.cancelFailed).toEqual([{ item: { tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }, error: 'PMS task delete failed: 500' }]);
+    expect(deletes).toEqual([]);
+  });
+
+  it('degrades gracefully (no deletion, no crash) when the project task-list fetch itself fails, and still resolves other links normally', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        REMOVED_LINK,
+        { id: 'link-2', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-2', synced_status: 'active' },
+      ],
+      entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
+      removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    }, deletes);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      const method = init.method ?? 'GET';
+      if (method === 'GET') return { ok: false, status: 500, json: async () => ({}) }; // prune's task-list fetch fails every time it's called
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([]);
+    expect(result.cancelFailed).toEqual([]);
+    expect(deletes).toEqual([]);
+    // The non-flagged link still resolves normally -- falling back to
+    // ungrouped position 0, same as syncScheduleStatusToPms's own existing
+    // task-list-fetch-failure fallback.
+    expect(result.synced).toEqual([{ linkId: 'link-2', pmsTaskId: 'task-2', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27', description: 'Account: \nCountry: \nProxy: ' }]);
+  });
+
+  it('prunes a flagged combo and independently syncs a non-flagged combo in the same batch', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        REMOVED_LINK,
+        { id: 'link-2', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-2', synced_status: 'active' },
+      ],
+      entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
+      removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    }, deletes);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      const method = init.method ?? 'GET';
+      if (method === 'GET') {
+        return {
+          ok: true, status: 200, json: async () => [
+            { id: 'task-1', title: 'BITP | RollingSlots Casino', columnId: TODO_COL, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] },
+            { id: 'task-2', title: 'BITP | WinMega', columnId: TODO_COL, position: 1, dueDate: '2026-08-27T00:00:00.000Z', assignees: [] },
+          ],
+        };
+      }
+      return { ok: true, status: method === 'DELETE' ? 204 : 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.synced).toEqual([{ linkId: 'link-2', pmsTaskId: 'task-2', targetStatus: 'done', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27', description: 'Account: \nCountry: \nProxy: ' }]);
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+  });
+
+  it('prunes an eligible deletable card even when the whole tab is paused (isTabPaused=true)', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = removedPageClient(deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [{ id: 'task-1', title: 'BITP | RollingSlots Casino', columnId: TODO_COL, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] }] },
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
+    expect(result.cancelled).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
+  });
+});
+
 // Column drift reconcile: makes every linked PMS task obey the column its
 // schedule_pms_links.synced_status maps to -- but ONLY when the system's own
 // intended column for that status (synced_column_id) has itself drifted from

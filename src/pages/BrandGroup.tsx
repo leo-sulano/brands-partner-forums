@@ -30,6 +30,7 @@ import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPla
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
+import { syncTabStatusToPms } from '../lib/schedulePmsSync';
 import { SITE_URL } from '../lib/supabase';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
@@ -2953,6 +2954,11 @@ export default function BrandGroup() {
                 if (removedPlatforms !== undefined) {
                   const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
                   const nowRemoved = new Set(removedPlatforms);
+                  // Set when at least one platform is newly flagged removed this
+                  // save — triggers an immediate PMS cleanup below rather than
+                  // waiting for the next minute's sync-schedule-pms-status-minutely
+                  // cron tick (which would still catch it either way).
+                  let flaggedAnyRemoved = false;
                   // Diff over decodedTab's platforms (the tab the checkboxes were
                   // actually rendered for), not targetTab's — a brand-tab-move
                   // changing which platforms apply mid-save is an edge case this
@@ -2975,6 +2981,7 @@ export default function BrandGroup() {
                     const removedAtIso = willBeRemoved && dateText ? dateTextToIsoDate(dateText) ?? undefined : undefined;
                     await setBrandPlatformRemoved(targetTab, brandName, p, willBeRemoved, removedAtIso);
                     if (willBeRemoved && stateChanged) {
+                      flaggedAnyRemoved = true;
                       try {
                         await notifyBrandRemoved({
                           brand: brandName,
@@ -2991,6 +2998,13 @@ export default function BrandGroup() {
                       }
                     }
                   }
+                  // Fire-and-forget: routes through the same server-side
+                  // resolveAndSyncTabStatuses path the every-minute cron already
+                  // calls, which prunes any now-orphaned unstarted/in-flight PMS
+                  // card for this combo (pruneRemovedPageCards, pmsSync.ts)
+                  // within seconds instead of up to a minute. A failure here is
+                  // silent — the cron still covers it on its own next tick.
+                  if (flaggedAnyRemoved) syncTabStatusToPms(targetTab).catch(() => {});
                 }
 
                 if (overrides !== undefined) {
