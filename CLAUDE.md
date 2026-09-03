@@ -61,7 +61,40 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* Schedule Planner auto-generation now spreads each platform evenly
+- *2026-09-03 (newest):* Added a weekly approval gate to the Schedule Planner — every Monday an
+  admin must approve each Brand Tab's week before its plan populates the external PMS board.
+  Until a `(tab, week)` is approved the draft still auto-generates (cron + page visit) but never
+  reaches the PMS; once approved, only an admin can make further MANUAL changes to that week
+  (automatic pause/resume is exempt — it writes `brand_platform_pause`, never `brand_schedule`).
+  **Approach A — one gate at the shared push chokepoint:** every PMS task-create path funnels
+  through `pushScheduleToPms` (`src/lib/scheduler/pmsSync.ts`), which now drops any item whose
+  `(tab, week_start)` isn't approved (via new `fetchApprovedScheduleWeeks` in `queries.ts`)
+  before any PMS API call. "Approve" = an admin writes the approval row (admin-only RLS), then
+  the client re-runs `pushScheduleActivations` over the week's active slots (idempotent via
+  `schedule_pms_links`) + `syncTabStatusToPms`. No new Edge Function action. New
+  `weekly_schedule_approvals` table (`20260903120000_add_weekly_schedule_approvals.sql`);
+  **grandfather** marks every already-generated `(tab, week)` approved so nothing on the PMS
+  board is disturbed; the `brand_schedule` insert/update/delete RLS policies are swapped for
+  ones that also require `public.is_admin()` once an approved-week row exists (cron writes via
+  service role, bypasses RLS; `ensureWeekGenerated` writes nothing to a fully-generated approved
+  week anyway). Frontend (`TabScheduleSection.tsx`): `canEditWeek(w) = isApproved && (approved(w)
+  ? isAdmin : true)` replaces the plain `isApproved` guard in the cell handlers, the
+  `ScheduleCell` prop, and the Schedule Status icon; header shows a per-week Draft/Approved pill
+  + admin "Approve week" / "Revoke". New queries: `fetchWeekApproval`, `fetchTabWeekApprovals`,
+  `fetchApprovedScheduleWeeks`, `approveWeek`, `revokeWeekApproval`. Tests: 3 new gate cases in
+  `pmsSync.test.ts` + 6 in `queries.test.ts`; full scheduler suite (930) green, `npm run build`
+  clean, `deno check` clean on `generate-weekly-schedule` AND `sync-schedule-pms`, full suite
+  2326 passed. **Deferred/accepted:** landing-grid "Pending approval" badge not built (per-section
+  pill covers it); the per-brand "Pause Brand" button stays `isApproved`-gated post-approval
+  (durable override, same exempt category as auto-pause); approved-week + brand-added-later +
+  non-admin-first-visitor can hit a "Failed to load schedule" banner until an admin/cron fills
+  the new combo. **Not yet deployed — strict order:** `supabase db push` FIRST (the gate's new
+  `select` throws `42P01` and breaks ALL PMS pushes if the table is missing), then
+  `supabase functions deploy sync-schedule-pms` + `generate-weekly-schedule`, then
+  `git push origin main`. Spec:
+  `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
+  implemented directly after spec approval. Task 314.
+- *2026-09-03 (prior):* Schedule Planner auto-generation now spreads each platform evenly
   across Mon–Fri instead of front-loading it (too many AG reviews Mon–Wed, a big chunk of TP on
   Friday — reported off a Rooster Partners screenshot). Root cause was three biases in
   `generateWeekSchedule` (`src/lib/scheduler/schedulerEngine.ts`): `leastLoadedDay` broke every

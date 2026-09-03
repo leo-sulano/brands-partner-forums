@@ -8586,3 +8586,88 @@ rather than front-loaded, and that reloading produces the same layout.
 Spec: `docs/superpowers/specs/2026-09-03-schedule-planner-even-platform-distribution-design.md`.
 No plan doc — implemented directly at the user's direction after spec approval.
 
+
+---
+
+## Task 314: Weekly Schedule Approval Gate
+
+Every Monday an admin must now approve each Brand Tab's weekly plan before it populates the
+external PMS board. Until a `(tab, week)` is approved the draft still auto-generates (cron +
+page visit) but never reaches the PMS; once approved, only an admin can make further MANUAL
+changes to that week. Automatic pause/resume is exempt from the lock (it writes
+`brand_platform_pause`/`brand_platform_override`, never `brand_schedule`).
+
+**Approach A — gate at the single shared push chokepoint.** Every PMS task-create path (cron
+`generate-weekly-schedule`, page-visit `pushScheduleActivations`, manual chip edits) funnels
+through `pushScheduleToPms` (`src/lib/scheduler/pmsSync.ts`). It now fetches the approved-week
+set (`fetchApprovedScheduleWeeks`, new in `queries.ts`) and drops any item whose
+`(tab, week_start)` isn't approved into `skipped` before any PMS API call. "Approve" is then:
+an admin writes the approval row (admin-gated by RLS), and the client re-runs
+`pushScheduleActivations` over the week's active slots (idempotent via `schedule_pms_links`)
+plus `syncTabStatusToPms`. No new Edge Function action.
+
+**Data model** (`supabase/migrations/20260903120000_add_weekly_schedule_approvals.sql`):
+- New `weekly_schedule_approvals(tab, week_start, status 'pending'|'approved', approved_by,
+  approved_at, updated_at)`, PK `(tab, week_start)`. Approved-user read; admin-only
+  insert/update/delete (`public.is_admin()`).
+- **Grandfather:** every `(tab, week_start)` with a real platform-tagged `brand_schedule` row
+  at ship time is inserted as `approved` (`approved_by = 'system:grandfathered'`), so nothing
+  currently on the PMS board is disturbed — only weeks generated after the migration start as
+  pending.
+- **`brand_schedule` write lock:** the three approved-user insert/update/delete policies are
+  replaced with ones that also require `public.is_admin()` once an approved-week row exists for
+  that `(tab, week_start)`. The weekly cron writes via the service role (bypasses RLS) so it is
+  unaffected; `ensureWeekGenerated` only writes non-pinned combos and an approved week is fully
+  generated, so it writes nothing regardless — the policy just formalises the lock.
+
+**Frontend** (`TabScheduleSection.tsx`): fetches `fetchTabWeekApprovals(tab)` (fail-open to
+`[]`); `canEditWeek(w) = isApproved && (approved(w) ? isAdmin : true)` replaces the plain
+`isApproved` guard in `handleCellClick` / `handleSetDayStatus` / `handleCancelDay`, the
+`ScheduleCell` `isApproved` prop, and the Schedule Status icon `clickable` flag. Header shows a
+per-week pill — amber "Draft — pending approval" (with a tooltip) or green
+"Approved · {email} · {date}" — plus, for admins on a non-legacy week, an "Approve week" button
+(pending) or a quiet "Revoke" link (approved). Approve/revoke handlers call the new
+`approveWeek` / `revokeWeekApproval` queries; approve then flushes the week's active slots +
+status sync.
+
+**Queries** (`src/lib/queries.ts`, all with the standard `client?` default): `fetchWeekApproval`,
+`fetchTabWeekApprovals`, `fetchApprovedScheduleWeeks` (the `Set<'${tab}::${week_start}'>` the
+gate consults), `approveWeek` (upsert), `revokeWeekApproval` (update back to pending, keeps the
+row).
+
+**Testing:** `pmsSync.test.ts` — 3 new gate cases (drop unapproved item with zero PMS API
+calls, push an approved one, mixed-batch partial filter); `fakeSupabase` extended to answer the
+`weekly_schedule_approvals` query, defaulting to approving the standard test weeks so the ~15
+existing `pushScheduleToPms` cases pass unchanged. `queries.test.ts` — 6 new cases for the five
+new functions (round-trips, `${tab}::${week_start}` key shape, empty-tabs short-circuit,
+upsert/`update` payload + conflict target). Full scheduler suite (930 with queries) green;
+`npm run build` clean; `deno check` clean on `generate-weekly-schedule` AND `sync-schedule-pms`;
+full frontend suite 2326 passed.
+
+**Deliberately deferred / accepted limitations:**
+- Landing-grid ("Pending approval" badge on each `TabPreviewCard`) — not built; needs a
+  per-tab current-week approval fetch in `SchedulePlanner.tsx` + a `TabPreviewCard` prop. The
+  per-section pill covers the need; badge is a follow-up.
+- The per-brand "Pause Brand" button (opens `PlatformPauseModal`, writes `brand_platform_override`)
+  is still gated on `isApproved` only, not admin, post-approval — it's a durable brand-level
+  override, not a day-grid edit, and is in the same "exempt like auto-pause" category. Lock it
+  too if the team wants a stricter reading of "only an admin can make changes".
+- Approved week + a brand added to the tab afterward + a non-admin is the first to open that
+  week → `ensureWeekGenerated` attempts to write the new combo's rows and the write-lock RLS
+  rejects it, surfacing "Failed to load schedule" for that non-admin until an admin opens the
+  tab (or the Monday cron, service-role, fills it). Rare; same banner any transient generation
+  failure already produces.
+
+**Not yet deployed — strict order (Task 247 lesson):**
+1. `supabase db push` — MUST be first. `pushScheduleToPms`'s new `select` on
+   `weekly_schedule_approvals` throws `42P01` if the table is missing, which would break ALL
+   PMS pushes (including the two already-live sync directions).
+2. `supabase functions deploy sync-schedule-pms` and `supabase functions deploy
+   generate-weekly-schedule`.
+3. `git push origin main` (frontend).
+4. Live-verify: fresh un-approved week creates no PMS tasks on chip activation; admin "Approve
+   week" flushes them; non-admin sees the week read-only after approval; revoke stops new
+   pushes and leaves existing tasks.
+
+Spec: `docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md`. No plan doc —
+implemented directly at the user's direction after spec approval.

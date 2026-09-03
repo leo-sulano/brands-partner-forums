@@ -73,6 +73,11 @@ import {
   statusCheckTabKeys,
   fetchRawEntriesByTab,
   invalidateTabCache,
+  fetchWeekApproval,
+  fetchTabWeekApprovals,
+  fetchApprovedScheduleWeeks,
+  approveWeek,
+  revokeWeekApproval,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -192,6 +197,69 @@ describe('queries.ts injectable Supabase client', () => {
     singletonFrom.mockReturnValue(chain({ data: [], error: null }));
     await fetchActiveBrandPlatformPauses('X');
     expect(singletonFrom).toHaveBeenCalledWith('brand_platform_pause');
+  });
+
+  describe('weekly schedule approvals', () => {
+    it('fetchWeekApproval returns the row via maybeSingle, or null', async () => {
+      const row = { tab: 'BITP', week_start: '2026-09-07', status: 'approved', approved_by: 'a@b.com', approved_at: '2026-09-07T00:00:00Z' };
+      const fakeClient = { from: vi.fn().mockReturnValue(chain({ data: row, error: null })) } as any;
+      expect(await fetchWeekApproval('BITP', '2026-09-07', fakeClient)).toEqual(row);
+
+      const emptyClient = { from: vi.fn().mockReturnValue(chain({ data: null, error: null })) } as any;
+      expect(await fetchWeekApproval('BITP', '2026-09-07', emptyClient)).toBeNull();
+    });
+
+    it('fetchTabWeekApprovals returns every row for the tab', async () => {
+      const rows = [
+        { tab: 'BITP', week_start: '2026-09-07', status: 'approved', approved_by: 'a@b.com', approved_at: 'x' },
+        { tab: 'BITP', week_start: '2026-09-14', status: 'pending', approved_by: null, approved_at: null },
+      ];
+      const fakeClient = { from: vi.fn().mockReturnValue(chain({ data: rows, error: null })) } as any;
+      expect(await fetchTabWeekApprovals('BITP', fakeClient)).toEqual(rows);
+    });
+
+    it('fetchApprovedScheduleWeeks builds a Set of `${tab}::${week_start}` keys', async () => {
+      const inSpy = vi.fn().mockResolvedValue({
+        data: [
+          { tab: 'BITP', week_start: '2026-09-07' },
+          { tab: 'FTP', week_start: '2026-09-07' },
+        ],
+        error: null,
+      });
+      const fakeClient = { from: vi.fn().mockReturnValue({ select: () => ({ eq: () => ({ in: inSpy }) }) }) } as any;
+      const set = await fetchApprovedScheduleWeeks(['BITP', 'FTP'], fakeClient);
+      expect(set).toEqual(new Set(['BITP::2026-09-07', 'FTP::2026-09-07']));
+      expect(inSpy).toHaveBeenCalledWith('tab', ['BITP', 'FTP']);
+    });
+
+    it('fetchApprovedScheduleWeeks short-circuits to an empty Set for no tabs, hitting no client', async () => {
+      const from = vi.fn();
+      const set = await fetchApprovedScheduleWeeks([], { from } as any);
+      expect(set).toEqual(new Set());
+      expect(from).not.toHaveBeenCalled();
+    });
+
+    it('approveWeek upserts status=approved with actor + timestamp on the (tab, week_start) conflict target', async () => {
+      const upsert = vi.fn().mockResolvedValue({ error: null });
+      const fakeClient = { from: vi.fn().mockReturnValue({ upsert }) } as any;
+      await approveWeek('BITP', '2026-09-07', 'admin@x.com', fakeClient);
+      expect(fakeClient.from).toHaveBeenCalledWith('weekly_schedule_approvals');
+      const [payload, opts] = upsert.mock.calls[0];
+      expect(payload).toMatchObject({ tab: 'BITP', week_start: '2026-09-07', status: 'approved', approved_by: 'admin@x.com' });
+      expect(payload.approved_at).toEqual(expect.any(String));
+      expect(opts).toEqual({ onConflict: 'tab,week_start' });
+    });
+
+    it('revokeWeekApproval sets status=pending and nulls the actor/timestamp for that (tab, week_start)', async () => {
+      const eq2 = vi.fn().mockResolvedValue({ error: null });
+      const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+      const update = vi.fn().mockReturnValue({ eq: eq1 });
+      const fakeClient = { from: vi.fn().mockReturnValue({ update }) } as any;
+      await revokeWeekApproval('BITP', '2026-09-07', fakeClient);
+      expect(update.mock.calls[0][0]).toMatchObject({ status: 'pending', approved_by: null, approved_at: null });
+      expect(eq1).toHaveBeenCalledWith('tab', 'BITP');
+      expect(eq2).toHaveBeenCalledWith('week_start', '2026-09-07');
+    });
   });
 
   it('fetchRemovedPlatformBrands uses the passed-in client', async () => {

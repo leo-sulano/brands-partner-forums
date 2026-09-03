@@ -5,7 +5,7 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, type SchedulePmsLink } from '../queries.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchApprovedScheduleWeeks, type SchedulePmsLink } from '../queries.ts';
 import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
@@ -194,11 +194,32 @@ export async function pushScheduleToPms(
   const failed: { item: PmsSyncItem; error: string }[] = [];
   if (items.length === 0) return { created, skipped, failed };
 
+  // Weekly approval gate: a slot's (tab, week_start) must be an approved week
+  // before its task is allowed onto the PMS board. Un-approved items are
+  // recorded as `skipped` here and never touch the PMS API. They get pushed
+  // when an admin approves that week, which re-runs this same push over the
+  // week's active slots -- idempotent via schedule_pms_links. See
+  // docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md.
+  const approvedWeekSet = await fetchApprovedScheduleWeeks(
+    [...new Set(items.map((i) => i.tab))],
+    client,
+  );
+  const gatedItems: PmsSyncItem[] = [];
+  for (const item of items) {
+    const weekStart = weekdayAndWeekStartFor(item.date)?.weekStart;
+    if (weekStart && approvedWeekSet.has(`${item.tab}::${weekStart}`)) {
+      gatedItems.push(item);
+    } else {
+      skipped.push(item);
+    }
+  }
+  if (gatedItems.length === 0) return { created, skipped, failed };
+
   const linksByTab = new Map<string, SchedulePmsLink[]>();
   let labelCache: PmsLabel[] | null = null;
   let teamMembers: PmsTeamMember[] | null = null;
 
-  for (const item of items) {
+  for (const item of gatedItems) {
     try {
       const brandKey = normalizeBrandKey(item.brand);
       let links = linksByTab.get(item.tab);

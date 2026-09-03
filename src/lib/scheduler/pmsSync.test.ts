@@ -13,11 +13,37 @@ const TODO_COL = 'cmsoh1uxz000204l46gf88k3f';
 const DONE_COL = 'cmsoh1uxz000604l4j5loen7g';
 const PAUSED_COL = 'cmt8eih3x000004lazna3tbmz';
 
-function fakeSupabase(existingLinks: unknown[] = []) {
+// Every existing pushScheduleToPms test uses ITEM (or a spread of it) dated
+// 2026-08-20 / 2026-08-21 — both in the week starting Monday 2026-08-17 — on
+// tab BITP, plus two WO items on tab "Wizard of Odds" the same week. The
+// approval gate (pushScheduleToPms) now filters items to approved weeks, so
+// fakeSupabase approves exactly those weeks by default; gate-specific tests
+// pass their own key set.
+const APPROVED_TEST_WEEKS = new Set(['BITP::2026-08-17', 'Wizard of Odds::2026-08-17']);
+
+function fakeSupabase(existingLinks: unknown[] = [], approvedWeekKeys: Set<string> = APPROVED_TEST_WEEKS) {
   const insertedRows: unknown[] = [];
   return {
     client: {
       from: (table: string) => {
+        if (table === 'weekly_schedule_approvals') {
+          return {
+            select: () => ({
+              eq: (_col: string, _val: string) => ({
+                in: (_tabCol: string, tabs: string[]) =>
+                  Promise.resolve({
+                    data: [...approvedWeekKeys]
+                      .map((k) => {
+                        const [tab, week_start] = k.split('::');
+                        return { tab, week_start };
+                      })
+                      .filter((r) => tabs.includes(r.tab)),
+                    error: null,
+                  }),
+              }),
+            }),
+          };
+        }
         if (table !== 'schedule_pms_links') throw new Error(`unexpected table ${table}`);
         return {
           select: () => ({ eq: () => Promise.resolve({ data: existingLinks, error: null }) }),
@@ -215,6 +241,44 @@ describe('pushScheduleToPms', () => {
     ]);
     const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
     expect(result.created).toEqual([ITEM]);
+  });
+});
+
+describe('pushScheduleToPms — weekly approval gate', () => {
+  it('drops an item whose (tab, week_start) has no approved row, making no PMS API calls', async () => {
+    const { client, insertedRows } = fakeSupabase([], new Set()); // nothing approved
+    const fetchFn = vi.fn();
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [], skipped: [ITEM], failed: [] });
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(insertedRows).toEqual([]);
+  });
+
+  it('pushes an item whose week IS approved', async () => {
+    const { client } = fakeSupabase([], new Set(['BITP::2026-08-17']));
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([ITEM]);
+  });
+
+  it('in a mixed batch, pushes only the items in approved weeks and skips the rest', async () => {
+    // ITEM is 2026-08-20 (week 2026-08-17); other is 2026-08-27 (week 2026-08-24).
+    const otherWeekItem: PmsSyncItem = { ...ITEM, brand: 'OtherBrand', date: '2026-08-27' };
+    const { client } = fakeSupabase([], new Set(['BITP::2026-08-17']));
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      // No second task create — otherWeekItem's week isn't approved.
+    ]);
+    const result = await pushScheduleToPms([ITEM, otherWeekItem], client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([ITEM]);
+    expect(result.skipped).toEqual([otherWeekItem]);
+    expect(result.failed).toEqual([]);
   });
 });
 

@@ -1271,6 +1271,111 @@ export async function bulkUpsertBrandSchedule(rows: BrandScheduleUpsertRow[], cl
   if (error) throw error;
 }
 
+// ---------------------------------------------------------------------------
+// Weekly schedule approval — an admin must approve each (tab, week) before its
+// plan populates the external PMS board. A missing row, or status 'pending',
+// means NOT approved. See
+// docs/superpowers/specs/2026-09-03-weekly-schedule-approval-gate-design.md.
+// ---------------------------------------------------------------------------
+
+export interface WeeklyScheduleApproval {
+  tab: string;
+  week_start: string;
+  status: 'pending' | 'approved';
+  approved_by: string | null;
+  approved_at: string | null;
+}
+
+// One (tab, week) approval row, or null when the week has never been acted on.
+export async function fetchWeekApproval(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient = supabase,
+): Promise<WeeklyScheduleApproval | null> {
+  const { data, error } = await client
+    .from('weekly_schedule_approvals')
+    .select('tab, week_start, status, approved_by, approved_at')
+    .eq('tab', tab)
+    .eq('week_start', weekStart)
+    .maybeSingle();
+  if (error) throw error;
+  return (data as WeeklyScheduleApproval | null) ?? null;
+}
+
+// Every approval row for a tab — used to badge each week as an admin navigates
+// and to flag pending tabs on the Schedule Planner landing grid.
+export async function fetchTabWeekApprovals(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<WeeklyScheduleApproval[]> {
+  const { data, error } = await client
+    .from('weekly_schedule_approvals')
+    .select('tab, week_start, status, approved_by, approved_at')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as WeeklyScheduleApproval[];
+}
+
+// `${tab}::${week_start}` keys for every currently-approved week among `tabs`.
+// The single source of truth the PMS push gate (pushScheduleToPms) consults.
+export async function fetchApprovedScheduleWeeks(
+  tabs: string[],
+  client: SupabaseClient = supabase,
+): Promise<Set<string>> {
+  if (tabs.length === 0) return new Set();
+  const { data, error } = await client
+    .from('weekly_schedule_approvals')
+    .select('tab, week_start')
+    .eq('status', 'approved')
+    .in('tab', tabs);
+  if (error) throw error;
+  return new Set((data ?? []).map((r: { tab: string; week_start: string }) => `${r.tab}::${r.week_start}`));
+}
+
+// Admin-only (enforced by RLS — a non-admin caller gets 42501). Marks the
+// (tab, week) approved and stamps who/when.
+export async function approveWeek(
+  tab: string,
+  weekStart: string,
+  actorEmail: string,
+  client: SupabaseClient = supabase,
+): Promise<void> {
+  const { error } = await client
+    .from('weekly_schedule_approvals')
+    .upsert(
+      {
+        tab,
+        week_start: weekStart,
+        status: 'approved',
+        approved_by: actorEmail,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'tab,week_start' },
+    );
+  if (error) throw error;
+}
+
+// Admin-only (RLS). Back to 'pending'; the history row is kept. Does NOT
+// delete PMS tasks already created for the week — only stops further pushes.
+export async function revokeWeekApproval(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient = supabase,
+): Promise<void> {
+  const { error } = await client
+    .from('weekly_schedule_approvals')
+    .update({
+      status: 'pending',
+      approved_by: null,
+      approved_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('tab', tab)
+    .eq('week_start', weekStart);
+  if (error) throw error;
+}
+
 export interface BrandPlatformPause {
   tab: string;
   brand_key: string;
