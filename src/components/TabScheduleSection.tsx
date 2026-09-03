@@ -167,22 +167,34 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [pausedBrandsBusy, setPausedBrandsBusy] = useState(false);
   const { isApproved, isSuperAdmin, profile } = useAuth();
 
-  // Weekly schedule approval state. Approval gates ONE thing: whether a
-  // (tab, week)'s plan is allowed onto the PMS board. Editing stays open to
-  // any approved user in both states — a pending week's edits just don't
-  // reach the PMS yet; an approved week's edits sync live (cancel deletes the
-  // card, activate/move creates one), same as the pre-approval-feature
-  // behaviour. `tabApprovals` holds every approval row for this tab. Fail-open
-  // to [] on a fetch error — the pill just shows "Draft" and the server-side
-  // push gate (pushScheduleToPms) still enforces the PMS side.
+  // Weekly schedule approval state.
+  //   * A PENDING week: editable by any approved user; its plan never reaches
+  //     the PMS (the pushScheduleToPms gate drops it).
+  //   * An APPROVED week: on the PMS board, and LOCKED — only a super admin
+  //     may make further manual changes (their edits sync live). Everyone else
+  //     sees the week read-only. Automatic pause/resume stays exempt (it writes
+  //     brand_platform_pause, never brand_schedule).
+  // `tabApprovals` holds every approval row for this tab (one fetch covers
+  // every displayed week — the grid can show several at once). Fail-open to []
+  // on a fetch error: the pill shows "Draft" and the lock relaxes, but the
+  // server-side push gate AND the brand_schedule RLS write-lock both still
+  // enforce the real boundary.
   const [tabApprovals, setTabApprovals] = useState<WeeklyScheduleApproval[]>([]);
   const [approvalReloadSeq, setApprovalReloadSeq] = useState(0);
   const [approveBusy, setApproveBusy] = useState(false);
+  const approvedWeekSet = useMemo(
+    () => new Set(tabApprovals.filter((a) => a.status === 'approved').map((a) => a.week_start)),
+    [tabApprovals],
+  );
   const currentWeekApproval = useMemo(
     () => tabApprovals.find((a) => a.week_start === weekStartISO) ?? null,
     [tabApprovals, weekStartISO],
   );
   const isDisplayedWeekApproved = currentWeekApproval?.status === 'approved';
+  // Per displayed week: a pending week is editable by any approved user; an
+  // approved week only by a super admin. Legacy-week read-only-ness is layered
+  // on separately at the call site.
+  const canEditWeek = (w: string) => isApproved && (approvedWeekSet.has(w) ? isSuperAdmin : true);
 
   useEffect(() => {
     let canceled = false;
@@ -1022,7 +1034,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }
 
   async function handleCellClick(brand: string, platform: Platform, col: ScheduleColumn) {
-    if (!isApproved) return;
+    if (!canEditWeek(col.weekStartISO)) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
     const next = nextStatus(currentStatus);
 
@@ -1055,7 +1067,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }
 
   async function handleSetDayStatus(brand: string, platform: Platform, col: ScheduleColumn, status: 'active' | 'paused') {
-    if (!isApproved) return;
+    if (!canEditWeek(col.weekStartISO)) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, status));
@@ -1082,7 +1094,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // writes straight to blank from whichever real status the day currently
   // has (active or paused), rather than cycling through the sequence.
   async function handleCancelDay(brand: string, platform: Platform, col: ScheduleColumn) {
-    if (!isApproved) return;
+    if (!canEditWeek(col.weekStartISO)) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, null));
@@ -1522,7 +1534,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             // (isLegacyWeekAt(col.weekStartISO)), not once for the whole
                             // section, since a multi-week range can mix legacy and
                             // platform-tracked weeks.
-                            isApproved={isApproved && !isLegacyWeekAt(col.weekStartISO)}
+                            isApproved={canEditWeek(col.weekStartISO) && !isLegacyWeekAt(col.weekStartISO)}
                             holidayName={holidayName}
                             onToggle={(platform) => handleCellClick(brand, platform, col)}
                             onSetStatus={(platform, status) => handleSetDayStatus(brand, platform, col, status)}
@@ -1548,7 +1560,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           regardless of which bucket picked its icon. */}
                       <div className="flex flex-wrap gap-1">
                         {visibleBrandPlatforms(brand).map((platform) => {
-                          const clickable = isApproved && !isLegacyWeekAt(weekStartISO);
+                          const clickable = canEditWeek(weekStartISO) && !isLegacyWeekAt(weekStartISO);
                           const onClick = () => setPauseDaysTarget({ brand, platform });
                           if (weekPausesByPlatform[platform]) {
                             return (

@@ -8778,3 +8778,42 @@ Verification: `npm run build` clean; full suite 2326 passed; `deno check` clean.
 **Deploy:** `supabase db push` (`20260903140000`) + `git push origin main`. No edge-function
 redeploy. Live-verify after: `is_admin()`/`is_super_admin()` defs, `leo@` role, the swapped
 `weekly_schedule_approvals` + `profiles` policies, the widened role CHECK.
+
+---
+
+## Task 317: Re-lock an approved week's schedule to super admins
+
+Per direct user decision — reverses Task 315's "approved weeks stay editable by anyone". Once a
+`(tab, week)` is approved, **only a super_admin may make further manual changes** to its
+`brand_schedule` grid; every other approved user sees the approved week read-only. A pending
+(not-yet-approved) week is still editable by any approved user. Automatic pause/resume stays
+exempt (it writes `brand_platform_pause` / `brand_platform_override`, never `brand_schedule`).
+
+- `TabScheduleSection.tsx` — reinstated `canEditWeek(w) = isApproved && (approved(w) ?
+  isSuperAdmin : true)` (was removed in Task 315). Applied to `handleCellClick` /
+  `handleSetDayStatus` / `handleCancelDay`, the `ScheduleCell` `isApproved` prop, and the
+  Schedule Status icon `clickable` flag. `approvedWeekSet` (per-week lookup, the grid can show
+  several weeks) came back alongside `currentWeekApproval`.
+- Migration `20260903150000_lock_approved_week_brand_schedule_to_super_admin.sql` — drops the
+  open `approved users can insert/update/delete brand_schedule` policies (restored by
+  `20260903130000`) and recreates them as `is_super_admin() OR <week not approved>`. This is the
+  Task 314 lock re-applied with `is_super_admin()` in place of `is_admin()`. Service-role cron
+  bypasses RLS; `ensureWeekGenerated` writes nothing to a fully-generated approved week anyway.
+
+Kept from earlier: the `weekly_schedule_approvals` table + grandfather rows, the
+`pushScheduleToPms` gate, the queries.ts approval functions, the Draft/Approved pill, the
+super-admin-only Approve/Revoke buttons + flush handler (Task 316). A super_admin editing an
+approved week still syncs live to the PMS (cancel deletes the card, add/move creates one) — the
+push gate passes because the week is approved.
+
+**Known limitation (same as Task 314):** approved week + a brand added to the tab afterward + a
+non-super-admin is the first to open that week → `ensureWeekGenerated` tries to write the new
+combo and the write-lock RLS rejects it, surfacing "Failed to load schedule" until a super_admin
+(or the service-role cron) fills it. Rare.
+
+Verification: `npm run build` clean (after clearing a stale `tsc -b` incremental cache left by a
+concurrent session's `tabPausedBrands` commit — unrelated to this task); full suite green;
+`pmsSync.test.ts` gate cases + `queries.test.ts` approval cases unchanged.
+
+**Deploy:** `supabase db push` (`20260903150000`) + `git push origin main`. No edge-function
+redeploy.

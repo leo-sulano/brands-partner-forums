@@ -61,7 +61,22 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* Added a **`super_admin`** role tier above `admin`. Only a super_admin
+- *2026-09-03 (newest):* Per direct user decision, **re-locked an approved week's schedule to
+  super admins** — reverses Task 315's "approved weeks stay editable by anyone". Once a
+  `(tab, week)` is approved, only a super_admin may make further manual `brand_schedule` edits;
+  every other approved user sees the approved week read-only. A pending week is still editable by
+  any approved user; auto pause/resume stays exempt (writes `brand_platform_pause`, not
+  `brand_schedule`). `TabScheduleSection.tsx` reinstates `canEditWeek(w) = isApproved &&
+  (approved(w) ? isSuperAdmin : true)` on the 3 cell handlers + `ScheduleCell` prop +
+  status-icon `clickable`. Migration `20260903150000` swaps the open
+  `approved users can insert/update/delete brand_schedule` policies for
+  `is_super_admin() OR <week not approved>` (the Task 314 lock re-applied with
+  `is_super_admin()`). A super_admin editing an approved week still syncs live to the PMS.
+  Known limitation (same as Task 314): approved week + brand added later + non-super-admin first
+  visitor → "Failed to load schedule" until a super_admin/cron fills the new combo. Build clean
+  (after clearing a stale `tsc -b` cache from a concurrent session's `tabPausedBrands` commit);
+  full suite green. Deploy: `supabase db push` (`20260903150000`) + `git push origin main`. Task 317.
+- *2026-09-03 (prior):* Added a **`super_admin`** role tier above `admin`. Only a super_admin
   can approve/revoke a weekly schedule approval (Task 314/315) and only a super_admin can grant/
   remove the super_admin role on another user; `leo@optinetsolutions.com` is seeded as the
   first. `super_admin` is a strict superset of `admin` — `is_admin()` is redefined to
