@@ -26,7 +26,7 @@ import {
   type WeeklyScheduleApproval,
 } from '../lib/queries';
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
-import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, toISODate, mondayOf, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, toISODate, mondayOf, addDays, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
@@ -37,6 +37,8 @@ import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRende
 import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
+import PlatformPauseModal from './PlatformPauseModal';
+import { savePlatformPause, derivePauseModalInitial } from '../lib/platformPauseActions';
 import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
@@ -155,6 +157,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
+  const [platformPauseTarget, setPlatformPauseTarget] = useState<{ brand: string } | null>(null);
+  const [platformPauseBusy, setPlatformPauseBusy] = useState(false);
   const { isApproved, isSuperAdmin, profile } = useAuth();
 
   // Weekly schedule approval state.
@@ -1095,6 +1099,42 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     }
   }
 
+  // Create / edit / resume a durable manual pause from the Schedule Status
+  // column. Writes brand_platform_override via the SAME shared helper Edit Brand
+  // Tab uses (platformPauseActions.savePlatformPause), so the two surfaces stay
+  // in sync automatically. Then bumps reloadSeq — that re-runs the brands-load
+  // effect (refetching brand_platform_override -> overrideMap) and, because
+  // tabCtx's identity changes, the scheduler-invocation effect, which
+  // recalculatePauses (current week only — already isCurrentWeekStart-gated
+  // there) and refetches `pauses`. Same trusted refresh path the live-entries
+  // INSERT fallback already uses.
+  async function handleSavePlatformPause(
+    brand: string,
+    checkedPlatforms: Platform[],
+    reason: string,
+    resumeAt: string | null,
+  ) {
+    if (!tabCtx) return;
+    setPlatformPauseBusy(true);
+    try {
+      await savePlatformPause({
+        tab,
+        brand,
+        eligiblePlatforms: brandPlatforms(brand),
+        checkedPlatforms,
+        reason,
+        resumeAt,
+        overrideMap: tabCtx.overrideMap,
+      });
+      setPlatformPauseTarget(null);
+      setReloadSeq((n) => n + 1);
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to update pause', kind: 'error' });
+    } finally {
+      setPlatformPauseBusy(false);
+    }
+  }
+
   useEffect(() => {
     if (!confirmRevoke) return;
     function onKey(e: KeyboardEvent) {
@@ -1392,7 +1432,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       <div className="flex flex-wrap gap-1">
                         {visibleBrandPlatforms(brand).map((platform) => {
                           const clickable = canEditWeek(weekStartISO) && !isLegacyWeekAt(weekStartISO);
-                          const onClick = () => setPauseDaysTarget({ brand, platform });
+                          // An override-driven pause (manual) routes its click to
+                          // the reason/resume editor; every other state keeps the
+                          // per-weekday PauseDaysModal. brandKey is in scope here
+                          // (declared at the top of this row's render).
+                          const isOverridePaused =
+                            !!weekPausesByPlatform[platform] &&
+                            tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform))?.state === 'pause';
+                          const onClick = isOverridePaused
+                            ? () => setPlatformPauseTarget({ brand })
+                            : () => setPauseDaysTarget({ brand, platform });
                           if (weekPausesByPlatform[platform]) {
                             return (
                               <ScheduleStatusIcon key={platform} platform={platform} source="system" pause={weekPausesByPlatform[platform] as BrandPlatformPause} agent={agent} pausedBy={weekPausedByPlatform[platform]} pauseResumeAt={weekResumeAtByPlatform[platform]} clickable={clickable} onClick={onClick} />
@@ -1455,6 +1504,25 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           onClose={() => setPauseDaysTarget(null)}
         />
       )}
+      {platformPauseTarget && tabCtx && (() => {
+        const brand = platformPauseTarget.brand;
+        const eligible = brandPlatforms(brand);
+        const init = derivePauseModalInitial(tab, brand, eligible, tabCtx.overrideMap);
+        return (
+          <PlatformPauseModal
+            brand={brand}
+            platforms={eligible}
+            initialCheckedPlatforms={init.checkedPlatforms}
+            autoPauseReasonByPlatform={{}}
+            initialReason={init.initialReason}
+            initialResumeAt={init.initialResumeAt}
+            minResumeAt={toISODate(addDays(mondayOf(new Date()), 7))}
+            busy={platformPauseBusy}
+            onSave={(checked, reason, resumeAt) => handleSavePlatformPause(brand, checked, reason, resumeAt)}
+            onClose={() => setPlatformPauseTarget(null)}
+          />
+        );
+      })()}
       {confirmRevoke && (
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmRevoke(false)} />
