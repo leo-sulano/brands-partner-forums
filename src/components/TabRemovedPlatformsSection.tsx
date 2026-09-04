@@ -190,6 +190,7 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
               onChange={setAddingBrand}
               options={[...brands].sort((a, b) => a.localeCompare(b)).map((b) => ({ value: b, label: b }))}
               placeholder="— select a brand to flag —"
+              searchable
             />
           </div>
           <button

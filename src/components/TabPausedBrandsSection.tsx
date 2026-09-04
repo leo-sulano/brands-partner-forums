@@ -249,6 +249,7 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
               onChange={setAddingBrand}
               options={pauseableBrands.map((b) => ({ value: b, label: b }))}
               placeholder="— select a brand to pause —"
+              searchable
             />
           </div>
           <button
