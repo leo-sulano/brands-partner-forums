@@ -372,17 +372,28 @@ function brandFromTitle(title: string): string {
   return sep === -1 ? '' : title.slice(sep + 3);
 }
 
+// DESCENDING by due date -- the newest work sorts to the TOP of a column.
+// The PMS UI renders only a capped slice of each column from the top (~200
+// cards), so with the old ascending order every recently-completed slot sank
+// past the cap and became invisible; newest-first keeps today's work on
+// screen and lets the oldest history fall off the bottom instead. The date is
+// inverted by nine's-complementing each digit of YYYY-MM-DD, so plain string
+// comparison still orders it and a later date yields a smaller key; the
+// dashes are left as-is. A card with no due date (a manually-created oddball)
+// sorts last, not first.
 function dueDateSortKey(dueDate: string | null | undefined): string {
-  return dueDate ? dueDate.slice(0, 10) : '';
+  const d = dueDate ? dueDate.slice(0, 10) : '';
+  if (!d) return '99999999';
+  return d.replace(/\d/g, (c) => String(9 - Number(c)));
 }
 
-// Shared grouping key -- (due date, tab label, brand) -- used both by
-// computeGroupedInsertPosition (a single moved/created card) and
+// Shared grouping key -- (due date DESC, tab label ASC, brand ASC) -- used
+// both by computeGroupedInsertPosition (a single moved/created card) and
 // computeColumnSortMoves (a full-column re-sort) below, so a card placed by
-// one is never immediately re-shuffled by the other. Brand is the tie-breaker
-// within a same-date-same-tab cluster, per an explicit user request: cards
-// should read date-1 BITP/BrandA, date-1 BITP/BrandB in brand order, not left
-// in whatever order they happened to already be in.
+// one is never immediately re-shuffled by the other. Only the date direction
+// is reversed (see dueDateSortKey); within one date a day's cluster still
+// reads BITP/BrandA, BITP/BrandB in tab+brand order, per an explicit user
+// request, not left in whatever order they happened to already be in.
 function taskSortKey(dueDate: string | null | undefined, title: string): string {
   return `${dueDateSortKey(dueDate)} ${tabLabelFromTitle(title).toLowerCase()} ${brandFromTitle(title).toLowerCase()}`;
 }

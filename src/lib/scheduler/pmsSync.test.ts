@@ -578,13 +578,14 @@ describe('syncScheduleStatusToPms', () => {
       movedBody = JSON.parse(init.body as string);
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    // A second Hanan card due the same date, with a brand that sorts after
-    // "ZodiacBet.com" alphabetically, should slot in right after existing-3
-    // (the current lone Hanan/08-27 card), i.e. position 3 -- after both
-    // BITP cards and the existing Hanan card, before the 08-28 item.
+    // Sort is DESCENDING by date, so the 08-28 item sorts first, then the
+    // 08-27 cluster in tab+brand order. A second Hanan/08-27 card whose brand
+    // sorts after "ZodiacBet.com" slots in right after existing-3, i.e.
+    // position 4 -- after existing-4 (08-28), both BITP/08-27 cards, and the
+    // existing Hanan/08-27 card.
     const item: PmsStatusSyncItem = { linkId: 'link-1', pmsTaskId: 'task-new', targetStatus: 'published', tabLabel: 'Hanan', brand: 'ZZ Top Casino', date: '2026-08-27' };
     await syncScheduleStatusToPms([item], client, CREDENTIALS, fetchFn);
-    expect(movedBody).toEqual({ columnId: DONE_COLUMN, position: 3 });
+    expect(movedBody).toEqual({ columnId: DONE_COLUMN, position: 4 });
   });
 
   it('computes each later item in a batch against the earlier items\' new placements, not stale pre-batch data', async () => {
@@ -1601,12 +1602,12 @@ describe('enforcePmsColumns', () => {
       movedBody = JSON.parse(init.body as string);
       return { ok: true, status: 200, json: async () => ({}) };
     }) as unknown as typeof fetch;
-    // mover's key "2026-08-27 hanan winmega" (link()'s default brand is
-    // 'WinMega') sorts alphabetically between "aaabrand" and "zzzbrand" --
-    // <= e1's key, > e2's key -- so it lands right after e1, before e2, at
-    // position 1. Also < e3's 08-28 key regardless of brand.
+    // Sort is DESCENDING by date, so e3 (08-28) sorts first, then the 08-27
+    // cluster in brand order. mover's brand "winmega" sorts after "aaabrand"
+    // and before "zzzbrand", so it lands after e3 and e1, before e2 -- at
+    // position 2.
     await enforcePmsColumns([link({ tab: 'Hanan', pms_task_id: 'mover', date: '2026-08-27', synced_status: 'done', synced_column_id: TODO_COL })], client, CREDENTIALS, fetchFn);
-    expect(movedBody).toEqual({ columnId: DONE_COL, position: 1 });
+    expect(movedBody).toEqual({ columnId: DONE_COL, position: 2 });
   });
 
   // A column like "In Progress" -- populated only by a human dragging a card
@@ -1719,5 +1720,25 @@ describe('computeColumnSortMoves', () => {
     const moves = computeColumnSortMoves(tasks, new Set(['a', 'b', 'c', 'd']));
     expect(moves).toContainEqual({ taskId: 'b', columnId: TODO_COL, position: 0 });
     expect(moves).toContainEqual({ taskId: 'd', columnId: DONE_COL, position: 0 });
+  });
+
+  it('orders a column newest-due-date first (descending), tab+brand ascending within a date', () => {
+    // Deliberately handed to the function in a jumbled order.
+    const tasks = [
+      pmsTask('old', DONE_COL, { title: 'BITP | Aaa', position: 0, dueDate: '2026-08-27T00:00:00.000Z' }),
+      pmsTask('newB', DONE_COL, { title: 'BITP | Bbb', position: 1, dueDate: '2026-09-03T00:00:00.000Z' }),
+      pmsTask('newA', DONE_COL, { title: 'BITP | Aaa', position: 2, dueDate: '2026-09-03T00:00:00.000Z' }),
+      pmsTask('mid', DONE_COL, { title: 'BITP | Aaa', position: 3, dueDate: '2026-09-01T00:00:00.000Z' }),
+      pmsTask('undated', DONE_COL, { title: 'BITP | Aaa', position: 4, dueDate: null }),
+    ];
+    const ids = ['old', 'newB', 'newA', 'mid', 'undated'];
+    const applied = [...tasks].sort((x, y) => x.position - y.position).map((t) => t.id);
+    for (const m of computeColumnSortMoves(tasks, new Set(ids))) {
+      applied.splice(applied.indexOf(m.taskId), 1);
+      applied.splice(m.position, 0, m.taskId);
+    }
+    // Newest date on top; within 09-03, "Aaa" before "Bbb"; a card with no
+    // due date sinks to the bottom.
+    expect(applied).toEqual(['newA', 'newB', 'mid', 'old', 'undated']);
   });
 });
