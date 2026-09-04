@@ -1,17 +1,19 @@
 // src/components/TabPausedBrandsSection.tsx
 //
-// "Paused brands" section inside EditBrandTabModal — a second entry point to
-// the per-brand+platform pause that already exists in the Schedule Planner
+// "Paused brands" section inside EditBrandTabModal — the only surface for
+// creating/editing a per-brand+platform manual pause
 // (brand_platform_override, spec 2026-09-02-brand-platform-pause-reason).
+// The Schedule Planner's own "Paused Brands" panel was removed (Task 321), so
+// this section, reached via the Edit Brand Tab pencil, is where all manual
+// pause management now lives.
 // A newly-created pause writes only brand_platform_override; it is materialized
 // onto the brand_platform_pause weekly cache by recalculatePauses on the next
 // Schedule Planner visit / Monday cron (so the Schedule Planner grid, PMS
 // status sync, and Ask AI's get_paused_combos don't see it until then). A
 // Resume here additionally deletes the combo's materialized brand_platform_pause
-// row (mirroring the Schedule Planner's own handleResumeNow resume path in
-// TabScheduleSection.tsx), so a resume is immediate.
+// row, so a resume is immediate.
 // Not part of EditBrandTabModal's "Save Changes" batch — each pause/resume
-// writes immediately, exactly like the Schedule Planner flow.
+// writes immediately.
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import PlatformPauseModal from './PlatformPauseModal';
@@ -127,12 +129,11 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     let cleared = false;
     try {
       await clearBrandPlatformOverride(tabName, brandKey, platform);
-      // Mirrors TabScheduleSection.tsx's handleResumeNow: also delete the
-      // combo's materialized brand_platform_pause row. Without this,
-      // recalculatePauses sees paused_week_start === weekStart (the permanent
-      // override re-upserted it at the current week on its last run) rather than
-      // `<`, so it leaves the pause row in place for the rest of the week and
-      // every reader of the cache keeps showing the combo paused.
+      // Also delete the combo's materialized brand_platform_pause row. Without
+      // this, recalculatePauses sees paused_week_start === weekStart (the
+      // permanent override re-upserted it at the current week on its last run)
+      // rather than `<`, so it leaves the pause row in place for the rest of the
+      // week and every reader of the cache keeps showing the combo paused.
       await deleteBrandPlatformPause(tabName, brandKey, platform);
       cleared = true;
     } catch (e) {
@@ -150,9 +151,9 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     }
   }
 
-  // The one place a brand+platform pause is created/edited now (the Schedule
-  // Planner's own per-brand "Pause brand" button was removed — it only shows
-  // paused state, via the "Paused Brands" panel). Writes brand_platform_override
+  // The one place a brand+platform pause is created/edited (the Schedule
+  // Planner's per-brand "Pause brand" button and its "Paused Brands" panel
+  // were both removed — Task 318 and Task 321). Writes brand_platform_override
   // directly; unchecking a platform also drops its materialized
   // brand_platform_pause cache row so the resume is immediate.
   async function handleSavePause(
@@ -293,7 +294,7 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
       )}
 
       <p className="mt-1 text-xs text-slate-400">
-        A durable pause for one brand on one platform, with an optional resume date — the same pause the Schedule Planner shows. A new pause takes effect on the Schedule Planner grid, PMS, and Ask AI the next time that tab's Schedule Planner is opened (or the Monday cron runs); resuming here is immediate. Auto-detected pauses from underperformance are managed there, not here.
+        A durable pause for one brand on one platform, with an optional resume date — the same pause the Schedule Planner grid reflects. A new pause takes effect on the Schedule Planner grid, PMS, and Ask AI the next time that tab's Schedule Planner is opened (or the Monday cron runs); resuming here is immediate. Auto-detected pauses from underperformance aren't listed here — they clear on their own about a week after performance recovers.
       </p>
 
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}

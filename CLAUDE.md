@@ -61,7 +61,31 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-04 (newest):* Follow-on to Task 318. Per direct user request, pausing a
+- *2026-09-04 (newest):* Follow-on to Task 320. Per direct user request, the Schedule Planner's
+  **"Paused Brands (N)" toolbar panel** (button + `PausedBrandsModal`) is **removed** — manual
+  (override-driven) pauses are now managed only from the Brand Tabs side (Edit Brand Tab →
+  "Paused brands", Task 318). **Auto-detected pauses stay on the brand's row**, per a
+  mid-implementation clarification ("this paused brand must be on the schedule status as it is
+  paused due to two consecutive removed/refused ... on the row of the brand"): Task 320's
+  `pausedComboKeys` (every `brand_platform_pause` row) is replaced by `overridePausedComboKeys`
+  (only combos whose `brand_platform_override` is `state === 'pause'`), and `activeBrandPlatforms`
+  now subtracts only that set — so an auto-detected pause (2 consecutive Removed/Refused, or low
+  rolling-30-day success rate; no override row) flows back through `visibleBrandPlatforms` onto
+  the grid: dimmed paused chips in the day cells and the `source="system"` "⛔ Paused" indicator
+  in the **Schedule Status column** (tooltip carries the underperformance reason).
+  `computeCellData` already populated `weekPausesByPlatform` for these. `filteredBrands`
+  (drop-when-`activeBrandPlatforms(b).length === 0`) and `platformCounts` follow automatically —
+  an all-manually-paused brand is dropped, an auto-paused brand keeps its row and is counted.
+  Scoped to `src/components/TabScheduleSection.tsx`; deleted `src/components/PausedBrandsModal.tsx`
+  and the now-unused `pausedBrandsOpen`/`pausedBrandsBusy` state, `pausedBrandsRows`,
+  `handleResumeNow`, `refreshPauseState`, and imports (`PausedBadgeIcon`,
+  `setBrandPlatformOverride`/`clearBrandPlatformOverride`/`deleteBrandPlatformPause`).
+  `PausedBadgeIcon.tsx` stays (used elsewhere). 3 stale comment refs in
+  `TabPausedBrandsSection.tsx` corrected. Not touched: `recalculatePauses` detection/expiry, PMS
+  status sync, export, Ask AI's `get_paused_combos`, `EditBrandTabModal` behaviour. `npm run build`
+  clean; full suite **2334** passing. Deploy: `git push origin main` only — no migration, no Edge
+  Function redeploy. Task 321.
+- *2026-09-04 (prior):* Follow-on to Task 318. Per direct user request, pausing a
   brand+platform is now done only from the Brand Tabs side (Edit Brand Tab → "Paused brands"),
   so the Schedule Planner's own per-brand **"Pause brand"** button (the pause icon beside every
   brand name, opening `PlatformPauseModal`) is **removed**, and a brand+platform that is

@@ -9050,3 +9050,50 @@ the bottom — Sep 3's completed work is now at the top of Done, well within the
 **Not done (user declined for now):** pruning old Done cards. Newest-first is non-destructive
 and reversible but doesn't bound the column — work older than ~10 days will still fall below the
 UI cap. Revisit with a retention cutoff if that becomes a problem.
+
+---
+
+## Task 321: Schedule Planner — remove the "Paused Brands" header panel; auto-pauses stay on the brand row
+
+**Date:** September 4, 2026
+
+Follow-on to Task 320. User: "removed this paused option all the brand and brand tab paused
+option will be on the tab only" — then, mid-implementation: "this paused brand must be on the
+schedule status as it is paused due to two consecutive removed/refused ... instead on the
+header it should be on row of the brand."
+
+Two changes, both scoped to `src/components/TabScheduleSection.tsx` (+ 3 stale comment refs in
+`TabPausedBrandsSection.tsx`):
+
+1. **Removed the "Paused Brands (N)" toolbar button + `<PausedBrandsModal>` render** and
+   everything it was the only caller of: `pausedBrandsOpen` / `pausedBrandsBusy` state,
+   `pausedBrandsRows`, `handleResumeNow`, `refreshPauseState` (its only caller was
+   `handleResumeNow`), and the now-unused imports (`PausedBrandsModal` / `PausedBrandRow`,
+   `PausedBadgeIcon`, `setBrandPlatformOverride`, `clearBrandPlatformOverride`,
+   `deleteBrandPlatformPause`). Deleted `src/components/PausedBrandsModal.tsx` (no other
+   importers; `deriveTabPausedBrandRows` in `tabPausedBrands.ts` is unrelated). `PausedBadgeIcon.tsx`
+   stays — used by Sidebar, PlatformPauseModal, calendarRenderer, SchedulePlanner.
+   **Manual (override-driven) pauses are now managed only from the Brand Tabs side** (Edit Brand
+   Tab → "Paused brands", Task 318).
+
+2. **Auto-detected pauses stay visible on the grid.** Task 320's `pausedComboKeys` (every
+   `brand_platform_pause` row, both manual and auto) is replaced by `overridePausedComboKeys` —
+   only combos whose `brand_platform_override` is `state === 'pause'`. `activeBrandPlatforms`
+   now subtracts only that set, so an **auto-detected** pause (2 consecutive Removed/Refused, or
+   a low rolling-30-day success rate — no override row) flows back through
+   `visibleBrandPlatforms` onto the brand's row: its day cells render the dimmed paused chip and
+   its **Schedule Status column shows the `source="system"` "⛔ Paused" indicator** (tooltip
+   carries the underperformance reason). `computeCellData` already populated
+   `weekPausesByPlatform` for these — nothing else needed. `filteredBrands`'
+   drop-when-`activeBrandPlatforms(b).length === 0` and `platformCounts` (both keyed off
+   `activeBrandPlatforms`) follow automatically: an all-manual-paused brand is dropped; an
+   auto-paused brand keeps its row and is counted, matching its visible row. `brandPlatforms()`
+   itself is still not narrowed (recalculatePauses/ensureWeekGenerated gating, PMS "Project
+   Paused" sync, export all still see every paused combo).
+
+Not touched: `recalculatePauses` auto-pause detection/expiry, PMS status sync, CSV/Excel export,
+Ask AI's `get_paused_combos`, `TabPausedBrandsSection` / `EditBrandTabModal` behaviour (only its
+stale comments about "the Paused Brands panel" / `handleResumeNow` were corrected).
+
+`npm run build` clean; full suite **2334** passing. Deploy: `git push origin main` only — no
+migration, no Edge Function redeploy.
