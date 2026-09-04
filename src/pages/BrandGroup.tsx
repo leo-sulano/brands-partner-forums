@@ -18,7 +18,7 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, fetchBrandCatalog, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride, type BrandCatalogRow } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, fetchBrandCatalog, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride, type BrandCatalogRow } from '../lib/queries';
 import { mergeCredentialsIntoData, preserveCredentialFields, type EntryCredentials } from '../lib/entryCredentials';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
@@ -29,12 +29,10 @@ import { subscribeEntries } from '../lib/realtime';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getBrandLinkCol, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
-import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
-import { syncTabStatusToPms } from '../lib/schedulePmsSync';
-import { SITE_URL } from '../lib/supabase';
+import { savePlatformRemoved } from '../lib/platformRemovedActions';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
-import { isValidDateText, DATE_ENTRY_HEADERS, dateTextToIsoDate } from '../lib/dateUtils';
+import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 import { useAuth } from '../contexts/AuthContext';
 import { formatCellValue } from '../lib/format';
 import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterParams';
@@ -2972,67 +2970,36 @@ export default function BrandGroup() {
               const targetTab = newTab ?? editEntry.tab;
               const brandName = fields[brandCol] ?? editEntry.data[brandCol];
               if (brandName) {
-                // Only write a platform's flag when that platform's checkbox
-                // actually changed — not on every save of an already-flagged
-                // brand's row (see the comment on
-                // initialRemovedPlatformsForEditEntry above). Diffed
-                // independently per platform so toggling one platform never
-                // touches another's flag/removed_by/removed_at.
+                // Shared with the Edit Brand Tab "Removed platform pages"
+                // section (TabRemovedPlatformsSection) via
+                // src/lib/platformRemovedActions.ts's savePlatformRemoved —
+                // both write/notify/sync through the same sequence so they
+                // can't drift. Only writes a platform's flag when that
+                // platform's checkbox actually changed or its date was
+                // edited — not on every save of an already-flagged brand's
+                // row. lookupTab stays decodedTab (the tab the checkboxes
+                // were actually rendered for), not targetTab — a brand-tab-move
+                // changing which platforms apply mid-save is an edge case
+                // this doesn't attempt to reconcile further (matches the
+                // existing brand-rename-during-save limitation documented
+                // near setBrandPlatformRemoved in src/lib/queries.ts).
                 if (removedPlatforms !== undefined) {
-                  const wasRemoved = new Set(initialRemovedPlatformsForEditEntry);
-                  const nowRemoved = new Set(removedPlatforms);
-                  // Set when at least one platform is newly flagged removed this
-                  // save — triggers an immediate PMS cleanup below rather than
-                  // waiting for the next minute's sync-schedule-pms-status-minutely
-                  // cron tick (which would still catch it either way).
-                  let flaggedAnyRemoved = false;
-                  // Diff over decodedTab's platforms (the tab the checkboxes were
-                  // actually rendered for), not targetTab's — a brand-tab-move
-                  // changing which platforms apply mid-save is an edge case this
-                  // doesn't attempt to reconcile further (matches the existing
-                  // brand-rename-during-save limitation documented near
-                  // setBrandPlatformRemoved in src/lib/queries.ts).
-                  for (const p of getTabPlatforms(decodedTab)) {
-                    const willBeRemoved = nowRemoved.has(p);
-                    const stateChanged = wasRemoved.has(p) !== willBeRemoved;
-                    // A platform that stays checked can still have had its date
-                    // edited (the whole point of making it editable) — diffed
-                    // against the same display format the field was seeded
-                    // with, so re-saving an untouched date is a no-op.
-                    const dateText = removedPlatformDateTexts?.[p]?.trim();
-                    const priorDateDisplay = initialRemovedPlatformDatesForEditEntry[p]
-                      ? formatCellValue(initialRemovedPlatformDatesForEditEntry[p]!)
-                      : undefined;
-                    const dateChanged = willBeRemoved && !stateChanged && !!dateText && dateText !== priorDateDisplay;
-                    if (!stateChanged && !dateChanged) continue;
-                    const removedAtIso = willBeRemoved && dateText ? dateTextToIsoDate(dateText) ?? undefined : undefined;
-                    await setBrandPlatformRemoved(targetTab, brandName, p, willBeRemoved, removedAtIso);
-                    if (willBeRemoved && stateChanged) {
-                      flaggedAnyRemoved = true;
-                      try {
-                        await notifyBrandRemoved({
-                          brand: brandName,
-                          tabLabel: tabDisplayName(targetTab),
-                          platformShortLabel: PLATFORM_SHORT_LABEL[p],
-                          removedAtLabel: removedAtIso ? formatCellValue(removedAtIso) : formatCellValue(new Date().toISOString()),
-                          brandTabUrl: `${SITE_URL}/brands/${tabToSlug(targetTab)}?brand=${encodeURIComponent(brandName)}`,
-                        });
-                      } catch {
-                        setToast({
-                          message: `${brandName}'s ${PLATFORM_LABEL[p]} page was flagged removed, but the notification email failed to send.`,
-                          kind: 'error',
-                        });
-                      }
-                    }
+                  const { notifyFailures } = await savePlatformRemoved({
+                    tab: targetTab,
+                    lookupTab: decodedTab,
+                    brand: brandName,
+                    eligiblePlatforms: getTabPlatforms(decodedTab),
+                    checkedPlatforms: removedPlatforms,
+                    dateTexts: removedPlatformDateTexts ?? {},
+                    existingSet: removedPlatformBrandSet,
+                    existingDateMap: removedPlatformBrandDateMap,
+                  });
+                  for (const p of notifyFailures) {
+                    setToast({
+                      message: `${brandName}'s ${PLATFORM_LABEL[p]} page was flagged removed, but the notification email failed to send.`,
+                      kind: 'error',
+                    });
                   }
-                  // Fire-and-forget: routes through the same server-side
-                  // resolveAndSyncTabStatuses path the every-minute cron already
-                  // calls, which parks any now-orphaned unstarted/in-flight PMS
-                  // card for this combo in the Page Removed column
-                  // (moveRemovedPageCards, pmsSync.ts) within seconds instead of
-                  // up to a minute. A failure here is silent — the cron still
-                  // covers it on its own next tick.
-                  if (flaggedAnyRemoved) syncTabStatusToPms(targetTab).catch(() => {});
                 }
 
                 if (overrides !== undefined) {

@@ -17,7 +17,7 @@ import { useRef, useState, type ChangeEvent } from 'react';
 import { Loader2, Upload } from 'lucide-react';
 import { DynamicIcon } from 'lucide-react/dynamic';
 import {
-  ALL_DYNAMIC_ICON_NAMES, POPULAR_ICON_NAMES, faviconUrl,
+  ALL_DYNAMIC_ICON_NAMES, POPULAR_ICON_NAMES, isKnownDynamicIconName, faviconUrl,
   type TabIconName, type TabIconSelection,
 } from '../lib/tabIcons';
 import { validateTabIconFile, compressTabIconImage } from '../lib/tabIconUpload';
@@ -32,15 +32,24 @@ interface Props {
 
 export default function IconPicker({ value, onChange }: Props) {
   const [query, setQuery] = useState('');
+  // The icon grid stays collapsed behind a preview + "Change icon" button
+  // until the creator asks to browse — a bare grid of ~1,960 icons (or even
+  // the old 18-icon curated shortlist) has no business sitting open by
+  // default in an already-dense modal.
+  const [browsing, setBrowsing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const normalized = query.trim().toLowerCase();
+  // Browsing with no search yet still searches the full ~1,960-icon library,
+  // not just the curated POPULAR_ICON_NAMES shortlist — that list now only
+  // seeds DEFAULT_ICON_NAME (a brand-new tab's starting icon).
   const candidates: readonly TabIconName[] = normalized
     ? ALL_DYNAMIC_ICON_NAMES.filter((name) => name.includes(normalized))
-    : POPULAR_ICON_NAMES;
+    : ALL_DYNAMIC_ICON_NAMES;
   const shown = candidates.slice(0, MAX_RESULTS);
+  const previewName = isKnownDynamicIconName(value.value) ? value.value : POPULAR_ICON_NAMES[0];
 
   async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -98,13 +107,14 @@ export default function IconPicker({ value, onChange }: Props) {
         </button>
       </div>
 
-      {value.type === 'icon' && (
+      {value.type === 'icon' && (browsing ? (
         <>
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search icons (e.g. dice, crown, globe)…"
+            autoFocus
             className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm mb-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
           <div className="grid grid-cols-8 gap-1.5 max-h-40 overflow-y-auto">
@@ -112,7 +122,7 @@ export default function IconPicker({ value, onChange }: Props) {
               <button
                 key={name}
                 type="button"
-                onClick={() => onChange({ type: 'icon', value: name })}
+                onClick={() => { onChange({ type: 'icon', value: name }); setBrowsing(false); }}
                 aria-label={name}
                 aria-pressed={value.value === name}
                 title={name}
@@ -131,11 +141,32 @@ export default function IconPicker({ value, onChange }: Props) {
           </div>
           {candidates.length > MAX_RESULTS && (
             <p className="mt-1 text-xs text-slate-400">
-              Showing the first {MAX_RESULTS} of {candidates.length} matches — refine your search to see more.
+              Showing the first {MAX_RESULTS} of {candidates.length} icons — refine your search to see more.
             </p>
           )}
+          <button
+            type="button"
+            onClick={() => setBrowsing(false)}
+            className="mt-1.5 text-xs font-medium text-blue-600 hover:underline"
+          >
+            Done
+          </button>
         </>
-      )}
+      ) : (
+        <div className="flex items-center gap-2">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+            <DynamicIcon name={previewName} className="size-4 text-slate-600" />
+          </div>
+          <span className="flex-1 truncate text-sm text-slate-700">{value.value}</span>
+          <button
+            type="button"
+            onClick={() => setBrowsing(true)}
+            className="shrink-0 rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+          >
+            Change icon
+          </button>
+        </div>
+      ))}
 
       {value.type === 'favicon' && (
         <>

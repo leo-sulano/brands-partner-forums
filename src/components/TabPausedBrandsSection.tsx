@@ -15,9 +15,10 @@
 // Not part of EditBrandTabModal's "Save Changes" batch — each pause/resume
 // writes immediately.
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Info } from 'lucide-react';
 import PlatformPauseModal from './PlatformPauseModal';
 import SelectDropdown from './SelectDropdown';
+import Tooltip from './Tooltip';
 import {
   fetchBrandPlatformOverrides,
   fetchRemovedPlatformBrands,
@@ -185,7 +186,18 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
 
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-500 mb-1.5">Paused brands</label>
+      <div className="mb-1.5 flex items-center gap-1">
+        <label className="block text-xs font-medium text-slate-500">Paused brands</label>
+        <Tooltip
+          content={
+            <span className="block w-56 whitespace-normal">
+              A durable pause for one brand on one platform, with an optional resume date — the same pause the Schedule Planner grid reflects. A new pause takes effect on the Schedule Planner grid, PMS, and Ask AI the next time that tab's Schedule Planner is opened (or the Monday cron runs); resuming here is immediate. Auto-detected pauses from underperformance aren't listed here — they clear on their own about a week after performance recovers.
+            </span>
+          }
+        >
+          <Info className="size-3.5 text-slate-400" />
+        </Tooltip>
+      </div>
 
       {loading ? (
         <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
@@ -249,10 +261,6 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
           </button>
         </div>
       )}
-
-      <p className="mt-1 text-xs text-slate-400">
-        A durable pause for one brand on one platform, with an optional resume date — the same pause the Schedule Planner grid reflects. A new pause takes effect on the Schedule Planner grid, PMS, and Ask AI the next time that tab's Schedule Planner is opened (or the Monday cron runs); resuming here is immediate. Auto-detected pauses from underperformance aren't listed here — they clear on their own about a week after performance recovers.
-      </p>
 
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
 

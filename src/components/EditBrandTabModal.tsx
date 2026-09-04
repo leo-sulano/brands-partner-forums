@@ -1,6 +1,6 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Info } from 'lucide-react';
 import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab, updatePausedTabDetails, fetchPausedTabDetails, addBrandToCatalog } from '../lib/queries';
 import {
   PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
@@ -20,7 +20,19 @@ import { renameOperationalTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import IconPicker from './IconPicker';
 import TabPausedBrandsSection from './TabPausedBrandsSection';
+import TabRemovedPlatformsSection from './TabRemovedPlatformsSection';
 import SelectDropdown from './SelectDropdown';
+import Tooltip from './Tooltip';
+
+// Wraps long explanatory copy so it wraps inside Tooltip's fixed-width,
+// whitespace-nowrap box instead of rendering as one giant single-line tooltip.
+function InfoTip({ children }: { children: string }) {
+  return (
+    <Tooltip content={<span className="block w-56 whitespace-normal">{children}</span>}>
+      <Info className="size-3.5 text-slate-400" />
+    </Tooltip>
+  );
+}
 
 interface Props {
   tabName: string;
@@ -75,10 +87,12 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   const [pausedUntil, setPausedUntil] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // True while TabPausedBrandsSection's PlatformPauseModal child is open — the
-  // outer modal must not close on Escape then (PlatformPauseModal has its own
+  // True while TabPausedBrandsSection's PlatformPauseModal child (or
+  // TabRemovedPlatformsSection's PlatformRemovedModal child) is open — the
+  // outer modal must not close on Escape then (each child has its own
   // Escape-to-close).
   const [pauseChildOpen, setPauseChildOpen] = useState(false);
+  const [removedChildOpen, setRemovedChildOpen] = useState(false);
 
   // Brand list handed to TabPausedBrandsSection. Initialized once from the
   // `brands` prop (BrandGroup's uniqueBrands at modal-open time, per that
@@ -126,11 +140,11 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !submitting && !pauseChildOpen) onClose();
+      if (e.key === 'Escape' && !submitting && !pauseChildOpen && !removedChildOpen) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, submitting, pauseChildOpen]);
+  }, [onClose, submitting, pauseChildOpen, removedChildOpen]);
 
   function handleRequestClose() {
     if (submitting) return;
@@ -278,22 +292,29 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Tab name</label>
+            <div className="mb-1 flex items-center gap-1">
+              <label className="block text-xs font-medium text-slate-500">Tab name</label>
+              {!dynamic && (
+                <InfoTip>
+                  This tab has existing entries — renaming it updates every one of them and every dashboard link that points to it.
+                </InfoTip>
+              )}
+            </div>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-            {!dynamic && (
-              <p className="mt-1 text-xs text-slate-400">
-                This tab has existing entries — renaming it updates every one of them and every dashboard link that points to it.
-              </p>
-            )}
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Platforms</label>
+            <div className="mb-1.5 flex items-center gap-1">
+              <label className="block text-xs font-medium text-slate-500">Platforms</label>
+              <InfoTip>
+                Unchecking a platform hides its columns and data — nothing is deleted, and re-checking it brings everything back.
+              </InfoTip>
+            </div>
             {PLATFORM_LIST.filter((p) => toggleable.includes(p.key)).map(({ key, label }) => (
               <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
                 <input
@@ -305,16 +326,18 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 {label}
               </label>
             ))}
-            <p className="mt-1 text-xs text-slate-400">
-              Unchecking a platform hides its columns and data — nothing is deleted, and re-checking it brings everything back.
-            </p>
           </div>
 
           <IconPicker value={iconSelection} onChange={setIconSelection} />
 
           {isAdmin && (
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
+              <div className="mb-1 flex items-center gap-1">
+                <label className="block text-xs font-medium text-slate-500">Status</label>
+                <InfoTip>
+                  Paused tabs stay visible and fully usable here, but are excluded from Overview, Score Summary, Schedule Planner, and Ask AI.
+                </InfoTip>
+              </div>
               <SelectDropdown
                 value={status}
                 onChange={(v) => setStatus(v as 'active' | 'paused')}
@@ -324,9 +347,6 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 ]}
                 clearable={false}
               />
-              <p className="mt-1 text-xs text-slate-400">
-                Paused tabs stay visible and fully usable here, but are excluded from Overview, Score Summary, Schedule Planner, and Ask AI.
-              </p>
               {status === 'paused' && (
                 <div className="mt-3 space-y-3">
                   <label className="block">
@@ -340,14 +360,16 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-medium text-slate-500">Paused until</span>
+                    <span className="flex items-center gap-1 text-xs font-medium text-slate-500">
+                      Paused until
+                      <InfoTip>Blank means indefinite — it won't resume on its own; unpause manually when ready.</InfoTip>
+                    </span>
                     <input
                       type="date"
                       value={pausedUntil}
                       onChange={(e) => setPausedUntil(e.target.value)}
                       className="mt-1 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800 focus:border-blue-400 focus:outline-none"
                     />
-                    <span className="mt-1 block text-xs text-slate-400">Blank means indefinite — it won't resume on its own; unpause manually when ready.</span>
                   </label>
                 </div>
               )}
@@ -355,7 +377,12 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Add a brand</label>
+            <div className="mb-1 flex items-center gap-1">
+              <label className="block text-xs font-medium text-slate-500">Add a brand</label>
+              <InfoTip>
+                Registers the brand for this tab — no review-account entry is created. It becomes pickable in Add Review Account's Brand Name field and appears on the Schedule Planner (at a reduced 1-post-per-platform pace for its first 2 weeks, then normal frequency) the next time that tab's schedule is generated.
+              </InfoTip>
+            </div>
             <div className="space-y-2">
               <input
                 type="text"
@@ -383,13 +410,13 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
             </div>
             {addBrandError && <p className="mt-1 text-xs text-rose-600">{addBrandError}</p>}
             {addBrandSuccess && <p className="mt-1 text-xs text-emerald-600">{addBrandSuccess}</p>}
-            <p className="mt-1 text-xs text-slate-400">
-              Registers the brand for this tab — no review-account entry is created. It becomes
-              pickable in Add Review Account's Brand Name field and appears on the Schedule
-              Planner (at a reduced 1-post-per-platform pace for its first 2 weeks, then normal
-              frequency) the next time that tab's schedule is generated.
-            </p>
           </div>
+
+          <TabRemovedPlatformsSection
+            tabName={tabName}
+            brands={localBrands}
+            onChildModalOpenChange={setRemovedChildOpen}
+          />
 
           <TabPausedBrandsSection
             tabName={tabName}
@@ -398,7 +425,12 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
           />
 
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">Toolbar Filters</label>
+            <div className="mb-1.5 flex items-center gap-1">
+              <label className="block text-xs font-medium text-slate-500">Toolbar Filters</label>
+              <InfoTip>
+                Choose which filter dropdowns appear on this tab's toolbar. A filter can still stay hidden if the tab's data doesn't have enough distinct values.
+              </InfoTip>
+            </div>
             {TOOLBAR_FILTER_LIST.map(({ key, label }) => (
               <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
                 <input
@@ -410,9 +442,6 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 {label}
               </label>
             ))}
-            <p className="mt-1 text-xs text-slate-400">
-              Choose which filter dropdowns appear on this tab's toolbar. A filter can still stay hidden if the tab's data doesn't have enough distinct values.
-            </p>
           </div>
 
         </div>

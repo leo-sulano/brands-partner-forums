@@ -254,6 +254,30 @@ export async function fetchRemovedPlatformBrands(
   return (data ?? []) as { tab: string; brand: string; platform: Platform; removed_at: string }[];
 }
 
+export interface RemovedPlatformBrandRow {
+  tab: string;
+  brand: string;
+  platform: Platform;
+  removed_at: string;
+  removed_by: string | null;
+}
+
+// Tab-scoped sibling of fetchRemovedPlatformBrands above, carrying removed_by
+// too — feeds the Edit Brand Tab "Removed platform pages" section
+// (TabRemovedPlatformsSection), which needs who-flagged-it detail the
+// dashboard-wide fetch doesn't.
+export async function fetchRemovedPlatformBrandsForTab(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<RemovedPlatformBrandRow[]> {
+  const { data, error } = await client
+    .from('removed_platform_brands')
+    .select('tab, brand, platform, removed_at, removed_by')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as RemovedPlatformBrandRow[];
+}
+
 export async function fetchScheduleHiddenBrands(
   tab: string,
   client: SupabaseClient = supabase,
