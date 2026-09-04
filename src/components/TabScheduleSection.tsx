@@ -27,7 +27,7 @@ import {
   type WeeklyScheduleApproval,
 } from '../lib/queries';
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
-import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, toISODate, mondayOf, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
@@ -1044,7 +1044,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   }
 
   async function handleRevokeWeek() {
-    if (!isSuperAdmin || approveBusy) return;
+    if (!isSuperAdmin || approveBusy || !isFutureWeek) return;
     setConfirmRevoke(false);
     setApproveBusy(true);
     try {
@@ -1082,6 +1082,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // scheduler-invocation effect above use, so the two can never
   // independently drift.
   const isCurrentWeek = isCurrentWeekStart(weekStartISO);
+
+  // Approval can only be revoked for a week that hasn't started yet. The
+  // current and past weeks are already "live" — their days can be manually
+  // cancelled or scheduled and those changes sync straight to the PMS — so
+  // yanking the approval out from under them would only strand that in-flight
+  // work. A future week hasn't populated the PMS board yet, so revoking it
+  // back to Draft is safe.
+  const isFutureWeek = weekStartISO > toISODate(mondayOf(new Date()));
 
   const addPlatformModalData = addPlatformTarget
     ? (() => {
@@ -1177,14 +1185,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             )}
             {isSuperAdmin && !isLegacyWeekAt(weekStartISO) && (
               isDisplayedWeekApproved ? (
-                <button
-                  type="button"
-                  onClick={() => setConfirmRevoke(true)}
-                  disabled={approveBusy}
-                  className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
-                >
-                  Revoke
-                </button>
+                isFutureWeek ? (
+                  <button
+                    type="button"
+                    onClick={() => setConfirmRevoke(true)}
+                    disabled={approveBusy}
+                    className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+                  >
+                    Revoke
+                  </button>
+                ) : null
               ) : (
                 <button
                   type="button"
