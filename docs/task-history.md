@@ -9009,3 +9009,44 @@ partial-pause-on-a-multi-platform-tab case (hide just that platform, keep the ro
 observed live — BIT is single-platform — but runs the same `activeBrandPlatforms` path.
 
 **Deploy:** `git push origin main` only — no migration, no edge-function redeploy.
+
+---
+
+## Task 320: PMS schedule cards sort newest-due-date first within each column
+
+**Date:** September 4, 2026
+
+Follow-up to Task 319. User: "september 3 task still not on the pms done" / "done column is
+200 only". Root cause of the *visibility* complaint: the PMS UI renders only a capped slice
+(~200) of each column from the top, and the Done column had 227 schedule cards sorted
+**oldest-first** — so every Sep 3 card sat at positions 209–226, below the cap, invisible in the
+UI even though the API and the sync had them correctly in Done. Done grows ~20 cards/day and
+nothing removes them, so recent work kept getting pushed out of view.
+
+Per `AskUserQuestion` the user chose **newest-first sort** (over pruning old Done cards, or
+both).
+
+**Change:** `dueDateSortKey` (`src/lib/scheduler/pmsSync.ts`) now returns a **descending** key —
+each digit of `YYYY-MM-DD` nine's-complemented so plain string comparison still orders it and a
+later date yields a smaller key; dashes untouched; a card with no due date returns a high
+sentinel so it sorts **last** instead of first. Only the date direction flips — `taskSortKey`
+keeps tab label + brand **ascending** within a single date, so a day's cluster still reads
+BrandA, BrandB. All four call paths (`computeGroupedInsertPosition` on create/move,
+`taskSortKey` in `computeColumnSortMoves`' full-board re-sort) route through `dueDateSortKey`,
+so the one change covers card creation, status moves, column-drift reconcile, and the
+full-column sort.
+
+Tests: updated the 2 grouping tests that asserted ascending positions; added a
+`computeColumnSortMoves` regression test (newest date on top, tab+brand asc within a date,
+undated last). Full suite 2334 green, `npm run build` clean, `deno check` + `deno test` (19)
+clean.
+
+**Deployed same session:** `git push origin main`, `supabase functions deploy sync-schedule-pms`
+(v41 ACTIVE) + `generate-weekly-schedule` (v20 ACTIVE). Then triggered `reconcileColumns`
+against the deployed function — `resorted: 260, failed: 0` in 28s. Verified live: the Done
+column's positions 0–17 are now the 18 Sep 3 cards (Amonbet Casino at #0), oldest (Aug 17) at
+the bottom — Sep 3's completed work is now at the top of Done, well within the UI's render cap.
+
+**Not done (user declined for now):** pruning old Done cards. Newest-first is non-destructive
+and reversible but doesn't bound the column — work older than ~10 days will still fall below the
+UI cap. Revisit with a retention cutoff if that becomes a problem.
