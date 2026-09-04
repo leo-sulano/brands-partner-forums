@@ -699,47 +699,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return resolveBrandPlatforms(tab, brand, activePlatforms, hiddenSet, restrictionMap, removedSet);
   }
 
-  // Currently-paused brand+platform combos that are paused by an explicit
-  // brand_platform_override (state === 'pause') — i.e. a MANUAL pause, now
-  // managed only from the Brand Tabs side (Edit Brand Tab → "Paused brands").
-  // Keyed `${brand_key}::${platform}`. Auto-detected pauses (2 consecutive
-  // Removed/Refused, or a low rolling-30-day success rate) have no override
-  // row and are deliberately NOT in this set — they stay visible on the grid
-  // so the brand's row shows the auto-pause in its Schedule Status column.
-  const overridePausedComboKeys = useMemo(
-    () =>
-      new Set(
-        pauses
-          .filter(
-            (p) => tabCtx?.overrideMap.get(overrideKey(tab, p.brand_key, p.platform))?.state === 'pause',
-          )
-          .map((p) => `${p.brand_key}::${p.platform}`),
-      ),
-    [pauses, tabCtx?.overrideMap, tab],
-  );
-
-  // brandPlatforms() minus anything MANUALLY paused (brand_platform_override).
-  // A manual pause is managed from the Brand Tabs side now (Edit Brand Tab →
-  // "Paused brands") and no longer appears on the Schedule Planner grid at all
-  // — the same way a flagged-removed platform never does. An AUTO-detected
-  // pause (underperformance) still appears: its row stays on the grid and its
-  // Schedule Status column shows the "⛔ Paused" system indicator.
-  // `brandPlatforms()` itself is deliberately NOT narrowed
-  // (recalculatePauses/ensureWeekGenerated gating, the PMS "Project Paused"
-  // status sync, and the export all still need to see every paused combo).
-  function activeBrandPlatforms(brand: string): Platform[] {
-    const brandKey = normalizeBrandKey(brand);
-    return brandPlatforms(brand).filter((p) => !overridePausedComboKeys.has(`${brandKey}::${p}`));
-  }
-
-  // Rendering-only narrowing of activeBrandPlatforms() to the toolbar's
-  // visiblePlatforms toggle — used solely at the two chip-drawing call sites
-  // below (the day-cell grid and the Schedule Status column). Everywhere
-  // else (PMS sync, pause detection) keeps calling brandPlatforms() directly
-  // so a toggled-off pill never changes what's actually tracked, only what's
-  // drawn.
+  // Rendering-only narrowing to the toolbar's visiblePlatforms toggle — used
+  // solely at the two chip-drawing call sites (day-cell grid + Schedule Status
+  // column). Everything else (PMS sync, pause detection, export) calls
+  // brandPlatforms() directly.
   function visibleBrandPlatforms(brand: string): Platform[] {
-    return filterVisiblePlatforms(activeBrandPlatforms(brand), visiblePlatforms);
+    return filterVisiblePlatforms(brandPlatforms(brand), visiblePlatforms);
   }
 
   // The inverse of brandPlatforms — every active platform actually flagged
@@ -789,15 +754,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return doneByPlatform;
   }
 
-  // A brand with zero remaining platforms after activeBrandPlatforms'
-  // exclusion — every one of its platforms is flagged removed and/or MANUALLY
-  // paused (brand_platform_override) — has nothing left to show: no chip in any
-  // day cell, no scheduling. Rather than list it as a permanently-empty row
-  // it's dropped from the Schedule Planner entirely. A brand still active on at
-  // least one platform (or auto-paused, which stays visible) keeps its row;
-  // only the removed / manually-paused platforms' chips disappear.
+  // A brand with zero platforms left after brandPlatforms' hidden / restricted /
+  // flagged-removed exclusion has nothing to show — dropped from the grid
+  // entirely rather than listed as a permanently-empty row. A manually-paused
+  // brand+platform is NO LONGER excluded here (it renders like an auto-pause:
+  // dimmed day-cell chips + the "⛔ Paused" Schedule Status indicator), so an
+  // all-manually-paused brand keeps its row.
   const filteredBrands = useMemo(() => {
-    let brands = (tabCtx?.brands ?? []).filter((b) => activeBrandPlatforms(b).length > 0);
+    let brands = (tabCtx?.brands ?? []).filter((b) => brandPlatforms(b).length > 0);
     if (agentFilter.length > 0) {
       brands = brands.filter((b) => {
         const agent = agentIndex.get(normalizeBrandKey(b));
@@ -807,7 +771,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     const q = search.trim().toLowerCase();
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
-  }, [tabCtx, search, agentFilter, agentIndex, overridePausedComboKeys]);
+  }, [tabCtx, search, agentFilter, agentIndex]);
 
   // Platform-count strip reported up to the shared Schedule Planner toolbar
   // (see onPlatformCounts) — sums slots across exactly the same
@@ -818,19 +782,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // grid can disagree on a past day by design; see CLAUDE.md's Known Issues
   // entry for this task.
   const platformCounts = useMemo(
-    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, activeBrandPlatforms, columns, dateStatusIndex, todayISO),
-    // activeBrandPlatforms is a plain function closing over
-    // tabCtx/activePlatforms/overridePausedComboKeys (all re-derived fresh
-    // every render) rather than a memoized value — included here via tabCtx and
-    // overridePausedComboKeys so this recomputes whenever the exclusion sets it
-    // reads from actually change. Using activeBrandPlatforms (not
-    // brandPlatforms) keeps the strip counting exactly the platforms the grid
-    // renders — a manually-paused platform is excluded from both; an
-    // auto-detected pause still counts, matching its still-visible row. Past
-    // days now only count with real evidence (dateStatusIndex) rather than the
-    // plan alone — see countActivePlatformSlots' own doc comment.
+    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, brandPlatforms, columns, dateStatusIndex, todayISO),
+    // brandPlatforms is a plain function closing over tabCtx/activePlatforms
+    // (re-derived every render) — included here via tabCtx so this recomputes
+    // when the exclusion sets it reads from change. A manually-paused platform
+    // now counts here and renders on the grid, same as an auto-detected pause.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scheduleRows, tab, filteredBrands, columns, tabCtx, overridePausedComboKeys, dateStatusIndex, todayISO],
+    [scheduleRows, tab, filteredBrands, columns, tabCtx, dateStatusIndex, todayISO],
   );
 
   useEffect(() => {
