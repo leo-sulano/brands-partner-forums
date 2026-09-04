@@ -22,11 +22,9 @@ import {
   fetchRemovedPlatformBrands,
   fetchScheduleHiddenBrands,
   fetchScheduleRestrictedBrands,
-  setBrandPlatformOverride,
-  clearBrandPlatformOverride,
-  deleteBrandPlatformPause,
   type BrandPlatformOverride,
 } from '../lib/queries';
+import { savePlatformPause, resumePlatformPause, derivePauseModalInitial } from '../lib/platformPauseActions';
 import {
   normalizeBrandKey,
   buildRemovedPlatformBrandSet,
@@ -38,7 +36,7 @@ import {
   buildPlatformRestrictionMap,
   resolveBrandPlatforms,
 } from '../lib/scheduleBrandConfig';
-import { overrideKey, buildOverrideMap } from '../lib/scheduleOverrides';
+import { buildOverrideMap } from '../lib/scheduleOverrides';
 import { PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import { getTabPlatforms } from '../lib/tab-configs';
 import { mondayOf, addDays, toISODate } from '../lib/scheduleBrands';
@@ -128,13 +126,7 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     setError(null);
     let cleared = false;
     try {
-      await clearBrandPlatformOverride(tabName, brandKey, platform);
-      // Also delete the combo's materialized brand_platform_pause row. Without
-      // this, recalculatePauses sees paused_week_start === weekStart (the
-      // permanent override re-upserted it at the current week on its last run)
-      // rather than `<`, so it leaves the pause row in place for the rest of the
-      // week and every reader of the cache keeps showing the combo paused.
-      await deleteBrandPlatformPause(tabName, brandKey, platform);
+      await resumePlatformPause(tabName, brandKey, platform);
       cleared = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to resume');
@@ -162,26 +154,18 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     reason: string,
     resumeAt: string | null,
   ) {
-    const brandKey = normalizeBrandKey(brand);
-    const nowChecked = new Set(checkedPlatforms);
     setBusy(true);
     setError(null);
     try {
-      for (const platform of eligibleFor(brand)) {
-        const existing = overrideMap.get(overrideKey(tabName, brandKey, platform));
-        const wasPaused = existing?.state === 'pause';
-        if (nowChecked.has(platform)) {
-          const unchanged = wasPaused && existing.reason === reason && existing.resumeAt === resumeAt;
-          if (!unchanged) {
-            await setBrandPlatformOverride(tabName, brand, platform, 'pause', { reason, resumeAt });
-          }
-        } else if (wasPaused) {
-          await clearBrandPlatformOverride(tabName, brandKey, platform);
-          // Mirrors handleSavePauseModal: unchecking a platform is a resume, so
-          // also drop the materialized weekly cache row (see handleResume for why).
-          await deleteBrandPlatformPause(tabName, brandKey, platform);
-        }
-      }
+      await savePlatformPause({
+        tab: tabName,
+        brand,
+        eligiblePlatforms: eligibleFor(brand),
+        checkedPlatforms,
+        reason,
+        resumeAt,
+        overrideMap,
+      });
       setPickerBrand(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update pause');
@@ -196,31 +180,6 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Saved, but failed to refresh the list');
     }
-  }
-
-  // Seeds PlatformPauseModal's initial state from any existing override-pause
-  // rows for this brand: which platforms are checked, and the reason/resumeAt
-  // taken from the first paused platform found.
-  function pauseModalInitial(brand: string): {
-    checkedPlatforms: Platform[];
-    initialReason: string;
-    initialResumeAt: string | null;
-  } {
-    const brandKey = normalizeBrandKey(brand);
-    const checkedPlatforms: Platform[] = [];
-    let initialReason = '';
-    let initialResumeAt: string | null = null;
-    for (const platform of eligibleFor(brand)) {
-      const ov = overrideMap.get(overrideKey(tabName, brandKey, platform));
-      if (ov?.state === 'pause') {
-        checkedPlatforms.push(platform);
-        if (!initialReason && ov.reason) {
-          initialReason = ov.reason;
-          initialResumeAt = ov.resumeAt;
-        }
-      }
-    }
-    return { checkedPlatforms, initialReason, initialResumeAt };
   }
 
   return (
@@ -300,7 +259,7 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
       {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
 
       {pickerBrand && (() => {
-        const init = pauseModalInitial(pickerBrand);
+        const init = derivePauseModalInitial(tabName, pickerBrand, eligibleFor(pickerBrand), overrideMap);
         return (
           <PlatformPauseModal
             brand={pickerBrand}
