@@ -14,9 +14,13 @@ interface Props {
   options: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
+  // false for a required field with no meaningful "unset" state (e.g. a
+  // status toggle) — hides the clear-to-blank affordance, since options
+  // never include an empty value to fall back to.
+  clearable?: boolean;
 }
 
-export default function SelectDropdown({ value, onChange, options, placeholder = '—', disabled }: Props) {
+export default function SelectDropdown({ value, onChange, options, placeholder = '—', disabled, clearable = true }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -70,7 +74,7 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
           {selected?.dot && <span className={`size-1.5 shrink-0 rounded-full ${selected.dot}`} />}
           <span className="truncate">{selected?.label || placeholder}</span>
         </span>
-        {value ? (
+        {value && clearable ? (
           <span
             onClick={(e) => { e.stopPropagation(); onChange(''); }}
             className="ml-0.5 shrink-0 text-blue-400 hover:text-blue-600 transition-colors"
@@ -88,14 +92,16 @@ export default function SelectDropdown({ value, onChange, options, placeholder =
           className="fixed z-[200] rounded-lg border border-slate-200 bg-white py-1 shadow-xl"
           style={{ top: menuRect.top, left: menuRect.left, width: Math.max(menuRect.width, 160) }}
         >
-          <button
-            type="button"
-            onClick={() => { onChange(''); setOpen(false); }}
-            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${!value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-500'}`}
-          >
-            <span className="flex-1">{placeholder}</span>
-            {!value && <Check className="size-3 text-blue-500" />}
-          </button>
+          {clearable && (
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); }}
+              className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-blue-50 ${!value ? 'font-medium text-blue-700 bg-blue-50/60' : 'text-slate-500'}`}
+            >
+              <span className="flex-1">{placeholder}</span>
+              {!value && <Check className="size-3 text-blue-500" />}
+            </button>
+          )}
           {options.map((opt) => (
             <button
               key={opt.value}

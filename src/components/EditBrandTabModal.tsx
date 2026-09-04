@@ -20,6 +20,7 @@ import { renameOperationalTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import IconPicker from './IconPicker';
 import TabPausedBrandsSection from './TabPausedBrandsSection';
+import SelectDropdown from './SelectDropdown';
 
 interface Props {
   tabName: string;
@@ -266,14 +267,15 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose 
           {isAdmin && (
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
-              <select
+              <SelectDropdown
                 value={status}
-                onChange={(e) => setStatus(e.target.value as 'active' | 'paused')}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-              </select>
+                onChange={(v) => setStatus(v as 'active' | 'paused')}
+                options={[
+                  { value: 'active', label: 'Active' },
+                  { value: 'paused', label: 'Paused' },
+                ]}
+                clearable={false}
+              />
               <p className="mt-1 text-xs text-slate-400">
                 Paused tabs stay visible and fully usable here, but are excluded from Overview, Score Summary, Schedule Planner, and Ask AI.
               </p>

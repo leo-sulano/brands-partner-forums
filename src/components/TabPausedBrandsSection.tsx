@@ -17,6 +17,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import PlatformPauseModal from './PlatformPauseModal';
+import SelectDropdown from './SelectDropdown';
 import {
   fetchBrandPlatformOverrides,
   fetchRemovedPlatformBrands,
@@ -230,17 +231,14 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
 
       {!loading && pauseableBrands.length > 0 && (
         <div className="mt-2 flex items-center gap-2">
-          <select
-            aria-label="Brand to pause"
-            value={addingBrand}
-            onChange={(e) => setAddingBrand(e.target.value)}
-            className="flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-700 focus:border-blue-400 focus:outline-none"
-          >
-            <option value="">— select a brand to pause —</option>
-            {pauseableBrands.map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
+          <div className="flex-1">
+            <SelectDropdown
+              value={addingBrand}
+              onChange={setAddingBrand}
+              options={pauseableBrands.map((b) => ({ value: b, label: b }))}
+              placeholder="— select a brand to pause —"
+            />
+          </div>
           <button
             type="button"
             disabled={!addingBrand}
