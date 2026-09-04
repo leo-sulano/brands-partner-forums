@@ -8952,3 +8952,60 @@ to Done only once an entry dated Sep 3 exists. Still open, flagged to the user, 
 bug, but 4-day-old backdated slots — user's call whether to restore); `BITP | RollingSlots
 Casino / tp / Fri Sep 4` has no card by design (its TP page is flagged removed, card parked in
 Page Removed).
+
+---
+
+## Task 320: Schedule Planner — remove the per-brand pause button; hide paused/removed brands
+
+**Date:** September 4, 2026
+
+Follow-on to Task 318 (the "Paused brands" section in the Edit Brand Tab modal). Per direct
+user request: pausing a brand+platform is now done only from the Brand Tabs side, so the
+Schedule Planner's own per-brand **"Pause brand"** button (the small pause icon beside every
+brand name, opening `PlatformPauseModal`) is removed, and a brand+platform that is currently
+**paused or flagged-removed no longer appears on the Schedule Planner grid at all**.
+
+**Scope:** `src/components/TabScheduleSection.tsx` only (plus 3 stale comment references in
+`TabPausedBrandsSection.tsx`). Tier 2 — one component, no `queries.ts`/`scoreSummary.ts`/
+date-filtering change, no schema/migration/edge-function change.
+
+**Changes:**
+- Deleted the per-brand pause button in the sticky Brand column and everything it was the only
+  caller of: the `<PlatformPauseModal>` render block, `computePauseModalData`,
+  `handleSavePauseModal`, the `pauseModalTarget` / `pauseModalBusy` state, and the now-unused
+  imports (`PlatformPauseModal`; `toISODate` / `mondayOf` / `addDays` from `scheduleBrands`).
+  `PlatformPauseModal.tsx` itself stays — `TabPausedBrandsSection` uses it now.
+- New `pausedComboKeys` memo — every `${brand_key}::${platform}` in the already-fetched
+  `pauses` state (`fetchActiveBrandPlatformPauses`), so it covers both manual
+  `brand_platform_override` pauses and auto-detected ones. It is exactly the set the
+  "Paused Brands (N)" panel lists.
+- New `activeBrandPlatforms(brand)` = `brandPlatforms(brand)` minus `pausedComboKeys`.
+  `visibleBrandPlatforms` (the day-cell grid + Schedule Status column) now sits on top of it,
+  so a paused platform draws no chips/status icon. `filteredBrands` drops a brand entirely when
+  `activeBrandPlatforms(b).length === 0` (every platform paused and/or flagged-removed); a
+  brand still active on ≥1 platform keeps its row. `platformCounts` (the "TP 24" strip) also
+  switches to `activeBrandPlatforms` so the strip matches the grid.
+- `brandPlatforms()` itself is **not** narrowed — `recalculatePauses`/`ensureWeekGenerated`
+  gating, the PMS "Project Paused" status sync, the "Paused Brands" panel
+  (`pausedBrandsRows`), and the CSV/Excel export all still see the paused combo. A
+  partially-paused brand still exports its paused-platform row with `Paused This Week = Y`,
+  matching how a flagged-removed platform already exports with `Page Removed = Y`.
+
+**Deliberately kept:** the "Paused Brands (N)" toolbar panel + its Resume Now flow — it is the
+only surface for auto-detected pauses (those never reach the Edit Brand Tab section). Removed
+brands already behaved this way (`brandPlatforms` excludes flagged-removed platforms; a
+fully-removed brand already fell out of `filteredBrands`); the partial-removed
+`RemovedPlatformIcon` badge next to a brand name is unchanged.
+
+**Verification:** `npm run build` clean; full suite **2333** passing. Live-verified via a
+throwaway Playwright run against local dev + prod data on the BIT tab (a TP-only tab with one
+auto-detected pause): the per-brand "Pause &lt;brand&gt;" button is gone (0 on the page — the 21
+remaining `Pause …` aria-labels are the pre-existing per-day cell chips, "Pause Trustpilot for
+X on tuesday"); "Funrize Casino" (auto-paused on TP, 2 consecutive Removed/Refused) no longer
+renders as a grid row and its Schedule Status "Paused" pill is gone; "Paused Brands (1)" panel
+still opens and lists Funrize Casino — Trustpilot with a working Resume Now; the flagged-removed
+red-X badges on 7Bit Casino crypto / Melbet / NoLimitCoins still render. The
+partial-pause-on-a-multi-platform-tab case (hide just that platform, keep the row) was not
+observed live — BIT is single-platform — but runs the same `activeBrandPlatforms` path.
+
+**Deploy:** `git push origin main` only — no migration, no edge-function redeploy.

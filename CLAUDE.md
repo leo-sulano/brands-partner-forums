@@ -61,7 +61,38 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-03 (newest):* The Edit Brand Tab modal (pencil icon on a Brand Tab) gained a
+- *2026-09-04 (newest):* Follow-on to Task 318. Per direct user request, pausing a
+  brand+platform is now done only from the Brand Tabs side (Edit Brand Tab → "Paused brands"),
+  so the Schedule Planner's own per-brand **"Pause brand"** button (the pause icon beside every
+  brand name, opening `PlatformPauseModal`) is **removed**, and a brand+platform that is
+  currently **paused or flagged-removed no longer appears on the Schedule Planner grid at all**.
+  Scoped to `src/components/TabScheduleSection.tsx` (+ 3 stale comment refs in
+  `TabPausedBrandsSection.tsx`). Deleted the button and everything it was the only caller of
+  (`<PlatformPauseModal>` render block, `computePauseModalData`, `handleSavePauseModal`, the
+  `pauseModalTarget`/`pauseModalBusy` state, the now-unused `PlatformPauseModal` /
+  `toISODate`/`mondayOf`/`addDays` imports — `PlatformPauseModal.tsx` stays, `TabPausedBrandsSection`
+  uses it). New `pausedComboKeys` memo (`${brand_key}::${platform}` for every row in the
+  already-fetched `pauses` state — both manual `brand_platform_override` and auto-detected
+  pauses, i.e. exactly what the "Paused Brands (N)" panel lists) + new `activeBrandPlatforms(brand)`
+  = `brandPlatforms(brand)` minus that set. `visibleBrandPlatforms` (day-cell grid + Schedule
+  Status column) and `platformCounts` (the "TP 24" strip) now sit on `activeBrandPlatforms`;
+  `filteredBrands` drops a brand only when `activeBrandPlatforms(b).length === 0` (every platform
+  paused/removed), so a partially-paused multi-platform brand keeps its row and loses only that
+  platform's chips. `brandPlatforms()` itself is **not** narrowed —
+  `recalculatePauses`/`ensureWeekGenerated` gating, the PMS "Project Paused" status sync, the
+  "Paused Brands" panel (`pausedBrandsRows`), and the CSV/Excel export all still see the paused
+  combo (a partially-paused brand still exports its paused-platform row with `Paused This Week = Y`,
+  matching the existing `Page Removed = Y` behaviour for flagged-removed platforms). The
+  "Paused Brands (N)" toolbar panel + Resume Now flow is deliberately **kept** — it's the only
+  surface for auto-detected pauses, which never reach the Edit Brand Tab section. `npm run build`
+  clean; full suite **2333** passing. Live-verified via a throwaway Playwright run against local
+  dev + prod data on BIT (TP-only, one auto-detected pause): per-brand "Pause &lt;brand&gt;"
+  button gone; "Funrize Casino" (auto-paused on TP) no longer a grid row and its "Paused" pill
+  gone; "Paused Brands (1)" still opens and lists it with a working Resume Now; flagged-removed
+  red-X badges still render. Partial-pause-on-a-multi-platform-tab not observed live (BIT is
+  single-platform) but runs the same `activeBrandPlatforms` path. Deploy: `git push origin main`
+  only — no migration, no Edge Function redeploy. Task 320.
+- *2026-09-03 (prior):* The Edit Brand Tab modal (pencil icon on a Brand Tab) gained a
   **"Paused brands" section** — a second entry point to the per-brand+platform pause that until
   now lived only in the Schedule Planner (`brand_platform_override`, reason + optional resume
   date, Task 311). It lists every override-driven pause on the tab (brand — platform — reason —

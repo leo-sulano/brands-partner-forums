@@ -8,8 +8,8 @@
 // Schedule Planner visit / Monday cron (so the Schedule Planner grid, PMS
 // status sync, and Ask AI's get_paused_combos don't see it until then). A
 // Resume here additionally deletes the combo's materialized brand_platform_pause
-// row (mirroring the Schedule Planner's own resume paths — handleResumeNow /
-// handleSavePauseModal in TabScheduleSection.tsx), so a resume is immediate.
+// row (mirroring the Schedule Planner's own handleResumeNow resume path in
+// TabScheduleSection.tsx), so a resume is immediate.
 // Not part of EditBrandTabModal's "Save Changes" batch — each pause/resume
 // writes immediately, exactly like the Schedule Planner flow.
 import { useEffect, useMemo, useState } from 'react';
@@ -150,11 +150,11 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     }
   }
 
-  // Mirrors TabScheduleSection.tsx's computePauseModalData + handleSavePauseModal
-  // (that file's versions are the fuller originals — they also carry
-  // autoPauseReasonByPlatform for auto-detected pauses, which this section never
-  // shows). The override-write + deleteBrandPlatformPause sequence below must
-  // stay in sync with handleSavePauseModal's.
+  // The one place a brand+platform pause is created/edited now (the Schedule
+  // Planner's own per-brand "Pause brand" button was removed — it only shows
+  // paused state, via the "Paused Brands" panel). Writes brand_platform_override
+  // directly; unchecking a platform also drops its materialized
+  // brand_platform_pause cache row so the resume is immediate.
   async function handleSavePause(
     brand: string,
     checkedPlatforms: Platform[],
@@ -197,9 +197,9 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     }
   }
 
-  // Mirrors TabScheduleSection.tsx's computePauseModalData (the fuller original).
-  // Keep the "seed reason/resumeAt from the first paused platform" behavior in
-  // sync with it.
+  // Seeds PlatformPauseModal's initial state from any existing override-pause
+  // rows for this brand: which platforms are checked, and the reason/resumeAt
+  // taken from the first paused platform found.
   function pauseModalInitial(brand: string): {
     checkedPlatforms: Platform[];
     initialReason: string;

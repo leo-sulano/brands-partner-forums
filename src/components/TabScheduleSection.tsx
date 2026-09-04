@@ -30,7 +30,7 @@ import {
   type WeeklyScheduleApproval,
 } from '../lib/queries';
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
-import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, toISODate, mondayOf, addDays, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
+import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
@@ -40,7 +40,6 @@ import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRende
 import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
-import PlatformPauseModal from './PlatformPauseModal';
 import PausedBrandsModal, { type PausedBrandRow } from './PausedBrandsModal';
 import PausedBadgeIcon from './PausedBadgeIcon';
 import { useAuth } from '../contexts/AuthContext';
@@ -161,8 +160,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
-  const [pauseModalTarget, setPauseModalTarget] = useState<{ brand: string } | null>(null);
-  const [pauseModalBusy, setPauseModalBusy] = useState(false);
   const [pausedBrandsOpen, setPausedBrandsOpen] = useState(false);
   const [pausedBrandsBusy, setPausedBrandsBusy] = useState(false);
   const { isApproved, isSuperAdmin, profile } = useAuth();
@@ -709,14 +706,37 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return resolveBrandPlatforms(tab, brand, activePlatforms, hiddenSet, restrictionMap, removedSet);
   }
 
-  // Rendering-only narrowing of brandPlatforms() to the toolbar's
+  // Every currently-paused brand+platform on this tab, keyed
+  // `${brand_key}::${platform}` — sourced from `pauses`
+  // (fetchActiveBrandPlatformPauses), so it covers BOTH manual
+  // brand_platform_override pauses and auto-detected ones (2 consecutive
+  // Removed/Refused, or a low rolling-30-day success rate). This is the exact
+  // same set the "Paused Brands (N)" toolbar panel lists.
+  const pausedComboKeys = useMemo(
+    () => new Set(pauses.map((p) => `${p.brand_key}::${p.platform}`)),
+    [pauses],
+  );
+
+  // brandPlatforms() minus anything currently paused. A paused brand+platform
+  // is managed from the Brand Tabs side now (Edit Brand Tab → "Paused brands")
+  // and no longer appears on the Schedule Planner grid at all — the same way a
+  // flagged-removed platform never does. `brandPlatforms()` itself is
+  // deliberately NOT narrowed (recalculatePauses/ensureWeekGenerated gating,
+  // the PMS "Project Paused" status sync, the Paused Brands panel, and the
+  // export all still need to see the paused combo).
+  function activeBrandPlatforms(brand: string): Platform[] {
+    const brandKey = normalizeBrandKey(brand);
+    return brandPlatforms(brand).filter((p) => !pausedComboKeys.has(`${brandKey}::${p}`));
+  }
+
+  // Rendering-only narrowing of activeBrandPlatforms() to the toolbar's
   // visiblePlatforms toggle — used solely at the two chip-drawing call sites
   // below (the day-cell grid and the Schedule Status column). Everywhere
-  // else (filteredBrands, export, PMS sync, pause detection) keeps calling
-  // brandPlatforms() directly so a toggled-off pill never changes what's
-  // actually tracked, only what's drawn.
+  // else (PMS sync, pause detection) keeps calling brandPlatforms() directly
+  // so a toggled-off pill never changes what's actually tracked, only what's
+  // drawn.
   function visibleBrandPlatforms(brand: string): Platform[] {
-    return filterVisiblePlatforms(brandPlatforms(brand), visiblePlatforms);
+    return filterVisiblePlatforms(activeBrandPlatforms(brand), visiblePlatforms);
   }
 
   // The inverse of brandPlatforms — every active platform actually flagged
@@ -766,15 +786,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return doneByPlatform;
   }
 
-  // A brand with zero remaining platforms after brandPlatforms' exclusion —
-  // on a single-platform tab, that means its only platform is flagged
-  // removed — has nothing left to show at all: no chip in any day cell, no
-  // scheduling, nothing the RemovedPlatformIcon badge alone would explain.
-  // Rather than list it as a permanently-empty row, it's dropped from
-  // Schedule Planner entirely (same rule would also drop a multi-platform
-  // brand if every one of its platforms happened to be flagged).
+  // A brand with zero remaining platforms after activeBrandPlatforms'
+  // exclusion — every one of its platforms is flagged removed and/or currently
+  // paused — has nothing left to show: no chip in any day cell, no scheduling.
+  // Rather than list it as a permanently-empty row it's dropped from the
+  // Schedule Planner entirely. A brand still active on at least one platform
+  // keeps its row; only the removed/paused platforms' chips disappear.
   const filteredBrands = useMemo(() => {
-    let brands = (tabCtx?.brands ?? []).filter((b) => brandPlatforms(b).length > 0);
+    let brands = (tabCtx?.brands ?? []).filter((b) => activeBrandPlatforms(b).length > 0);
     if (agentFilter.length > 0) {
       brands = brands.filter((b) => {
         const agent = agentIndex.get(normalizeBrandKey(b));
@@ -784,7 +803,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     const q = search.trim().toLowerCase();
     if (!q) return brands;
     return brands.filter((b) => b.toLowerCase().includes(q));
-  }, [tabCtx, search, agentFilter, agentIndex]);
+  }, [tabCtx, search, agentFilter, agentIndex, pausedComboKeys]);
 
   // Platform-count strip reported up to the shared Schedule Planner toolbar
   // (see onPlatformCounts) — sums slots across exactly the same
@@ -795,15 +814,18 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // grid can disagree on a past day by design; see CLAUDE.md's Known Issues
   // entry for this task.
   const platformCounts = useMemo(
-    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, brandPlatforms, columns, dateStatusIndex, todayISO),
-    // brandPlatforms is a plain function closing over tabCtx/activePlatforms
-    // (both re-derived fresh every render) rather than a memoized value —
-    // included here via tabCtx itself so this recomputes whenever the
-    // exclusion sets it reads from actually change. Past days now only count
-    // with real evidence (dateStatusIndex) rather than the plan alone — see
+    () => countActivePlatformSlots(scheduleRows, tab, filteredBrands, activeBrandPlatforms, columns, dateStatusIndex, todayISO),
+    // activeBrandPlatforms is a plain function closing over
+    // tabCtx/activePlatforms/pausedComboKeys (all re-derived fresh every
+    // render) rather than a memoized value — included here via tabCtx and
+    // pausedComboKeys so this recomputes whenever the exclusion sets it reads
+    // from actually change. Using activeBrandPlatforms (not brandPlatforms)
+    // keeps the strip counting exactly the platforms the grid renders — a
+    // paused platform is excluded from both. Past days now only count with
+    // real evidence (dateStatusIndex) rather than the plan alone — see
     // countActivePlatformSlots' own doc comment.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [scheduleRows, tab, filteredBrands, columns, tabCtx, dateStatusIndex, todayISO],
+    [scheduleRows, tab, filteredBrands, columns, tabCtx, pausedComboKeys, dateStatusIndex, todayISO],
   );
 
   useEffect(() => {
@@ -812,10 +834,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
 
   // Re-applies the override table's current effect onto brand_platform_pause
   // and refetches this component's own copies of `pauses`/`tabCtx.overrideMap`,
-  // so a Pause Brand save or a Resume Now click is reflected on the grid
-  // immediately rather than waiting for the next tab visit. Both
-  // PlatformPauseModal's save handler (Task 7) and the Paused Brands summary's
-  // Resume Now action (Task 8) call this after their own direct writes.
+  // so a Resume Now click is reflected on the grid immediately rather than
+  // waiting for the next tab visit. The Paused Brands summary's Resume Now
+  // action calls this after its own direct write. (Pausing a brand now happens
+  // on the Brand Tabs side — Edit Brand Tab → "Paused brands" — not here.)
   //
   // Three things this deliberately gets right:
   //   - recalculatePauses only runs when the write should actually take effect
@@ -889,78 +911,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       setToast({ message: e instanceof Error ? e.message : 'Failed to resume', kind: 'error' });
     } finally {
       setPausedBrandsBusy(false);
-    }
-  }
-
-  // Mirrored by pauseModalInitial in TabPausedBrandsSection.tsx (the Edit Brand
-  // Tab modal's "Paused brands" section). This is the fuller original — it also
-  // reports autoPauseReasonByPlatform for auto-detected pauses, which that
-  // section never shows. Keep the "seed reason/resumeAt from the first paused
-  // platform" behavior in sync between the two.
-  function computePauseModalData(brand: string): { platforms: Platform[]; checkedPlatforms: Platform[]; autoPauseReasonByPlatform: Partial<Record<Platform, string>>; initialReason: string; initialResumeAt: string | null } {
-    const brandKey = normalizeBrandKey(brand);
-    const platforms = brandPlatforms(brand);
-    const { pausesByPlatform } = computeCellData(brand);
-    const checkedPlatforms: Platform[] = [];
-    const autoPauseReasonByPlatform: Partial<Record<Platform, string>> = {};
-    let initialReason = '';
-    let initialResumeAt: string | null = null;
-    for (const platform of platforms) {
-      const override = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform));
-      if (override?.state === 'pause') {
-        checkedPlatforms.push(platform);
-        if (!initialReason && override.reason) {
-          initialReason = override.reason;
-          initialResumeAt = override.resumeAt;
-        }
-      } else if (pausesByPlatform[platform]) {
-        autoPauseReasonByPlatform[platform] = pausesByPlatform[platform]!.reason;
-      }
-    }
-    return { platforms, checkedPlatforms, autoPauseReasonByPlatform, initialReason, initialResumeAt };
-  }
-
-  // Diffs against each platform's CURRENT override values (state + reason +
-  // resumeAt), not merely against whether it was checked before — the modal
-  // pre-fills reason/until as editable fields, so editing just those on an
-  // already-paused platform has to write, even though the checked state itself
-  // didn't change.
-  //
-  // Mirrored by handleSavePause in TabPausedBrandsSection.tsx (this is the
-  // fuller original). The override-write + deleteBrandPlatformPause sequence on
-  // the resume (uncheck) branch must stay in sync between the two.
-  async function handleSavePauseModal(brand: string, checkedPlatforms: Platform[], reason: string, resumeAt: string | null) {
-    const brandKey = normalizeBrandKey(brand);
-    const nowChecked = new Set(checkedPlatforms);
-    setPauseModalBusy(true);
-    try {
-      let pausedAny = false;
-      for (const platform of brandPlatforms(brand)) {
-        const now = nowChecked.has(platform);
-        const existingOverride = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform));
-        const wasPaused = existingOverride?.state === 'pause';
-        if (now) {
-          const unchanged = wasPaused && existingOverride.reason === reason && existingOverride.resumeAt === resumeAt;
-          if (unchanged) continue;
-          await setBrandPlatformOverride(tab, brand, platform, 'pause', { reason, resumeAt });
-          pausedAny = true;
-        } else if (wasPaused) {
-          await clearBrandPlatformOverride(tab, brandKey, platform);
-          await deleteBrandPlatformPause(tab, brandKey, platform);
-        }
-      }
-      const appliedNow = await refreshPauseState();
-      // Only worth saying for a pause that was actually written: a pure resume
-      // (unchecking platforms) deletes its pause rows directly, so it's already
-      // visible regardless of which week is on screen.
-      if (pausedAny && !appliedNow) {
-        setToast({ message: "Paused — takes effect once you're viewing the current week.", kind: 'info' });
-      }
-      setPauseModalTarget(null);
-    } catch (e) {
-      setToast({ message: e instanceof Error ? e.message : 'Failed to update pause', kind: 'error' });
-    } finally {
-      setPauseModalBusy(false);
     }
   }
 
@@ -1492,18 +1442,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                         </Link>
                       </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
-                      {isApproved && (
-                        <Tooltip content={`Pause ${brand}`} className="ml-1.5 shrink-0 items-center">
-                          <button
-                            type="button"
-                            onClick={() => setPauseModalTarget({ brand })}
-                            className="rounded-md p-0.5 text-slate-300 hover:bg-slate-100 hover:text-slate-500"
-                            aria-label={`Pause ${brand}`}
-                          >
-                            <PausedBadgeIcon className="size-3.5" />
-                          </button>
-                        </Tooltip>
-                      )}
                     </td>
                     {columns.map((col) => {
                       const dayISO = col.iso;
@@ -1633,31 +1571,6 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           onClose={() => setPauseDaysTarget(null)}
         />
       )}
-      {pauseModalTarget && (() => {
-        const data = computePauseModalData(pauseModalTarget.brand);
-        return (
-          <PlatformPauseModal
-            brand={pauseModalTarget.brand}
-            platforms={data.platforms}
-            initialCheckedPlatforms={data.checkedPlatforms}
-            autoPauseReasonByPlatform={data.autoPauseReasonByPlatform}
-            initialReason={data.initialReason}
-            initialResumeAt={data.initialResumeAt}
-            // Next Monday after the REAL current week's Sunday — not just
-            // "tomorrow" — since a resume date anywhere within the current
-            // week would self-expire the instant recalculatePauses next
-            // evaluates it (week-granular expiry, see schedulerService.ts's
-            // weekEndSunday). Computed fresh each render (never memoized),
-            // matching isCurrentWeekStart's own doc comment on why "the
-            // current week" must always be derived from a live Date, not a
-            // stale snapshot.
-            minResumeAt={toISODate(addDays(mondayOf(new Date()), 7))}
-            busy={pauseModalBusy}
-            onSave={(checked, reason, resumeAt) => handleSavePauseModal(pauseModalTarget.brand, checked, reason, resumeAt)}
-            onClose={() => setPauseModalTarget(null)}
-          />
-        );
-      })()}
       <PausedBrandsModal
         open={pausedBrandsOpen}
         rows={pausedBrandsRows}
