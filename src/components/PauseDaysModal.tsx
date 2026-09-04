@@ -124,34 +124,36 @@ export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDa
           })}
         </div>
 
-        <div className="flex items-center justify-between gap-2 px-5 pt-3 pb-5">
-          {onRequestPlatformPause ? (
+        {onRequestPlatformPause && (
+          <div className="mx-4 mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs text-amber-800">
+              Need to pause for more than this week, or want to log <span className="font-semibold">why</span> it's paused (e.g. client hold)?
+            </p>
             <button
               type="button"
               onClick={onRequestPlatformPause}
-              className="rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-100"
+              className="mt-2 w-full rounded-md bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 transition-colors"
             >
-              Pause this platform (with reason)…
-            </button>
-          ) : (
-            <span />
-          )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => { onSave([...pausedDays]); onClose(); }}
-              className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-            >
-              Save
+              Pause this platform with a reason…
             </button>
           </div>
+        )}
+
+        <div className="flex items-center justify-end gap-2 px-5 pt-1 pb-5">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => { onSave([...pausedDays]); onClose(); }}
+            className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            Save
+          </button>
         </div>
       </div>
     </div>
