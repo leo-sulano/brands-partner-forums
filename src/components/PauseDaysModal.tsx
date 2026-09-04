@@ -14,8 +14,8 @@ interface Props {
   // has no brand_schedule row at all, so there's nothing here to toggle.
   // Un-cancelling goes through the day cell's own "+" button, not this modal.
   cancelledDays: Weekday[];
-  // When set, renders a "Pause this platform (with reason)…" button that closes
-  // this modal and escalates to the durable-pause editor. Passed by
+  // When set, renders a button that calls onRequestPlatformPause (the parent
+  // closes this modal and opens the durable-pause editor). Passed by
   // TabScheduleSection only when the target platform has no auto-detected pause.
   onRequestPlatformPause?: () => void;
   onSave: (pausedDays: Weekday[]) => void;

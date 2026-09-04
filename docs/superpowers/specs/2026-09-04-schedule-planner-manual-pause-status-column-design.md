@@ -35,7 +35,18 @@ from the Schedule Status column, with both surfaces staying in sync.
 1. **Grid visibility:** a manually-paused platform gets the *full* auto-pause treatment —
    dimmed "paused" chips in the day cells **and** the `⛔ Paused` pill in the Schedule
    Status column. A brand whose every platform is manually paused keeps its row (today
-   it's dropped).
+   it's dropped). **Correction (final-review pass, 2026-09-04):** this is only fully true
+   once the affected week is (re)generated with the pause already in place — i.e. from the
+   *next* Monday onward. On a week that was already generated before the pause was set,
+   the day-cell chips stay full-opacity/"active" (the override pause does not retroactively
+   clear existing `brand_schedule` day rows — `calendarRenderer.tsx`'s
+   `effectivePaused = isPaused && status == null`), while the `⛔ Paused` pill + "Manually
+   paused" tooltip in the Schedule Status column DO appear immediately (within ~1s, per
+   Risk "Immediacy of a fresh pause" below). Grid-vs-PMS window: PMS moves the affected
+   card(s) to Project Paused immediately on the same save, so for the remainder of an
+   already-generated week the grid's day chips can look active while PMS already shows
+   Project Paused — this self-corrects at the next Monday regeneration and is accepted,
+   not a bug.
 2. **Status-column click on a manual pause:** opens the reason + resume-date editor
    (`PlatformPauseModal`), the same one Edit Brand Tab uses — edit reason, change/clear
    the resume date, or resume (unpause).
@@ -218,10 +229,11 @@ Re-add imports removed by Task 320/321: `PlatformPauseModal`, `setBrandPlatformO
 - **CSV/Excel export** (`src/lib/scheduler/scheduleExport.ts`) — already iterates
   `brandPlatforms()` and marks `Paused This Week = Y`. No change. (Confirm it does not
   reference `activeBrandPlatforms`.)
-- **Ask AI** — `get_paused_combos` reads `brand_platform_override` directly; `get_schedule`
-  filters via `resolveBrandPlatforms` and does not subtract override pauses. No
-  `supabase/functions/ai-assistant/tools.ts` change, no redeploy. (Confirm during
-  implementation.)
+- **Ask AI** — `get_paused_combos` reads `brand_platform_pause` (`supabase/functions/
+  ai-assistant/tools.ts` ~line 1474), not `brand_platform_override` directly; `get_schedule`
+  filters via `resolveBrandPlatforms` and does not subtract override pauses. Either way,
+  neither tool ever subtracted override pauses from what it returns, so the conclusion is
+  unchanged: no `tools.ts` change, no redeploy.
 - **Auto-pause detection / expiry** (`recalculatePauses`, `schedulerRules.ts`) — untouched.
 - **`EditBrandTabModal` / `TabPausedBrandsSection` behavior** — unchanged except the
   internal refactor to call the shared `platformPauseActions.ts` helpers.

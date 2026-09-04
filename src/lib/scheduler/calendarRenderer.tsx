@@ -546,7 +546,18 @@ export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
   // manual/forced 'system' pause), not a separate detail, so it's kept
   // alongside the reason lines rather than dropped.
   const isActualPause = props.source === 'system' || props.source === 'manual';
-  const actionLine = clickable ? (isFlagged ? 'Click to manage pause days' : 'Click to pause days') : null;
+  // An override (manual) pause's click now opens the reason/resume editor
+  // (PlatformPauseModal via TabScheduleSection), not PauseDaysModal — only
+  // defined (even as null) on the 'system' variant, so this doubles as the
+  // type guard for reading pauseResumeAt.
+  const isOverridePause = props.source === 'system' && props.pauseResumeAt !== undefined;
+  const actionLine = clickable
+    ? (isOverridePause
+        ? 'Click to edit the pause reason / resume'
+        : isFlagged
+          ? 'Click to manage pause days'
+          : 'Click to pause days')
+    : null;
   const content = (
     <div>
       {lines.map((l, i) => <div key={i}>{l}</div>)}

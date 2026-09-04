@@ -12,6 +12,7 @@ describe('titleFor — system (paused) variant', () => {
     expect(t.split('\n')[0]).toBe('Auto-paused');
     expect(t).toContain('Reason: client hold');
     expect(t).toContain('Resumes week of');
+    expect(t.split('\n')).toHaveLength(3);
   });
 
   it('override permanent pause (pauseResumeAt null) says "Manually paused" and "until manually cleared"', () => {
@@ -19,6 +20,7 @@ describe('titleFor — system (paused) variant', () => {
     expect(t.split('\n')[0]).toBe('Manually paused');
     expect(t).toContain('Reason: client hold');
     expect(t).toContain('until manually cleared');
+    expect(t.split('\n')).toHaveLength(3);
   });
 
   it('override dated pause says "Manually paused" and "Resumes <date>"', () => {
@@ -26,5 +28,6 @@ describe('titleFor — system (paused) variant', () => {
     expect(t.split('\n')[0]).toBe('Manually paused');
     expect(t).toContain('Resumes ');
     expect(t).not.toContain('week of');
+    expect(t.split('\n')).toHaveLength(3);
   });
 });

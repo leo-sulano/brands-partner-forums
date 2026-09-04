@@ -157,7 +157,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
-  const [platformPauseTarget, setPlatformPauseTarget] = useState<{ brand: string } | null>(null);
+  const [platformPauseTarget, setPlatformPauseTarget] = useState<{ brand: string; platform: Platform } | null>(null);
   const [platformPauseBusy, setPlatformPauseBusy] = useState(false);
   const { isApproved, isSuperAdmin, profile } = useAuth();
 
@@ -1080,10 +1080,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             .filter((c) => c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === weekStartISO)
             .map((c) => c.weekday),
           // Offer the durable-pause escalation whenever this platform has no
-          // auto-detected pause (an override pause never opens PauseDaysModal —
-          // its click routes to PlatformPauseModal directly, Task 5). Covers the
-          // "active platform, want a real reasoned pause" case; harmless for a
-          // per-day-paused or no-schedule platform.
+          // auto-detected pause for the displayed week. (On the current week an
+          // already-materialized override pause routes its status-icon click
+          // straight to PlatformPauseModal; on a week with no pause row yet, this
+          // button is the way to reach it.)
           offerPlatformPause: !systemPaused,
         };
       })()
@@ -1105,17 +1105,24 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     }
   }
 
-  // Create / edit / resume a durable manual pause from the Schedule Status
-  // column. Writes brand_platform_override via the SAME shared helper Edit Brand
-  // Tab uses (platformPauseActions.savePlatformPause), so the two surfaces stay
-  // in sync automatically. Then bumps reloadSeq — that re-runs the brands-load
-  // effect (refetching brand_platform_override -> overrideMap) and, because
-  // tabCtx's identity changes, the scheduler-invocation effect, which
-  // recalculatePauses (current week only — already isCurrentWeekStart-gated
-  // there) and refetches `pauses`. Same trusted refresh path the live-entries
-  // INSERT fallback already uses.
+  // Create / edit / resume a durable manual pause for ONE platform from the
+  // Schedule Status column. Writes brand_platform_override via the SAME shared
+  // helper Edit Brand Tab uses (platformPauseActions.savePlatformPause), so the
+  // two surfaces stay in sync automatically — scoped here to eligiblePlatforms:
+  // [platform] so a save can never touch another platform's reason/resume date
+  // (see the platformPauseTarget doc comment / FIX 1 of the final-review pass
+  // for the brand-scoped bug this closed). Then bumps reloadSeq — that re-runs
+  // the brands-load effect (refetching brand_platform_override -> overrideMap)
+  // and, because tabCtx's identity changes, the scheduler-invocation effect,
+  // which recalculatePauses (current week only — already isCurrentWeekStart-
+  // gated there) and refetches `pauses`. Same trusted refresh path the
+  // live-entries INSERT fallback already uses. A durable write on a
+  // non-current week produces no visible grid change until the next weekly
+  // regeneration (see CLAUDE.md's Known Issues), so the success toast makes
+  // that explicit instead of leaving the save silent.
   async function handleSavePlatformPause(
     brand: string,
+    platform: Platform,
     checkedPlatforms: Platform[],
     reason: string,
     resumeAt: string | null,
@@ -1126,7 +1133,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       await savePlatformPause({
         tab,
         brand,
-        eligiblePlatforms: brandPlatforms(brand),
+        eligiblePlatforms: [platform],
         checkedPlatforms,
         reason,
         resumeAt,
@@ -1134,6 +1141,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       });
       setPlatformPauseTarget(null);
       setReloadSeq((n) => n + 1);
+      setToast({
+        message: isCurrentWeekStart(weekStartISO)
+          ? (checkedPlatforms.includes(platform) ? 'Pause saved.' : 'Platform resumed.')
+          : 'Pause saved — it will show on the grid from the current week.',
+        kind: 'success',
+      });
     } catch (err) {
       setToast({ message: err instanceof Error ? err.message : 'Failed to update pause', kind: 'error' });
     } finally {
@@ -1446,7 +1459,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             !!weekPausesByPlatform[platform] &&
                             tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform))?.state === 'pause';
                           const onClick = isOverridePaused
-                            ? () => setPlatformPauseTarget({ brand })
+                            ? () => setPlatformPauseTarget({ brand, platform })
                             : () => setPauseDaysTarget({ brand, platform });
                           if (weekPausesByPlatform[platform]) {
                             return (
@@ -1508,7 +1521,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           cancelledDays={pauseDaysModalData.cancelledDays}
           onRequestPlatformPause={
             pauseDaysModalData.offerPlatformPause
-              ? () => { setPauseDaysTarget(null); setPlatformPauseTarget({ brand: pauseDaysTarget.brand }); }
+              ? () => { setPauseDaysTarget(null); setPlatformPauseTarget({ brand: pauseDaysTarget.brand, platform: pauseDaysTarget.platform }); }
               : undefined
           }
           onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
@@ -1516,20 +1529,19 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         />
       )}
       {platformPauseTarget && tabCtx && (() => {
-        const brand = platformPauseTarget.brand;
-        const eligible = brandPlatforms(brand);
-        const init = derivePauseModalInitial(tab, brand, eligible, tabCtx.overrideMap);
+        const { brand, platform } = platformPauseTarget;
+        const init = derivePauseModalInitial(tab, brand, [platform], tabCtx.overrideMap);
         return (
           <PlatformPauseModal
             brand={brand}
-            platforms={eligible}
+            platforms={[platform]}
             initialCheckedPlatforms={init.checkedPlatforms}
             autoPauseReasonByPlatform={{}}
             initialReason={init.initialReason}
             initialResumeAt={init.initialResumeAt}
             minResumeAt={toISODate(addDays(mondayOf(new Date()), 7))}
             busy={platformPauseBusy}
-            onSave={(checked, reason, resumeAt) => handleSavePlatformPause(brand, checked, reason, resumeAt)}
+            onSave={(checked, reason, resumeAt) => handleSavePlatformPause(brand, platform, checked, reason, resumeAt)}
             onClose={() => setPlatformPauseTarget(null)}
           />
         );

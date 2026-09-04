@@ -9144,3 +9144,107 @@ Not touched: RLS, approval semantics, the `approved_by · date` detail (stays ta
 compact card shows just Approved/Draft), `pushScheduleToPms`'s gate. No schema or Edge Function
 change. `npm run build` clean; full suite **2341** passing (2334 + 7 new). Live browser
 verification not run this session. Deploy: `git push origin main` only.
+
+---
+
+## Task 323: Manual pauses editable from the Schedule Planner's Schedule Status column
+
+**Date:** September 4, 2026
+
+Tasks 320/321 had removed all manual-pause management from the Schedule Planner grid entirely —
+an override-driven pause (`brand_platform_override`, `state === 'pause'`) drew no chip in the day
+cells and no icon in the Schedule Status column, and Edit Brand Tab → "Paused brands" (Task 318)
+became the only place to see or edit one. Per direct user request, this reverses that: a manually
+paused brand+platform is visible on the Schedule Planner grid again and directly editable from the
+Schedule Status column, with both surfaces staying in sync.
+
+Built via 6 SDD tasks (spec + plan:
+`docs/superpowers/specs/2026-09-04-schedule-planner-manual-pause-status-column-design.md`,
+`docs/superpowers/plans/2026-09-04-schedule-planner-manual-pause-status-column.md`) plus a final
+whole-branch review fix wave, all in `src/components/TabScheduleSection.tsx` unless noted:
+
+1. **Grid visibility restored.** `brandPlatforms()` is once again the sole source for
+   `visibleBrandPlatforms`/`platformCounts`/`filteredBrands` — Task 320/321's
+   `overridePausedComboKeys` memo and `activeBrandPlatforms()` subtraction are deleted. A
+   manually-paused platform now gets the same treatment `computeCellData` already gives an
+   auto-detected pause (dimmed day-cell chip + `source="system"` "⛔ Paused" Schedule Status pill),
+   and an all-manually-paused brand keeps its row instead of being dropped.
+2. **Tooltip wording fork** — `titleFor` (`src/lib/scheduler/calendarRenderer.tsx`) now returns 3
+   lines for the `system` variant, forking on `pauseResumeAt` (`undefined` = auto-detected,
+   `null`/date = override): "Auto-paused" vs "Manually paused", with the reason on its own line.
+   `ScheduleStatusIcon` renders every line the split produces instead of assuming exactly two.
+3. **Click routing.** An override-paused platform's Schedule Status icon now opens
+   `PlatformPauseModal` (the reason/resume-date editor) directly instead of `PauseDaysModal`;
+   every other state (auto-pause, cancelled, manual-per-day-pause, no-schedule, active) still opens
+   `PauseDaysModal` unchanged.
+4. **`PauseDaysModal` escalation button.** New optional `onRequestPlatformPause` prop renders a
+   "Pause this platform (with reason)…" button, passed only when the target platform is currently
+   active (no per-week pause yet) — closes `PauseDaysModal` and opens `PlatformPauseModal`.
+5. **Shared write path — new `src/lib/platformPauseActions.ts`** (`savePlatformPause`/
+   `resumePlatformPause`/`derivePauseModalInitial`, unit-tested). `TabPausedBrandsSection`'s
+   existing save/resume logic was lifted into these two functions unchanged; `TabScheduleSection`
+   now calls the same functions, so the two surfaces (Schedule Planner status column, Edit Brand
+   Tab "Paused brands") can no longer independently diverge on how an override pause is
+   written/cleared — CLAUDE.md's cross-dashboard-consistency rule.
+6. **Refresh after a write** is a `reloadSeq` bump — triggers the existing brands-load effect
+   (refetches `brand_platform_override` → `overrideMap`) and, via `tabCtx`'s changed identity, the
+   scheduler-invocation effect (`recalculatePauses`, already `isCurrentWeekStart`-gated) — reusing
+   the same trusted refetch path the live-entries realtime INSERT fallback already uses, rather
+   than reviving a bespoke `refreshPauseState` helper (deliberate simplification, heavier than
+   strictly necessary but avoids a second refresh code path).
+
+**Final whole-branch review fix wave (0 Critical, 3 Important, 3 folded Minors), same day:**
+- **FIX 1 (Important) — `PlatformPauseModal` made PLATFORM-scoped, not brand-scoped.** The modal
+  had been opening brand-scoped (`platforms={brandPlatforms(brand)}`, every override-paused
+  platform pre-checked, reason/date seeded from the *first* paused platform) from both entry paths
+  (the status-column click on an override-paused platform, and the `PauseDaysModal` escalation
+  button) — so saving a new reason for one platform could silently rewrite another platform's
+  stored reason/resume date. Concretely: brand has TP paused "client hold"; clicking AG's status
+  icon opened the modal with TP pre-checked and "client hold" prefilled; typing a new reason for AG
+  and saving would rewrite TP's reason too (and could turn TP's permanent pause into a dated one).
+  Fixed by scoping the Schedule Planner's modal to exactly the clicked platform:
+  `platformPauseTarget` is now `{ brand, platform }`; the click-routing (status-column icon and the
+  `PauseDaysModal` escalation button) both pass the platform through; the modal render computes
+  `derivePauseModalInitial(tab, brand, [platform], overrideMap)` and passes `platforms={[platform]}`;
+  `handleSavePlatformPause` gained a `platform` param and calls `savePlatformPause` with
+  `eligiblePlatforms: [platform]`, so a save can now only ever touch that one platform's override
+  row. Edit Brand Tab's `TabPausedBrandsSection` modal is untouched — it keeps its own
+  long-standing, spec-sanctioned brand-scoped behavior (documented separately in Known Issues'
+  finding M1).
+- **FIX 2/3 (Important, folded into FIX 1) — success toast on save.** `handleSavePlatformPause`
+  previously only toasted on failure; a durable write on a non-current week produced zero visible
+  feedback. Now fires a success toast: "Pause saved." / "Platform resumed." on the current week
+  (worded off whether the saved platform is still checked), or "Pause saved — it will show on the
+  grid from the current week." on any other displayed week.
+- **FIX 4 (Minor) — `ScheduleStatusIcon` action-line wording.** An override pause's click now opens
+  the reason/resume editor, not `PauseDaysModal`, so the hover/tooltip action line now reads "Click
+  to edit the pause reason / resume" for that case instead of the generic "Click to manage pause
+  days".
+- **FIX 5 (Minor) — 2 stale doc comments corrected**, in `TabScheduleSection.tsx` (the
+  `offerPlatformPause` comment previously claimed an override pause "never opens PauseDaysModal",
+  true only once a pause is materialized for the displayed week — a future/past week with no
+  materialized pause row still does) and `PauseDaysModal.tsx` (the `onRequestPlatformPause` doc
+  comment previously said the button itself "closes this modal and escalates" — it only calls the
+  callback; the parent does the closing).
+- **FIX 6 (Minor) — `titleFor` 3-line contract locked.** Added
+  `expect(t.split('\n')).toHaveLength(3)` to each of the 3 `system`-variant tests in
+  `calendarRenderer.titleFor.test.ts`, since `ScheduleStatusIcon`'s rendering depends on exactly 3
+  lines for this branch and a node-env test can't check the JSX directly.
+- **Doc corrections (Task 7 deliverable):** the spec's Decision 1 was corrected — grid day-cell
+  dimming for a manual pause only lands from the *next* weekly regeneration on an already-generated
+  week (the override pause does not retroactively clear existing `brand_schedule` day rows), while
+  the Schedule Status pill/tooltip and the PMS Project Paused move are both immediate; added a
+  grid-vs-PMS window note. The spec's Section H was corrected — Ask AI's `get_paused_combos` reads
+  `brand_platform_pause`, not `brand_platform_override` directly (the conclusion, no `tools.ts`
+  change needed, is unchanged). The plan's Task 7 Step 2 live-verification wording was corrected to
+  match. CLAUDE.md's Known Issues gained a new bullet for the grid-vs-PMS window and the existing
+  M1 bullet was corrected to note the Schedule Planner side is now platform-scoped (the stale
+  `TabScheduleSection.tsx:907` line reference, from a deleted Task 320/321 code path, was dropped).
+
+Not touched: PMS status sync logic itself, CSV/Excel export, `recalculatePauses`/
+`schedulerService.ts`, `computeCellData`, Ask AI's `get_paused_combos`/`get_schedule` (both already
+read the right tables — no redeploy needed), `EditBrandTabModal`/`TabPausedBrandsSection` behavior.
+
+`npm run build` clean; full suite **2352** passing (up from 2341 before this branch). Live
+Playwright pass: PENDING (controller to run before push). Deploy: `git push origin main` only — no
+migration, no Edge Function redeploy.
