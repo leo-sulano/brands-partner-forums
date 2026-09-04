@@ -14,6 +14,10 @@ interface Props {
   // has no brand_schedule row at all, so there's nothing here to toggle.
   // Un-cancelling goes through the day cell's own "+" button, not this modal.
   cancelledDays: Weekday[];
+  // When set, renders a "Pause this platform (with reason)…" button that closes
+  // this modal and escalates to the durable-pause editor. Passed by
+  // TabScheduleSection only when the target platform has no auto-detected pause.
+  onRequestPlatformPause?: () => void;
   onSave: (pausedDays: Weekday[]) => void;
   onClose: () => void;
 }
@@ -34,7 +38,7 @@ interface Props {
 // (informational only — un-cancelling goes through the day cell's own "+"
 // button, not this modal), and a day with nothing scheduled at all renders
 // dimmed with no checkbox, since there's nothing there to pause.
-export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDays, initialPausedDays, cancelledDays, onSave, onClose }: Props) {
+export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDays, initialPausedDays, cancelledDays, onRequestPlatformPause, onSave, onClose }: Props) {
   const [pausedDays, setPausedDays] = useState<Set<Weekday>>(() => new Set(initialPausedDays));
 
   useEffect(() => {
@@ -120,21 +124,34 @@ export default function PauseDaysModal({ brand, platform, weekLabel, scheduledDa
           })}
         </div>
 
-        <div className="flex items-center justify-end gap-2 px-5 pt-3 pb-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => { onSave([...pausedDays]); onClose(); }}
-            className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
-          >
-            Save
-          </button>
+        <div className="flex items-center justify-between gap-2 px-5 pt-3 pb-5">
+          {onRequestPlatformPause ? (
+            <button
+              type="button"
+              onClick={onRequestPlatformPause}
+              className="rounded-md px-2.5 py-1.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-100"
+            >
+              Pause this platform (with reason)…
+            </button>
+          ) : (
+            <span />
+          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => { onSave([...pausedDays]); onClose(); }}
+              className="rounded-md bg-blue-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
     </div>

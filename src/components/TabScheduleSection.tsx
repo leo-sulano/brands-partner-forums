@@ -1079,6 +1079,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           cancelledDays: cancellations
             .filter((c) => c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === weekStartISO)
             .map((c) => c.weekday),
+          // Offer the durable-pause escalation whenever this platform has no
+          // auto-detected pause (an override pause never opens PauseDaysModal —
+          // its click routes to PlatformPauseModal directly, Task 5). Covers the
+          // "active platform, want a real reasoned pause" case; harmless for a
+          // per-day-paused or no-schedule platform.
+          offerPlatformPause: !systemPaused,
         };
       })()
     : null;
@@ -1500,6 +1506,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           scheduledDays={pauseDaysModalData.scheduledDays}
           initialPausedDays={pauseDaysModalData.initialPausedDays}
           cancelledDays={pauseDaysModalData.cancelledDays}
+          onRequestPlatformPause={
+            pauseDaysModalData.offerPlatformPause
+              ? () => { setPauseDaysTarget(null); setPlatformPauseTarget({ brand: pauseDaysTarget.brand }); }
+              : undefined
+          }
           onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
           onClose={() => setPauseDaysTarget(null)}
         />
