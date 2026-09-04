@@ -9,7 +9,7 @@
 // the two surfaces (and the notification email + PMS status sync that come
 // with a fresh flag) can never drift.
 import { useEffect, useMemo, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown } from 'lucide-react';
 import PlatformRemovedModal from './PlatformRemovedModal';
 import SelectDropdown from './SelectDropdown';
 import { fetchRemovedPlatformBrandsForTab, type RemovedPlatformBrandRow } from '../lib/queries';
@@ -39,6 +39,11 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
   const [error, setError] = useState<string | null>(null);
   const [addingBrand, setAddingBrand] = useState('');
   const [pickerBrand, setPickerBrand] = useState<string | null>(null);
+  // Collapsed by default — a heavily-flagged tab's list can run to dozens of
+  // rows and would otherwise dominate the modal. The "Flag removed…" picker
+  // below stays visible regardless, so adding a new flag never requires
+  // expanding this list first.
+  const [expanded, setExpanded] = useState(false);
 
   const tabPlatforms = useMemo(() => getTabPlatforms(tabName) as Platform[], [tabName]);
 
@@ -66,6 +71,7 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
   const existingSet = useMemo(() => buildRemovedPlatformBrandSet(rows), [rows]);
   const existingDateMap = useMemo(() => buildRemovedPlatformBrandDateMap(rows), [rows]);
   const displayRows = useMemo(() => deriveTabRemovedPlatformRows(rows), [rows]);
+  const hasRows = !loading && !loadError && displayRows.length > 0;
 
   async function refresh() {
     setRows(await fetchRemovedPlatformBrandsForTab(tabName));
@@ -121,7 +127,19 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
 
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-500 mb-1.5">Removed platform pages</label>
+      <button
+        type="button"
+        onClick={() => hasRows && setExpanded((v) => !v)}
+        disabled={!hasRows}
+        className="mb-1.5 flex w-full items-center justify-between gap-1 text-left enabled:cursor-pointer"
+      >
+        <span className="text-xs font-medium text-slate-500">
+          Removed platform pages{hasRows ? ` (${displayRows.length})` : ''}
+        </span>
+        {hasRows && (
+          <ChevronDown className={`size-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
+        )}
+      </button>
 
       {loading ? (
         <div className="flex items-center gap-2 py-2 text-xs text-slate-400">
@@ -131,7 +149,7 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
         <p className="text-xs text-rose-600">Failed to load removed platform pages.</p>
       ) : displayRows.length === 0 ? (
         <p className="text-xs text-slate-400">No platform pages flagged removed on this tab.</p>
-      ) : (
+      ) : expanded ? (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
           {displayRows.map((r) => (
             <li key={`${r.brand}::${r.platform}`} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
@@ -162,7 +180,7 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
 
       {!loading && brands.length > 0 && (
         <div className="mt-2 flex items-center gap-2">
