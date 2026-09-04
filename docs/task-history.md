@@ -9246,5 +9246,21 @@ Not touched: PMS status sync logic itself, CSV/Excel export, `recalculatePauses`
 read the right tables — no redeploy needed), `EditBrandTabModal`/`TabPausedBrandsSection` behavior.
 
 `npm run build` clean; full suite **2352** passing (up from 2341 before this branch). Live
-Playwright pass: PENDING (controller to run before push). Deploy: `git push origin main` only — no
-migration, no Edge Function redeploy.
+Playwright pass: **partially done**, against real production data (Hanan tab, Cryptoroyal.com,
+logged in as leo@optinetsolutions.com) — confirmed manual pauses now render on the grid across
+multiple tabs (BIT's Fortuneplay row, Hanan's Cryptoroyal.com row all show "Paused" pills that
+were previously hidden entirely); confirmed the tooltip fork live ("Manually paused" / "Reason:
+…" / "Stays paused until manually cleared" / "Paused by: …" / "Click to edit the pause reason /
+resume"); confirmed clicking an override-paused platform's pill opens the reason/resume editor
+scoped to exactly that platform (only TP's checkbox shown, AG/CG absent) — and, the critical check
+for FIX 1, edited Cryptoroyal.com's TP reason and verified via direct REST reads before/after that
+AG's and CG's `brand_platform_override` rows (`reason`, `resume_at`) were **byte-identical**, untouched
+by the save. Reverted the test edit afterward (TP's `reason` is now `''` rather than its original
+`null` — the modal always sends a trimmed string, never `null`, so an exact revert to `null` isn't
+reachable from the UI; functionally identical since both are falsy, and AG/CG were never touched).
+**Not covered this pass** (time-boxed): creating a brand-new pause from an active platform via the
+`PauseDaysModal` "Pause this platform (with reason)…" escalation button (FIX D/Task 6); the resume
+flow via unchecking; the non-current-week save/toast wording; and a live check that Edit Brand Tab
+→ "Paused brands" shows the same edited row (code-verified via the shared `platformPauseActions.ts`
+call path in both surfaces, not click-verified). Worth a follow-up pass. Deploy: `git push origin
+main` only — no migration, no Edge Function redeploy.

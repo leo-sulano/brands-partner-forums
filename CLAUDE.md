@@ -96,8 +96,18 @@ Brands Partner Forum/
   (`ScheduleStatusIcon`'s action-line now says "Click to edit the pause reason / resume" for an
   override pause instead of the generic "Click to manage pause days"; two stale doc comments
   corrected) and a `titleFor` test hardening (pins the 3-line contract the `system`-variant
-  render depends on). `npm run build` clean; full suite **2352** passing. Live Playwright pass:
-  PENDING (controller to run before push). Deploy: `git push origin main` only — no migration, no
+  render depends on). `npm run build` clean; full suite **2352** passing. Live-verified (partial)
+  against real production data on the Hanan tab's Cryptoroyal.com: manual pauses render on the
+  grid across multiple tabs (previously hidden entirely); the tooltip fork and its "Click to edit
+  the pause reason / resume" action line both render correctly; clicking an override-paused
+  platform's pill opens the reason/resume editor scoped to exactly that platform (AG/CG absent
+  from a modal opened via TP's icon) — and, the load-bearing check for the platform-scoping fix,
+  editing TP's reason left AG's and CG's `brand_platform_override` rows byte-identical (verified
+  via direct REST reads before/after), confirming the cross-platform overwrite bug is closed. Test
+  edit reverted afterward. Not covered this pass: creating a new pause via the `PauseDaysModal`
+  escalation button, the resume flow, non-current-week toast wording, and a click-verified (vs.
+  code-verified) check that Edit Brand Tab's "Paused brands" reflects the same edit — see Task 323
+  in task-history.md for the full breakdown. Deploy: `git push origin main` only — no migration, no
   Edge Function redeploy (`get_paused_combos`/`get_schedule` already read the right tables).
   Known window, accepted: on a week already generated before the pause, the day-cell chips stay
   active-looking until the next Monday regeneration even though the `⛔ Paused` pill/tooltip and
