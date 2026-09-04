@@ -490,7 +490,7 @@ function resumeAtLabel(resumeAt: string): string {
 // row. A future week starts fresh with its own independently-clicked or
 // freshly-generated days, so there's nothing accurate to claim about when
 // either "ends."
-function titleFor(props: ScheduleStatusIconProps): string {
+export function titleFor(props: ScheduleStatusIconProps): string {
   if (props.source === 'system') {
     const { pause, pauseResumeAt } = props;
     // pauseResumeAt is only ever passed (even as null) when this pause is
@@ -500,17 +500,20 @@ function titleFor(props: ScheduleStatusIconProps): string {
     // is what this replaced: once a manual override can carry a custom
     // reason (docs/superpowers/specs/2026-09-02-brand-platform-pause-reason-design.md),
     // every custom-reason pause would otherwise misreport as auto-detected.
-    // undefined -> auto-detected, unchanged "Resumes week of ..." wording.
-    // null -> override-driven, permanent. A date string -> override-driven,
-    // periodic, with its own real resume date instead of the generic
-    // one-week-later estimate the auto-detected branch uses.
+    // undefined -> auto-detected underperformance pause, "Auto-paused" +
+    //   the generic one-week-later "Resumes week of ..." estimate.
+    // null -> override-driven, permanent ("Manually paused").
+    // A date string -> override-driven, periodic ("Manually paused"), with
+    //   its own real resume date.
+    // Each branch returns THREE \n-joined lines (header / reason / resume);
+    // ScheduleStatusIcon splits on \n and renders every line.
     if (pauseResumeAt === undefined) {
-      return `Reason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`;
+      return `Auto-paused\nReason: ${pause.reason}\nResumes week of ${resumeWeekLabel(pause.paused_week_start)}`;
     }
     if (pauseResumeAt === null) {
-      return `Reason: ${pause.reason}\nStays paused until manually cleared`;
+      return `Manually paused\nReason: ${pause.reason}\nStays paused until manually cleared`;
     }
-    return `Reason: ${pause.reason}\nResumes ${resumeAtLabel(pauseResumeAt)}`;
+    return `Manually paused\nReason: ${pause.reason}\nResumes ${resumeAtLabel(pauseResumeAt)}`;
   }
   if (props.source === 'manual') {
     return `Reason: Manually paused (${props.days.map((d) => WEEKDAY_LABELS[d]).join(', ')})`;
@@ -530,7 +533,7 @@ function titleFor(props: ScheduleStatusIconProps): string {
 // a redundant tab stop.
 export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
   const { platform, agent, pausedBy, clickable, onClick } = props;
-  const [line1, line2] = titleFor(props).split('\n');
+  const lines = titleFor(props).split('\n');
   // "flagged" covers every non-active variant (system/manual/cancelled/
   // no-schedule) -- all four stay always-visible and share the same
   // dimmed-badge treatment; only 'cancelled' gets its own icon/text below.
@@ -546,8 +549,7 @@ export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
   const actionLine = clickable ? (isFlagged ? 'Click to manage pause days' : 'Click to pause days') : null;
   const content = (
     <div>
-      <div>{line1}</div>
-      {line2 && <div>{line2}</div>}
+      {lines.map((l, i) => <div key={i}>{l}</div>)}
       {isActualPause && pausedBy && <div>Paused by: {pausedBy}</div>}
       {agent && <div>Agent: {agent}</div>}
       {actionLine && <div>{actionLine}</div>}
