@@ -1164,6 +1164,36 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
   }
 }
 
+export interface BrandCatalogRow {
+  tab: string;
+  brand: string;
+  link: string | null;
+  // timestamptz ISO string — anchors the scheduler's new-brand ramp-up (see
+  // buildNewBrandAddedAtMap in scheduler/scheduleUtils.ts).
+  added_at: string;
+}
+
+export async function fetchBrandCatalog(tab: string, client: SupabaseClient = supabase): Promise<BrandCatalogRow[]> {
+  const { data, error } = await client
+    .from('brand_catalog')
+    .select('tab, brand, link, added_at')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as BrandCatalogRow[];
+}
+
+// Registers a brand for a tab with no entries row — Edit Brand Tab's "Add a
+// brand" control. Unique on (tab, brand_key) at the DB level; a duplicate
+// insert surfaces as a normal thrown error (callers should pre-check against
+// the tab's already-known brand list for a friendlier message before calling
+// this, same as every other creatable-name flow in this app).
+export async function addBrandToCatalog(tab: string, brand: string, link: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('brand_catalog')
+    .insert({ tab, brand, link, added_by: await currentUserEmail() });
+  if (error) throw error;
+}
+
 export interface BrandPlatformOverride {
   tab: string;
   brand_key: string;

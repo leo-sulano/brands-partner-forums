@@ -76,6 +76,53 @@ describe('generateWeekSchedule', () => {
     expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'cg')).toHaveLength(0);
   });
 
+  it('caps a ramping brand to 1 post on a platform whose normal frequency is higher', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['tp'],
+      rampBrandKeys: ['winmega'],
+    };
+    // TP is normally 2/week; ramp caps this brand to 1.
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'tp')).toHaveLength(1);
+  });
+
+  it('leaves a ramping brand unaffected on a platform already at 1 post/week', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['cg'],
+      rampBrandKeys: ['winmega'],
+    };
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'cg')).toHaveLength(1);
+  });
+
+  it('does not cap a non-ramping brand even when another brand is ramping', () => {
+    const input: SchedulerInput = {
+      brands: ['WinMega', 'OtherBrand'],
+      activePlatforms: ['tp'],
+      pinnedBrandPlatforms: [],
+      pausedBrandPlatforms: [],
+      resumingBrandPlatforms: [],
+      carryover: [],
+      unavailableDays: [],
+      rampBrandKeys: ['winmega'],
+      seed: 'test-seed',
+    };
+    const slots = generateWeekSchedule(input);
+    expect(slotsFor(slots, 'WinMega', 'tp')).toHaveLength(1);
+    expect(slotsFor(slots, 'OtherBrand', 'tp')).toHaveLength(2);
+  });
+
+  it('caps carryover on top of the normal frequency too, for a ramping brand', () => {
+    const input: SchedulerInput = {
+      ...baseInput,
+      activePlatforms: ['cg'],
+      rampBrandKeys: ['winmega'],
+      carryover: [{ brand: 'WinMega', brandKey: 'winmega', platform: 'cg', count: 3 }],
+    };
+    // Without ramp this would be 1 normal + 3 carryover = 4; ramp caps it to 1.
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'cg')).toHaveLength(1);
+  });
+
   it('balances AG (no preferred days) across the week when many brands are scheduled', () => {
     const input: SchedulerInput = {
       brands: ['A', 'B', 'C', 'D', 'E'],

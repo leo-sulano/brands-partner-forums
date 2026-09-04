@@ -61,7 +61,43 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-04 (newest):* Manual `brand_platform_override` pauses are visible on the Schedule
+- *2026-09-04 (newest):* Edit Brand Tab's "Add a brand" control (added earlier the same session)
+  reworked per direct user follow-up to not create a phantom `entries` row — it now writes to a new
+  standalone `brand_catalog` table instead (same shape as `brand_platform_override`/
+  `flagged_platform_brands`: generated `brand_key`, unique `(tab, brand_key)`, 4-policy RLS, a plain
+  `tab` column so the tab-rename RPCs cover it automatically). `deriveTabBrands` (`tab-configs.ts`)
+  gained an optional `catalogBrands` param merged into its entry-derived list; every "which brands
+  exist on this tab" consumer was updated to fetch `brand_catalog` and pass the names in —
+  `BrandGroup.tsx` (Brand filter, Paused Brands picker, and `brandProfiles` so Add Review Account's
+  Brand Name picker gets the catalog brand's link pre-filled with zero changes to that component
+  itself), `TabScheduleSection.tsx` (feeds `ensureWeekGenerated`, so a catalog brand is actually
+  schedulable), `SchedulePlanner.tsx`'s landing-grid preview, and `generate-weekly-schedule`'s
+  Monday cron (`buildTabContext` now calls the shared `deriveTabBrands` instead of its own
+  hand-duplicated copy, incidentally fixing a latent renamed-hardcoded-tab `TAB_DEFAULT_BRAND`
+  lookup bug in that copy). Per direct user request (confirmed via 3 clarifying questions), a
+  catalog-added brand also gets a **new-brand ramp-up**: capped to 1 post per active platform for
+  its first 2 calendar weeks (anchored on `brand_catalog.added_at`'s Monday, not "next time this tab
+  happens to generate"), then automatic normal frequency from week 3 — `TabContext.newBrandAddedAt`
+  (built by new `buildNewBrandAddedAtMap` in `scheduleUtils.ts`) → `rampBrandKeys` computed in
+  `ensureWeekGenerated` → a new optional `SchedulerInput.rampBrandKeys` capped only in
+  `schedulerEngine.ts`'s Priority 3 loop. 16 new unit tests across `schedulerEngine.test.ts`/
+  `schedulerService.test.ts`/`tab-configs.test.ts`/`scheduleUtils.test.ts`; full suite **2368**
+  passing (2352 + 16); `npm run build` and `deno check` on `generate-weekly-schedule` both clean.
+  **Deployed and live-verified the same session:** `supabase db push`
+  (`20260904160000_add_brand_catalog.sql`, confirmed live — anon `SELECT` 200, anon `INSERT`
+  rejected 401 by RLS) and `supabase functions deploy generate-weekly-schedule` (confirmed `ACTIVE`
+  v21). Live Playwright pass on BIT: added a test brand via "Add a brand" — no `entries` row
+  created, appeared correctly in the Paused Brands picker, duplicate re-add correctly rejected;
+  opening BIT's Schedule Planner (a real `ensureWeekGenerated` run) showed the new brand with
+  exactly 1 TP chip that week versus 2+ for every real neighboring brand, confirming the ramp cap
+  end to end through the live deployed scheduler. Test brand and its one generated `brand_schedule`
+  row deleted afterward via direct authenticated REST calls; confirmed zero residue (no
+  `schedule_pms_links` row was ever created, so nothing to clean up there). Not independently
+  re-verified this pass: the Add Review Account dropdown pick itself (code-identical
+  `brandProfiles`/`uniqueBrands` path already proven live via the Paused Brands picker) and the
+  Monday cron's own pickup (code-identical call path to the now-verified page-visit trigger, not
+  separately fired). Task 324.
+- *2026-09-04 (prior):* Manual `brand_platform_override` pauses are visible on the Schedule
   Planner grid again and editable directly from the Schedule Status column — reverses part of
   Tasks 320/321 (which had hidden every manual pause from the grid, leaving Edit Brand Tab →
   "Paused brands" as the only place to manage one), per direct user request. In

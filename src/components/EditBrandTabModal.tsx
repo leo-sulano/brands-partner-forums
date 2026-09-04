@@ -1,7 +1,7 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab, updatePausedTabDetails, fetchPausedTabDetails } from '../lib/queries';
+import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab, updatePausedTabDetails, fetchPausedTabDetails, addBrandToCatalog } from '../lib/queries';
 import {
   PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
@@ -29,9 +29,15 @@ interface Props {
   brands: string[];
   onUpdated: (renamedTo?: string) => void;
   onClose: () => void;
+  // Fired after a successful "Add a brand" — BrandGroup wires this to its
+  // own reload so the new brand_catalog row's brand shows up in this tab's
+  // filter/Add Review Account picker (and, once its Schedule Planner tab is
+  // next opened or the Monday cron runs, gets scheduled) without waiting for
+  // this whole modal to close via Save Changes.
+  onBrandAdded?: () => void;
 }
 
-export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose }: Props) {
+export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose, onBrandAdded }: Props) {
   const { isAdmin } = useAuth();
   const dynamic = isDynamicTab(tabName);
   // Captured once at modal-open time: what to diff the Status select against
@@ -73,6 +79,20 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose 
   // outer modal must not close on Escape then (PlatformPauseModal has its own
   // Escape-to-close).
   const [pauseChildOpen, setPauseChildOpen] = useState(false);
+
+  // Brand list handed to TabPausedBrandsSection. Initialized once from the
+  // `brands` prop (BrandGroup's uniqueBrands at modal-open time, per that
+  // prop's own doc comment) and appended to locally on a successful add —
+  // BrandGroup's realtime entries subscription will eventually recompute
+  // uniqueBrands and flow a fresh `brands` prop back down too, but that round
+  // trip shouldn't be the only way a brand just added in this same modal
+  // session becomes pausable or blocks a second, duplicate add.
+  const [localBrands, setLocalBrands] = useState<string[]>(brands);
+  const [newBrandName, setNewBrandName] = useState('');
+  const [newBrandLink, setNewBrandLink] = useState('');
+  const [addingBrand, setAddingBrand] = useState(false);
+  const [addBrandError, setAddBrandError] = useState<string | null>(null);
+  const [addBrandSuccess, setAddBrandSuccess] = useState<string | null>(null);
 
   // Only the reason/until fields need a fetch — status/platforms/icon/filters
   // are all already available synchronously from the client-side registries
@@ -123,6 +143,34 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose 
 
   function toggleFilter(f: ToolbarFilterKey) {
     setFilters((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
+  }
+
+  async function handleAddBrand() {
+    const trimmedName = newBrandName.trim();
+    setAddBrandSuccess(null);
+    if (!trimmedName) {
+      setAddBrandError('Enter a brand name.');
+      return;
+    }
+    if (localBrands.some((b) => b.trim().toLowerCase() === trimmedName.toLowerCase())) {
+      setAddBrandError('That brand already exists on this tab.');
+      return;
+    }
+    setAddingBrand(true);
+    setAddBrandError(null);
+    try {
+      const trimmedLink = newBrandLink.trim();
+      await addBrandToCatalog(tabName, trimmedName, trimmedLink || null);
+      setLocalBrands((prev) => [...prev, trimmedName].sort((a, b) => a.localeCompare(b)));
+      setNewBrandName('');
+      setNewBrandLink('');
+      setAddBrandSuccess(`"${trimmedName}" added.`);
+      onBrandAdded?.();
+    } catch (err) {
+      setAddBrandError(err instanceof Error ? err.message : 'Failed to add brand');
+    } finally {
+      setAddingBrand(false);
+    }
   }
 
   async function handleSubmit() {
@@ -306,9 +354,46 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose 
             </div>
           )}
 
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Add a brand</label>
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={newBrandName}
+                onChange={(e) => { setNewBrandName(e.target.value); setAddBrandError(null); setAddBrandSuccess(null); }}
+                placeholder="Brand name"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <input
+                type="text"
+                value={newBrandLink}
+                onChange={(e) => { setNewBrandLink(e.target.value); setAddBrandError(null); setAddBrandSuccess(null); }}
+                placeholder="Brand page link (optional)"
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={handleAddBrand}
+                disabled={addingBrand || !newBrandName.trim()}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+              >
+                {addingBrand && <Loader2 className="size-3.5 animate-spin" />}
+                Add brand
+              </button>
+            </div>
+            {addBrandError && <p className="mt-1 text-xs text-rose-600">{addBrandError}</p>}
+            {addBrandSuccess && <p className="mt-1 text-xs text-emerald-600">{addBrandSuccess}</p>}
+            <p className="mt-1 text-xs text-slate-400">
+              Registers the brand for this tab — no review-account entry is created. It becomes
+              pickable in Add Review Account's Brand Name field and appears on the Schedule
+              Planner (at a reduced 1-post-per-platform pace for its first 2 weeks, then normal
+              frequency) the next time that tab's schedule is generated.
+            </p>
+          </div>
+
           <TabPausedBrandsSection
             tabName={tabName}
-            brands={brands}
+            brands={localBrands}
             onChildModalOpenChange={setPauseChildOpen}
           />
 

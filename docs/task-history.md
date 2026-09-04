@@ -9264,3 +9264,90 @@ flow via unchecking; the non-current-week save/toast wording; and a live check t
 → "Paused brands" shows the same edited row (code-verified via the shared `platformPauseActions.ts`
 call path in both surfaces, not click-verified). Worth a follow-up pass. Deploy: `git push origin
 main` only — no migration, no Edge Function redeploy.
+
+---
+
+## Task 324: Brand catalog — register a brand with no entries, pickable everywhere, scheduled at a ramp-up pace
+
+**Date:** September 4, 2026
+
+Follow-on, same day, to the "Add a brand" control added earlier this session to Edit Brand Tab
+(itself a same-day follow-up to a request to add brands without going through the full Add Review
+Account form). That first version inserted a real `entries` row with just the brand name/link set
+— per direct user follow-up ("instead of creating automatically row even no entry already, can we
+make brand exist on brand group and backend and it can be selected as adding a review accounts"),
+it's replaced here with a real standalone registry: a new `brand_catalog` table (same shape as this
+project's other small per-tab override tables — `brand_platform_override`, `flagged_platform_brands`
+— generated `brand_key`, unique on `(tab, brand_key)`, 4-policy RLS via `public.is_approved()`, a
+plain `tab` text column so `rename_hardcoded_tab`/`rename_custom_tab` automatically keep it in sync
+on a tab rename with no code change here since both RPCs discover every table with a `tab` column).
+Edit Brand Tab's "Add a brand" now calls `addBrandToCatalog(tab, brand, link)` instead of
+`insertEntry` — no phantom row, and the write got simpler (one generic `link` column instead of
+resolving each tab's own brand-name/brand-link column keys).
+
+`deriveTabBrands` (`tab-configs.ts`) — the one shared, pure function this project's own doc comment
+already flags as the reason `TabScheduleSection`/the landing-grid preview "can't independently
+drift" on brand identity — gained an optional 4th param, `catalogBrands: string[]`, merged into its
+existing entry-derived brand list (default `[]`, so every existing call site is unaffected until it
+opts in). Every consumer of "which brands exist on this tab" was updated to fetch `brand_catalog`
+and pass the names in: `BrandGroup.tsx`'s `uniqueBrands` (Brand filter dropdown, Paused Brands
+picker) and `brandProfiles` (fills the catalog brand's link under the tab's real link-column key,
+gap-only — never overrides a real entry-derived value — so Add Review Account's Brand Name picker,
+which reads `Object.keys(brandProfiles)`, needed zero changes itself to pick up a catalog-only
+brand with its link pre-filled); `TabScheduleSection.tsx`'s `tabCtx.brands` (feeds directly into
+`recalculatePauses`/`ensureWeekGenerated`, so this is what actually gets a catalog brand scheduled);
+`SchedulePlanner.tsx`'s landing-grid preview (`TabPreview.catalogBrands`, threaded through
+`deriveEntryDependentPreview`'s initial fetch and all 3 live-patch paths, so the cross-tab summary
+cards can't disagree with the full per-tab calendar on which brands are present); and
+`generate-weekly-schedule/index.ts`'s `buildTabContext` (the Monday cron) — which previously had its
+own hand-duplicated inline copy of the brand-derivation logic (with a latent bug: it read
+`TAB_DEFAULT_BRAND[tab]` directly instead of resolving a renamed hardcoded tab via
+`resolveHardcodedTabKey` first) — now calls the same shared `deriveTabBrands`, fixing that drift as
+a side effect while adding catalog support.
+
+**New-brand ramp-up**, per direct user request (confirmed via 3 clarifying questions): a brand added
+through the catalog gets capped to 1 post per active platform for its first 2 calendar weeks
+(anchored on `brand_catalog.added_at`'s Monday, not "the next time this tab happens to generate" —
+a sporadically-visited tab doesn't get a stretched-out window), then automatically reverts to each
+platform's normal frequency starting week 3, with no manual action needed. Only brands added via the
+catalog ramp — a brand whose first appearance is a normal Add Review Account entry has no
+`brand_catalog` row and is unaffected, exactly as before this feature. `TabContext` gained
+`newBrandAddedAt?: Map<string, string>` (brand_key → `added_at`, built by new
+`buildNewBrandAddedAtMap` in `scheduleUtils.ts`); `ensureWeekGenerated` (`schedulerService.ts`)
+computes `rampBrandKeys` from it each call (a new `mondayOfDateString` helper parses the ISO
+timestamp's leading `YYYY-MM-DD` as a local date, matching this file's existing `weekEndSunday`/
+`last30DaysRange` pattern — not `new Date(fullISOString)`, which this project has a documented
+history of off-by-one bugs from) and passes it into `generateWeekSchedule`; `schedulerEngine.ts`'s
+`SchedulerInput` gained optional `rampBrandKeys?: string[]`, applied only in the Priority 3 ("everyone
+else") loop as `Math.min(1, normalRate + carryoverExtra)` — carryover is currently always 0 (see the
+already-documented `CARRYOVER_RULES.completionThreshold = 0` disable), so this cap is the only
+practical effect today, but is written to compose correctly if carryover is ever re-enabled.
+
+16 new unit tests across 4 files (`schedulerEngine.test.ts`: ramp caps a higher-frequency platform,
+leaves a platform already at 1/wk alone, doesn't leak onto a non-ramping brand, caps carryover too;
+`schedulerService.test.ts`: caps on the exact added week and the second week, reverts on the third,
+never ramps a brand with no `newBrandAddedAt` entry; `tab-configs.test.ts`: `deriveTabBrands` merges/
+dedupes/omits-when-absent; `scheduleUtils.test.ts`: `buildNewBrandAddedAtMap` maps, normalizes,
+keeps-earliest, empty-input). Full suite **2368** passing (2352 + 16 new); `npm run build` and
+`deno check --config supabase/functions/generate-weekly-schedule/deno.json` both clean.
+
+**Deployed and live-verified this session:** `supabase db push` (`20260904160000_add_brand_catalog.sql`
+— confirmed live via a direct REST probe: anon `SELECT` returns 200, an anon `INSERT` is rejected
+401 by RLS) and `supabase functions deploy generate-weekly-schedule` (confirmed `ACTIVE` version 21).
+Live Playwright pass against real production data on BIT: added "QA Ramp Test Brand" via Edit Brand
+Tab's "Add a brand" (name + link) — confirmed no `entries` row was created, the brand appeared
+immediately in the same modal's Paused Brands picker (sorted correctly among real brands including
+"Tikitaka"/"Librabet," the exact brands that motivated the original request), and a same-name
+re-add was correctly rejected as a duplicate. Opened BIT's Schedule Planner (triggering a real
+`ensureWeekGenerated` run against the live current week): the new brand's row showed exactly 1 TP
+chip (Thursday) versus 2+ for every real neighboring brand — the ramp cap working end to end through
+the actual deployed scheduler, not just in unit tests. Test brand + its one generated
+`brand_schedule` row were deleted afterward via direct authenticated REST calls (confirmed a
+`schedule_pms_links` row was never created, so no PMS card needed cleanup); verified zero residue in
+both tables. Not independently re-verified this pass: the Add Review Account dropdown pick (verified
+via the shared `brandProfiles`/`uniqueBrands` code path already proven live through the Paused
+Brands picker, plus the passing unit tests — not re-clicked in that second modal to save context
+budget) and the Monday cron's own catalog-brand pickup (code-identical to the now-live-verified
+page-visit path via the same `deriveTabBrands`/`buildNewBrandAddedAtMap` calls, not separately
+triggered). Deploy: `supabase db push` + `supabase functions deploy generate-weekly-schedule` +
+`git push origin main` (frontend).

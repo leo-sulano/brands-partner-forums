@@ -270,6 +270,29 @@ export function buildAgentIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+// brand_key -> brand_catalog's added_at (timestamptz ISO string) for every
+// catalog-registered brand on a tab. Feeds TabContext.newBrandAddedAt
+// (schedulerService.ts), which anchors the new-brand ramp-up: a brand added
+// via Edit Brand Tab's "Add a brand" control gets 1 post/platform for its
+// first 2 calendar weeks instead of each platform's normal frequency, then
+// reverts to normal automatically once that window has passed. A brand
+// whose first appearance is instead a normal Add Review Account entry (never
+// went through the catalog) has no row here, so it never ramps — full
+// cadence from its very first generated week, same as before this existed.
+export function buildNewBrandAddedAtMap(rows: { brand: string; added_at: string }[]): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const row of rows) {
+    const brandKey = normalizeBrandKey(row.brand);
+    const existing = result.get(brandKey);
+    // A brand can only have one brand_catalog row per tab (unique on
+    // tab, brand_key) -- ties here would mean duplicate-cased rows some
+    // other path let through; keep the earliest so a re-add doesn't reset
+    // the ramp window.
+    if (!existing || row.added_at < existing) result.set(brandKey, row.added_at);
+  }
+  return result;
+}
+
 // Same "most-recently-updated entry" resolution rule as buildAgentIndex above
 // (kept as its own function, not folded in, so buildAgentIndex's existing
 // PMS-push contract/callers are untouched), reading Country instead of Agent.

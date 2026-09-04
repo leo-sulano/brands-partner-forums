@@ -18,7 +18,7 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, setBrandPlatformRemoved, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, fetchBrandCatalog, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride, type BrandCatalogRow } from '../lib/queries';
 import { mergeCredentialsIntoData, preserveCredentialFields, type EntryCredentials } from '../lib/entryCredentials';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
@@ -26,7 +26,7 @@ import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformB
 import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
-import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
+import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getBrandLinkCol, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
 import { notifyBrandRemoved } from '../lib/brandRemovedNotification';
@@ -609,6 +609,11 @@ export default function BrandGroup() {
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform; removed_at: string }[]>([]);
   const [overrideRows, setOverrideRows] = useState<BrandPlatformOverride[]>([]);
+  // Brands registered via Edit Brand Tab's "Add a brand" control with no
+  // entries row yet — merged into uniqueBrands/brandProfiles below so they're
+  // filterable here and pickable in Add Review Account's Brand Name dropdown
+  // the same way a brand with real entry history already is.
+  const [catalogRows, setCatalogRows] = useState<BrandCatalogRow[]>([]);
   const [accountUsage, setAccountUsage] = useState<Map<string, Record<Platform, number>>>(new Map());
   const [editingCell, setEditingCell] = useState<{ entryId: string; header: string; value: string } | null>(null);
   const [savingCell, setSavingCell] = useState(false);
@@ -773,6 +778,9 @@ export default function BrandGroup() {
     fetchBrandPlatformOverrides(decodedTab)
       .then((rows) => { if (!canceled) setOverrideRows(rows); })
       .catch(() => { /* same — decorative */ });
+    fetchBrandCatalog(decodedTab)
+      .then((rows) => { if (!canceled) setCatalogRows(rows); })
+      .catch(() => { /* same — a failed fetch just means no catalog-only brands show up this visit */ });
     return () => { canceled = true; };
   }, [reloadSeq, decodedTab]);
 
@@ -1228,42 +1236,59 @@ export default function BrandGroup() {
   }
 
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? null;
-  const uniqueBrands = brandCol
-    ? [...new Set(entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== ''))].sort()
-    : [];
+  // Catalog-only brands (brand_catalog — registered via Edit Brand Tab's "Add
+  // a brand" control, no entries row yet) are unioned in below so they're
+  // filterable here and pickable in Add Review Account's Brand Name dropdown
+  // via brandProfiles, the same as a brand with real entry history.
+  const uniqueBrands = [...new Set([
+    ...(brandCol ? entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== '') : []),
+    ...catalogRows.map((r) => r.brand),
+  ])].sort();
   if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]) uniqueBrands.push(TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]);
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
-    if (!brandCol) return {};
     const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href', 'Brand Link'];
-    // Count occurrences per brand+col so a handful of mistyped/copy-pasted outlier
-    // rows can't outrank the value the vast majority of that brand's rows agree on.
-    const counts: Record<string, Record<string, Record<string, number>>> = {};
-    for (const entry of entries) {
-      const brand = entry.data[brandCol]?.trim();
-      if (!brand) continue;
-      if (!counts[brand]) counts[brand] = {};
-      for (const col of LINK_COLS) {
-        const val = entry.data[col]?.trim();
-        if (!val || val === '—') continue;
-        if (!counts[brand][col]) counts[brand][col] = {};
-        counts[brand][col][val] = (counts[brand][col][val] ?? 0) + 1;
+    const profiles: Record<string, Record<string, string>> = {};
+    if (brandCol) {
+      // Count occurrences per brand+col so a handful of mistyped/copy-pasted outlier
+      // rows can't outrank the value the vast majority of that brand's rows agree on.
+      const counts: Record<string, Record<string, Record<string, number>>> = {};
+      for (const entry of entries) {
+        const brand = entry.data[brandCol]?.trim();
+        if (!brand) continue;
+        if (!counts[brand]) counts[brand] = {};
+        for (const col of LINK_COLS) {
+          const val = entry.data[col]?.trim();
+          if (!val || val === '—') continue;
+          if (!counts[brand][col]) counts[brand][col] = {};
+          counts[brand][col][val] = (counts[brand][col][val] ?? 0) + 1;
+        }
+      }
+      for (const [brand, cols] of Object.entries(counts)) {
+        profiles[brand] = {};
+        for (const [col, valueCounts] of Object.entries(cols)) {
+          let best = '';
+          let bestCount = 0;
+          for (const [val, n] of Object.entries(valueCounts)) {
+            if (n > bestCount) { best = val; bestCount = n; }
+          }
+          profiles[brand][col] = best;
+        }
       }
     }
-    const profiles: Record<string, Record<string, string>> = {};
-    for (const [brand, cols] of Object.entries(counts)) {
-      profiles[brand] = {};
-      for (const [col, valueCounts] of Object.entries(cols)) {
-        let best = '';
-        let bestCount = 0;
-        for (const [val, n] of Object.entries(valueCounts)) {
-          if (n > bestCount) { best = val; bestCount = n; }
-        }
-        profiles[brand][col] = best;
+    // Catalog-only brands — fill gaps only, never override a real
+    // entry-derived value, and seed the brand's link under this tab's actual
+    // link column so Add Review Account's handleBrandChange (which reads
+    // profile?.[brandLinkCol]) picks it up.
+    if (catalogRows.length > 0) {
+      const brandLinkCol = getBrandLinkCol(decodedTab);
+      for (const row of catalogRows) {
+        if (!profiles[row.brand]) profiles[row.brand] = {};
+        if (row.link && !profiles[row.brand][brandLinkCol]) profiles[row.brand][brandLinkCol] = row.link;
       }
     }
     return profiles;
-  }, [entries, brandCol]);
+  }, [entries, brandCol, catalogRows, decodedTab]);
 
   async function saveInlineEdit(entry: Entry, header: string, value: string) {
     if (DATE_ENTRY_HEADERS.has(header) && !isValidDateText(value)) {
@@ -2029,6 +2054,7 @@ export default function BrandGroup() {
               reloadRef.current();
             }
           }}
+          onBrandAdded={() => reloadRef.current()}
         />
       )}
 

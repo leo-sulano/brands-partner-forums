@@ -257,13 +257,21 @@ export function getBrandNameCol(tab: string): string {
 // (TabScheduleSection) and its landing-grid mini-preview can't independently
 // drift on which column holds brand identity or how the DEFAULT_BRAND
 // single-brand-tab fallback applies.
-export function deriveTabBrands(tab: string, entries: { data: Record<string, string | null> }[], headers: string[]): string[] {
+//
+// `catalogBrands` (optional, defaults to none) merges in brand_catalog names
+// — a brand registered via Edit Brand Tab's "Add a brand" control with no
+// entries row yet. Every caller of this function fetches brand_catalog
+// itself and passes the names in, so a catalog-only brand is schedulable
+// (and, on Brand Group/Add Review Account, pickable) the same way a brand
+// with real entry history already is.
+export function deriveTabBrands(tab: string, entries: { data: Record<string, string | null> }[], headers: string[], catalogBrands: string[] = []): string[] {
   const brandCol = BRAND_COLS.find((c) => headers.includes(c)) ?? getBrandNameCol(tab);
-  const uniqueBrands = [...new Set(
-    entries
+  const uniqueBrands = [...new Set([
+    ...entries
       .map((e) => e.data[brandCol])
       .filter((v): v is string => !!v && v.trim() !== ''),
-  )].sort();
+    ...catalogBrands,
+  ])].sort();
   if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[resolveHardcodedTabKey(tab)]) {
     uniqueBrands.push(TAB_DEFAULT_BRAND[resolveHardcodedTabKey(tab)]);
   }

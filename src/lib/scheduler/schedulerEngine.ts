@@ -60,6 +60,12 @@ export interface SchedulerInput {
   // fresh shuffle (platform days rotate week to week). Drives the brand-order
   // shuffle, the day tie-breaks, and the TP preferred-pair pick.
   seed: string;
+  // Brand keys within their post-catalog-add ramp-up window (see
+  // ensureWeekGenerated's rampBrandKeys computation in schedulerService.ts) —
+  // capped to 1 post per active platform this week instead of the platform's
+  // normal frequency (+ carryover, once that's re-enabled). Optional,
+  // defaults to "nobody ramping" so existing callers/tests are unaffected.
+  rampBrandKeys?: string[];
 }
 
 function hasCombo(list: PinnedCombo[], brandKey: string, platform: Platform): boolean {
@@ -116,6 +122,7 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
     input.brands.map((brand) => ({ brand, brandKey: normalizeBrandKey(brand) })),
     rng,
   );
+  const rampBrandKeys = input.rampBrandKeys ?? [];
 
   // Build carryover lookup map from valid combos only (those in brands × activePlatforms).
   // This prevents carryover from introducing rows for brand/platform combos the tab doesn't track.
@@ -155,7 +162,12 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
       // Look up carryover for this combo (0 if none), add to normal frequency, assign once.
       const key = `${brandKey}::${platform}`;
       const carryoverExtra = carryoverMap.get(key) ?? 0;
-      assign(brand, brandKey, platform, PLATFORM_RULES[platform].postsPerWeek + carryoverExtra);
+      const normalSlots = PLATFORM_RULES[platform].postsPerWeek + carryoverExtra;
+      // New-brand ramp-up: cap at 1 post on this platform for the brand's
+      // first 2 calendar weeks since being added via the brand catalog,
+      // rather than its normal frequency (+carryover).
+      const numSlots = rampBrandKeys.includes(brandKey) ? Math.min(1, normalSlots) : normalSlots;
+      assign(brand, brandKey, platform, numSlots);
     }
   }
 

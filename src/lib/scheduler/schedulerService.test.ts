@@ -525,6 +525,54 @@ describe('ensureWeekGenerated', () => {
     expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'cg' });
   });
 
+  // New-brand ramp-up (brand_catalog): 1 post/platform for the brand's first
+  // 2 calendar weeks since being added, then back to normal — see
+  // schedulerRules.ts/schedulerEngine.ts's rampBrandKeys.
+  describe('new-brand ramp-up', () => {
+    // 2026-08-03 is a Monday. TP is normally 2/week (Mon+Thu or Tue+Fri).
+    function tpRowFor(brand: string, weekStart = '2026-08-03') {
+      const ctx: TabContext = {
+        brands: [brand],
+        activePlatforms: ['tp'],
+        entries: [],
+        newBrandAddedAt: new Map([['winmega', '2026-08-03T09:00:00.000Z']]),
+      };
+      return { ctx, weekStart };
+    }
+
+    it('caps a brand to 1 TP post on the exact week it was added', async () => {
+      const { ctx, weekStart } = tpRowFor('WinMega');
+      await ensureWeekGenerated('BITP', weekStart, ctx, []);
+      const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+      const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
+      expect(activeDays).toHaveLength(1);
+    });
+
+    it('still caps a brand to 1 TP post on its second calendar week', async () => {
+      const { ctx } = tpRowFor('WinMega');
+      await ensureWeekGenerated('BITP', '2026-08-10', ctx, []);
+      const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+      const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
+      expect(activeDays).toHaveLength(1);
+    });
+
+    it('reverts to normal (2 TP posts) on its third calendar week', async () => {
+      const { ctx } = tpRowFor('WinMega');
+      await ensureWeekGenerated('BITP', '2026-08-17', ctx, []);
+      const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+      const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
+      expect(activeDays).toHaveLength(2);
+    });
+
+    it('never ramps a brand with no newBrandAddedAt entry (unaffected by this feature)', async () => {
+      const ctx: TabContext = { brands: ['WinMega'], activePlatforms: ['tp'], entries: [] };
+      await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+      const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+      const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
+      expect(activeDays).toHaveLength(2);
+    });
+  });
+
   // Regression test for the Edge Function's service-role client: a real
   // write only lands in the right place if the client explicitly passed
   // into ensureWeekGenerated actually reaches bulkUpsertBrandSchedule,

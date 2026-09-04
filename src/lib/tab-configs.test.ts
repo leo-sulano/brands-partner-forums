@@ -6,6 +6,7 @@ import {
   stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol,
   getEnabledToolbarFilters, registerToolbarFilters, unregisterToolbarFilters, resetToolbarFilters, ALL_TOOLBAR_FILTERS,
   getColLabel, getTabSequence, getTabSequenceCol, getBrandTpUrl, getBrandLinkCol, resolveBrandLink,
+  deriveTabBrands,
 } from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 import { renameHardcodedTabLocally, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry';
@@ -361,5 +362,28 @@ describe('hardcoded tab rename resolution', () => {
   it('getTabPlatforms resolves a renamed multi-platform hardcoded tab', () => {
     renameHardcodedTabLocally('Hanan', 'Hanan Group');
     expect(getTabPlatforms('Hanan Group')).toEqual(getTabPlatforms('Hanan'));
+  });
+});
+
+describe('deriveTabBrands', () => {
+  it('merges catalog brand names in alongside entry-derived brands', () => {
+    const entries = [{ data: { Brands: 'Existing Brand' } }];
+    const result = deriveTabBrands('Rooster Partners', entries, ['Brands'], ['Catalog Brand']);
+    expect(result).toEqual(['Catalog Brand', 'Existing Brand']);
+  });
+
+  it('dedupes a catalog brand that also already has real entries', () => {
+    const entries = [{ data: { Brands: 'Shared Brand' } }];
+    const result = deriveTabBrands('Rooster Partners', entries, ['Brands'], ['Shared Brand']);
+    expect(result).toEqual(['Shared Brand']);
+  });
+
+  it('returns just the entry-derived brands when catalogBrands is omitted (no behavior change)', () => {
+    const entries = [{ data: { Brands: 'Existing Brand' } }];
+    expect(deriveTabBrands('Rooster Partners', entries, ['Brands'])).toEqual(['Existing Brand']);
+  });
+
+  it('includes a catalog-only brand on a tab with zero real entries', () => {
+    expect(deriveTabBrands('Rooster Partners', [], ['Brands'], ['Brand New'])).toEqual(['Brand New']);
   });
 });

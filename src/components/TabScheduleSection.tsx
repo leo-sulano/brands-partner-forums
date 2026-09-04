@@ -20,6 +20,7 @@ import {
   fetchPublicHolidays,
   fetchTabWeekApprovals,
   revokeWeekApproval,
+  fetchBrandCatalog,
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
   type ScheduleCancellation,
@@ -34,7 +35,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, buildNewBrandAddedAtMap, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import PlatformPauseModal from './PlatformPauseModal';
@@ -143,6 +144,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     hiddenBrandSet: Set<string>;
     platformRestrictionMap: Map<string, Platform>;
     agentAssignmentRows: BrandAgentAssignmentRow[];
+    newBrandAddedAt: Map<string, string>;
     flagsLoaded: boolean;
   } | null>(null);
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
@@ -328,7 +330,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       });
     (async () => {
       try {
-        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, agentAssignmentRows, holidayRows] = await Promise.all([
+        const [rawEntries, headers, removedPlatformBrandRows, overrideRows, hiddenBrandRows, restrictedBrandRows, agentAssignmentRows, holidayRows, catalogRows] = await Promise.all([
           fetchRawEntriesByTab(tab),
           fetchTabHeaders(tab),
           withFlagFallback(fetchRemovedPlatformBrands()),
@@ -344,9 +346,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           // effects, generate-weekly-schedule/index.ts).
           fetchBrandAgentAssignments(tab).catch(() => []),
           withFlagFallback(fetchPublicHolidays()),
+          // Same fail-open shape as agentAssignmentRows above — a catalog-only
+          // brand missing for one visit just means it doesn't get scheduled
+          // (or ramped) until the next successful fetch, not a broken load.
+          fetchBrandCatalog(tab).catch(() => []),
         ]);
         if (canceled) return;
-        const uniqueBrands = deriveTabBrands(tab, rawEntries, headers);
+        const uniqueBrands = deriveTabBrands(tab, rawEntries, headers, catalogRows.map((r) => r.brand));
         const platforms = getTabPlatforms(tab);
         if (canceled) return;
         // Set all three together, tagged with the tab they were loaded for —
@@ -362,6 +368,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           hiddenBrandSet: buildHiddenBrandSet(hiddenBrandRows),
           platformRestrictionMap: buildPlatformRestrictionMap(restrictedBrandRows),
           agentAssignmentRows,
+          newBrandAddedAt: buildNewBrandAddedAtMap(catalogRows),
           flagsLoaded,
         });
         setHolidays(holidayRows);
@@ -424,6 +431,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             hiddenBrandSet: tabCtx!.hiddenBrandSet,
             platformRestrictionMap: tabCtx!.platformRestrictionMap,
             holidayDates: holidayDateSet,
+            newBrandAddedAt: tabCtx!.newBrandAddedAt,
           };
           const resumed = await recalculatePauses(tab, weekStartISO, ctx);
           const activated = await ensureWeekGenerated(tab, weekStartISO, ctx, resumed);

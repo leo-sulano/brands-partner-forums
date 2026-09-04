@@ -16,7 +16,7 @@ import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removed
 import { overrideKey, type OverrideDetails } from '../scheduleOverrides.ts';
 import { getSchedulableBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { holidayWeekdaysForDateSet } from '../publicHolidays.ts';
-import { WEEKDAYS, toISODate, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
+import { WEEKDAYS, toISODate, mondayOf, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
 import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils.ts';
@@ -59,6 +59,11 @@ export interface TabContext {
   // the engine. Optional — defaults to "no holidays" — same convention as
   // removedPlatformBrandSet / overrideMap / hiddenBrandSet above.
   holidayDates?: Set<string>;
+  // brand_key -> brand_catalog's added_at (timestamptz ISO string), from
+  // buildNewBrandAddedAtMap (scheduleUtils.ts). Anchors the new-brand
+  // ramp-up computed in ensureWeekGenerated below. Optional, same
+  // "defaults to nobody ramping" convention as the other maps/sets above.
+  newBrandAddedAt?: Map<string, string>;
 }
 
 function brandOf(entry: Entry): string {
@@ -308,6 +313,19 @@ function shiftWeek(iso: string, days: number): string {
   return toISODate(date);
 }
 
+// The Monday of the week a timestamptz ISO string (or a bare 'YYYY-MM-DD')
+// falls on, parsed as a local date from just its leading 10 chars — not via
+// `new Date(fullISOString)`, which parses a 'Z'-suffixed timestamp as UTC
+// while toISODate/mondayOf read back local components, the exact
+// off-by-one bug class toISODate's own doc comment (scheduleBrands.ts)
+// warns about. Used only to anchor the new-brand ramp window below; a few
+// hours of drift right at a week boundary is an accepted, low-stakes edge
+// case for this, unlike for real schedule-day placement.
+function mondayOfDateString(dateStr: string): string {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return toISODate(mondayOf(new Date(y, m - 1, d)));
+}
+
 async function buildCarryover(tab: string, weekStart: string, ctx: TabContext, client?: SupabaseClient): Promise<CarryoverItem[]> {
   const lastWeekStart = shiftWeek(weekStart, -7);
   const lastWeekRows = (await fetchBrandSchedule(tab, lastWeekStart, client)).filter((r) => r.platform != null);
@@ -409,6 +427,19 @@ export async function ensureWeekGenerated(
 
   const unavailableDays = holidayWeekdaysForDateSet(weekStart, ctx.holidayDates ?? new Set());
 
+  // New-brand ramp-up: a brand's first 2 calendar weeks since its
+  // brand_catalog row was added (see TabContext.newBrandAddedAt's doc
+  // comment) — the second week is the ramp Monday shifted 7 days forward,
+  // not "the next time this tab happens to generate," so a tab visited
+  // sporadically doesn't stretch the window out.
+  const rampBrandKeys: string[] = [];
+  for (const [brandKey, addedAt] of ctx.newBrandAddedAt ?? new Map<string, string>()) {
+    const addedMonday = mondayOfDateString(addedAt);
+    if (weekStart === addedMonday || weekStart === shiftWeek(addedMonday, 7)) {
+      rampBrandKeys.push(brandKey);
+    }
+  }
+
   const slots = generateWeekSchedule({
     brands: ctx.brands,
     activePlatforms: ctx.activePlatforms,
@@ -417,6 +448,7 @@ export async function ensureWeekGenerated(
     resumingBrandPlatforms: resumedThisWeek,
     carryover,
     unavailableDays,
+    rampBrandKeys,
     // Deterministic per (tab, week): a regenerate of the same week is
     // byte-identical, while each new week reshuffles so platform days rotate.
     seed: `${tab}::${weekStart}`,

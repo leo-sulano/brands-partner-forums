@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -529,6 +529,30 @@ describe('buildAgentIndex', () => {
     const entries = [entry({ Brands: '  WinMega  ', Agent: 'Jen' }, '2026-08-01T00:00:00Z')];
     const index = buildAgentIndex(entries);
     expect(index.get('winmega')).toBe('Jen');
+  });
+});
+
+describe('buildNewBrandAddedAtMap', () => {
+  it('maps a brand key to its catalog row\'s added_at', () => {
+    const map = buildNewBrandAddedAtMap([{ brand: 'WinMega', added_at: '2026-08-03T09:00:00.000Z' }]);
+    expect(map.get('winmega')).toBe('2026-08-03T09:00:00.000Z');
+  });
+
+  it('normalizes the brand key the same way the rest of this file does (trim + lowercase)', () => {
+    const map = buildNewBrandAddedAtMap([{ brand: '  WinMega  ', added_at: '2026-08-03T09:00:00.000Z' }]);
+    expect(map.get('winmega')).toBe('2026-08-03T09:00:00.000Z');
+  });
+
+  it('keeps the earliest added_at when a brand key somehow has more than one row', () => {
+    const map = buildNewBrandAddedAtMap([
+      { brand: 'WinMega', added_at: '2026-08-10T09:00:00.000Z' },
+      { brand: 'winmega', added_at: '2026-08-03T09:00:00.000Z' },
+    ]);
+    expect(map.get('winmega')).toBe('2026-08-03T09:00:00.000Z');
+  });
+
+  it('returns an empty map for no rows', () => {
+    expect(buildNewBrandAddedAtMap([]).size).toBe(0);
   });
 });
 

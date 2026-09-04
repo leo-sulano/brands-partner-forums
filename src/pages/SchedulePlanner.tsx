@@ -22,6 +22,7 @@ import {
   fetchPublicHolidays,
   fetchApprovedScheduleWeeks,
   revokeWeekApproval,
+  fetchBrandCatalog,
 } from '../lib/queries';
 import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
@@ -78,6 +79,13 @@ export interface TabPreview {
   rawEntries: Entry[];
   headers: string[];
   agentAssignmentRows: BrandAgentAssignmentRow[];
+  // Brand names from brand_catalog — registered via Edit Brand Tab's "Add a
+  // brand" control, no entries row yet. Merged into `brands` (via
+  // deriveTabBrands) same as everywhere else this tab's brand list is
+  // computed; kept separately here too since it doesn't change on an
+  // entries realtime event, so the 3 live-patch paths below can reuse it
+  // unchanged instead of re-deriving or re-fetching it.
+  catalogBrands: string[];
 }
 
 export const EMPTY_PREVIEW: TabPreview = {
@@ -92,6 +100,7 @@ export const EMPTY_PREVIEW: TabPreview = {
   rawEntries: [],
   headers: [],
   agentAssignmentRows: [],
+  catalogBrands: [],
 };
 
 // The subset of a TabPreview that depends only on that tab's raw entries (plus
@@ -108,9 +117,10 @@ function deriveEntryDependentPreview(
   hiddenSet: Set<string>,
   restrictionMap: Map<string, Platform>,
   removedSet: Set<string>,
+  catalogBrands: string[],
 ): Pick<TabPreview, 'brands' | 'agentIndex' | 'dateStatusIndex'> {
   return {
-    brands: deriveTabBrands(tab, rawEntries, headers).filter(
+    brands: deriveTabBrands(tab, rawEntries, headers, catalogBrands).filter(
       (b) => resolveBrandPlatforms(tab, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
     ),
     agentIndex: buildResolvedAgentIndex(rawEntries, agentAssignmentRows, activePlatforms),
@@ -605,18 +615,20 @@ export default function SchedulePlanner() {
       const entries = await Promise.all(
         [...getActiveOperationalTabs(), ...getPausedOperationalTabs()].map(async (t) => {
           try {
-            const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek, agentAssignmentRows] = await Promise.all([
+            const [rawEntries, headers, hiddenRows, restrictedRows, scheduleRowsPerWeek, agentAssignmentRows, catalogRows] = await Promise.all([
               fetchRawEntriesByTab(t),
               fetchTabHeaders(t),
               fetchScheduleHiddenBrands(t),
               fetchScheduleRestrictedBrands(t),
               Promise.all(weeks.map((w) => fetchBrandSchedule(t, w))),
               fetchBrandAgentAssignments(t).catch(() => []),
+              fetchBrandCatalog(t).catch(() => []),
             ]);
             const activePlatforms = getTabPlatforms(t);
             const hiddenSet = buildHiddenBrandSet(hiddenRows);
             const restrictionMap = buildPlatformRestrictionMap(restrictedRows);
-            const derived = deriveEntryDependentPreview(t, rawEntries, headers, agentAssignmentRows, activePlatforms, hiddenSet, restrictionMap, removedSet);
+            const catalogBrands = catalogRows.map((r) => r.brand);
+            const derived = deriveEntryDependentPreview(t, rawEntries, headers, agentAssignmentRows, activePlatforms, hiddenSet, restrictionMap, removedSet, catalogBrands);
             const preview: TabPreview = {
               ...derived,
               activePlatforms,
@@ -627,6 +639,7 @@ export default function SchedulePlanner() {
               rawEntries,
               headers,
               agentAssignmentRows,
+              catalogBrands,
             };
             return [t, preview] as const;
           } catch {
@@ -687,6 +700,7 @@ export default function SchedulePlanner() {
           const derived = deriveEntryDependentPreview(
             tab, rawEntries, preview.headers, preview.agentAssignmentRows,
             preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+            preview.catalogBrands,
           );
           return { ...prev, [tab]: { ...preview, ...derived, rawEntries } };
         });
@@ -702,6 +716,7 @@ export default function SchedulePlanner() {
           const derived = deriveEntryDependentPreview(
             tab, rawEntries, preview.headers, preview.agentAssignmentRows,
             preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+            preview.catalogBrands,
           );
           return { ...prev, [tab]: { ...preview, ...derived, rawEntries } };
         });
@@ -722,6 +737,7 @@ export default function SchedulePlanner() {
             const derived = deriveEntryDependentPreview(
               tab, rawEntries, headers, agentAssignmentRows,
               preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet,
+              preview.catalogBrands,
             );
             return { ...prev, [tab]: { ...preview, ...derived, rawEntries, headers, agentAssignmentRows } };
           });
