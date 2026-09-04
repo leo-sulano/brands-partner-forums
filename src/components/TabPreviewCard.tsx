@@ -6,7 +6,7 @@ import { tabDisplayName } from '../lib/tabs';
 import { scheduleFor, WEEKDAY_LABELS } from '../lib/scheduleBrands';
 import { normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, resolveDateEvidenceKind, filterVisiblePlatforms, type ScheduleColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, resolveDateEvidenceKind, filterVisiblePlatforms, type GridColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
 import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
 import type { TabPreview } from '../pages/SchedulePlanner';
 
@@ -15,7 +15,11 @@ interface Props {
   preview: TabPreview;
   previewBrands: string[];
   hasDateFilter: boolean;
-  allRangeColumns: ScheduleColumn[];
+  // Real weekday columns interleaved with purely cosmetic Sat/Sun markers
+  // (withWeekendMarkers in scheduleUtils.ts) -- a 'weekend' entry never
+  // carries real schedule data and must always render as a static,
+  // non-interactive cell.
+  gridColumns: GridColumn[];
   dateHeaderMonthGroups: { month: string; count: number }[];
   todayISO: string;
   previewLoading: boolean;
@@ -68,7 +72,7 @@ interface Props {
 // so planActive below is always false for it — every chip a paused card
 // shows is real evidence, never a plan, with no separate "missed" concept
 // needed for that case.
-export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, holidayDateSet, visiblePlatforms, onClick, cornerBadge, approvalControl, headerExtra, renderBrandDetail }: Props) {
+export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, gridColumns, dateHeaderMonthGroups, todayISO, previewLoading, holidayDateSet, visiblePlatforms, onClick, cornerBadge, approvalControl, headerExtra, renderBrandDetail }: Props) {
   const clickable = !!onClick;
   return (
     <div
@@ -101,7 +105,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
       {headerExtra}
 
       <div className={`overflow-x-auto rounded border border-slate-100 transition-opacity ${previewLoading ? 'opacity-40' : ''}`}>
-        {hasDateFilter && allRangeColumns.length === 0 ? (
+        {hasDateFilter && gridColumns.length === 0 ? (
           <div className="px-1.5 py-3 text-center text-[10px] text-slate-400">
             No schedule tracked on weekends
           </div>
@@ -120,22 +124,24 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
               )}
               <tr className="bg-slate-50 text-slate-400">
                 <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-1 text-left font-medium">Brand</th>
-                {allRangeColumns.map((col) => (
+                {gridColumns.map((col) => (
                   <th
                     key={col.iso}
-                    className={`px-1 py-1 text-center font-medium whitespace-nowrap ${holidayDateSet.has(col.iso) ? 'bg-slate-200 text-slate-400' : ''}`}
+                    className={`px-1 py-1 text-center font-medium whitespace-nowrap ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : holidayDateSet.has(col.iso) ? 'bg-slate-200 text-slate-400' : ''}`}
+                    title={col.kind === 'weekend' ? "Weekends aren't scheduled" : undefined}
                   >
-                    {WEEKDAY_LABELS[col.weekday][0]}
+                    {col.kind === 'weekend' ? col.label[0] : WEEKDAY_LABELS[col.weekday][0]}
                   </th>
                 ))}
               </tr>
               {hasDateFilter && (
                 <tr className="bg-slate-50 text-slate-400">
                   <th className="sticky left-0 z-10 bg-slate-50 px-1.5 py-0.5" />
-                  {allRangeColumns.map((col) => (
+                  {gridColumns.map((col) => (
                     <th
                       key={col.iso}
-                      className={`px-1 py-0.5 text-center font-medium ${holidayDateSet.has(col.iso) ? 'bg-slate-200 text-slate-400' : ''}`}
+                      className={`px-1 py-0.5 text-center font-medium whitespace-nowrap ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : holidayDateSet.has(col.iso) ? 'bg-slate-200 text-slate-400' : ''}`}
+                      title={col.kind === 'weekend' ? "Weekends aren't scheduled" : undefined}
                     >
                       {Number(col.iso.slice(8, 10))}
                     </th>
@@ -146,7 +152,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
             <tbody>
               {previewBrands.length === 0 ? (
                 <tr>
-                  <td colSpan={allRangeColumns.length + 1} className="px-1.5 py-2 text-center text-slate-400">
+                  <td colSpan={gridColumns.length + 1} className="px-1.5 py-2 text-center text-slate-400">
                     No schedule yet
                   </td>
                 </tr>
@@ -166,7 +172,12 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                           {brand}
                         </Tooltip>
                       </td>
-                      {allRangeColumns.map((col) => {
+                      {gridColumns.map((col) => {
+                        if (col.kind === 'weekend') {
+                          return (
+                            <td key={col.iso} className="w-px bg-slate-50 px-0.5 py-1 text-center" title="Weekends aren't scheduled" />
+                          );
+                        }
                         const isPast = col.iso < todayISO;
                         const isToday = col.iso === todayISO;
                         const planActive = (p: Platform) =>
@@ -223,7 +234,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                     </tr>
                     {detail && (
                       <tr className="border-t border-dashed border-slate-100 bg-slate-50/60">
-                        <td colSpan={allRangeColumns.length + 1} className="px-1.5 py-1 text-[10px] text-slate-500">
+                        <td colSpan={gridColumns.length + 1} className="px-1.5 py-1 text-[10px] text-slate-500">
                           {detail}
                         </td>
                       </tr>

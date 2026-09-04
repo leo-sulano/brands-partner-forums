@@ -9,7 +9,7 @@ import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow 
 import { buildHolidayDateSet, type PublicHoliday } from '../lib/publicHolidays';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildAgentIndex, buildAgentAssignmentMap, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildAgentIndex, buildAgentAssignmentMap, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -329,22 +329,31 @@ export default function SchedulePlanner() {
     () => (hasDateFilter ? weekdayColumnsInRange(rangeFrom, rangeTo) : columnsForWeek(weekStart)),
     [hasDateFilter, rangeFrom, rangeTo, weekStart],
   );
+  // Purely cosmetic Sat/Sun markers interleaved right after each week's
+  // Friday, so each card's mini calendar shows every day of the week for
+  // context -- the real, data-bearing allRangeColumns above (fed to
+  // countActivePlatformSlots, previewWeekISOs, and every schedule-data fetch
+  // below) stays untouched Mon-Fri-only. Passed to TabPreviewCard for
+  // rendering only.
+  const gridColumns = useMemo(() => withWeekendMarkers(allRangeColumns), [allRangeColumns]);
   // Consecutive-run grouping so the per-card date header can show a month
   // label once, spanning the columns it covers, instead of repeating
   // "Aug"/"Sep" on every single column — this is what lets the header
   // compress "Mon Aug 24" down to a stacked month/weekday-letter/day-number
   // layout without losing the month, and is also why a range that crosses a
-  // month boundary (e.g. Aug 31 – Sep 4) still reads correctly.
+  // month boundary (e.g. Aug 31 – Sep 4) still reads correctly. Built from
+  // gridColumns (not allRangeColumns) so a trailing weekend's colSpan is
+  // accounted for in the same pass.
   const dateHeaderMonthGroups = useMemo(() => {
     const groups: { month: string; count: number }[] = [];
-    for (const col of allRangeColumns) {
+    for (const col of gridColumns) {
       const month = new Date(`${col.iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short' });
       const last = groups[groups.length - 1];
       if (last && last.month === month) last.count += 1;
       else groups.push({ month, count: 1 });
     }
     return groups;
-  }, [allRangeColumns]);
+  }, [gridColumns]);
   // The distinct weeks the picked range actually needs fetched — usually
   // one, but a multi-week range needs a fetchBrandSchedule call per week it
   // touches. Joined to a stable string so the fetch effect below doesn't re-fire on
@@ -985,7 +994,7 @@ export default function SchedulePlanner() {
               preview={previewByTab[t] ?? EMPTY_PREVIEW}
               previewBrands={previewBrandsFor(t)}
               hasDateFilter={hasDateFilter}
-              allRangeColumns={allRangeColumns}
+              gridColumns={gridColumns}
               dateHeaderMonthGroups={dateHeaderMonthGroups}
               todayISO={todayISO}
               previewLoading={previewLoading}
@@ -1049,7 +1058,7 @@ export default function SchedulePlanner() {
                     preview={preview}
                     previewBrands={previewBrandsFor(t)}
                     hasDateFilter={hasDateFilter}
-                    allRangeColumns={allRangeColumns}
+                    gridColumns={gridColumns}
                     dateHeaderMonthGroups={dateHeaderMonthGroups}
                     todayISO={todayISO}
                     previewLoading={previewLoading}

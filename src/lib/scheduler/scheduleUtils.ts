@@ -510,6 +510,46 @@ export function currentWeekColumns(): ScheduleColumn[] {
   return columnsForWeek(mondayOf(new Date()));
 }
 
+// A purely cosmetic Saturday/Sunday marker -- never carries real schedule
+// data, never fed to scheduleFor/computeCellData/the scheduler/the export.
+// Kept as its own shape (not a Weekday) so nothing can accidentally index a
+// BrandScheduleRow with it -- that row type only has monday..friday columns.
+export interface WeekendColumn {
+  iso: string;
+  weekStartISO: string;
+  label: 'Sat' | 'Sun';
+}
+
+export function weekendColumnsFor(weekStartISO: string): WeekendColumn[] {
+  const monday = new Date(`${weekStartISO}T00:00:00`);
+  return [
+    { iso: toISODate(addDays(monday, 5)), weekStartISO, label: 'Sat' },
+    { iso: toISODate(addDays(monday, 6)), weekStartISO, label: 'Sun' },
+  ];
+}
+
+export type GridColumn = ({ kind: 'day' } & ScheduleColumn) | ({ kind: 'weekend' } & WeekendColumn);
+
+// Interleaves a real, data-bearing column list (Mon-Fri only, possibly
+// spanning several weeks via weekdayColumnsInRange) with two cosmetic
+// weekend markers right after each week's Friday -- so the calendar shows
+// every day of the week for context while every existing consumer of the
+// real column list (computeCellData, the CSV/Excel export, the platform-
+// count strip, the scheduler) keeps reading the untouched Mon-Fri array
+// exactly as before. A week whose range doesn't reach its own Friday (a
+// partial range ending mid-week) gets no trailing weekend marker, so the
+// grid never implies days past what was actually selected.
+export function withWeekendMarkers(columns: ScheduleColumn[]): GridColumn[] {
+  const out: GridColumn[] = [];
+  for (const col of columns) {
+    out.push({ kind: 'day', ...col });
+    if (col.weekday === 'friday') {
+      for (const w of weekendColumnsFor(col.weekStartISO)) out.push({ kind: 'weekend', ...w });
+    }
+  }
+  return out;
+}
+
 // Counts, per platform, how many (brand, day) cells across `columns` count
 // as "scheduled" -- the shared computation behind the Schedule Planner
 // toolbar's platform-count strip in both overview mode (landing-grid cards,

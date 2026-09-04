@@ -34,7 +34,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import PlatformPauseModal from './PlatformPauseModal';
@@ -268,21 +268,33 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   );
   const columnWeekKey = columnWeekISOs.join(',');
 
+  // Purely cosmetic Sat/Sun markers interleaved right after each week's
+  // Friday, so the grid shows every day of the week for context -- covers
+  // both the default single-week view and a date-filtered multi-week range.
+  // Deliberately built from `columns` (the real Weekday-typed data columns)
+  // rather than replacing it: nothing here is ever written to
+  // brand_schedule, fed to computeCellData/ScheduleCell, counted in the
+  // platform-count strip, put in the CSV/Excel export, or seen by the
+  // scheduler -- those all keep reading `columns` untouched.
+  const gridColumns = useMemo(() => withWeekendMarkers(columns), [columns]);
+
   // Consecutive-run grouping so the header's month row can show a month
   // label once, spanning the columns it covers, instead of repeating
   // "Aug"/"Sep" on every column — mirrors SchedulePlanner.tsx's own
   // dateHeaderMonthGroups for the landing-grid preview cards, so the two
-  // views can't disagree on how a month boundary is grouped.
+  // views can't disagree on how a month boundary is grouped. Built from
+  // gridColumns (not columns) so a trailing weekend's colSpan is accounted
+  // for in the same pass.
   const dateHeaderMonthGroups = useMemo(() => {
     const groups: { month: string; count: number }[] = [];
-    for (const col of columns) {
+    for (const col of gridColumns) {
       const month = new Date(`${col.iso}T00:00:00`).toLocaleDateString(undefined, { month: 'short' });
       const last = groups[groups.length - 1];
       if (last && last.month === month) last.count += 1;
       else groups.push({ month, count: 1 });
     }
     return groups;
-  }, [columns]);
+  }, [gridColumns]);
 
   // Brand list depends only on the tab (raw entries + headers), never on the
   // displayed week — re-fetching this on every Prev/Next/Today click would
@@ -1287,13 +1299,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               >
                 Brand
               </th>
-              {columns.map((col) => (
+              {gridColumns.map((col) => (
                 <th
                   key={col.iso}
-                  className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
+                  className={`sticky z-[25] px-3 py-2 text-left font-medium whitespace-nowrap will-change-transform ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600'}`}
                   style={{ top: toolbarHeight + monthHeaderHeight }}
+                  title={col.kind === 'weekend' ? "Weekends aren't scheduled" : undefined}
                 >
-                  {WEEKDAY_LABELS[col.weekday][0]}
+                  {col.kind === 'weekend' ? col.label[0] : WEEKDAY_LABELS[col.weekday][0]}
                 </th>
               ))}
               <th
@@ -1308,7 +1321,19 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 className="sticky left-0 z-30 bg-slate-50 px-3 py-1 will-change-transform"
                 style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
               />
-              {columns.map((col) => {
+              {gridColumns.map((col) => {
+                if (col.kind === 'weekend') {
+                  return (
+                    <th
+                      key={col.iso}
+                      className="sticky z-[25] w-px whitespace-nowrap bg-slate-100 px-3 py-1 text-left text-xs font-medium text-slate-400 will-change-transform"
+                      style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
+                      title="Weekends aren't scheduled"
+                    >
+                      {Number(col.iso.slice(8, 10))}
+                    </th>
+                  );
+                }
                 const h = holidayOn(col.iso, holidays);
                 return (
                   <th
@@ -1330,13 +1355,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={gridColumns.length + 2} className="px-4 py-8 text-center text-slate-400">
                   Loading…
                 </td>
               </tr>
             ) : filteredBrands.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + 2} className="px-4 py-8 text-center text-slate-400">
+                <td colSpan={gridColumns.length + 2} className="px-4 py-8 text-center text-slate-400">
                   No brands match.
                 </td>
               </tr>
@@ -1386,7 +1411,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       </Tooltip>
                       {flaggedRemovedPlatforms(brand).map((p) => <RemovedPlatformIcon key={p} platform={p} />)}
                     </td>
-                    {columns.map((col) => {
+                    {gridColumns.map((col) => {
+                      if (col.kind === 'weekend') {
+                        return (
+                          <td key={col.iso} className="w-px px-3 py-2 text-left align-top">
+                            <Tooltip content="Weekends aren't scheduled" block>
+                              <div className="h-6 rounded-md bg-slate-100" />
+                            </Tooltip>
+                          </td>
+                        );
+                      }
                       const dayISO = col.iso;
                       const holidayName = holidayOn(dayISO, holidays)?.name;
                       const { rowsByPlatform, pausesByPlatform, pausedByPlatform } = computeCellData(brand, col.weekStartISO);
