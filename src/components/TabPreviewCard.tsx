@@ -42,6 +42,11 @@ interface Props {
   // paused-tabs grid uses this for a small paused-status icon instead,
   // since a paused card is never clickable and that slot is otherwise empty.
   cornerBadge?: ReactNode;
+  // Rendered in the header row, just before the trailing chevron/cornerBadge —
+  // the active grid passes the weekly-approval pill (+ super-admin
+  // Approve/Revoke controls) here. Its interactive parts stop event
+  // propagation so a click on them doesn't also open the tab.
+  approvalControl?: ReactNode;
   // Rendered between the header row and the mini calendar table — the
   // paused-tabs grid uses this for its reason/since→until line; the
   // active grid passes nothing.
@@ -63,7 +68,7 @@ interface Props {
 // so planActive below is always false for it — every chip a paused card
 // shows is real evidence, never a plan, with no separate "missed" concept
 // needed for that case.
-export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, holidayDateSet, visiblePlatforms, onClick, cornerBadge, headerExtra, renderBrandDetail }: Props) {
+export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFilter, allRangeColumns, dateHeaderMonthGroups, todayISO, previewLoading, holidayDateSet, visiblePlatforms, onClick, cornerBadge, approvalControl, headerExtra, renderBrandDetail }: Props) {
   const clickable = !!onClick;
   return (
     <div
@@ -83,11 +88,14 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
       className={`flex flex-col gap-2 rounded-lg border border-solid border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors ${clickable ? 'cursor-pointer hover:border-blue-300 hover:bg-blue-50' : ''}`}
     >
       <span className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-2">
+        <span className="flex min-w-0 items-center gap-2">
           <TabIcon tab={tab} className="size-4 shrink-0 text-blue-500" />
-          <span className="text-sm font-medium text-slate-800">{tabDisplayName(tab)}</span>
+          <span className="truncate text-sm font-medium text-slate-800">{tabDisplayName(tab)}</span>
         </span>
-        {clickable ? <ChevronRight className="size-4 shrink-0 text-slate-400" /> : cornerBadge}
+        <span className="flex shrink-0 items-center gap-2">
+          {approvalControl}
+          {clickable ? <ChevronRight className="size-4 shrink-0 text-slate-400" /> : cornerBadge}
+        </span>
       </span>
 
       {headerExtra}

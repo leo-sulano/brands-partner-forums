@@ -9097,3 +9097,50 @@ stale comments about "the Paused Brands panel" / `handleResumeNow` were correcte
 
 `npm run build` clean; full suite **2334** passing. Deploy: `git push origin main` only — no
 migration, no Edge Function redeploy.
+
+---
+
+## Task 322: Approve a whole tab's week from the Schedule Planner landing grid
+
+**Date:** September 4, 2026
+
+User: "on global grid view have an option also to approve schedule so it will approve the whole
+tab one at a time." The weekly `(tab, week)` approval gate (Tasks 314–317) already existed but
+was only reachable from a tab's own `TabScheduleSection` header. This surfaces the same
+Draft/Approved pill + super-admin **Approve** / **Revoke** on each active-tab card of the
+landing grid (`showGrid` view), acting on the nav-selected week (`weekStartISO`), one card at a
+time. No bulk "approve all".
+
+**Shared helper — `src/lib/scheduleApproval.ts` (new, browser-only, 7 unit tests):**
+- `buildActiveSlotItems({ tab, tabLabel, weekStartISO, scheduleRows, brandByKey, agentAssignments,
+  rawAgentFallback })` — pure; the exact body lifted out of `TabScheduleSection`'s
+  `activeSlotItemsForDisplayedWeek` (which now calls it). One computation, two callers, so the
+  grid button and the tab header can't drift on which weekday counts / brand name / per-platform
+  agent.
+- `approveWeekAndFlush({ tab, weekStartISO, actorEmail, items })` — `approveWeek` then (if any
+  items) `pushScheduleActivations` + `syncTabStatusToPms`; a flush failure is re-thrown as the
+  new `PmsFlushError` so the caller can still treat the week as approved and show "approved, but
+  PMS sync failed — retry". `TabScheduleSection.handleApproveWeek` refactored onto this (behaviour
+  identical: same nested-try semantics, `approveWeek` import dropped).
+
+**`src/pages/SchedulePlanner.tsx`:** `useAuth` for `isSuperAdmin`/`profile`; one effect fetches
+`fetchApprovedScheduleWeeks(getActiveOperationalTabs())` into an `${tab}::${week}` Set (guarded
+`showGrid && !hasDateFilter`, re-run on an `approvalReloadSeq` bump); `renderApprovalControl(t)`
+builds the pill + button node passed to `TabPreviewCard`'s new `approvalControl?: ReactNode`
+prop. `handleApproveTab` / `handleRevokeTab` mirror the tab-view handlers (toasts via a new page
+`Toast`; a shared confirm-revoke modal mirrors `TabScheduleSection`'s). Hidden entirely when a
+date filter is active (arbitrary multi-week span — no clear "this week" target, consistent with
+`navDisabled`) or the nav-week is legacy (`isLegacyNavWeek`, same all-`platform:null` check as
+`TabScheduleSection.isLegacyWeekAt`). Approve button also disabled while `previewLoading` (the
+flush reads that tab's not-yet-fetched `scheduleRows`). Interactive bits `stopPropagation` on
+click+keydown so they don't also open the tab.
+
+**`src/components/TabPreviewCard.tsx`:** new optional `approvalControl` slot in the header row
+before the chevron/`cornerBadge`; tab name gains `min-w-0`/`truncate` so the pill+button never
+overflow a narrow card. Paused-tabs grid passes nothing (a paused tab never generates a
+schedule).
+
+Not touched: RLS, approval semantics, the `approved_by · date` detail (stays tab-view only — the
+compact card shows just Approved/Draft), `pushScheduleToPms`'s gate. No schema or Edge Function
+change. `npm run build` clean; full suite **2341** passing (2334 + 7 new). Live browser
+verification not run this session. Deploy: `git push origin main` only.

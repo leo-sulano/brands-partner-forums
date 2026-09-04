@@ -19,7 +19,6 @@ import {
   clearScheduleCancellation,
   fetchPublicHolidays,
   fetchTabWeekApprovals,
-  approveWeek,
   revokeWeekApproval,
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
@@ -33,6 +32,7 @@ import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/sche
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
+import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
 import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
 import AddPlatformModal from './AddPlatformModal';
@@ -992,52 +992,43 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Every 'active' day slot in the displayed week, as PMS sync items — the
   // set the approve flow flushes to the PMS board once the week is approved.
   // Idempotent downstream via schedule_pms_links, so re-approving is safe.
-  function activeSlotItemsForDisplayedWeek(): {
-    tab: string; tabLabel: string; brand: string; platform: Platform; date: string; agent: string | null;
-  }[] {
-    const cols = columnsForWeek(weekStart);
-    const out: { tab: string; tabLabel: string; brand: string; platform: Platform; date: string; agent: string | null }[] = [];
-    for (const row of scheduleRows.filter((r) => r.week_start === weekStartISO && r.platform != null)) {
-      const platform = row.platform as Platform;
-      const brand = brandByKey.get(row.brand_key) ?? row.brand_key;
-      for (const col of cols) {
-        if (row[col.weekday] === 'active') {
-          out.push({
-            tab,
-            tabLabel: tabDisplayName(tab),
-            brand,
-            platform,
-            date: col.iso,
-            agent: resolveAgentForPlatform(row.brand_key, platform, agentAssignments, rawAgentFallback),
-          });
-        }
-      }
-    }
-    return out;
+  // Shared with the Schedule Planner landing grid's per-tab "Approve" button
+  // via buildActiveSlotItems so the two build the identical list.
+  function activeSlotItemsForDisplayedWeek() {
+    return buildActiveSlotItems({
+      tab,
+      tabLabel: tabDisplayName(tab),
+      weekStartISO,
+      scheduleRows,
+      brandByKey,
+      agentAssignments,
+      rawAgentFallback,
+    });
   }
 
   async function handleApproveWeek() {
     if (!isSuperAdmin || approveBusy) return;
     setApproveBusy(true);
     try {
-      await approveWeek(tab, weekStartISO, profile?.email ?? 'unknown');
+      // Approves, then flushes the now-approved week's active slots to the PMS
+      // and reconciles their columns. The approval is persisted independently
+      // of the flush (a PmsFlushError still means the week IS approved), so a
+      // revisit or re-approve re-flushes.
+      await approveWeekAndFlush({
+        tab,
+        weekStartISO,
+        actorEmail: profile?.email ?? 'unknown',
+        items: activeSlotItemsForDisplayedWeek(),
+      });
       setApprovalReloadSeq((n) => n + 1);
-      // Flush the now-approved week's active slots to the PMS, then reconcile
-      // their columns. Both best-effort/toasted — the approval itself is
-      // already persisted, so a revisit or re-approve re-flushes.
-      const items = activeSlotItemsForDisplayedWeek();
-      if (items.length > 0) {
-        try {
-          await pushScheduleActivations(items);
-          await syncTabStatusToPms(tab);
-        } catch (err) {
-          setToast({ message: err instanceof Error ? err.message : 'Approved, but PMS sync failed — retry from this week', kind: 'error' });
-          return;
-        }
-      }
       setToast({ message: 'Week approved — schedule pushed to the PMS board.', kind: 'success' });
     } catch (err) {
-      setToast({ message: err instanceof Error ? err.message : 'Failed to approve week', kind: 'error' });
+      if (err instanceof PmsFlushError) {
+        setApprovalReloadSeq((n) => n + 1);
+        setToast({ message: 'Approved, but PMS sync failed — retry from this week', kind: 'error' });
+      } else {
+        setToast({ message: err instanceof Error ? err.message : 'Failed to approve week', kind: 'error' });
+      }
     } finally {
       setApproveBusy(false);
     }

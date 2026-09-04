@@ -1,13 +1,15 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { tabDisplayName } from '../lib/tabs';
+import { useAuth } from '../contexts/AuthContext';
+import Toast, { type ToastKind } from '../components/Toast';
 import { getActiveOperationalTabs, getPausedOperationalTabs } from '../lib/pausedTabRegistry';
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildHolidayDateSet, type PublicHoliday } from '../lib/publicHolidays';
 import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { PLATFORM_BADGE, buildResolvedAgentIndex, buildAgentIndex, buildAgentAssignmentMap, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -18,7 +20,10 @@ import {
   fetchBrandAgentAssignments,
   fetchPausedTabDetails,
   fetchPublicHolidays,
+  fetchApprovedScheduleWeeks,
+  revokeWeekApproval,
 } from '../lib/queries';
+import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import TabScheduleSection from '../components/TabScheduleSection';
@@ -420,6 +425,145 @@ export default function SchedulePlanner() {
   }
 
   const showGrid = selectedTabs.length === 0;
+
+  // ─── Weekly schedule approval (landing-grid, one tab at a time) ──────────
+  // The same per-(tab, week) approval gate TabScheduleSection's header exposes,
+  // surfaced on each grid card so a super admin can approve a whole tab's week
+  // without opening it. Always acts on the nav-selected week (weekStartISO);
+  // hidden entirely when a date range is set, since the grid then shows an
+  // arbitrary, possibly multi-week span where "approve this week" has no clear
+  // target (consistent with navDisabled).
+  const { isSuperAdmin, profile } = useAuth();
+  const [approvedWeeks, setApprovedWeeks] = useState<Set<string>>(new Set());
+  const [approvalReloadSeq, setApprovalReloadSeq] = useState(0);
+  const [approveBusyTab, setApproveBusyTab] = useState<string | null>(null);
+  const [confirmRevokeTab, setConfirmRevokeTab] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
+  // Approval can only be revoked for a week that hasn't started yet — matches
+  // TabScheduleSection's own isFutureWeek rule (a current/past week is already
+  // live on the PMS board).
+  const isFutureWeek = weekStartISO > toISODate(mondayOf(new Date()));
+
+  useEffect(() => {
+    if (!showGrid || hasDateFilter) {
+      setApprovedWeeks(new Set());
+      return;
+    }
+    let canceled = false;
+    fetchApprovedScheduleWeeks(getActiveOperationalTabs())
+      .then((set) => { if (!canceled) setApprovedWeeks(set); })
+      .catch(() => { if (!canceled) setApprovedWeeks(new Set()); });
+    return () => { canceled = true; };
+  }, [showGrid, hasDateFilter, approvalReloadSeq]);
+
+  // A tab's nav-week is "legacy" (pre-platform-tracking) when it has schedule
+  // rows for that week and every one of them is platform-null — same check
+  // TabScheduleSection.isLegacyWeekAt does, so both surfaces hide the
+  // pill/button for the same weeks. A blank future week (no rows) is NOT
+  // legacy: it shows Draft + Approve, exactly like the tab view.
+  function isLegacyNavWeek(t: string): boolean {
+    const rows = (previewByTab[t] ?? EMPTY_PREVIEW).scheduleRows.filter((r) => r.week_start === weekStartISO);
+    return rows.length > 0 && rows.every((r) => r.platform == null);
+  }
+
+  async function handleApproveTab(t: string) {
+    // previewLoading guard: buildActiveSlotItems reads previewByTab[t].scheduleRows
+    // for the flush, so approving before that tab's fetch settles would write
+    // the approval but push nothing to the PMS board for the current week.
+    if (!isSuperAdmin || approveBusyTab || previewLoading) return;
+    const preview = previewByTab[t] ?? EMPTY_PREVIEW;
+    const items = buildActiveSlotItems({
+      tab: t,
+      tabLabel: tabDisplayName(t),
+      weekStartISO,
+      scheduleRows: preview.scheduleRows,
+      brandByKey: new Map(preview.brands.map((b) => [normalizeBrandKey(b), b])),
+      agentAssignments: buildAgentAssignmentMap(preview.agentAssignmentRows),
+      rawAgentFallback: buildAgentIndex(preview.rawEntries),
+    });
+    setApproveBusyTab(t);
+    try {
+      await approveWeekAndFlush({ tab: t, weekStartISO, actorEmail: profile?.email ?? 'unknown', items });
+      setApprovalReloadSeq((n) => n + 1);
+      setToast({ message: `${tabDisplayName(t)} — week approved, schedule pushed to the PMS board.`, kind: 'success' });
+    } catch (err) {
+      if (err instanceof PmsFlushError) {
+        setApprovalReloadSeq((n) => n + 1);
+        setToast({ message: `${tabDisplayName(t)} — approved, but PMS sync failed. Retry from the tab.`, kind: 'error' });
+      } else {
+        setToast({ message: err instanceof Error ? err.message : 'Failed to approve week', kind: 'error' });
+      }
+    } finally {
+      setApproveBusyTab(null);
+    }
+  }
+
+  async function handleRevokeTab(t: string) {
+    if (!isSuperAdmin || approveBusyTab || !isFutureWeek) return;
+    setConfirmRevokeTab(null);
+    setApproveBusyTab(t);
+    try {
+      await revokeWeekApproval(t, weekStartISO);
+      setApprovalReloadSeq((n) => n + 1);
+      setToast({ message: `${tabDisplayName(t)} — approval revoked. Existing PMS tasks are kept.`, kind: 'success' });
+    } catch (err) {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to revoke approval', kind: 'error' });
+    } finally {
+      setApproveBusyTab(null);
+    }
+  }
+
+  // The pill (+ super-admin Approve/Revoke) rendered in each active grid
+  // card's header. Null when a date filter is active or the nav-week is
+  // legacy. Interactive bits stop click/keydown propagation so they don't
+  // also trigger the card's whole-card "open this tab" behavior.
+  function renderApprovalControl(t: string): ReactNode {
+    if (hasDateFilter || isLegacyNavWeek(t)) return null;
+    const approved = approvedWeeks.has(`${t}::${weekStartISO}`);
+    const busy = approveBusyTab === t;
+    return (
+      <span
+        className="flex items-center gap-1.5"
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+      >
+        {approved ? (
+          <span className="inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-200">
+            Approved
+          </span>
+        ) : (
+          <Tooltip content="Schedule changes won't reach the PMS board until a super admin approves this week.">
+            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 ring-1 ring-inset ring-amber-200">
+              Draft
+            </span>
+          </Tooltip>
+        )}
+        {isSuperAdmin && (
+          approved ? (
+            isFutureWeek ? (
+              <button
+                type="button"
+                onClick={() => setConfirmRevokeTab(t)}
+                disabled={busy}
+                className="text-[11px] text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
+              >
+                Revoke
+              </button>
+            ) : null
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleApproveTab(t)}
+              disabled={busy || previewLoading}
+              className="rounded-md bg-emerald-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            >
+              {busy ? 'Approving…' : 'Approve'}
+            </button>
+          )
+        )}
+      </span>
+    );
+  }
   // Real per-brand, per-platform schedule for every tab across the displayed
   // columns, shown as a miniature copy of the full calendar (brand rows ×
   // day columns) on each landing-grid card. Fetched only while the grid is
@@ -847,6 +991,7 @@ export default function SchedulePlanner() {
               previewLoading={previewLoading}
               holidayDateSet={holidayDateSet}
               visiblePlatforms={visiblePlatforms}
+              approvalControl={renderApprovalControl(t)}
               onClick={() => setSelectedTabs([t])}
             />
           ))}
@@ -963,6 +1108,41 @@ export default function SchedulePlanner() {
           ))}
         </div>
       )}
+
+      {confirmRevokeTab && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmRevokeTab(null)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <div className="px-5 pt-5 pb-4">
+              <h2 className="text-sm font-semibold text-slate-800">Revoke approval?</h2>
+              <p className="text-xs text-slate-500 mt-1.5">
+                This puts {tabDisplayName(confirmRevokeTab)}'s week of {formatWeekdayDate(weekStart, 0)} –{' '}
+                {formatWeekdayDate(weekStart, 4)} back into Draft. Existing PMS tasks are kept, but no new schedule
+                changes reach the PMS board until a super admin re-approves.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 pt-3 pb-5">
+              <button
+                type="button"
+                onClick={() => setConfirmRevokeTab(null)}
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRevokeTab(confirmRevokeTab)}
+                disabled={approveBusyTab === confirmRevokeTab}
+                className="rounded-md bg-rose-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {approveBusyTab === confirmRevokeTab ? 'Revoking…' : 'Revoke approval'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toast && <Toast message={toast.message} kind={toast.kind} onClose={() => setToast(null)} />}
     </div>
   );
 }
