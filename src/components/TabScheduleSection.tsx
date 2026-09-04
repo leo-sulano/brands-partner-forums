@@ -172,6 +172,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [tabApprovals, setTabApprovals] = useState<WeeklyScheduleApproval[]>([]);
   const [approvalReloadSeq, setApprovalReloadSeq] = useState(0);
   const [approveBusy, setApproveBusy] = useState(false);
+  const [confirmRevoke, setConfirmRevoke] = useState(false);
   const approvedWeekSet = useMemo(
     () => new Set(tabApprovals.filter((a) => a.status === 'approved').map((a) => a.week_start)),
     [tabApprovals],
@@ -1044,6 +1045,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
 
   async function handleRevokeWeek() {
     if (!isSuperAdmin || approveBusy) return;
+    setConfirmRevoke(false);
     setApproveBusy(true);
     try {
       await revokeWeekApproval(tab, weekStartISO);
@@ -1136,6 +1138,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     }
   }
 
+  useEffect(() => {
+    if (!confirmRevoke) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setConfirmRevoke(false);
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [confirmRevoke]);
+
   return (
     <div className="rounded-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col">
       {error && (
@@ -1168,7 +1179,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               isDisplayedWeekApproved ? (
                 <button
                   type="button"
-                  onClick={handleRevokeWeek}
+                  onClick={() => setConfirmRevoke(true)}
                   disabled={approveBusy}
                   className="text-xs text-slate-400 hover:text-slate-600 hover:underline disabled:opacity-50"
                 >
@@ -1484,6 +1495,38 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           onSave={(newPausedDays) => handlePauseDaysSave(pauseDaysTarget.brand, pauseDaysTarget.platform, pauseDaysModalData.initialPausedDays, newPausedDays)}
           onClose={() => setPauseDaysTarget(null)}
         />
+      )}
+      {confirmRevoke && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmRevoke(false)} />
+          <div className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <div className="px-5 pt-5 pb-4">
+              <h2 className="text-sm font-semibold text-slate-800">Revoke approval?</h2>
+              <p className="text-xs text-slate-500 mt-1.5">
+                This puts the week of {formatWeekdayDate(weekStart, 0)} – {formatWeekdayDate(weekStart, 4)} back
+                into Draft. Existing PMS tasks are kept, but no new schedule changes reach the PMS board until a
+                super admin re-approves.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 pt-3 pb-5">
+              <button
+                type="button"
+                onClick={() => setConfirmRevoke(false)}
+                className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRevokeWeek}
+                disabled={approveBusy}
+                className="rounded-md bg-rose-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {approveBusy ? 'Revoking…' : 'Revoke approval'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
