@@ -1,3 +1,5 @@
+import type { CustomPlatformConfig } from '../lib/customPlatforms.ts';
+
 export interface BrandEntry {
   id: string;
   tab: string;
@@ -33,6 +35,7 @@ export interface TabKpis {
   cg: PlatformKpis;
   wo: PlatformKpis;
   activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[];
+  customPlatforms: { platform: CustomPlatformConfig; total: number; live: number; removed: number; successRate: number | null }[];
   byCountry: Record<string, CountBreakdown>;
   byProxy: Record<string, CountBreakdown>;
   countries: string[];

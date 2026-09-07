@@ -88,6 +88,7 @@ import {
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
 import { registerHiddenTabPlatforms, resetHiddenTabPlatforms } from './tab-configs';
+import { registerTabCustomPlatforms, resetTabCustomPlatforms } from './customPlatformRegistry.ts';
 import type { Entry } from '../types/entry.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
@@ -925,6 +926,19 @@ describe('computeTabKpisFromEntries', () => {
       expect(kpis.live).toBe(1);
       expect(kpis.removed).toBe(0);
     });
+  });
+
+  it('includes customPlatforms counts for any platform enabled on the tab', () => {
+    registerTabCustomPlatforms([{ id: 'p1', tab: 'Hanan', name: 'Yelp', shortLabel: 'YP', statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null }]);
+    const entries: Entry[] = [
+      { id: '1', tab: 'Hanan', sheet_row_id: '1', data: { 'Yelp Review Status': 'Published' }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard', last_sync_tag: null },
+      { id: '2', tab: 'Hanan', sheet_row_id: '2', data: { 'Yelp Review Status': 'Removed' }, updated_at: '2026-01-01T00:00:00Z', last_edited_by: 'dashboard', last_sync_tag: null },
+    ];
+    const result = computeTabKpisFromEntries(entries, [], 'Hanan', 'Brands', undefined, undefined, new Set());
+    expect(result?.customPlatforms).toEqual([
+      { platform: expect.objectContaining({ name: 'Yelp' }), total: 2, live: 1, removed: 1, successRate: 50 },
+    ]);
+    resetTabCustomPlatforms();
   });
 });
 

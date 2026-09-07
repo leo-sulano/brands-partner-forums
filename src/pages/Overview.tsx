@@ -78,6 +78,7 @@ const EMPTY_KPIS: TabKpis = {
   cg: { live: 0, removed: 0 },
   wo: { live: 0, removed: 0 },
   activePlatforms: [],
+  customPlatforms: [],
   byCountry: {},
   byProxy: {},
   countries: [],

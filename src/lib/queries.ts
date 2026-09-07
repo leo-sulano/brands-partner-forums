@@ -17,7 +17,8 @@ import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 import { extractCredentials, type EntryCredentials } from './entryCredentials.ts';
-import type { CustomPlatformConfig } from './customPlatforms.ts';
+import { computeCustomPlatformCounts, type CustomPlatformConfig } from './customPlatforms.ts';
+import { getTabCustomPlatforms } from './customPlatformRegistry.ts';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -741,6 +742,11 @@ export function computeTabKpisFromEntries(
     ? activePlatforms.filter((p) => platformFilter.includes(p))
     : activePlatforms;
 
+  const customPlatforms = getTabCustomPlatforms(tab).map((platform) => ({
+    platform,
+    ...computeCustomPlatformCounts(filteredEntries, platform, dateFrom, dateTo),
+  }));
+
   return {
     total: live + removed,
     live, removed, done, pending, onPause, notDone,
@@ -748,7 +754,7 @@ export function computeTabKpisFromEntries(
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
     wo: { live: woLive, removed: woRemoved },
-    activePlatforms: visiblePlatforms, byCountry, byProxy, countries, proxies,
+    activePlatforms: visiblePlatforms, customPlatforms, byCountry, byProxy, countries, proxies,
   };
 }
 
