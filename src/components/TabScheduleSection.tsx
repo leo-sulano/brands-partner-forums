@@ -1307,16 +1307,19 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               >
                 Brand
               </th>
-              {gridColumns.map((col) => (
-                <th
-                  key={col.iso}
-                  className={`sticky z-[25] px-3 py-2 text-left font-medium whitespace-nowrap will-change-transform ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600'}`}
-                  style={{ top: toolbarHeight + monthHeaderHeight }}
-                  title={col.kind === 'weekend' ? "Weekends aren't scheduled" : undefined}
-                >
-                  {col.kind === 'weekend' ? col.label[0] : WEEKDAY_LABELS[col.weekday][0]}
-                </th>
-              ))}
+              {gridColumns.map((col) => {
+                const isHoliday = col.kind === 'day' && !!holidayOn(col.iso, holidays);
+                return (
+                  <th
+                    key={col.iso}
+                    className={`sticky z-[25] px-3 py-2 text-left font-medium whitespace-nowrap will-change-transform ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : isHoliday ? 'w-px bg-rose-50 text-rose-400' : 'bg-slate-50 text-slate-600'}`}
+                    style={{ top: toolbarHeight + monthHeaderHeight }}
+                    title={col.kind === 'weekend' ? "Weekends aren't scheduled" : isHoliday ? holidayOn(col.iso, holidays)?.name : undefined}
+                  >
+                    {col.kind === 'weekend' ? col.label[0] : WEEKDAY_LABELS[col.weekday][0]}
+                  </th>
+                );
+              })}
               <th
                 className="sticky z-[25] bg-slate-50 px-3 py-2 text-left font-medium text-slate-600 whitespace-nowrap will-change-transform"
                 style={{ top: toolbarHeight + monthHeaderHeight }}
@@ -1346,7 +1349,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                 return (
                   <th
                     key={col.iso}
-                    className={`sticky z-[25] px-3 py-1 text-left text-xs font-medium will-change-transform ${h ? 'bg-slate-200 text-slate-400' : 'bg-slate-50 text-slate-500'}`}
+                    className={`sticky z-[25] whitespace-nowrap px-3 py-1 text-left text-xs font-medium will-change-transform ${h ? 'w-px bg-rose-50 text-rose-400' : 'bg-slate-50 text-slate-500'}`}
                     style={{ top: toolbarHeight + monthHeaderHeight + weekdayHeaderHeight }}
                     title={h ? `Public holiday · ${h.name}` : undefined}
                   >
@@ -1437,7 +1440,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const pendingByPlatform = computePendingByPlatform(brand, dayISO);
                       const doneByPlatform = computeDoneByPlatform(brand, dayISO);
                       return (
-                        <td key={col.iso} className="px-3 py-2 text-left align-top">
+                        <td key={col.iso} className={`px-3 py-2 text-left align-top ${holidayName ? 'w-px' : ''}`}>
                           <ScheduleCell
                             brand={brand}
                             day={col.weekday}

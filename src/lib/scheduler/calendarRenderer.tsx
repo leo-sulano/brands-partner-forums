@@ -254,12 +254,12 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   const cell = (
     <div
-      className={`group/cell flex flex-wrap items-center gap-1 ${holidayName ? 'rounded bg-slate-100 px-1 py-0.5 opacity-60 grayscale' : ''}`}
+      className={`group/cell flex flex-wrap items-center gap-1 ${holidayName ? 'rounded bg-rose-50 px-1 py-0.5' : ''}`}
       role="group"
       aria-label={`${brand} schedule for ${day}${holidayName ? ` — Public holiday: ${holidayName}` : ''}`}
     >
       {holidayName && (
-        <span className="mb-0.5 block w-full text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+        <span className="mb-0.5 block w-full whitespace-nowrap text-[9px] font-semibold uppercase tracking-wide text-rose-500">
           Holiday
         </span>
       )}
