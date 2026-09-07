@@ -9451,3 +9451,125 @@ clean, `deno check` clean. **Deployed and live-verified same session:** `sync-sc
 confirmed `ACTIVE`; a direct `{"action":"syncAllStatuses"}` call (the exact action the real 1-minute
 cron fires) returned `"ok"` for all 11 tabs, confirming the new backfill sweep runs cleanly inside
 the hot path with nothing outstanding to fix.
+
+---
+
+## Task 326: Custom Platforms — let any user define a 5th review platform, plus its final-review fix wave
+
+**Date:** September 7, 2026
+
+Added Custom Platforms — any approved user can now define a brand-new review platform (e.g. a
+5th site beyond TrustPilot/AskGamblers/CasinoGuru/Wizard of Odds) and enable it on any tab,
+hardcoded or self-service-created, with no code change and no deploy. Once enabled, the platform
+gets real status/date columns on entries (`"<name> Review Status"`/`"<name> Review Added"`,
+generated once at creation and frozen — see Non-goals below) and its Live/Removed/Total/Success-Rate
+counts automatically appear on both Overview and Brand Tabs, the two tab-scoped views a
+platform's tab-scoped-by-construction identity naturally fits. Two new tables (`custom_platforms`,
+`tab_custom_platforms`, migration `20260907120000_add_custom_platforms.sql`, standard 4-policy RLS)
+back a new in-memory `customPlatformRegistry.ts`, which mirrors `dynamicTabRegistry.ts`'s
+resolver-injection shape exactly so `tab-configs.ts`'s `getTabColumns` can append a custom
+platform's columns onto any tab with zero changes at its other call sites. Built via 10
+subagent-driven-development tasks: the migration; the pure compute engine
+(`src/lib/customPlatforms.ts`, reusing `scoreSummary.ts`'s `isLiveStatus`/`isRemovedStatus`/
+`passesDateFilter` — no new classification logic); the registry + `getTabColumns` overlay;
+`queries.ts`'s fetch/create/enable/disable/delete functions (`fetchCustomPlatforms`,
+`createCustomPlatform`, `enableCustomPlatformOnTab`, `disableCustomPlatformOnTab`,
+`deleteCustomPlatform`); `AuthContext.tsx` bootstrap wiring; the create-and-enable UI
+(`AddCustomPlatformModal.tsx` + the checkbox list in `EditBrandTabModal.tsx`/
+`AddBrandTabModal.tsx`); custom platform fields in `AddReviewAccountModal.tsx` (a "Custom
+Platforms" section, status dropdown + date field per enabled platform); `TabKpis.customPlatforms`
+in the KPI data layer; and rendering on Overview (originally only the "Brands" view's per-tab
+header) and Brand Tabs (a 4th-style KPI card per enabled custom platform, alongside the
+Live/Removed/Total cards).
+
+**Same-day final whole-branch review, one consolidated fix wave (6 Important + 2 Minor, all
+fixed — no second wave possible after this):**
+- Overview's DEFAULT "Brand Tabs" card grid (the page's actual default view — the plan had only
+  wired custom platforms into the non-default "Brands" view's per-tab header) now renders a
+  `CustomPlatformRow` per enabled custom platform inside the same per-tab card `visibleTabs.map`
+  the built-in TP/AG/CG/WO `PlatformRow`s use — same live/removed/success-rate styling, no
+  favicon/href (a custom platform has neither); `visibleTabs`'s own filter also now folds in
+  `customPlatforms` live+removed counts, so a tab whose only populated platform is a custom one
+  no longer silently vanishes from Overview entirely.
+- `registerTabCustomPlatforms` (`customPlatformRegistry.ts`) is now idempotent on `(tab, id)` —
+  previously a sign-out/sign-in cycle with no full page reload (re-running the `AuthContext`
+  bootstrap) would duplicate every registration: duplicate table columns, duplicate KPI cards,
+  duplicate React keys.
+- `EditBrandTabModal.tsx`'s custom-platform registry refresh (`resetTabCustomPlatforms` +
+  `registerTabCustomPlatforms`) now also fires on a plain tab rename with no custom-platform
+  checkbox change, not just an add/remove — the registry is keyed by tab name and was never
+  otherwise rekeyed, so a rename-only save used to leave every custom platform on that tab
+  invisible (KPI cards, status/date columns) for the rest of the session.
+- `reservedColumnNames()` (`queries.ts`) now also folds in every alias from `scoreSummary.ts`'s
+  `PLATFORM_STATUS_KEYS`/`PLATFORM_DATE_KEYS`, not just `TAB_COLUMN_CONFIGS`'s columns — closing
+  a real gap where naming a custom platform "Trust Pilot" would have generated a status column
+  (`"Trust Pilot Review Status"`) silently picked up by every real TrustPilot-reading function
+  (Score Summary, success rates, the scheduler's auto-pause detection), corrupting real TrustPilot
+  numbers. New regression test locks this in.
+- `deleteCustomPlatform` (built and tested in an earlier task) had zero UI callers — a custom
+  platform could be created and disabled everywhere but never actually removed through the app.
+  `EditBrandTabModal.tsx`'s checkbox list now shows a small trash-icon button next to any
+  currently-*unchecked* custom platform; it calls `deleteCustomPlatform` and surfaces its existing
+  friendly "This platform is still enabled on one or more tabs. Disable it everywhere first."
+  rejection inline if the platform is still enabled somewhere else, or removes it from the local
+  list immediately on success.
+- Closed the orphan-row hazard the delete UI would otherwise still leave unreachable:
+  `AddBrandTabModal`'s "+ Add custom platform" used to auto-enable the new platform immediately
+  against the Tab Name field's current value — a placeholder that might get edited afterward or
+  might never become a real tab at all if the whole Add Brand Tab flow is abandoned, permanently
+  orphaning a `tab_custom_platforms` row. Fixed at the root: `createCustomPlatform` gained an
+  `autoEnable` param (default `true`, unchanged for `EditBrandTabModal`'s already-correct
+  immediate-enable usage against a real existing tab) that `AddCustomPlatformModal` now passes as
+  `false` from `AddBrandTabModal`'s call site — the platform is created but left unattached to any
+  tab until `handleSubmit`'s own enable loop runs against the final submitted tab name. An
+  abandoned platform (never submitted) simply sits unattached and, since `fetchCustomPlatforms()`
+  is unscoped, is fully visible and deletable from any other tab's Edit Brand Tab modal — no
+  longer a true orphan.
+- The "Rating scale (optional)" dropdown in `AddCustomPlatformModal.tsx` (1-5 stars / 1-10 stars /
+  none) was entirely inert — `custom_platforms.max_score` was stored but read by nothing. Removed
+  from the UI for v1 (always passes `null`); the DB column and `CustomPlatformConfig.maxScore`/
+  `CustomPlatformSummary.maxScore` fields stay in place for a future phase rather than offering a
+  control that silently does nothing.
+- Doc bookkeeping (this entry + the accompanying `CLAUDE.md` Known Issues bullet), per this
+  project's standing rule.
+
+3 new tests (`queries.test.ts`'s reserved-name rejection for "Trust Pilot",
+`customPlatformRegistry.test.ts`'s idempotency lock, plus one more covering the `autoEnable`
+orphan-row fix); full suite **1014** passing (1011 + 3); `npm run build` clean.
+
+**Live-verified end to end** (Playwright against real production data, then fully cleaned up):
+created a throwaway custom platform ("QA Test Platform 325b" / "QAB") on the Trybet tab via Edit
+Brand Tab, confirmed the reserved-name dropdown was gone, added a real entry via Add Review
+Account with its status set to Published (confirmed live via a direct REST read of the entry's
+`data` jsonb: `"QA Test Platform 325b Review Status": "Published"`), then confirmed it shows on
+**Overview's default "Brand Tabs" view** (not just "Brands") as a `QAB` row reading "1 live, 0
+removed, 100%" — the exact I1 gap. Also confirmed on the Edit Brand Tab checkbox list: unchecking
+the platform then immediately clicking its trash icon (before saving) correctly hit the "still
+enabled on one or more tabs" rejection (since the DB-side enable was still real until Save
+Changes ran); saving, reopening, and deleting again succeeded with no error and removed it from
+the list. One incidental discovery, root-caused by the final re-review, out of this fix wave's
+scope and not touched: `EditEntryModal.tsx` does not actually build its field list from
+`getTabColumns(tab)` the way Task 7's own verification note assumed — it derives `headers` from
+`tab_schemas` plus whatever keys an entry's own `data` already has (`BrandGroup.tsx`'s `extras`
+logic), so a custom platform's columns reach it only through an entry that already carries them.
+In practice this is narrower than it sounds: every entry created *after* a platform is enabled
+gets both keys via `AddReviewAccountModal`'s `saveFields` (even left blank), so it's fully
+editable in Edit Entry indefinitely; only an entry that predates the platform's enablement shows
+nothing there — though its custom-platform columns are still visible and editable via the Brand
+Tabs table's own inline cell editor either way. Worth a follow-up if this specific gap (Edit Entry
+on a pre-existing row) turns out to matter in practice. Cleanup
+confirmed via direct REST reads: the test entry, `custom_platforms` row, and `tab_custom_platforms`
+row are all gone — zero residue.
+
+**Deliberately out of scope, per the spec's own Non-goals** (revisit as separate, later features):
+Schedule Planner (no scheduling/auto-pause/PMS sync for a custom platform — never appears on the
+calendar grid), Ask AI (`get_score_summary`/`query_entries`/etc. stay on the built-in `tp|ag|cg|wo`
+enum), Score Summary (a cross-tab combined view with no natural meaning for a tab-scoped custom
+platform — needs its own design), the `removed_platform_brands` flagged-removed exclusion
+mechanism (no equivalent for a custom platform), and renaming a custom platform once created
+(status/date columns are frozen at creation — delete and recreate is the only path to a new name).
+Star-rating support (`custom_platforms.max_score`) was additionally dropped from the UI in this
+session's final fix wave (see above) — deferred to a future phase alongside the others. Spec:
+`docs/superpowers/specs/2026-09-07-custom-platforms-design.md`. Plan:
+`docs/superpowers/plans/2026-09-07-custom-platforms.md`. Ledger:
+`.superpowers/sdd/2026-09-07-custom-platforms/progress.md`.

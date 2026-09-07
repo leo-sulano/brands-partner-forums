@@ -1690,6 +1690,24 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
+- **Custom Platforms (Task 325, 2026-09-07) deliberately does not reach Schedule Planner, Ask AI,
+  Score Summary, or `removed_platform_brands` — per the feature's own spec Non-goals, not an
+  oversight.** A custom (user-defined) platform never appears on the Schedule Planner calendar
+  grid (no scheduling, auto-pause, or PMS status sync for it); Ask AI's tools
+  (`get_score_summary`/`query_entries`/etc.) stay on the built-in `tp|ag|cg|wo` enum and are
+  unaware custom platforms exist; Score Summary (a cross-tab, combined view with no natural
+  meaning for a platform that's tab-scoped by construction) doesn't show it at all; and there is
+  no "page removed, exclude from KPIs" flag equivalent to `removed_platform_brands` for a custom
+  platform. Each is meant to be revisited as its own separate, later feature once the core
+  Overview/Brand-Tabs slice is proven in real use. Also deferred, added in the same session's
+  final-review fix wave: the "Rating scale (optional)" dropdown (1-5/1-10 stars) was removed from
+  `AddCustomPlatformModal.tsx` entirely — `custom_platforms.max_score` was stored but read by
+  nothing, so the control was pure UI theater; the DB column and the `maxScore` fields on
+  `CustomPlatformConfig`/`CustomPlatformSummary` stay in place for a future phase, just not
+  offered in the UI until something actually uses them. One more gap found live-verifying that fix
+  wave, not part of it and not yet fixed: `EditEntryModal` does not surface a newly-created custom
+  platform's status/date fields on an existing entry — only `AddReviewAccountModal` does (that was
+  the plan's actual scope); worth a follow-up if custom platforms see real adoption.
 - **A NEW pause created in Edit Brand Tab's "Paused brands" section lags on the Schedule Planner
   grid, PMS status sync, and Ask AI's `get_paused_combos` until that tab's next `recalculatePauses`
   run (2026-09-03, Task 318) — accepted, self-healing.** That section reads/writes
@@ -1914,7 +1932,10 @@ Brands Partner Forum/
   not a new class of exposure, just one more column of internal-user data on the same footing. Worth
   folding into whatever deliberate decision is eventually made about tightening `anon` read access
   project-wide, rather than fixing in isolation. `public_holidays.created_by` (Task 307) is the same
-  class of exposure, same `using (true)` select policy, same reasoning.
+  class of exposure, same `using (true)` select policy, same reasoning. `custom_platforms.created_by`
+  and `tab_custom_platforms.enabled_by` (Task 325, Custom Platforms) are the identical class of
+  exposure too — same `using (true)` select policy on both new tables, same reasoning; not a new
+  concern, just two more columns on the same accepted footing.
 - **`deleteCustomTab`'s entries-count guard is a TOCTOU race, accepted as-is (Task 232).**
   `deleteCustomTab` (`src/lib/queries.ts`) counts `entries` rows for the tab and then deletes the
   `custom_tabs` row in a separate round-trip, so an entry inserted for that tab in the window between

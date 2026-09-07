@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
-import { passesPlatformDateFilter } from './scoreSummary.ts';
-import { getTabColumns, getBrandNameCol, getTabPlatforms, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from './tab-configs.ts';
+import { passesPlatformDateFilter, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS } from './scoreSummary.ts';
+import { getTabColumns, getBrandNameCol, getTabPlatforms, ALL_TOOLBAR_FILTERS, TAB_COLUMN_CONFIGS, type ToolbarFilterKey } from './tab-configs.ts';
 import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases.ts';
 import { platformRemovedKey, normalizeBrandKey, type Platform } from './removedPlatformBrands.ts';
@@ -17,6 +17,8 @@ import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 import { extractCredentials, type EntryCredentials } from './entryCredentials.ts';
+import { computeCustomPlatformCounts, type CustomPlatformConfig } from './customPlatforms.ts';
+import { getTabCustomPlatforms } from './customPlatformRegistry.ts';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -740,6 +742,11 @@ export function computeTabKpisFromEntries(
     ? activePlatforms.filter((p) => platformFilter.includes(p))
     : activePlatforms;
 
+  const customPlatforms = getTabCustomPlatforms(tab).map((platform) => ({
+    platform,
+    ...computeCustomPlatformCounts(filteredEntries, platform, dateFrom, dateTo),
+  }));
+
   return {
     total: live + removed,
     live, removed, done, pending, onPause, notDone,
@@ -747,7 +754,7 @@ export function computeTabKpisFromEntries(
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
     wo: { live: woLive, removed: woRemoved },
-    activePlatforms: visiblePlatforms, byCountry, byProxy, countries, proxies,
+    activePlatforms: visiblePlatforms, customPlatforms, byCountry, byProxy, countries, proxies,
   };
 }
 
@@ -2042,6 +2049,154 @@ export async function restoreEditedEntity(logId: string): Promise<void> {
     invalidateTabCache(current.tab as string);
     invalidateTabCache(beforeData.tab as string);
   }
+}
+
+// Every column name already claimed by a hardcoded tab, so a new custom
+// platform's generated status_column/date_column can never silently collide
+// with real data. Built from TAB_COLUMN_CONFIGS (all 11 hardcoded tabs) plus
+// a hand-kept mirror of dynamicTabRegistry.ts's own TP/AG/CG/WO column lists
+// (not imported directly -- those arrays aren't exported there, and this is
+// a best-effort safety net, not a security boundary; keep in sync if that
+// file's lists change).
+const RESERVED_DYNAMIC_TAB_COLUMNS = [
+  'Account', 'Country', 'Proxy Used', 'Account Name', 'Agent', 'Brand Name', 'Brand Link',
+  'Trust Pilot', 'Link to the profile', 'TP Review Status',
+  'Ask Gambler review added', 'AG Review Status', 'AG Review Link', 'AG User',
+  'Casino Guru review added', 'CG Review Status', 'CG Review Link', 'CG User',
+  'Wizard of Odds', 'WoO Review Status', 'Wizard of OddsScore added', 'WO Review Link',
+];
+
+function reservedColumnNames(): Set<string> {
+  const names = new Set<string>(RESERVED_DYNAMIC_TAB_COLUMNS);
+  for (const cols of Object.values(TAB_COLUMN_CONFIGS)) for (const c of cols) names.add(c);
+  // Also reserve every real header alias the 4 built-in platforms' own status/
+  // date detection reads (scoreSummary.ts) -- RESERVED_DYNAMIC_TAB_COLUMNS/
+  // TAB_COLUMN_CONFIGS above only cover 3 of TrustPilot's 5 real status-column
+  // aliases (missing "Trust Pilot Review Status"/"Trustpilot Review Status"),
+  // so naming a custom platform "Trust Pilot" could otherwise generate a
+  // status column that every TrustPilot-reading function (score summary,
+  // success rates, scheduler auto-pause, etc.) silently picks up and
+  // corrupts real TrustPilot numbers with.
+  for (const keys of Object.values(PLATFORM_STATUS_KEYS)) for (const k of keys) names.add(k);
+  for (const keys of Object.values(PLATFORM_DATE_KEYS)) for (const k of keys) names.add(k);
+  return names;
+}
+
+export interface CustomPlatformSummary {
+  id: string;
+  name: string;
+  shortLabel: string;
+  statusColumn: string;
+  dateColumn: string;
+  maxScore: number | null;
+}
+
+export async function fetchCustomPlatforms(client: SupabaseClient = supabase): Promise<CustomPlatformSummary[]> {
+  const { data, error } = await client
+    .from('custom_platforms')
+    .select('id, name, short_label, status_column, date_column, max_score');
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    shortLabel: row.short_label as string,
+    statusColumn: row.status_column as string,
+    dateColumn: row.date_column as string,
+    maxScore: (row.max_score as number | null) ?? null,
+  }));
+}
+
+export async function fetchTabCustomPlatforms(client: SupabaseClient = supabase): Promise<CustomPlatformConfig[]> {
+  const { data, error } = await client
+    .from('tab_custom_platforms')
+    .select('tab, custom_platforms(id, name, short_label, status_column, date_column, max_score)');
+  if (error) throw error;
+  return (data ?? [])
+    .filter((row) => row.custom_platforms)
+    .map((row) => {
+      const p = row.custom_platforms as unknown as {
+        id: string; name: string; short_label: string; status_column: string; date_column: string; max_score: number | null;
+      };
+      return {
+        id: p.id, tab: row.tab as string, name: p.name, shortLabel: p.short_label,
+        statusColumn: p.status_column, dateColumn: p.date_column, maxScore: p.max_score ?? null,
+      };
+    });
+}
+
+// Creates a new custom platform and immediately enables it on `tab` -- one
+// action covers the common case (see AddCustomPlatformModal in Task 6).
+// Returns the new platform's id so the caller can register it into the
+// current session's registry without a refetch.
+export async function createCustomPlatform(
+  name: string,
+  shortLabel: string,
+  maxScore: number | null,
+  tab: string,
+  // Defaults to true, matching every existing call site's expectation
+  // (EditBrandTabModal, where `tab` already exists). Pass false when `tab`
+  // is only a not-yet-created placeholder name (AddBrandTabModal, before
+  // "Create Tab" is clicked) -- immediately enabling there would write a
+  // `tab_custom_platforms` row against a tab name that might get edited or
+  // might never be created at all, permanently orphaning it (unreachable
+  // afterward, since EditBrandTabModal only ever loads an existing tab's
+  // rows). The caller is then responsible for enabling the platform itself
+  // once the real tab exists.
+  autoEnable = true,
+): Promise<CustomPlatformConfig> {
+  const trimmed = name.trim();
+  const statusColumn = `${trimmed} Review Status`;
+  const dateColumn = `${trimmed} Review Added`;
+  const reserved = reservedColumnNames();
+  if (reserved.has(statusColumn) || reserved.has(dateColumn)) {
+    throw new Error(`"${trimmed}" collides with a reserved column name. Choose a different name.`);
+  }
+  const actor = await currentActor();
+  const { data, error } = await supabase
+    .from('custom_platforms')
+    .insert({ name: trimmed, short_label: shortLabel, status_column: statusColumn, date_column: dateColumn, max_score: maxScore, created_by: actor.email })
+    .select('id')
+    .single();
+  if (error) {
+    if (error.code === '23505') throw new Error(`A platform named "${trimmed}" already exists.`);
+    throw error;
+  }
+  const id = data.id as string;
+  if (autoEnable) await enableCustomPlatformOnTab(tab, id);
+  return { id, tab, name: trimmed, shortLabel, statusColumn, dateColumn, maxScore };
+}
+
+export async function enableCustomPlatformOnTab(tab: string, platformId: string): Promise<void> {
+  const actor = await currentActor();
+  const { error } = await supabase
+    .from('tab_custom_platforms')
+    .insert({ tab, platform_id: platformId, enabled_by: actor.email });
+  if (error) {
+    if (error.code === '23505') return; // already enabled -- treat as success, matches upsert-like idempotency elsewhere in this file
+    throw error;
+  }
+}
+
+export async function disableCustomPlatformOnTab(tab: string, platformId: string): Promise<void> {
+  const { error } = await supabase
+    .from('tab_custom_platforms')
+    .delete()
+    .eq('tab', tab)
+    .eq('platform_id', platformId);
+  if (error) throw error;
+}
+
+export async function deleteCustomPlatform(id: string): Promise<void> {
+  const { count, error: countError } = await supabase
+    .from('tab_custom_platforms')
+    .select('id', { count: 'exact', head: true })
+    .eq('platform_id', id);
+  if (countError) throw countError;
+  if ((count ?? 0) > 0) {
+    throw new Error('This platform is still enabled on one or more tabs. Disable it everywhere first.');
+  }
+  const { error } = await supabase.from('custom_platforms').delete().eq('id', id);
+  if (error) throw error;
 }
 
 export interface CustomTabRow {

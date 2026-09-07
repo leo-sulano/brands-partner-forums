@@ -1,13 +1,14 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs, fetchPausedTabs, fetchTabIconOverrides, fetchHardcodedTabRenames } from '../lib/queries';
+import { fetchCustomTabs, fetchHiddenTabPlatforms, fetchToolbarFilters, fetchArchivedTabs, fetchPausedTabs, fetchTabIconOverrides, fetchHardcodedTabRenames, fetchTabCustomPlatforms } from '../lib/queries';
 import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
 import { registerHiddenTabPlatforms, registerToolbarFilters } from '../lib/tab-configs';
 import { applyArchivedTabs } from '../lib/archivedTabRegistry';
 import { applyPausedTabs } from '../lib/pausedTabRegistry';
 import { registerTabIconOverrides } from '../lib/tabIconOverrideRegistry';
 import { registerHardcodedTabRenames } from '../lib/hardcodedTabRenameRegistry';
+import { registerTabCustomPlatforms } from '../lib/customPlatformRegistry';
 import { renameOperationalTab } from '../lib/tabs';
 import type { Profile } from '../types/profile';
 
@@ -121,11 +122,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.error('Failed to fetch hardcoded tab renames:', err);
             return [];
           }),
-        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs, pausedTabs, tabIconOverrides, hardcodedTabRenames]) => {
+          fetchTabCustomPlatforms().catch((err) => {
+            console.error('Failed to fetch tab custom platforms:', err);
+            return [];
+          }),
+        ]).then(([p, customTabs, hiddenPlatforms, toolbarFilters, archivedTabs, pausedTabs, tabIconOverrides, hardcodedTabRenames, tabCustomPlatforms]) => {
           if (!mounted) return;
           registerDynamicTabs(customTabs);
           registerHiddenTabPlatforms(hiddenPlatforms);
           registerToolbarFilters(toolbarFilters);
+          registerTabCustomPlatforms(tabCustomPlatforms);
           // Must run after registerDynamicTabs: a dynamic tab archived since
           // its custom_tabs row was created gets registered (added back to
           // OPERATIONAL_TABS) and then immediately archived again (removed)

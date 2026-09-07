@@ -8,6 +8,7 @@ import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getDefaultAgentForT
 import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
+import { getTabCustomPlatforms } from '../lib/customPlatformRegistry';
 
 const STATUS_OPTS = [
   { value: 'Live',          label: 'Live',          dot: 'bg-green-500' },
@@ -152,6 +153,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     ...Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),
     ...YES_NO_DEFAULTS,
     [AGENT_FIELD.key]: getDefaultAgentForTab(currentTab),
+    ...Object.fromEntries(getTabCustomPlatforms(currentTab).flatMap((p) => [[p.statusColumn, ''], [p.dateColumn, '']])),
     [getBrandNameCol(currentTab)]: '',
     [getBrandLinkCol(currentTab)]: '',
   }));
@@ -171,6 +173,11 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
 
   const isMulti = hasMultiPlatform(selectedTab);
   const showAgentField = getTabColumns(selectedTab)?.includes('Agent') ?? false;
+  const tabCustomPlatforms = getTabCustomPlatforms(selectedTab);
+  const customPlatformFields: FieldDef[] = tabCustomPlatforms.flatMap((p) => [
+    { key: p.statusColumn, label: `${p.name} Status`, status: true },
+    { key: p.dateColumn, label: `${p.name} Added` },
+  ]);
   const availableBrands = selectedTab === currentTab
     ? (Object.keys(brandProfiles).length > 0 ? Object.keys(brandProfiles).sort() : [TAB_DEFAULT_BRAND[resolveHardcodedTabKey(selectedTab)]].filter(Boolean) as string[])
     : [];
@@ -213,6 +220,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
       'Casino Guru review added': '',
       'CG Review Status': '',
       'CG Review Link': '',
+      ...Object.fromEntries(getTabCustomPlatforms(tab).flatMap((p) => [[p.statusColumn, ''], [p.dateColumn, '']])),
     }));
   }
 
@@ -242,6 +250,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
       brandField, ...(brandLinkField ? [brandLinkField] : []),
       ...ACCOUNT_FIELDS, ...TP_FIELDS,
       ...(isMulti ? [...AG_FIELDS, ...CG_FIELDS] : []),
+      ...customPlatformFields,
       ...BEHAVIOR_EXTRA_FIELDS, ...YES_NO_FIELDS,
     ];
     const invalid = saveFields
@@ -440,6 +449,15 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
               <SectionHeading label="Casino Guru" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
                 {CG_FIELDS.map(renderField)}
+              </div>
+            </div>
+          )}
+
+          {customPlatformFields.length > 0 && (
+            <div>
+              <SectionHeading label="Custom Platforms" />
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
+                {customPlatformFields.map(renderField)}
               </div>
             </div>
           )}

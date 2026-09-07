@@ -1,7 +1,8 @@
 // src/components/EditBrandTabModal.tsx
 import { useEffect, useState } from 'react';
-import { X, Loader2, Info } from 'lucide-react';
-import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab, updatePausedTabDetails, fetchPausedTabDetails, addBrandToCatalog } from '../lib/queries';
+import { X, Loader2, Info, Trash2 } from 'lucide-react';
+import { updateCustomTabPlatforms, upsertTabIconOverride, setTabPlatformHidden, renameCustomTab, renameHardcodedTab, setToolbarFilters, pauseTab, unpauseTab, updatePausedTabDetails, fetchPausedTabDetails, addBrandToCatalog, fetchCustomPlatforms, fetchTabCustomPlatforms, enableCustomPlatformOnTab, disableCustomPlatformOnTab, deleteCustomPlatform } from '../lib/queries';
+import type { CustomPlatformSummary } from '../lib/queries';
 import {
   PLATFORM_LIST, registerDynamicTabs, renameDynamicTab, isDynamicTab, type DynamicTabPlatform,
 } from '../lib/dynamicTabRegistry';
@@ -14,6 +15,7 @@ import {
 import { computeInitialIconSelection, type TabIconSelection } from '../lib/tabIcons';
 import { registerTabIconOverrides, renameTabIconOverride } from '../lib/tabIconOverrideRegistry';
 import { renameHardcodedTabLocally } from '../lib/hardcodedTabRenameRegistry';
+import { getTabCustomPlatforms, registerTabCustomPlatforms, resetTabCustomPlatforms } from '../lib/customPlatformRegistry';
 import { validateNewTabName } from '../lib/tabValidation';
 import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTabRegistry';
 import { renameOperationalTab } from '../lib/tabs';
@@ -23,6 +25,7 @@ import TabPausedBrandsSection from './TabPausedBrandsSection';
 import TabRemovedPlatformsSection from './TabRemovedPlatformsSection';
 import SelectDropdown from './SelectDropdown';
 import Tooltip from './Tooltip';
+import AddCustomPlatformModal from './AddCustomPlatformModal';
 
 // Wraps long explanatory copy so it wraps inside Tooltip's fixed-width,
 // whitespace-nowrap box instead of rendering as one giant single-line tooltip.
@@ -63,6 +66,14 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   const toggleable: DynamicTabPlatform[] = dynamic
     ? PLATFORM_LIST.map((p) => p.key)
     : (getTabPlatformsUnfiltered(tabName) as DynamicTabPlatform[]);
+  // Captured once from the `tabName` prop (the tab's identity BEFORE any
+  // rename this submit might perform) -- byTab in customPlatformRegistry.ts
+  // is keyed by tab name and is never itself updated on rename, so diffing
+  // against a value re-derived from currentTabName post-rename would read as
+  // empty and silently drop every disable. Same "capture once, diff at
+  // submit" shape as initialPaused below, just keyed off the prop instead of
+  // a registry lookup that could go stale mid-render.
+  const initialEnabledCustomPlatformIds = getTabCustomPlatforms(tabName).map((p) => p.id);
   const [name, setName] = useState(tabName);
   const [platforms, setPlatforms] = useState<DynamicTabPlatform[]>(
     () => getTabPlatforms(tabName) as DynamicTabPlatform[],
@@ -93,6 +104,13 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   // Escape-to-close).
   const [pauseChildOpen, setPauseChildOpen] = useState(false);
   const [removedChildOpen, setRemovedChildOpen] = useState(false);
+  const [customPlatforms, setCustomPlatforms] = useState<CustomPlatformSummary[]>([]);
+  const [enabledCustomPlatformIds, setEnabledCustomPlatformIds] = useState<string[]>(
+    () => initialEnabledCustomPlatformIds,
+  );
+  const [showAddCustomPlatform, setShowAddCustomPlatform] = useState(false);
+  const [deletingCustomPlatformId, setDeletingCustomPlatformId] = useState<string | null>(null);
+  const [deleteCustomPlatformError, setDeleteCustomPlatformError] = useState<string | null>(null);
 
   // Brand list handed to TabPausedBrandsSection. Initialized once from the
   // `brands` prop (BrandGroup's uniqueBrands at modal-open time, per that
@@ -139,12 +157,16 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   }, []);
 
   useEffect(() => {
+    fetchCustomPlatforms().then(setCustomPlatforms).catch((err) => console.error('Failed to fetch custom platforms:', err));
+  }, []);
+
+  useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !submitting && !pauseChildOpen && !removedChildOpen) onClose();
+      if (e.key === 'Escape' && !submitting && !pauseChildOpen && !removedChildOpen && !showAddCustomPlatform) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, submitting, pauseChildOpen, removedChildOpen]);
+  }, [onClose, submitting, pauseChildOpen, removedChildOpen, showAddCustomPlatform]);
 
   function handleRequestClose() {
     if (submitting) return;
@@ -157,6 +179,28 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
 
   function toggleFilter(f: ToolbarFilterKey) {
     setFilters((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
+  }
+
+  function toggleCustomPlatform(id: string) {
+    setEnabledCustomPlatformIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  // Only offered for a platform not currently checked on THIS tab (see the
+  // render site below) -- a still-checked platform would just hit
+  // deleteCustomPlatform's own "still enabled on one or more tabs" guard,
+  // since unchecking it here is a pending, unsaved change until Save Changes
+  // runs. Simplest correct behavior: uncheck (and Save) first, then delete.
+  async function handleDeleteCustomPlatform(id: string) {
+    setDeleteCustomPlatformError(null);
+    setDeletingCustomPlatformId(id);
+    try {
+      await deleteCustomPlatform(id);
+      setCustomPlatforms((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      setDeleteCustomPlatformError(err instanceof Error ? err.message : 'Failed to delete platform');
+    } finally {
+      setDeletingCustomPlatformId(null);
+    }
   }
 
   async function handleAddBrand() {
@@ -244,6 +288,31 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
           else registerHiddenTabPlatforms([{ tab: currentTabName, platform: p }]);
         }
       }
+      const addedCustomPlatformIds = enabledCustomPlatformIds.filter(
+        (id) => !initialEnabledCustomPlatformIds.includes(id),
+      );
+      const removedCustomPlatformIds = initialEnabledCustomPlatformIds.filter(
+        (id) => !enabledCustomPlatformIds.includes(id),
+      );
+      if (isRename || addedCustomPlatformIds.length > 0 || removedCustomPlatformIds.length > 0) {
+        for (const id of addedCustomPlatformIds) await enableCustomPlatformOnTab(currentTabName, id);
+        for (const id of removedCustomPlatformIds) await disableCustomPlatformOnTab(currentTabName, id);
+        // Refresh the whole in-memory registry from the DB rather than
+        // surgically patching byTab -- registerTabCustomPlatforms only ever
+        // appends (see customPlatformRegistry.ts) and there's no
+        // unregister-single-entry function, so a full reset+re-register is
+        // the only way to reflect a disable (or a rename, which the DB-side
+        // rename RPCs already applied to tab_custom_platforms.tab) without
+        // duplicating or leaking stale rows for the current session. Also
+        // runs on a plain rename with no custom-platform checkbox change --
+        // byTab is keyed by tab name, so leaving this guarded only on
+        // added/removed left a rename-only save with a stale old-name key
+        // for the rest of the session (KPI cards/status+date columns for
+        // that platform silently vanish until a reload).
+        const refreshedTabCustomPlatforms = await fetchTabCustomPlatforms();
+        resetTabCustomPlatforms();
+        registerTabCustomPlatforms(refreshedTabCustomPlatforms);
+      }
       if (JSON.stringify(iconSelection) !== JSON.stringify(initialIconSelection)) {
         const icon = iconSelection.type === 'icon' ? iconSelection.value : null;
         const faviconDomain = iconSelection.type === 'favicon' ? iconSelection.value.trim() : null;
@@ -326,6 +395,52 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 {label}
               </label>
             ))}
+            {customPlatforms.map((p) => {
+              const isEnabledHere = enabledCustomPlatformIds.includes(p.id);
+              return (
+                <div key={p.id} className="mb-1.5 flex items-center justify-between gap-2">
+                  <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isEnabledHere}
+                      onChange={() => toggleCustomPlatform(p.id)}
+                      className="size-4"
+                    />
+                    {p.name}
+                  </label>
+                  {!isEnabledHere && (
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCustomPlatform(p.id)}
+                      disabled={deletingCustomPlatformId === p.id}
+                      title="Delete this platform permanently"
+                      className="rounded p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                    >
+                      {deletingCustomPlatformId === p.id ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+            {deleteCustomPlatformError && <p className="mt-1 text-xs text-rose-600">{deleteCustomPlatformError}</p>}
+            <button
+              type="button"
+              onClick={() => setShowAddCustomPlatform(true)}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700"
+            >
+              + Add custom platform
+            </button>
+            {showAddCustomPlatform && (
+              <AddCustomPlatformModal
+                tab={tabName}
+                onCreated={(platform) => {
+                  setCustomPlatforms((prev) => [...prev, { id: platform.id, name: platform.name, shortLabel: platform.shortLabel, statusColumn: platform.statusColumn, dateColumn: platform.dateColumn, maxScore: platform.maxScore }]);
+                  setEnabledCustomPlatformIds((prev) => [...prev, platform.id]);
+                  setShowAddCustomPlatform(false);
+                }}
+                onClose={() => setShowAddCustomPlatform(false)}
+              />
+            )}
           </div>
 
           <IconPicker value={iconSelection} onChange={setIconSelection} />

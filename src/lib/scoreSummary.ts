@@ -194,10 +194,10 @@ export function summarizeCounts(
   return { total, rated, average, label: ratingLabel(average, maxScore) };
 }
 
-function startOfDay(d: Date): Date {
+export function startOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
-function endOfDay(d: Date): Date {
+export function endOfDay(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
 }
 
@@ -209,7 +209,7 @@ function endOfDay(d: Date): Date {
 // instead of silently vanishing and skewing the rate upward. This is what
 // lets Success Rate be date-filtered without reintroducing the exact problem
 // that originally justified making it all-time.
-function passesDateFilter(
+export function passesDateFilter(
   data: Record<string, string | null>,
   dateKeys: readonly string[],
   fromBound: Date | null,
