@@ -546,17 +546,19 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 Choose which filter dropdowns appear on this tab's toolbar. A filter can still stay hidden if the tab's data doesn't have enough distinct values.
               </InfoTip>
             </div>
-            {TOOLBAR_FILTER_LIST.map(({ key, label }) => (
-              <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={filters.includes(key)}
-                  onChange={() => toggleFilter(key)}
-                  className="size-4"
-                />
-                {label}
-              </label>
-            ))}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {TOOLBAR_FILTER_LIST.map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={filters.includes(key)}
+                    onChange={() => toggleFilter(key)}
+                    className="size-4"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
           </div>
 
         </div>
