@@ -498,26 +498,26 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 Registers the brand for this tab — no review-account entry is created. It becomes pickable in Add Review Account's Brand Name field and appears on the Schedule Planner (at a reduced 1-post-per-platform pace for its first 2 weeks, then normal frequency) the next time that tab's schedule is generated.
               </InfoTip>
             </div>
-            <div className="space-y-2">
+            <div className="flex gap-2">
               <input
                 type="text"
                 value={newBrandName}
                 onChange={(e) => { setNewBrandName(e.target.value); setAddBrandError(null); setAddBrandSuccess(null); }}
                 placeholder="Brand name"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <input
                 type="text"
                 value={newBrandLink}
                 onChange={(e) => { setNewBrandLink(e.target.value); setAddBrandError(null); setAddBrandSuccess(null); }}
                 placeholder="Brand page link (optional)"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="min-w-0 flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               <button
                 type="button"
                 onClick={handleAddBrand}
                 disabled={addingBrand || !newBrandName.trim()}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50 transition-colors"
               >
                 {addingBrand && <Loader2 className="size-3.5 animate-spin" />}
                 Add brand
