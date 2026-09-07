@@ -226,9 +226,25 @@ const TAB_COLUMN_LABELS: Record<string, Record<string, string>> = {
   },
 };
 
+let customPlatformColumnsResolver: ((tab: string) => string[]) | null = null;
+
+// Injected by customPlatformRegistry.ts at module load (mirrors
+// setDynamicColumnsResolver below) -- lets ANY tab, hardcoded or dynamic,
+// gain extra columns for a custom platform without this file needing to
+// know custom platforms exist. docs/superpowers/specs/2026-09-07-custom-platforms-design.md
+export function setCustomPlatformColumnsResolver(fn: (tab: string) => string[]): void {
+  customPlatformColumnsResolver = fn;
+}
+
 // Returns the ordered column list for a tab, or null if no config exists.
+// Any columns from an enabled custom platform are appended after the tab's
+// own base columns (hardcoded or dynamic) -- an overlay, not a replacement,
+// so both kinds of tab get identical treatment.
 export function getTabColumns(tab: string): string[] | null {
-  return TAB_COLUMN_CONFIGS[resolveHardcodedTabKey(tab)] ?? (dynamicColumnsResolver ? dynamicColumnsResolver(tab) : null);
+  const base = TAB_COLUMN_CONFIGS[resolveHardcodedTabKey(tab)] ?? (dynamicColumnsResolver ? dynamicColumnsResolver(tab) : null);
+  if (!base) return null;
+  const custom = customPlatformColumnsResolver ? customPlatformColumnsResolver(tab) : [];
+  return custom.length ? [...base, ...custom] : base;
 }
 
 // Columns that stay part of a tab's config (modal fields, brand-link
