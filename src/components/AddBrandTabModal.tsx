@@ -38,11 +38,11 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   // navigation, leaving the tab in the DB but invisible until a page reload.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !submitting) onClose();
+      if (e.key === 'Escape' && !submitting && !showAddCustomPlatform) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, submitting]);
+  }, [onClose, submitting, showAddCustomPlatform]);
 
   function handleRequestClose() {
     if (submitting) return;
