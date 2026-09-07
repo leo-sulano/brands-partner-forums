@@ -5,8 +5,8 @@
 // server-side consumers" shape schedulerService.ts itself already has.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
-import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchApprovedScheduleWeeks, type SchedulePmsLink } from '../queries.ts';
-import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
+import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchApprovedScheduleWeeks, fetchBrandCatalog, type SchedulePmsLink } from '../queries.ts';
+import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, buildBrandDisplayMap, columnsForWeek, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
 import { weekdayAndWeekStartFor, scheduleFor, type BrandScheduleRow } from '../scheduleBrands.ts';
@@ -220,6 +220,9 @@ export async function pushScheduleToPms(
   let teamMembers: PmsTeamMember[] | null = null;
 
   for (const item of gatedItems) {
+    // Tracks the PMS task once created, so the catch block below can clean
+    // it up on any later failure in this same item -- see the comment there.
+    let createdTaskId: string | null = null;
     try {
       const brandKey = normalizeBrandKey(item.brand);
       let links = linksByTab.get(item.tab);
@@ -243,6 +246,7 @@ export async function pushScheduleToPms(
       const assigneeId = resolveAssigneeId(item.agent, teamMembers ?? []);
 
       const task = await createPmsTask(`${item.tabLabel} | ${item.brand}`, item.date, credentials, fetchFn);
+      createdTaskId = task.id;
       await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
       await insertSchedulePmsLink(item.tab, item.brand, item.platform, item.date, task.id, PMS_TODO_COLUMN_ID, client);
       // Reflect the just-created link back into this tab's in-memory `links`
@@ -255,10 +259,109 @@ export async function pushScheduleToPms(
       links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID });
       created.push(item);
     } catch (err) {
+      // The in-memory `links` guard above only protects against a duplicate
+      // WITHIN this one call -- it does nothing for two separate concurrent
+      // invocations (e.g. this backfill overlapping the 1-minute
+      // syncAllStatuses cron, or two browser tabs) both fetching `links`
+      // before either has inserted, both passing `alreadyLinked`, then racing
+      // insertSchedulePmsLink's unique (tab, brand_key, platform, date)
+      // constraint -- the loser's task was still created in PMS, just
+      // orphaned (found live 2026-09-07, Task 325 follow-up: exactly one
+      // duplicate "BIT | Big Pirate Casino" To Do card with no link at all).
+      // Best-effort cleanup for any failure after task creation, not just
+      // this one race: a delete failure here is silently accepted -- an
+      // orphan a human or a future pullScheduleFromPms run can still find,
+      // no worse than before this cleanup existed -- but it must never mask
+      // the real error being recorded below.
+      if (createdTaskId) {
+        await deletePmsTask(createdTaskId, credentials, fetchFn).catch(() => {});
+      }
       failed.push({ item, error: err instanceof Error ? err.message : String(err) });
     }
   }
   return { created, skipped, failed };
+}
+
+// Finds every (brand, platform, date) in `weekStart`'s Mon-Fri week that
+// brand_schedule says is 'active' but that has no schedule_pms_links row at
+// all, and pushes exactly those through pushScheduleToPms (idempotent, so a
+// combo this misses nothing -- it just re-confirms what's already linked).
+//
+// Exists because a push can fail for one item out of a batch (pushScheduleToPms's
+// own per-item try/catch above, recorded in its `failed` array) with nothing
+// anywhere that retries that specific item afterward: ensureWeekGenerated
+// only re-pushes combos it JUST wrote as newly active on THIS call, never a
+// combo that was already active from an earlier run. The Monday cron
+// (generate-weekly-schedule's generateForTab) and every browser-side push
+// call site (cell click, Add Platform, week approval) have exactly this same
+// gap. A single transient PMS API hiccup during that one push therefore
+// permanently strands an otherwise-correct 'active' brand_schedule row with
+// no PMS card and no error anywhere a human would see (pushScheduleActivations,
+// the browser wrapper, discards the response body entirely -- see
+// schedulePmsSync.ts). Confirmed live 2026-09-07: 2 of BIT's 4 TP slots for
+// that Monday had no link at all, traced to exactly this gap (both rows'
+// updated_at matched the Monday-cron timestamp to the millisecond; a manual
+// re-push succeeded immediately with zero errors, proving the PMS side was
+// never the problem).
+//
+// Called from the daily auditAllStatuses sweep (sync-schedule-pms/index.ts),
+// alongside the status-drift resolve, so a gap like this self-heals within
+// 24h instead of needing a human to notice a mismatched Schedule Planner
+// count vs. the PMS board -- same "daily audit as a safety net" shape as the
+// force-bypass watermark fix (Task 302). Active tabs only: a paused tab's
+// currently-active combos are being force-paused by resolveAndSyncTabStatuses,
+// not given fresh To Do cards.
+export async function backfillMissingScheduledLinks(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsPushResult> {
+  // Checked first, before anything else is fetched -- the overwhelmingly
+  // common case (a tab with nothing scheduled yet this week, or whose week
+  // hasn't been visited/generated) needs nothing more than this one query.
+  const rows = await fetchBrandSchedule(tab, weekStart, client);
+  if (rows.length === 0) return { created: [], skipped: [], failed: [] };
+
+  const [links, entries, catalogRows, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+    fetchSchedulePmsLinks(tab, client),
+    fetchRawEntriesByTab(tab, client),
+    // Same fail-open shape as buildTabContext's own catalog fetch
+    // (generate-weekly-schedule/index.ts) -- a transient failure here just
+    // means a catalog-only, zero-entry brand falls back to its raw brand_key
+    // as a task title, not a broken backfill run.
+    fetchBrandCatalog(tab, client).catch(() => []),
+    fetchRemovedPlatformBrands(client),
+    fetchScheduleHiddenBrands(tab, client),
+    fetchScheduleRestrictedBrands(tab, client),
+  ]);
+
+  const brandDisplay = buildBrandDisplayMap(entries, catalogRows.map((r) => r.brand));
+  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
+  const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
+  const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
+  const tabPlatforms = getTabPlatforms(tab);
+  const linkedKeys = new Set(links.map((l) => `${l.brand_key}::${l.platform}::${l.date}`));
+  const tabLabel = tabDisplayName(tab);
+  const cols = columnsForWeek(new Date(`${weekStart}T00:00:00`));
+
+  const items: PmsSyncItem[] = [];
+  for (const row of rows) {
+    if (row.platform == null) continue;
+    const platform = row.platform as Platform;
+    const brand = brandDisplay.get(row.brand_key) ?? row.brand_key;
+    const allowedPlatforms = resolveBrandPlatforms(tab, brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
+    if (!allowedPlatforms.includes(platform)) continue;
+    for (const col of cols) {
+      if (row[col.weekday] !== 'active') continue;
+      const key = `${row.brand_key}::${platform}::${col.iso}`;
+      if (linkedKeys.has(key)) continue;
+      items.push({ tab, tabLabel, brand, platform, date: col.iso });
+    }
+  }
+  if (items.length === 0) return { created: [], skipped: [], failed: [] };
+  return pushScheduleToPms(items, client, credentials, fetchFn);
 }
 
 // Only 'active' stays in To Do. Once a scheduled slot resolves to any real

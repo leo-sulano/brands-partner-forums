@@ -270,6 +270,33 @@ export function buildAgentIndex(entries: Entry[]): Map<string, string> {
   return result;
 }
 
+// brand_key -> real display brand name, for building a PMS task title from a
+// brand_schedule row (which only stores the key). Entries are the primary
+// source (any entry's own brand column, first-seen wins -- unlike
+// buildAgentIndex this doesn't need "most recent," any real spelling is
+// equally valid); brand_catalog covers a catalog-added brand with zero
+// entries yet (e.g. a brand_platform_override forced active before its first
+// real post), which would otherwise have no display name anywhere. A
+// brand_key present in neither source has no entry in the returned map --
+// callers should fall back to the key itself, same `.get() ?? fallback`
+// contract as buildAgentIndex.
+export function buildBrandDisplayMap(entries: Entry[], catalogBrands: string[] = []): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const entry of entries) {
+    const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
+    if (!brand) continue;
+    const brandKey = normalizeBrandKey(brand);
+    if (!result.has(brandKey)) result.set(brandKey, brand);
+  }
+  for (const brand of catalogBrands) {
+    const trimmed = brand.trim();
+    if (!trimmed) continue;
+    const brandKey = normalizeBrandKey(trimmed);
+    if (!result.has(brandKey)) result.set(brandKey, trimmed);
+  }
+  return result;
+}
+
 // brand_key -> brand_catalog's added_at (timestamptz ISO string) for every
 // catalog-registered brand on a tab. Feeds TabContext.newBrandAddedAt
 // (schedulerService.ts), which anchors the new-brand ramp-up: a brand added

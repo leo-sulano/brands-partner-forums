@@ -5,10 +5,11 @@
 // pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
 // secret -- the browser never sees it.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, backfillMissingScheduledLinks, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
 import { getActiveOperationalTabs, getPausedOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { fetchAllSchedulePmsLinks, invalidateTabCache } from '../../../src/lib/queries.ts';
+import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -111,6 +112,14 @@ export async function handleSyncAllStatuses(
 // migration change, and as a cheap independent belt-and-suspenders sweep.
 // Same bootstrapFn/getActiveTabsFn/getPausedTabsFn injection points as
 // handleSyncAllStatuses, for the same testability reason.
+// backfillFn is injectable for the same reason resolveFn is on
+// syncAllTabStatuses -- lets a test verify the per-tab isolation/reporting
+// here without a real Supabase client or PMS API. Runs after the status
+// sweep, active tabs only (see backfillMissingScheduledLinks's own doc
+// comment in pmsSync.ts for why paused tabs are skipped), one tab's failure
+// isolated from the rest the same way syncAllTabStatuses already isolates
+// resolve failures. A tab with nothing missing (the overwhelming common
+// case) leaves its existing 'ok'/'error: ...' result untouched.
 export async function handleAuditAllStatuses(
   client: SupabaseClient,
   credentials: PmsCredentials,
@@ -118,13 +127,33 @@ export async function handleAuditAllStatuses(
   bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
   getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
   getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
+  backfillFn: typeof backfillMissingScheduledLinks = backfillMissingScheduledLinks,
 ): Promise<Record<string, string>> {
   await bootstrapFn(client, 'sync-schedule-pms');
+  const activeTabs = getActiveTabsFn();
   const tabs = [
-    ...getActiveTabsFn().map((tab) => ({ tab, paused: false })),
+    ...activeTabs.map((tab) => ({ tab, paused: false })),
     ...getPausedTabsFn().map((tab) => ({ tab, paused: true })),
   ];
-  return syncAllTabStatuses(tabs, client, credentials, fetchFn);
+  const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
+
+  const weekStart = toISODate(mondayOf(new Date()));
+  for (const tab of activeTabs) {
+    try {
+      const backfill = await backfillFn(tab, weekStart, client, credentials, fetchFn);
+      if (backfill.created.length > 0 || backfill.failed.length > 0) {
+        const note = `backfilled ${backfill.created.length} missing link(s)${backfill.failed.length > 0 ? `, ${backfill.failed.length} failed` : ''}`;
+        results[tab] = results[tab] && results[tab] !== 'ok' ? `${results[tab]}; ${note}` : note;
+      }
+    } catch (err) {
+      console.error(`[sync-schedule-pms] backfill ${tab} failed:`, err);
+      const note = `backfill error: ${err instanceof Error ? err.message : String(err)}`;
+      results[tab] = results[tab] && results[tab] !== 'ok' ? `${results[tab]}; ${note}` : note;
+    } finally {
+      invalidateTabCache(tab);
+    }
+  }
+  return results;
 }
 
 // The 'reconcileColumns' action (its own 1-minute pg_cron job, separate from

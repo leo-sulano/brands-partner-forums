@@ -9351,3 +9351,82 @@ budget) and the Monday cron's own catalog-brand pickup (code-identical to the no
 page-visit path via the same `deriveTabBrands`/`buildNewBrandAddedAtMap` calls, not separately
 triggered). Deploy: `supabase db push` + `supabase functions deploy generate-weekly-schedule` +
 `git push origin main` (frontend).
+
+---
+
+## Task 325: Schedule Planner vs. PMS count mismatch — missing PMS cards, root-caused and self-healed
+
+Reported directly by the user: BIT's Schedule Planner platform counts (TP 4 / AG 9 / CG 4 / WO 1 =
+18 for Sep 7) didn't match the PMS board's real card count (15 in In Progress + 1 in To Do = 16), and
+a same-session follow-up report showed the same gap on other days that week (Sep 8: 22 planned vs. 17
+on PMS; Sep 10: 24 planned vs. 6 on PMS).
+
+**Root cause, confirmed empirically, not assumed:** `pushScheduleToPms` (`src/lib/scheduler/pmsSync.ts`)
+catches a per-item failure into its own `failed` array rather than throwing, so one bad item in a
+batch never blocks the rest — correct in isolation, but **nothing anywhere ever retries a failed
+item.** `ensureWeekGenerated` only re-pushes combos it just wrote as newly active on *that* call, never
+a combo that was already active from an earlier run; the browser wrapper `pushScheduleActivations`
+(`src/lib/schedulePmsSync.ts`) discards the response body entirely, so even a fully-failed push throws
+nothing and shows no error toast. A transient PMS API hiccup during the Monday-01:00-UTC cron's own
+push (`generate-weekly-schedule`'s `generateForTab`, which has the exact same "only push what I just
+activated" shape) therefore permanently strands an otherwise-correct `brand_schedule` row with no PMS
+card and no visible error. Confirmed live: two BIT TP rows for Sep 7 (Alf Casino, Nomini Kasino) had
+`updated_at` timestamps matching the Monday cron to the millisecond; a manual re-push via the deployed
+function succeeded immediately with zero errors — proving the PMS side was never the problem, only the
+missing retry.
+
+**Fix:** new `backfillMissingScheduledLinks(tab, weekStart, client, credentials, fetchFn)`
+(`src/lib/scheduler/pmsSync.ts`) finds every `brand_schedule` combo marked `'active'` in a given week
+that has no matching `schedule_pms_links` row at all (after the same hidden/restricted/removed-platform
+exclusion every other PMS sync path already applies), and pushes exactly those through the existing
+idempotent `pushScheduleToPms` — a combo that's already linked is always a no-op. New
+`buildBrandDisplayMap` (`src/lib/scheduler/scheduleUtils.ts`) resolves a `brand_schedule` row's
+`brand_key` back to a real display name for the PMS task title, from entries first and falling back to
+`brand_catalog` for a catalog-added, zero-entry brand (exactly the Alf Casino/Nomini Kasino case — both
+are `brand_platform_override`-forced-active brands with no real entries yet). Wired into
+`handleAuditAllStatuses` (`supabase/functions/sync-schedule-pms/index.ts`), the existing once-daily
+`auditAllStatuses` cron (Task 302), so a gap like this self-heals within 24h for every active tab, with
+per-tab isolation matching the existing status-sync loop. Paused tabs are skipped (their active combos
+are being force-paused, not given fresh To Do cards). 5 new tests in `pmsSync.test.ts`
+(`backfillMissingScheduledLinks`), 5 in `scheduleUtils.test.ts` (`buildBrandDisplayMap`), 4 in
+`sync-schedule-pms/index_test.ts` (`handleAuditAllStatuses`'s new backfill step, isolation, and
+result-string folding). Full suite **3402** passing, `npm run build` clean, `deno check` clean on both
+`sync-schedule-pms` and `generate-weekly-schedule`, `deno test` 23/23 and 1/1 (generate-weekly-schedule's
+pre-existing 6 `buildTabContext`/`generateForTab` test failures reproduce identically on a clean stash
+of `main` — confirmed unrelated to this change before ignoring them).
+
+**Deployed and live-remediated the same session:** `supabase functions deploy sync-schedule-pms`
+(confirmed `ACTIVE` v42) and `supabase functions deploy generate-weekly-schedule` (confirmed `ACTIVE`
+v22), then a direct `{"action":"auditAllStatuses"}` call against the live function — result: `"BIT":
+"backfilled 17 missing link(s)"`, every other active tab `"ok"`. Verified directly against the database
+afterward: every day Sep 7–11 now has an exact 1:1 match between `brand_schedule` active-plan count and
+`schedule_pms_links` count (18/18, 22/22, 0/0, 24/24, 22/22) — matching the user's own Sep 8/Sep 10
+numbers exactly. Spot-checked all 19 links created this session (17 backfilled + 2 created during
+diagnosis) against the live PMS API: all 19 have a real task in the To Do column, none missing.
+
+**Incidental correction:** the project's own long-standing `project_pms_workflow` memory pointed at a
+stale PMS project id (`cmpe8l7f1...`, "Forums Sheet Dashboard") — the code's real, live-deployed
+`PMS_PROJECT_ID` is `cmsoh1uvs...` ("Forum Team"), confirmed via `pmsSync.ts`'s own hardcoded constant.
+The stale id returned a plausible-looking but entirely wrong empty-ish board on the first query attempt
+this session, which is what the memory-verification discipline (checking live code before trusting a
+memory's specifics) caught before it led anywhere. Memory corrected.
+
+**Same-session follow-up, reported directly by the user (BIT's live To Do count read 69, not the 68
+their own week-total-minus-today math predicted):** found one genuine orphaned duplicate PMS task —
+`"BIT | Big Pirate Casino"` due Sep 11, sitting in To Do with zero `schedule_pms_links` row pointing
+at it, while a separate, properly-linked task for that exact same combo already existed. Root cause:
+`pushScheduleToPms`'s in-memory `links` de-dup guard (the comment right above the insert call) only
+protects against a duplicate *within one call* — it does nothing for two concurrent invocations (this
+session's manual backfill overlapping the live 1-minute `syncAllStatuses` cron, most likely) that both
+fetch `links` before either has inserted, both pass `alreadyLinked`, then race
+`insertSchedulePmsLink`'s unique `(tab, brand_key, platform, date)` constraint — the loser's PMS task
+was still created, just left with nothing tracking it. Deleted the orphan live (user-approved, PMS
+task `cmtqzbuby000o04ibw76eczc8`) — confirmed To Do back to the expected 68. **Hardened
+`pushScheduleToPms`** so this self-cleans going forward: a new `createdTaskId` local tracks the task
+once created, and the catch block now best-effort-deletes it (`deletePmsTask`, swallowing any
+secondary failure) before recording the item as failed — covers this exact race and any other
+post-create failure (e.g. the labels/assignee PATCH), not just the one race that happened to be
+caught live. 2 new tests (`pushScheduleToPms` — deletes the orphaned task on a post-create failure;
+does not attempt a delete when the failure is before task creation). Full suite **3404** passing,
+build clean, `deno check` clean on both consumers. **Deployed and live-verified same session:**
+`sync-schedule-pms` v43, `generate-weekly-schedule` v23 — both confirmed `ACTIVE`.

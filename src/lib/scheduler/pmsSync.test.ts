@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { pushScheduleToPms, type PmsSyncItem } from './pmsSync';
+import { backfillMissingScheduledLinks } from './pmsSync';
 import { pullScheduleFromPms } from './pmsSync';
 import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 import { resolveAndSyncTabStatuses } from './pmsSync';
@@ -137,6 +138,53 @@ describe('pushScheduleToPms', () => {
     const result = await pushScheduleToPms([], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [], skipped: [], failed: [] });
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  // Confirmed live 2026-09-07 (Task 325 follow-up): a race between two
+  // concurrent pushes for the exact same combo left a real orphaned PMS
+  // task -- both fetched `links` before either inserted, both passed
+  // alreadyLinked, then one's insertSchedulePmsLink lost the unique-
+  // constraint race. The in-memory `links` push above this test only
+  // protects a duplicate WITHIN one call; this covers what happens to the
+  // task itself once a later step in the SAME item fails regardless of why.
+  it('deletes the just-created PMS task when a later step in the same item fails, instead of leaving an orphan', async () => {
+    const { client } = fakeSupabase([]);
+    const deleteCalls: string[] = [];
+    const fetchFn = vi.fn(async (url: string, init: RequestInit = {}) => {
+      const method = init.method ?? 'GET';
+      if (method === 'DELETE') {
+        deleteCalls.push(url);
+        return { ok: true, status: 204, json: async () => ({}) };
+      }
+      if (/\/labels$/.test(url) && method === 'GET') {
+        return { ok: true, status: 200, json: async () => [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] };
+      }
+      if (/\/tasks$/.test(url) && method === 'POST') {
+        return { ok: true, status: 200, json: async () => ({ id: 'task-orphan', dueDate: '2026-08-20T00:00:00.000Z' }) };
+      }
+      if (/\/tasks\/task-orphan$/.test(url) && method === 'PATCH') {
+        // Simulates the labels/assignee PATCH failing -- same cleanup path a
+        // losing insertSchedulePmsLink race takes, just a different failure
+        // point after task creation.
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      throw new Error(`unexpected fetch call: ${method} ${url}`);
+    }) as unknown as typeof fetch;
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([]);
+    expect(result.failed).toHaveLength(1);
+    expect(deleteCalls).toEqual(['https://pms-nu-eight.vercel.app/api/tasks/task-orphan']);
+  });
+
+  it('does not attempt a task delete when the failure happens before any task was created', async () => {
+    const { client } = fakeSupabase([]);
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'DELETE') throw new Error('should never delete when no task was created');
+      // /labels itself fails -- nothing was ever created for this item.
+      return { ok: false, status: 500, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result.failed).toHaveLength(1);
   });
 
   it('creates only one task when the same (tab, brand, platform, date) combo appears twice in one batch', async () => {
@@ -702,11 +750,28 @@ function fakeMultiTableClient(
     return {
       select: (arg?: string) => builder(rows, tableName, arg),
       eq: () => builder(rows, tableName, selectArg),
+      // No real filtering (same as eq/order/range/limit/gt below) -- every
+      // caller of this fixture already passes in a per-table row list
+      // pre-scoped to what that test needs, same convention as `entries`
+      // already being pre-filtered to one tab despite fetchRawEntriesByTab's
+      // real .eq('tab', tab). Added for fetchApprovedScheduleWeeks's
+      // .select().eq('status','approved').in('tab', tabs) chain, reached via
+      // pushScheduleToPms's approval gate.
+      in: () => builder(rows, tableName, selectArg),
       order: () => builder(rows, tableName, selectArg),
       range: () => builder(rows, tableName, selectArg),
       limit: () => builder(rows, tableName, selectArg),
       gt: () => builder(rows, tableName, selectArg),
       update: () => ({ eq: () => Promise.resolve({ error: null }) }),
+      // Only backfillMissingScheduledLinks's tests reach this (via
+      // pushScheduleToPms -> insertSchedulePmsLink) -- every other consumer
+      // of this fixture only reads. Pushed onto the same `rows` array the
+      // fixture handed out, purely so a second item in the same batch that
+      // repeats an exact combo sees it via the real alreadyLinked check.
+      insert: (row: unknown) => {
+        rows.push(row);
+        return Promise.resolve({ error: null });
+      },
       delete: () => ({
         eq: (_col: string, id: string) => {
           deleteCapture?.push({ table: tableName, id });
@@ -1740,5 +1805,110 @@ describe('computeColumnSortMoves', () => {
     // Newest date on top; within 09-03, "Aaa" before "Bbb"; a card with no
     // due date sinks to the bottom.
     expect(applied).toEqual(['newA', 'newB', 'mid', 'old', 'undated']);
+  });
+});
+
+// Confirmed live 2026-09-07 (Task 325, docs/task-history.md): 2 of BIT's 4
+// active TP slots for that Monday had brand_schedule rows but no
+// schedule_pms_links row at all -- traced to a per-item push failure inside
+// pushScheduleToPms that nothing ever retried. This is the reconciliation
+// step that closes that gap, run daily from handleAuditAllStatuses.
+describe('backfillMissingScheduledLinks', () => {
+  // Same real internal tab identity resolveAndSyncTabStatuses's own tests use
+  // above ('TP Brand Injection' -- TAB_COLUMN_CONFIGS' key, not the 'BITP'
+  // display abbreviation) -- getTabPlatforms/fetchRawEntriesByTab both key off
+  // this exact value.
+  const TAB = 'TP Brand Injection';
+  const WEEK = '2026-09-07';
+  const APPROVED = [{ tab: TAB, week_start: WEEK, status: 'approved' }];
+
+  function row(overrides: Partial<{ brand_key: string; platform: string; monday: string | null; tuesday: string | null; thursday: string | null }> = {}) {
+    return {
+      tab: TAB, brand_key: 'alf casino', week_start: WEEK, platform: 'tp',
+      monday: 'active', tuesday: null, wednesday: null, thursday: 'active', friday: null,
+      ...overrides,
+    };
+  }
+
+  it('pushes an active combo that has no matching schedule_pms_links row, using the catalog brand name', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [],
+      entries: [],
+      brand_catalog: [{ tab: TAB, brand: 'Alf Casino', link: null, added_at: '2026-08-01T00:00:00Z' }],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
+    });
+    const fetchFn = fakeFetchSequence([
+      // Labels are fetched once and cached across the whole batch (see
+      // pushScheduleToPms's labelCache) -- only one /labels call for both items.
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: `${WEEK}T00:00:00.000Z` } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-2', dueDate: '2026-09-10T00:00:00.000Z' } },
+      { url: /\/tasks\/task-2$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([
+      { tab: TAB, tabLabel: 'BITP', brand: 'Alf Casino', platform: 'tp', date: '2026-09-07' },
+      { tab: TAB, tabLabel: 'BITP', brand: 'Alf Casino', platform: 'tp', date: '2026-09-10' },
+    ]);
+    expect(result.failed).toEqual([]);
+  });
+
+  it('skips a combo that already has a link, making no PMS API calls', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row({ tuesday: null, thursday: null })],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1' }],
+      entries: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
+    });
+    const fetchFn = vi.fn(async () => {
+      throw new Error('should never call the PMS API when nothing is missing');
+    }) as unknown as typeof fetch;
+    const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [], skipped: [], failed: [] });
+  });
+
+  it('skips a combo whose platform is flagged page-removed for that brand', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row({ tuesday: null, thursday: null })],
+      schedule_pms_links: [],
+      entries: [],
+      brand_catalog: [{ tab: TAB, brand: 'Alf Casino', link: null, added_at: '2026-08-01T00:00:00Z' }],
+      removed_platform_brands: [{ tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
+    });
+    const fetchFn = vi.fn(async () => {
+      throw new Error('should never call the PMS API for an excluded combo');
+    }) as unknown as typeof fetch;
+    const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [], skipped: [], failed: [] });
+  });
+
+  it('returns immediately with no fetches beyond brand_schedule when the tab has no rows for that week', async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => {
+        calls.push(table);
+        const self: any = {
+          select: () => self,
+          eq: () => self,
+          then: (r: any) => Promise.resolve({ data: [], error: null }).then(r),
+        };
+        return self;
+      },
+    } as any;
+    const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS);
+    expect(result).toEqual({ created: [], skipped: [], failed: [] });
+    expect(calls).toEqual(['brand_schedule']);
   });
 });

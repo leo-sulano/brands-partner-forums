@@ -255,6 +255,87 @@ Deno.test('handleAuditAllStatuses delegates to the real syncAllTabStatuses loop,
   assertEquals(results['BITP'].startsWith('error:'), true);
 });
 
+// backfillMissingScheduledLinks step: runs once per active tab after the
+// status sweep (Task 325, docs/task-history.md -- closes the "Schedule
+// Planner shows more scheduled slots than the PMS board has cards for" gap,
+// where a per-item push failure during generation/a page visit is never
+// retried anywhere). backfillFn is injectable so these tests never touch a
+// real Supabase client or PMS API.
+
+Deno.test('handleAuditAllStatuses calls backfillFn once per active tab, never for a paused tab', async () => {
+  const backfillCalls: string[] = [];
+  await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+    async (tab: string) => {
+      backfillCalls.push(tab);
+      return { created: [], skipped: [], failed: [] };
+    },
+  );
+  assertEquals(backfillCalls.sort(), ['BITP', 'Hanan']);
+});
+
+// The fake {} client has no .from, so syncAllTabStatuses' own real resolve
+// step (handleAuditAllStatuses exposes no resolveFn injection, unlike
+// syncAllTabStatuses itself -- see the "delegates to the real
+// syncAllTabStatuses loop" test above) always leaves results['BITP'] as an
+// 'error: ...' string before backfill even runs here -- so these three
+// assert the backfill note is appended (joined with '; '), not that it
+// replaces an 'ok' this fixture can't produce at this layer.
+
+Deno.test('handleAuditAllStatuses appends a non-empty backfill result onto that tab\'s existing result string', async () => {
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+    async () => ({
+      created: [{ tab: 'BITP', tabLabel: 'BITP', brand: 'Alf Casino', platform: 'tp', date: '2026-09-07' }],
+      skipped: [],
+      failed: [],
+    }),
+  );
+  assertEquals(results['BITP'].endsWith('; backfilled 1 missing link(s)'), true);
+});
+
+Deno.test('handleAuditAllStatuses isolates one tab\'s backfill failure from the rest', async () => {
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => [],
+    async (tab: string) => {
+      if (tab === 'BITP') throw new Error('boom');
+      return { created: [], skipped: [], failed: [] };
+    },
+  );
+  assertEquals(results['BITP'].endsWith('; backfill error: boom'), true);
+  // Hanan's backfill returns nothing to report, so only its own (real,
+  // fake-client-induced) resolve error remains -- no backfill suffix.
+  assertEquals(results['Hanan'].includes('backfill'), false);
+});
+
+Deno.test('handleAuditAllStatuses leaves a tab\'s result string untouched when its backfill has nothing to report', async () => {
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+    async () => ({ created: [], skipped: [], failed: [] }),
+  );
+  assertEquals(results['BITP'].includes('backfill'), false);
+});
+
 // handleReconcileColumns tests: the column-drift reconcile is a separate
 // action ('reconcileColumns') from the per-tab status sweep. It bootstraps
 // the tab registries (tabDisplayName needs them for dynamic tabs), fetches

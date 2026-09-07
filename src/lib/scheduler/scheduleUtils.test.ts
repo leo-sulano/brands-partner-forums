@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildBrandDisplayMap, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -529,6 +529,37 @@ describe('buildAgentIndex', () => {
     const entries = [entry({ Brands: '  WinMega  ', Agent: 'Jen' }, '2026-08-01T00:00:00Z')];
     const index = buildAgentIndex(entries);
     expect(index.get('winmega')).toBe('Jen');
+  });
+});
+
+describe('buildBrandDisplayMap', () => {
+  const entry = (data: Record<string, string | null>): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: '2026-08-01T00:00:00Z', last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('maps a brand key to its real display spelling from an entry', () => {
+    const map = buildBrandDisplayMap([entry({ Brands: 'WinMega' })]);
+    expect(map.get('winmega')).toBe('WinMega');
+  });
+
+  it('falls back to a catalog brand name when the key has no entries at all', () => {
+    const map = buildBrandDisplayMap([], ['Alf Casino']);
+    expect(map.get('alf casino')).toBe('Alf Casino');
+  });
+
+  it('prefers an entry\'s spelling over a catalog row for the same key', () => {
+    const map = buildBrandDisplayMap([entry({ Brands: 'WinMega' })], ['WinMega']);
+    expect(map.get('winmega')).toBe('WinMega');
+  });
+
+  it('has no key for a brand with a blank brand column and no catalog row', () => {
+    const map = buildBrandDisplayMap([entry({ Brands: '' })]);
+    expect(map.size).toBe(0);
+  });
+
+  it('normalizes the brand key the same way the rest of this file does (trim + lowercase)', () => {
+    const map = buildBrandDisplayMap([], ['  Nomini Kasino  ']);
+    expect(map.get('nomini kasino')).toBe('Nomini Kasino');
   });
 });
 
