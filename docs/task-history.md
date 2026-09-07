@@ -9573,3 +9573,39 @@ session's final fix wave (see above) — deferred to a future phase alongside th
 `docs/superpowers/specs/2026-09-07-custom-platforms-design.md`. Plan:
 `docs/superpowers/plans/2026-09-07-custom-platforms.md`. Ledger:
 `.superpowers/sdd/2026-09-07-custom-platforms/progress.md`.
+
+---
+
+## Task 327: Hanan Agent Column + Schedule Planner Holiday Column Width/Weekday Labels
+
+**Date:** September 7, 2026
+
+Two small, unrelated bounded fixes shipped back-to-back the same session.
+
+**Hanan Agent column.** Hanan is worked exclusively by agent ANN but had no `Agent` column, so
+Add Review Account/Edit Entry never captured it and Schedule Planner's `buildAgentIndex` couldn't
+resolve an agent for any Hanan brand — new PMS tasks for Hanan were being created unassigned.
+`tab-configs.ts` adds `'Agent'` to Hanan's column whitelist (lights up the field in both entry
+modals and as a Brand Tab table column, the same path GRG already used) and adds a new
+`TAB_DEFAULT_AGENT`/`getDefaultAgentForTab` (Hanan → ANN); `AddReviewAccountModal.tsx`'s Agent
+field now prefills "ANN" for Hanan instead of blank (still editable). Edit Entry needed no change —
+it already injects a tab-configured Agent field via `BrandGroup.tsx` and just shows whatever's on
+the row. New `tab-configs.test.ts` coverage for the whitelist entry and the default-agent helper.
+One-time live backfill (not part of the app code): `scripts/backfill-hanan-agent.mjs` set
+`Agent="ANN"` on all 1238 existing Hanan entries that had no Agent value (1238/1238 applied,
+re-verified via a dry-run afterward; deliberately skips per-row `edit_log` snapshots — a pure
+additive fill of a never-populated field, not an edit with a prior value worth restoring), and
+`scripts/backfill-hanan-pms-assignees.mjs` mirrors the 2026-08-18 assignee backfill to assign any
+unassigned linked Hanan PMS task to Ann — a dry-run found all 83 currently-linked Hanan tasks
+already assigned to Ann (done manually beforehand), so nothing to apply; left in place for future
+re-checks.
+
+**Schedule Planner holiday column width + weekday labels.** A public-holiday day column (Task 307)
+was being narrowed with the same `w-px` class used for weekend columns, squeezing it below normal
+weekday width in both the per-tab grid (`TabScheduleSection.tsx`) and the landing-page preview
+cards (`TabPreviewCard.tsx`). Fixed by giving holiday columns the same width as a normal weekday
+column in both components. Also switched the single-letter weekday header (M/T/W/T/F/S/S, ambiguous
+between Tuesday/Thursday and Saturday/Sunday) to unambiguous 2-letter abbreviations (MO/TU/WE/TH/
+FR/SA/SU) in both views.
+
+No schema change, no deploy. `npm run build` clean.
