@@ -83,12 +83,22 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
     setError(null);
     try {
       await createCustomTab(trimmed, platforms, filters);
-      // The platform created via AddCustomPlatformModal is already enabled
-      // server-side on whatever `tab` value (name.trim()) was current at the
-      // moment it was created -- since the user could still edit the Tab
-      // Name field afterward before clicking "Create Tab", re-run
-      // enableCustomPlatformOnTab here for every id using the final `trimmed`
-      // name, rather than trusting the earlier enable call.
+      // A platform created via "+ Add custom platform" below is created
+      // ONLY (createCustomPlatform's autoEnable: false — see
+      // AddCustomPlatformModal below) -- this loop is the single place that
+      // actually enables it, using the final `trimmed` tab name, whatever the
+      // Tab Name field said at the moment the platform was created. Fixes a
+      // real bug this used to have: enabling immediately at creation time (as
+      // EditBrandTabModal correctly still does, since ITS tab already exists)
+      // would write an enable row against a tab name that might get edited
+      // before "Create Tab" is clicked, or might never become a real tab at
+      // all if this whole modal is abandoned -- either way permanently
+      // orphaning a `tab_custom_platforms` row nothing could ever reach again
+      // (EditBrandTabModal only ever loads an *existing* tab's rows). With no
+      // auto-enable at creation, an abandoned platform stays unattached to
+      // any tab -- still visible (fetchCustomPlatforms lists every custom
+      // platform globally, not just those enabled on one tab) and deletable
+      // from any other tab's Edit Brand Tab modal.
       for (const id of enabledCustomPlatformIds) {
         await enableCustomPlatformOnTab(trimmed, id);
       }
@@ -174,6 +184,7 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
             {showAddCustomPlatform && (
               <AddCustomPlatformModal
                 tab={name.trim()}
+                autoEnable={false}
                 onCreated={(platform) => {
                   setCustomPlatforms((prev) => [...prev, { id: platform.id, name: platform.name, shortLabel: platform.shortLabel, statusColumn: platform.statusColumn, dateColumn: platform.dateColumn, maxScore: platform.maxScore }]);
                   setEnabledCustomPlatformIds((prev) => [...prev, platform.id]);

@@ -168,6 +168,24 @@ function PlatformRow({ href, platform, live, removed }: { href: string; platform
   );
 }
 
+// Same shape as PlatformRow, for a custom (non-built-in) platform: no
+// favicon/href to link to (custom platforms have no dedicated brand-tab
+// filter view), just a plain label + live/removed counts + success rate,
+// matching the style already used for the "Brands" view's per-tab header.
+function CustomPlatformRow({ shortLabel, live, removed }: { shortLabel: string; live: number; removed: number }) {
+  return (
+    <div className="col-span-5 grid grid-cols-subgrid items-center gap-x-2 border-l-2 border-slate-300 py-0.5 pl-2">
+      <span className="inline-flex shrink-0 items-center rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold leading-none text-slate-600">
+        {shortLabel}
+      </span>
+      <span className="whitespace-nowrap"><span className="font-medium text-emerald-600">{live}</span> live</span>
+      <span className="whitespace-nowrap"><span className="font-medium text-rose-500">{removed}</span> removed</span>
+      <span />
+      <SuccessRateBadge live={live} removed={removed} size="sm" />
+    </div>
+  );
+}
+
 function brandRowHref(tab: string, brand: string, platform?: PlatformKey): string {
   const params = new URLSearchParams();
   params.set('brand', brand);
@@ -607,7 +625,10 @@ export default function Overview() {
   // applies to its drill-down rows. Totals above are summed from the
   // unfiltered `state.tabs`, not this list, so hiding a 0-total card here
   // never changes any KPI number.
-  const visibleTabs = state.tabs.filter((t) => t.kpis.live + t.kpis.removed > 0);
+  const visibleTabs = state.tabs.filter((t) => {
+    const custom = t.kpis.customPlatforms.reduce((s, cp) => s + cp.live + cp.removed, 0);
+    return t.kpis.live + t.kpis.removed + custom > 0;
+  });
 
   // Same reasoning applied per-brand for the "Brands" view: a brand can have
   // rows under the current filters (so it isn't dropped by
@@ -917,6 +938,9 @@ export default function Overview() {
                           live={kpis[p].live}
                           removed={kpis[p].removed}
                         />
+                      ))}
+                      {kpis.customPlatforms.map(({ platform, live, removed }) => (
+                        <CustomPlatformRow key={platform.id} shortLabel={platform.shortLabel} live={live} removed={removed} />
                       ))}
                     </div>
                   </div>

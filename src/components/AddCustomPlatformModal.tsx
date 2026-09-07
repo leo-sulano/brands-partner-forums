@@ -6,14 +6,20 @@ import type { CustomPlatformConfig } from '../lib/customPlatforms';
 
 interface Props {
   tab: string;
+  // Defaults to true (EditBrandTabModal's usage — the tab it's called from
+  // already exists, so enabling on it immediately is correct). Pass false
+  // from a flow where `tab` is only a not-yet-created placeholder name (e.g.
+  // AddBrandTabModal, before "Create Tab" is clicked) -- the caller must
+  // then enable the returned platform itself once the real tab exists,
+  // otherwise it's created but left unattached to any tab.
+  autoEnable?: boolean;
   onCreated: (platform: CustomPlatformConfig) => void;
   onClose: () => void;
 }
 
-export default function AddCustomPlatformModal({ tab, onCreated, onClose }: Props) {
+export default function AddCustomPlatformModal({ tab, autoEnable = true, onCreated, onClose }: Props) {
   const [name, setName] = useState('');
   const [shortLabel, setShortLabel] = useState('');
-  const [maxScore, setMaxScore] = useState<'' | '5' | '10'>('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -25,7 +31,10 @@ export default function AddCustomPlatformModal({ tab, onCreated, onClose }: Prop
     setSubmitting(true);
     setError(null);
     try {
-      const platform = await createCustomPlatform(trimmedName, trimmedLabel, maxScore ? Number(maxScore) : null, tab);
+      // Star-rating support (custom_platforms.max_score) is deferred to a
+      // future phase -- nothing reads it yet, so the picker was removed from
+      // this form rather than offering a control that silently does nothing.
+      const platform = await createCustomPlatform(trimmedName, trimmedLabel, null, tab, autoEnable);
       onCreated(platform);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create platform');
@@ -64,18 +73,6 @@ export default function AddCustomPlatformModal({ tab, onCreated, onClose }: Prop
               maxLength={4}
               className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Rating scale (optional)</label>
-            <select
-              value={maxScore}
-              onChange={(e) => setMaxScore(e.target.value as '' | '5' | '10')}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">No star rating -- Live/Removed counts only</option>
-              <option value="5">1-5 stars</option>
-              <option value="10">1-10 stars</option>
-            </select>
           </div>
           {error && <p className="text-xs text-rose-600">{error}</p>}
           <button

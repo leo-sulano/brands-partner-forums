@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { supabase, SUPABASE_ANON_KEY, CHECK_STATUS_URL, CHECK_STATUS_BASE_URL, CHECK_STATUS_TOKEN, CHECK_AG_STATUS_URL, CHECK_AG_STATUS_BASE_URL } from './supabase.ts';
 import { inDateRange } from './dateUtils.ts';
-import { passesPlatformDateFilter } from './scoreSummary.ts';
+import { passesPlatformDateFilter, PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS } from './scoreSummary.ts';
 import { getTabColumns, getBrandNameCol, getTabPlatforms, ALL_TOOLBAR_FILTERS, TAB_COLUMN_CONFIGS, type ToolbarFilterKey } from './tab-configs.ts';
 import { canonicalCountryKey, canonicalCountryName, resolveCountryLabel } from './countryFlags.ts';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from './proxyAliases.ts';
@@ -2069,6 +2069,16 @@ const RESERVED_DYNAMIC_TAB_COLUMNS = [
 function reservedColumnNames(): Set<string> {
   const names = new Set<string>(RESERVED_DYNAMIC_TAB_COLUMNS);
   for (const cols of Object.values(TAB_COLUMN_CONFIGS)) for (const c of cols) names.add(c);
+  // Also reserve every real header alias the 4 built-in platforms' own status/
+  // date detection reads (scoreSummary.ts) -- RESERVED_DYNAMIC_TAB_COLUMNS/
+  // TAB_COLUMN_CONFIGS above only cover 3 of TrustPilot's 5 real status-column
+  // aliases (missing "Trust Pilot Review Status"/"Trustpilot Review Status"),
+  // so naming a custom platform "Trust Pilot" could otherwise generate a
+  // status column that every TrustPilot-reading function (score summary,
+  // success rates, scheduler auto-pause, etc.) silently picks up and
+  // corrupts real TrustPilot numbers with.
+  for (const keys of Object.values(PLATFORM_STATUS_KEYS)) for (const k of keys) names.add(k);
+  for (const keys of Object.values(PLATFORM_DATE_KEYS)) for (const k of keys) names.add(k);
   return names;
 }
 
@@ -2123,6 +2133,16 @@ export async function createCustomPlatform(
   shortLabel: string,
   maxScore: number | null,
   tab: string,
+  // Defaults to true, matching every existing call site's expectation
+  // (EditBrandTabModal, where `tab` already exists). Pass false when `tab`
+  // is only a not-yet-created placeholder name (AddBrandTabModal, before
+  // "Create Tab" is clicked) -- immediately enabling there would write a
+  // `tab_custom_platforms` row against a tab name that might get edited or
+  // might never be created at all, permanently orphaning it (unreachable
+  // afterward, since EditBrandTabModal only ever loads an existing tab's
+  // rows). The caller is then responsible for enabling the platform itself
+  // once the real tab exists.
+  autoEnable = true,
 ): Promise<CustomPlatformConfig> {
   const trimmed = name.trim();
   const statusColumn = `${trimmed} Review Status`;
@@ -2142,7 +2162,7 @@ export async function createCustomPlatform(
     throw error;
   }
   const id = data.id as string;
-  await enableCustomPlatformOnTab(tab, id);
+  if (autoEnable) await enableCustomPlatformOnTab(tab, id);
   return { id, tab, name: trimmed, shortLabel, statusColumn, dateColumn, maxScore };
 }
 

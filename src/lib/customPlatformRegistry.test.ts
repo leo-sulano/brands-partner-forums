@@ -49,4 +49,11 @@ describe('customPlatformRegistry', () => {
     expect(getTabCustomPlatforms('Hanan')).toEqual([]);
     expect(getCustomPlatformColumns('Hanan')).toEqual([]);
   });
+
+  it('is idempotent on (tab, id) -- re-running the AuthContext bootstrap (e.g. a sign-out/sign-in cycle with no full page reload) must not duplicate a row', () => {
+    registerTabCustomPlatforms([YELP]);
+    registerTabCustomPlatforms([YELP]);
+    expect(getTabCustomPlatforms('Hanan')).toEqual([YELP]);
+    expect(getTabColumns('Hanan')!.filter((c) => c === 'Yelp Review Status')).toHaveLength(1);
+  });
 });

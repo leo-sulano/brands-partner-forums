@@ -1727,6 +1727,15 @@ describe('createCustomPlatform / enableCustomPlatformOnTab / deleteCustomPlatfor
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
+  it('rejects "Trust Pilot" -- collides with a real TrustPilot status-column alias, not just the "TP"/"Trustpilot" spellings', async () => {
+    // PLATFORM_STATUS_KEYS.tp includes 'Trust Pilot Review Status', which
+    // TAB_COLUMN_CONFIGS/RESERVED_DYNAMIC_TAB_COLUMNS alone don't cover --
+    // this locks in reservedColumnNames() folding in every scoreSummary.ts
+    // platform-key alias, not just the hardcoded-tab column whitelist.
+    await expect(createCustomPlatform('Trust Pilot', 'TP', null, 'Hanan')).rejects.toThrow(/reserved/i);
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
   it('throws a friendly error on a duplicate platform name', async () => {
     const single = vi.fn().mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
     const select = vi.fn().mockReturnValue({ single });
@@ -1746,6 +1755,19 @@ describe('createCustomPlatform / enableCustomPlatformOnTab / deleteCustomPlatfor
     const platform = await createCustomPlatform('Yelp', 'YP', null, 'Hanan');
     expect(platform).toEqual(expect.objectContaining({ id: 'p1', name: 'Yelp', statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added' }));
     expect(enableInsert).toHaveBeenCalledWith(expect.objectContaining({ tab: 'Hanan', platform_id: 'p1' }));
+  });
+
+  it('does not enable on any tab when autoEnable is false -- the AddBrandTabModal case, where `tab` is only a placeholder name that may never be created', async () => {
+    const single = vi.fn().mockResolvedValue({ data: { id: 'p1' }, error: null });
+    const select = vi.fn().mockReturnValue({ single });
+    const createInsert = vi.fn().mockReturnValue({ select });
+    const enableInsert = vi.fn();
+    singletonFrom.mockImplementation((table: string) =>
+      table === 'custom_platforms' ? { insert: createInsert } : { insert: enableInsert },
+    );
+    const platform = await createCustomPlatform('Yelp', 'YP', null, 'Not Yet A Tab', false);
+    expect(platform).toEqual(expect.objectContaining({ id: 'p1', name: 'Yelp', tab: 'Not Yet A Tab' }));
+    expect(enableInsert).not.toHaveBeenCalled();
   });
 
   it('deleteCustomPlatform is blocked while any tab still has it enabled', async () => {

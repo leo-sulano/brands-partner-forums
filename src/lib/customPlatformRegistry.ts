@@ -20,6 +20,12 @@ const byTab: Record<string, CustomPlatformConfig[]> = {};
 export function registerTabCustomPlatforms(rows: CustomPlatformConfig[]): void {
   for (const row of rows) {
     if (!byTab[row.tab]) byTab[row.tab] = [];
+    // Idempotent on (tab, id) -- a sign-out/sign-in cycle without a full page
+    // reload re-runs the whole AuthContext bootstrap, which would otherwise
+    // re-push every row and duplicate columns/KPI cards/React keys. Matches
+    // every sibling registry in the bootstrap block (e.g.
+    // registerHiddenTabPlatforms), which are all idempotent the same way.
+    if (byTab[row.tab].some((r) => r.id === row.id)) continue;
     byTab[row.tab].push(row);
     // Registers the date column for DD/MM/YYYY validation the same way the 4
     // built-in date columns already get it (dateUtils.ts) -- an in-place Set
