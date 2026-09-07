@@ -212,6 +212,72 @@ Deno.test('handleSyncAllStatuses resolves a requested body.tab that is currently
   assertEquals(Object.keys(results), ['GRG - Gulf Recovery Group']);
 });
 
+// backfillActiveTabs wiring: reached by handleSyncAllStatuses too (Task 325
+// follow-up) so the "missing link" gap self-heals on the 1-minute cron and
+// the on-visit browser trigger, not only the once-daily audit below.
+// backfillFn is injectable so these never touch a real Supabase client or
+// PMS API, same pattern as the handleAuditAllStatuses tests further down.
+
+Deno.test('handleSyncAllStatuses calls backfillFn for every active tab in an unscoped sweep', async () => {
+  const backfillCalls: string[] = [];
+  await handleSyncAllStatuses(
+    {},
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+    async (tab: string) => {
+      backfillCalls.push(tab);
+      return { created: [], skipped: [], failed: [] };
+    },
+  );
+  // Active tabs only -- the paused GRG never gets a backfill call.
+  assertEquals(backfillCalls.sort(), ['BITP', 'Hanan']);
+});
+
+Deno.test('handleSyncAllStatuses calls backfillFn for a single requested active tab, and folds a non-empty result into it', async () => {
+  const backfillCalls: string[] = [];
+  const results = await handleSyncAllStatuses(
+    { tab: 'Hanan' },
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => [],
+    async (tab: string) => {
+      backfillCalls.push(tab);
+      return {
+        created: [{ tab: 'Hanan', tabLabel: 'Hanan', brand: 'WinMega', platform: 'tp', date: '2026-09-07' }],
+        skipped: [],
+        failed: [],
+      };
+    },
+  );
+  assertEquals(backfillCalls, ['Hanan']);
+  assertEquals(results['Hanan'].endsWith('; backfilled 1 missing link(s)'), true);
+});
+
+Deno.test('handleSyncAllStatuses never calls backfillFn when the requested body.tab is currently paused', async () => {
+  const backfillCalls: string[] = [];
+  await handleSyncAllStatuses(
+    { tab: 'GRG - Gulf Recovery Group' },
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+    async (tab: string) => {
+      backfillCalls.push(tab);
+      return { created: [], skipped: [], failed: [] };
+    },
+  );
+  assertEquals(backfillCalls, []);
+});
+
 
 // handleAuditAllStatuses tests: the once-daily audit ('auditAllStatuses'
 // action) always covers every active+paused tab (no body.tab scoping, unlike

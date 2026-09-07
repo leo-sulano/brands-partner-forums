@@ -58,85 +58,28 @@ export async function syncAllTabStatuses(
   return results;
 }
 
-// Extracted so the handler's own routing logic -- bootstrap unconditionally,
-// then select which tab(s) to sync -- is directly testable without a real
-// Supabase client or PMS API, mirroring how syncAllTabStatuses above was
-// already extracted for the same reason. A requested body.tab that is
-// neither a currently-active nor a currently-paused tab (a stale/bogus name,
-// or an archived tab) falls back to an empty tab list rather than being
-// passed through unvalidated -- resolveFn/resolveAndSyncTabStatuses already
-// no-ops safely on an unknown tab (its fetchSchedulePmsLinks lookup just
-// returns zero links), but validating here means an invalid tab produces an
-// explicit empty `results` rather than a silent no-op indistinguishable from
-// "nothing needed syncing". A paused tab is included alongside active ones
-// (with paused: true) rather than filtered out, so a whole-Brand-Tab pause
-// (paused_tabs, see pausedTabRegistry.ts) still gets its already-linked PMS
-// tasks force-moved to Project Paused via resolveAndSyncTabStatuses's
-// isTabPaused param -- getActiveOperationalTabs alone would otherwise exclude
-// it from every sync pass, leaving those tasks frozen wherever they were.
-export async function handleSyncAllStatuses(
-  body: { tab?: unknown },
+// Shared by both handlers below (handleSyncAllStatuses -- the on-visit
+// browser trigger AND the 1-minute cron -- and handleAuditAllStatuses, the
+// once-daily cron) so the "missing link" gap (Task 325, docs/task-history.md
+// -- a push that fails for one item is never retried anywhere) self-heals on
+// every path that already re-syncs status, not just the daily one. Active
+// tabs only: backfillMissingScheduledLinks itself is a no-op for a paused
+// tab (its currently-active combos are being force-paused by the status
+// sweep, not given fresh To Do cards). One tab's failure isolated from the
+// rest, same as syncAllTabStatuses's own loop; a tab with nothing missing
+// (the overwhelming common case) leaves its existing 'ok'/'error: ...'
+// result from the status sweep untouched. Mutates `results` in place rather
+// than returning a new object, matching how both callers already build
+// `results` via syncAllTabStatuses before passing it in here.
+async function backfillActiveTabs(
+  activeTabs: readonly string[],
+  results: Record<string, string>,
   client: SupabaseClient,
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
-  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
-  getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
-  getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
-): Promise<Record<string, string>> {
-  await bootstrapFn(client, 'sync-schedule-pms');
-  const activeTabs = getActiveTabsFn();
-  const pausedTabs = getPausedTabsFn();
-  let tabs: { tab: string; paused: boolean }[];
-  if (typeof body.tab === 'string' && body.tab) {
-    if (activeTabs.includes(body.tab)) tabs = [{ tab: body.tab, paused: false }];
-    else if (pausedTabs.includes(body.tab)) tabs = [{ tab: body.tab, paused: true }];
-    else tabs = [];
-  } else {
-    tabs = [
-      ...activeTabs.map((tab) => ({ tab, paused: false })),
-      ...pausedTabs.map((tab) => ({ tab, paused: true })),
-    ];
-  }
-  return syncAllTabStatuses(tabs, client, credentials, fetchFn);
-}
-
-// The 'auditAllStatuses' action (its own once-daily pg_cron job, separate
-// from the 1-minute 'syncAllStatuses'). Always covers every active+paused
-// tab (no body.tab scoping -- a full board audit has no reason to run
-// narrower). Historically this was the only way to force every tab's resolve
-// past a watermark short-circuit that the 1-minute cron otherwise trusted;
-// that short-circuit is gone now (see resolveAndSyncTabStatuses in
-// pmsSync.ts -- every tick is a full, honest resolve, so this action is no
-// longer functionally different from a tab-unscoped 'syncAllStatuses' call).
-// Kept as its own action/cron so the existing daily schedule needs no
-// migration change, and as a cheap independent belt-and-suspenders sweep.
-// Same bootstrapFn/getActiveTabsFn/getPausedTabsFn injection points as
-// handleSyncAllStatuses, for the same testability reason.
-// backfillFn is injectable for the same reason resolveFn is on
-// syncAllTabStatuses -- lets a test verify the per-tab isolation/reporting
-// here without a real Supabase client or PMS API. Runs after the status
-// sweep, active tabs only (see backfillMissingScheduledLinks's own doc
-// comment in pmsSync.ts for why paused tabs are skipped), one tab's failure
-// isolated from the rest the same way syncAllTabStatuses already isolates
-// resolve failures. A tab with nothing missing (the overwhelming common
-// case) leaves its existing 'ok'/'error: ...' result untouched.
-export async function handleAuditAllStatuses(
-  client: SupabaseClient,
-  credentials: PmsCredentials,
-  fetchFn: typeof fetch,
-  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
-  getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
-  getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
-  backfillFn: typeof backfillMissingScheduledLinks = backfillMissingScheduledLinks,
-): Promise<Record<string, string>> {
-  await bootstrapFn(client, 'sync-schedule-pms');
-  const activeTabs = getActiveTabsFn();
-  const tabs = [
-    ...activeTabs.map((tab) => ({ tab, paused: false })),
-    ...getPausedTabsFn().map((tab) => ({ tab, paused: true })),
-  ];
-  const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
-
+  backfillFn: typeof backfillMissingScheduledLinks,
+): Promise<void> {
+  if (activeTabs.length === 0) return;
   const weekStart = toISODate(mondayOf(new Date()));
   for (const tab of activeTabs) {
     try {
@@ -153,6 +96,91 @@ export async function handleAuditAllStatuses(
       invalidateTabCache(tab);
     }
   }
+}
+
+// Extracted so the handler's own routing logic -- bootstrap unconditionally,
+// then select which tab(s) to sync -- is directly testable without a real
+// Supabase client or PMS API, mirroring how syncAllTabStatuses above was
+// already extracted for the same reason. A requested body.tab that is
+// neither a currently-active nor a currently-paused tab (a stale/bogus name,
+// or an archived tab) falls back to an empty tab list rather than being
+// passed through unvalidated -- resolveFn/resolveAndSyncTabStatuses already
+// no-ops safely on an unknown tab (its fetchSchedulePmsLinks lookup just
+// returns zero links), but validating here means an invalid tab produces an
+// explicit empty `results` rather than a silent no-op indistinguishable from
+// "nothing needed syncing". A paused tab is included alongside active ones
+// (with paused: true) rather than filtered out, so a whole-Brand-Tab pause
+// (paused_tabs, see pausedTabRegistry.ts) still gets its already-linked PMS
+// tasks force-moved to Project Paused via resolveAndSyncTabStatuses's
+// isTabPaused param -- getActiveOperationalTabs alone would otherwise exclude
+// it from every sync pass, leaving those tasks frozen wherever they were.
+// backfillFn is injectable for the same reason resolveFn is on
+// syncAllTabStatuses -- lets a test verify backfillActiveTabs's isolation/
+// reporting here without a real Supabase client or PMS API. Reached by both
+// the on-visit browser trigger AND the 1-minute cron (both call this same
+// action), so the backfill closes within roughly a minute for the common
+// unscoped sweep, or immediately on the next visit for a single-tab call.
+export async function handleSyncAllStatuses(
+  body: { tab?: unknown },
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
+  getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
+  getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
+  backfillFn: typeof backfillMissingScheduledLinks = backfillMissingScheduledLinks,
+): Promise<Record<string, string>> {
+  await bootstrapFn(client, 'sync-schedule-pms');
+  const activeTabs = getActiveTabsFn();
+  const pausedTabs = getPausedTabsFn();
+  let tabs: { tab: string; paused: boolean }[];
+  if (typeof body.tab === 'string' && body.tab) {
+    if (activeTabs.includes(body.tab)) tabs = [{ tab: body.tab, paused: false }];
+    else if (pausedTabs.includes(body.tab)) tabs = [{ tab: body.tab, paused: true }];
+    else tabs = [];
+  } else {
+    tabs = [
+      ...activeTabs.map((tab) => ({ tab, paused: false })),
+      ...pausedTabs.map((tab) => ({ tab, paused: true })),
+    ];
+  }
+  const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
+  await backfillActiveTabs(tabs.filter((t) => !t.paused).map((t) => t.tab), results, client, credentials, fetchFn, backfillFn);
+  return results;
+}
+
+// The 'auditAllStatuses' action (its own once-daily pg_cron job, separate
+// from the 1-minute 'syncAllStatuses'). Always covers every active+paused
+// tab (no body.tab scoping -- a full board audit has no reason to run
+// narrower). Historically this was the only way to force every tab's resolve
+// past a watermark short-circuit that the 1-minute cron otherwise trusted;
+// that short-circuit is gone now (see resolveAndSyncTabStatuses in
+// pmsSync.ts -- every tick is a full, honest resolve, so this action is no
+// longer functionally different from a tab-unscoped 'syncAllStatuses' call).
+// Kept as its own action/cron so the existing daily schedule needs no
+// migration change, and as a cheap independent belt-and-suspenders sweep --
+// now genuinely redundant with the 1-minute cron's own backfillActiveTabs
+// call for the "missing link" gap specifically, but kept anyway as a second,
+// independent safety net (same reasoning as the rest of this comment).
+// Same bootstrapFn/getActiveTabsFn/getPausedTabsFn/backfillFn injection
+// points as handleSyncAllStatuses, for the same testability reason.
+export async function handleAuditAllStatuses(
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch,
+  bootstrapFn: typeof bootstrapTabRegistries = bootstrapTabRegistries,
+  getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
+  getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
+  backfillFn: typeof backfillMissingScheduledLinks = backfillMissingScheduledLinks,
+): Promise<Record<string, string>> {
+  await bootstrapFn(client, 'sync-schedule-pms');
+  const activeTabs = getActiveTabsFn();
+  const tabs = [
+    ...activeTabs.map((tab) => ({ tab, paused: false })),
+    ...getPausedTabsFn().map((tab) => ({ tab, paused: true })),
+  ];
+  const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
+  await backfillActiveTabs(activeTabs, results, client, credentials, fetchFn, backfillFn);
   return results;
 }
 

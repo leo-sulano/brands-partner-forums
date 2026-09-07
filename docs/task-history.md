@@ -9430,3 +9430,24 @@ caught live. 2 new tests (`pushScheduleToPms` — deletes the orphaned task on a
 does not attempt a delete when the failure is before task creation). Full suite **3404** passing,
 build clean, `deno check` clean on both consumers. **Deployed and live-verified same session:**
 `sync-schedule-pms` v43, `generate-weekly-schedule` v23 — both confirmed `ACTIVE`.
+
+**Second same-session follow-up, per direct user request ("so in the future this bug will not
+happen"):** the "missing link" backfill from earlier in this task only ran once a day (the
+`auditAllStatuses` cron), meaning a fresh gap from today's cron/click could still show a mismatch
+for up to ~24h before self-healing. Per the user's explicit ask, wired the same backfill into the
+existing 1-minute `syncAllStatuses` action too (`sync-schedule-pms/index.ts`) — the action both the
+1-minute `pg_cron` job and the on-visit browser trigger already call on every tick/visit. New shared
+`backfillActiveTabs()` (extracted from `handleAuditAllStatuses`'s own loop, no logic duplicated)
+is now also called from `handleSyncAllStatuses`, scoped to whichever active tab(s) that particular
+call actually covers (the full active-tab list for an unscoped sweep, or just the one requested tab
+for a single-tab on-visit call — a paused-tab-scoped call correctly gets no backfill call at all,
+matching `backfillMissingScheduledLinks`'s own no-op-for-paused-tabs design). This closes the
+self-heal window from ~24h down to ~1 minute for the common case, and immediately on the next
+Schedule Planner visit for a single-tab gap. 3 new tests covering the new wiring (active-tab sweep,
+single-tab-scoped call with result-folding, paused-tab-scoped call skipping backfill entirely); the
+7 pre-existing `handleSyncAllStatuses` tests needed no changes (none assert exact result strings, so
+appending a backfill note doesn't break them). Full suite (3404 frontend + 26 Deno) green, build
+clean, `deno check` clean. **Deployed and live-verified same session:** `sync-schedule-pms` v44,
+confirmed `ACTIVE`; a direct `{"action":"syncAllStatuses"}` call (the exact action the real 1-minute
+cron fires) returned `"ok"` for all 11 tabs, confirming the new backfill sweep runs cleanly inside
+the hot path with nothing outstanding to fix.
