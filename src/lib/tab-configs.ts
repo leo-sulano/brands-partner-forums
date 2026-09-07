@@ -140,6 +140,7 @@ export const TAB_COLUMN_CONFIGS: Record<string, string[]> = {
     'Country',
     'Proxy Used',
     'Account Name',
+    'Agent',
     'Brands',
     'Brand Link',
     'Trust Pilot',
@@ -287,6 +288,19 @@ export const PLATFORM_SCORE_COLS: Record<'tp' | 'ag' | 'cg' | 'wo', readonly str
   cg: ['CG Score added'],
   wo: ['Wizard of OddsScore added'],
 };
+
+// Default Agent value pre-filled in the Add Review Account modal for tabs that
+// are worked by a single fixed agent (e.g. Hanan is ANN's tab exclusively).
+// The field stays editable — this is a convenience prefill, not a lock. The
+// Edit Entry modal deliberately does NOT apply this: it only ever shows the
+// value already on the row.
+export const TAB_DEFAULT_AGENT: Record<string, string> = {
+  'Hanan': 'ANN',
+};
+
+export function getDefaultAgentForTab(tab: string): string {
+  return TAB_DEFAULT_AGENT[resolveHardcodedTabKey(tab)] ?? '';
+}
 
 // Default brand name shown in the Brands column when the sheet value is empty.
 export const TAB_DEFAULT_BRAND: Record<string, string> = {

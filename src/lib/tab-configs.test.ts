@@ -6,7 +6,7 @@ import {
   stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol,
   getEnabledToolbarFilters, registerToolbarFilters, unregisterToolbarFilters, resetToolbarFilters, ALL_TOOLBAR_FILTERS,
   getColLabel, getTabSequence, getTabSequenceCol, getBrandTpUrl, getBrandLinkCol, resolveBrandLink,
-  deriveTabBrands,
+  deriveTabBrands, getDefaultAgentForTab,
 } from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 import { renameHardcodedTabLocally, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry';
@@ -18,6 +18,27 @@ describe('TAB_COLUMN_CONFIGS', () => {
       expect(accountIdx, `${tab} has no Account column`).toBeGreaterThanOrEqual(0);
       expect(cols[accountIdx + 1], `${tab}: Country should immediately follow Account`).toBe('Country');
     }
+  });
+});
+
+describe('Hanan Agent column', () => {
+  it('is in the Hanan column whitelist, between Account Name and Brands', () => {
+    const cols = getTabColumns('Hanan');
+    expect(cols).not.toBeNull();
+    expect(cols).toContain('Agent');
+    expect(cols!.indexOf('Agent')).toBe(cols!.indexOf('Account Name') + 1);
+    expect(cols!.indexOf('Agent')).toBeLessThan(cols!.indexOf('Brands'));
+  });
+});
+
+describe('getDefaultAgentForTab', () => {
+  it('returns "ANN" for the Hanan tab', () => {
+    expect(getDefaultAgentForTab('Hanan')).toBe('ANN');
+  });
+
+  it('returns "" for a tab with no fixed agent', () => {
+    expect(getDefaultAgentForTab('Rooster Partners')).toBe('');
+    expect(getDefaultAgentForTab('TP Brand Injection')).toBe('');
   });
 });
 

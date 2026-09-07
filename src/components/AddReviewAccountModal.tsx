@@ -4,7 +4,7 @@ import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
 import { OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { insertEntry } from '../lib/queries';
-import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getCountryForAccount, getBrandNameCol, getBrandLinkCol, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
+import { hasMultiPlatform, getTabColumns, TAB_DEFAULT_BRAND, getDefaultAgentForTab, getCountryForAccount, getBrandNameCol, getBrandLinkCol, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from '../lib/tab-configs';
 import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { PASTE_OFFSET_MAP } from '../lib/paste-map';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
@@ -151,6 +151,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
   const [fields, setFields] = useState<Record<string, string>>(() => ({
     ...Object.fromEntries(ALL_KEYS.map((k) => [k, ''])),
     ...YES_NO_DEFAULTS,
+    [AGENT_FIELD.key]: getDefaultAgentForTab(currentTab),
     [getBrandNameCol(currentTab)]: '',
     [getBrandLinkCol(currentTab)]: '',
   }));
@@ -202,7 +203,7 @@ export default function AddReviewAccountModal({ currentTab, onClose, onSaved, br
     setSelectedTab(tab);
     setFields((s) => ({
       ...s,
-      'Agent': '',
+      'Agent': getDefaultAgentForTab(tab),
       [getBrandNameCol(tab)]: '',
       [getBrandLinkCol(tab)]: '',
       'Link to the profile': '',
