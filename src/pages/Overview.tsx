@@ -971,6 +971,16 @@ export default function Overview() {
                             <SuccessRateBadge live={tabKpis[p].live} removed={tabKpis[p].removed} size="sm" />
                           </Link>
                         ))}
+                        {tabKpis?.customPlatforms.map(({ platform, live, removed }) => (
+                          <div key={platform.id} className="flex items-center gap-1.5 rounded px-1 py-0.5 text-xs text-slate-600">
+                            <span className="inline-flex shrink-0 items-center rounded bg-slate-100 px-1 py-0.5 text-[10px] font-semibold leading-none text-slate-600">
+                              {platform.shortLabel}
+                            </span>
+                            <span className="whitespace-nowrap"><span className="font-medium text-emerald-600">{live}</span> live</span>
+                            <span className="whitespace-nowrap"><span className="font-medium text-rose-500">{removed}</span> removed</span>
+                            <SuccessRateBadge live={live} removed={removed} size="sm" />
+                          </div>
+                        ))}
                       </div>
                       {tabKpis && (
                         <div className="flex shrink-0 items-center gap-2 text-xs text-slate-500">
