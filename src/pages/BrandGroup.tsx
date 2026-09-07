@@ -26,6 +26,8 @@ import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformB
 import { resolveHardcodedTabKey } from '../lib/hardcodedTabRenameRegistry';
 import { overrideKey, buildOverrideMap, type OverrideState } from '../lib/scheduleOverrides';
 import { subscribeEntries } from '../lib/realtime';
+import { getTabCustomPlatforms } from '../lib/customPlatformRegistry';
+import { computeCustomPlatformCounts } from '../lib/customPlatforms';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getBrandLinkCol, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
@@ -1668,6 +1670,12 @@ export default function BrandGroup() {
     return { total: live + removed, live, removed };
   })();
 
+  const tabCustomPlatforms = getTabCustomPlatforms(decodedTab);
+  const customPlatformCounts = tabCustomPlatforms.map((platform) => ({
+    platform,
+    ...computeCustomPlatformCounts(ratingFiltered, platform, dateActive ? dateFrom : undefined, dateActive ? dateTo : undefined),
+  }));
+
   // First visible date column — used as implicit default sort when no column is active.
   const implicitDateCol = headers.find((h) => isDateCol(h)) ?? null;
 
@@ -2204,6 +2212,35 @@ export default function BrandGroup() {
         );
       })()}
 
+      {customPlatformCounts.length > 0 && (
+        <div className={`grid grid-cols-1 gap-3 ${customPlatformCounts.length === 1 ? 'sm:grid-cols-1' : customPlatformCounts.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} mt-[10px]`}>
+          {customPlatformCounts.map(({ platform, live, removed }) => (
+            <div key={platform.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500">{platform.name}</span>
+                <span className="ml-auto flex items-center gap-2">
+                  <span className="text-xs font-medium text-slate-500">Success Rate</span>
+                  <SuccessRateBadge live={live} removed={removed} />
+                </span>
+              </div>
+              {loading ? (
+                <div className="h-6 w-20 animate-pulse rounded bg-slate-200" />
+              ) : (
+                <div className="flex items-center gap-4">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-semibold text-emerald-700">{live.toLocaleString()}</span>
+                    <span className="text-xs text-slate-400">Live</span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-semibold text-rose-600">{removed.toLocaleString()}</span>
+                    <span className="text-xs text-slate-400">Removed</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="rounded-b-lg border border-solid border-slate-200 bg-white shadow-sm flex flex-col max-h-[calc(100vh-252px)] md:max-h-[calc(100vh-244px)]">
         {/* Scrollable panel: toolbar + table share one scroll container (both
