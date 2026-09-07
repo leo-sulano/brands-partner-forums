@@ -1,13 +1,16 @@
 // src/components/AddBrandTabModal.tsx
 import { useEffect, useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
-import { createCustomTab, upsertTabIconOverride } from '../lib/queries';
+import { createCustomTab, upsertTabIconOverride, enableCustomPlatformOnTab, fetchCustomPlatforms } from '../lib/queries';
+import type { CustomPlatformSummary } from '../lib/queries';
 import { PLATFORM_LIST, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import { TOOLBAR_FILTER_LIST, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from '../lib/tab-configs';
 import { DEFAULT_ICON_NAME, type TabIconSelection } from '../lib/tabIcons';
 import { registerTabIconOverrides } from '../lib/tabIconOverrideRegistry';
+import { registerTabCustomPlatforms } from '../lib/customPlatformRegistry';
 import { validateNewTabName } from '../lib/tabValidation';
 import IconPicker from './IconPicker';
+import AddCustomPlatformModal from './AddCustomPlatformModal';
 
 interface Props {
   onCreated: (name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) => void;
@@ -21,6 +24,13 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
   const [iconSelection, setIconSelection] = useState<TabIconSelection>({ type: 'icon', value: DEFAULT_ICON_NAME });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customPlatforms, setCustomPlatforms] = useState<CustomPlatformSummary[]>([]);
+  const [enabledCustomPlatformIds, setEnabledCustomPlatformIds] = useState<string[]>([]);
+  const [showAddCustomPlatform, setShowAddCustomPlatform] = useState(false);
+
+  useEffect(() => {
+    fetchCustomPlatforms().then(setCustomPlatforms).catch((err) => console.error('Failed to fetch custom platforms:', err));
+  }, []);
 
   // Every close affordance (Escape, the X button, the backdrop) is inert while
   // a create is in flight — closing mid-submit would let createCustomTab's
@@ -73,6 +83,21 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
     setError(null);
     try {
       await createCustomTab(trimmed, platforms, filters);
+      // The platform created via AddCustomPlatformModal is already enabled
+      // server-side on whatever `tab` value (name.trim()) was current at the
+      // moment it was created -- since the user could still edit the Tab
+      // Name field afterward before clicking "Create Tab", re-run
+      // enableCustomPlatformOnTab here for every id using the final `trimmed`
+      // name, rather than trusting the earlier enable call.
+      for (const id of enabledCustomPlatformIds) {
+        await enableCustomPlatformOnTab(trimmed, id);
+      }
+      for (const id of enabledCustomPlatformIds) {
+        const p = customPlatforms.find((cp) => cp.id === id);
+        if (p) {
+          registerTabCustomPlatforms([{ id: p.id, tab: trimmed, name: p.name, shortLabel: p.shortLabel, statusColumn: p.statusColumn, dateColumn: p.dateColumn, maxScore: p.maxScore }]);
+        }
+      }
       await upsertTabIconOverride(trimmed, { icon, faviconDomain, imageUrl });
       registerTabIconOverrides([{ tab: trimmed, icon, faviconDomain, imageUrl }]);
       onCreated(trimmed, platforms, filters);
@@ -126,6 +151,37 @@ export default function AddBrandTabModal({ onCreated, onClose }: Props) {
                 {label}
               </label>
             ))}
+            {customPlatforms.map((p) => (
+              <label key={p.id} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={enabledCustomPlatformIds.includes(p.id)}
+                  onChange={() => setEnabledCustomPlatformIds((prev) => prev.includes(p.id) ? prev.filter((x) => x !== p.id) : [...prev, p.id])}
+                  className="size-4"
+                />
+                {p.name}
+              </label>
+            ))}
+            <button
+              type="button"
+              onClick={() => setShowAddCustomPlatform(true)}
+              disabled={!name.trim()}
+              title={!name.trim() ? 'Enter a tab name first' : undefined}
+              className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              + Add custom platform
+            </button>
+            {showAddCustomPlatform && (
+              <AddCustomPlatformModal
+                tab={name.trim()}
+                onCreated={(platform) => {
+                  setCustomPlatforms((prev) => [...prev, { id: platform.id, name: platform.name, shortLabel: platform.shortLabel, statusColumn: platform.statusColumn, dateColumn: platform.dateColumn, maxScore: platform.maxScore }]);
+                  setEnabledCustomPlatformIds((prev) => [...prev, platform.id]);
+                  setShowAddCustomPlatform(false);
+                }}
+                onClose={() => setShowAddCustomPlatform(false)}
+              />
+            )}
           </div>
 
           <IconPicker value={iconSelection} onChange={setIconSelection} />
