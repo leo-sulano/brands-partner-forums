@@ -6,9 +6,9 @@ Let any approved user define a new review platform (e.g. a 5th site beyond
 TrustPilot/AskGamblers/CasinoGuru/Wizard of Odds) and enable it on any tab —
 hardcoded or self-service-created — with **no code change and no deploy**.
 Once enabled, that platform gets real status/date fields on entries and its
-Live/Removed/Total/Success-Rate counts automatically appear in Overview,
-Score Summary, and Brand Tabs — the same three surfaces the cross-dashboard
-consistency rule already treats as one system for the 4 built-in platforms.
+Live/Removed/Total/Success-Rate counts automatically appear in Overview and
+Brand Tabs — both are tab-scoped views, matching how a custom platform is
+tab-scoped by construction.
 
 This closes the one genuine gap identified from a direct user question: new
 brands, new tabs (Task 232), new proxies (Task 218), and new countries/agents
@@ -31,6 +31,19 @@ concept still fully hardcoded across ~10+ files.
   existing scheduler/removed-flag/Ask AI logic keyed on that union). Custom
   platforms are a fully separate, additive engine that happens to reuse the
   same underlying string-classification helpers.
+- **Score Summary** (`ScoreSummaryPanel.tsx`) — deferred, discovered during
+  implementation planning to be a bigger architectural mismatch than
+  originally scoped. Score Summary is a **cross-tab, combined** view: its
+  `platform: Platform[]` multi-select filters ALL entries across every tab
+  at once (`computeScoreSummary(entries, range, [], platform,
+  removedPlatformBrands)`), strictly typed to the 4 built-in platforms
+  everywhere (`PLATFORM_MULTI_OPTS`, `PLATFORM_MAX_SCORE[platform[0]]`,
+  etc.). A custom platform is tab-scoped by construction (only certain tabs
+  enable it) and has no natural meaning in an "all platforms combined,
+  across every tab" computation — folding it in cleanly needs its own
+  design (e.g. gating custom-platform options behind an active tab filter),
+  not a few lines bolted onto a working, well-tested cross-tab view. Left
+  for a dedicated follow-up.
 - **Schedule Planner** — no scheduling, auto-pause, or PMS status sync for a
   custom platform. It never appears on the calendar grid.
 - **Ask AI** (`supabase/functions/ai-assistant/`) — its tools stay unaware of
@@ -94,11 +107,14 @@ create table tab_custom_platforms (
 - Both tables get the project's standard 4-policy RLS: anyone can `select`;
   an approved user can `insert`/`delete` (no `update` policy needed — nothing
   in either table is ever edited in place, only inserted/deleted).
-- **`rename_hardcoded_tab`/`rename_custom_tab` RPCs** each gain one more
-  statement, `update tab_custom_platforms set tab = new_name where tab =
-  old_name;`, alongside every other tab-keyed table they already bulk-update
-  — otherwise renaming a tab silently orphans its enabled custom platforms,
-  repeating the exact bug class Task 306 had to fix for other tables.
+- **No RPC change needed for renames.** Both `rename_hardcoded_tab` and
+  `rename_custom_tab` already discover every table with a plain `tab text`
+  column via `information_schema.columns` and rewrite it automatically
+  (confirmed in their migration source, and in `brand_catalog`'s own
+  migration comment, which relies on the same mechanism) — as long as
+  `tab_custom_platforms.tab` is a plain `text` column literally named `tab`,
+  a rename picks it up with zero code change here, exactly like
+  `brand_catalog` did.
 
 ## Column & registry architecture
 
@@ -265,11 +281,7 @@ When `maxScore` is set, buckets a star distribution the same way
   `passesDateFilter` call is intentionally structured the same way
   `passesPlatformDateFilter` is, so the two families of platforms can't
   silently diverge on what "in range" means).
-- **Score Summary** (`ScoreSummary.tsx`/`ScoreSummaryPanel.tsx`): the
-  platform dropdown gains an entry per custom platform enabled on the
-  currently-selected tab (dropdown is tab-scoped already), producing the
-  same Total/Live/Removed/Success Rate view, with star breakdown too when
-  `maxScore` is set.
+- **Score Summary**: not touched in v1 — see Non-goals.
 
 ## Cross-dashboard check
 
@@ -279,18 +291,19 @@ When `maxScore` is set, buckets a star distribution the same way
 - **Schedule Planner** — untouched, per Non-goals. `getTabPlatforms` (which
   it reads) is unchanged, so no custom platform can appear on the calendar.
 - **`removed_platform_brands`** — untouched; no custom-platform equivalent.
-- **Overview / Score Summary / Brand Tabs** — the three surfaces this
-  feature actually targets; see Rendering above. All three read the same
+- **Overview / Brand Tabs** — the two surfaces this feature actually
+  targets; see Rendering above. Both read the same
   `computeCustomPlatformCounts`/`getTabCustomPlatforms` pair, so they cannot
   independently drift on what counts as Live/Removed/in-range for a custom
   platform, the same anti-drift shape Task 180's `passesPlatformDateFilter`
   established for the 4 built-ins.
-- **Tab rename (`rename_hardcoded_tab`/`rename_custom_tab`)** — updated per
-  Data model above.
+- **Tab rename (`rename_hardcoded_tab`/`rename_custom_tab`)** — no change
+  needed; both already auto-discover any `tab text` column, per Data model
+  above.
 - **Tab archive/pause (`archivedTabRegistry.ts`/`pausedTabRegistry.ts`)** —
   untouched; an archived or paused tab already drops out of
-  Overview/Score Summary/Schedule Planner wholesale, so its custom platforms
-  (if any) are excluded for free with no new code.
+  Overview/Brand Tabs/Score Summary/Schedule Planner wholesale, so its
+  custom platforms (if any) are excluded for free with no new code.
 
 ## Testing
 
@@ -308,9 +321,8 @@ When `maxScore` is set, buckets a star distribution the same way
 - Component/integration: `npm run build`, then a live browser pass — create
   a custom platform from a dynamic tab, confirm it appears as a checkbox on
   a second (hardcoded) tab's Edit Brand Tab, enable it there too, add an
-  entry with a status/date for it on both tabs, and confirm Overview,
-  Score Summary, and Brand Tabs all agree on its Live/Removed count for a
-  matching date range.
+  entry with a status/date for it on both tabs, and confirm Overview and
+  Brand Tabs agree on its Live/Removed count for a matching date range.
 - Full suite + `npm run build`; this is Tier 3 scope per this project's own
   rules (touches shared aggregation logic across all three consistency
   surfaces) — full spec → plan → subagent-driven implementation → per-task
