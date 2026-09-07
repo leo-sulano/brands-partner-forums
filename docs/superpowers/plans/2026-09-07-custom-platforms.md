@@ -529,7 +529,17 @@ Expected: FAIL — functions don't exist yet.
 
 - [ ] **Step 3: Implement the reserved-column check and CRUD functions**
 
-Add to `src/lib/queries.ts` (near `fetchCustomTabs`/`createCustomTab`, importing `CustomPlatformConfig` from `./customPlatforms.ts`):
+Add to `src/lib/queries.ts` (near `fetchCustomTabs`/`createCustomTab`). First,
+widen the existing `tab-configs.ts` import line (line 5) to also bring in
+`TAB_COLUMN_CONFIGS` — it is not currently imported into this file and
+`reservedColumnNames()` below needs it:
+
+```ts
+// was: import { getTabColumns, getBrandNameCol, getTabPlatforms, ALL_TOOLBAR_FILTERS, type ToolbarFilterKey } from './tab-configs.ts';
+import { getTabColumns, getBrandNameCol, getTabPlatforms, ALL_TOOLBAR_FILTERS, TAB_COLUMN_CONFIGS, type ToolbarFilterKey } from './tab-configs.ts';
+```
+
+Then add the new import and functions:
 
 ```ts
 import type { CustomPlatformConfig } from './customPlatforms.ts';
@@ -879,12 +889,18 @@ In the JSX, right after the `PLATFORM_LIST.map(...)` checkbox block (inside the 
     {p.name}
   </label>
 ))}
-<button type="button" onClick={() => setShowAddCustomPlatform(true)} className="text-xs font-medium text-blue-600 hover:text-blue-700">
+<button
+  type="button"
+  onClick={() => setShowAddCustomPlatform(true)}
+  disabled={!name.trim()}
+  title={!name.trim() ? 'Enter a tab name first' : undefined}
+  className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+>
   + Add custom platform
 </button>
 {showAddCustomPlatform && (
   <AddCustomPlatformModal
-    tab={name.trim() || 'unnamed'}
+    tab={name.trim()}
     onCreated={(platform) => {
       setCustomPlatforms((prev) => [...prev, { id: platform.id, name: platform.name, shortLabel: platform.shortLabel, statusColumn: platform.statusColumn, dateColumn: platform.dateColumn, maxScore: platform.maxScore }]);
       setEnabledCustomPlatformIds((prev) => [...prev, platform.id]);
@@ -905,7 +921,7 @@ In `handleSubmit`, after the existing `await createCustomTab(...)` call succeeds
         }
       }
 ```
-(the platform created via `AddCustomPlatformModal` is already enabled server-side on the placeholder `tab` value passed to it — since the real tab name may still change before submit, re-run `enableCustomPlatformOnTab(trimmed, id)` here for every id in `enabledCustomPlatformIds` rather than trusting the placeholder enable call; add that as an explicit loop before the `registerTabCustomPlatforms` loop above, importing `enableCustomPlatformOnTab` from `../lib/queries`.)
+(the platform created via `AddCustomPlatformModal` is already enabled server-side on whatever `tab` value (`name.trim()`) was current at the moment it was created — since the user could still edit the Tab Name field afterward before clicking "Create Tab", re-run `enableCustomPlatformOnTab(trimmed, id)` here for every id in `enabledCustomPlatformIds`, using the final `trimmed` name, rather than trusting the earlier enable call; add that as an explicit loop before the `registerTabCustomPlatforms` loop above, importing `enableCustomPlatformOnTab` from `../lib/queries`. Accepted residual edge case, not fixed by this plan: if the user creates a custom platform, THEN edits the Tab Name field to a different value, THEN submits, the earlier enable call's row (under the first name) is never cleaned up — a harmless orphaned `tab_custom_platforms` row with no entries ever attached to it, not visible anywhere in the UI. Requiring the name field to be filled before "+ Add custom platform" is enabled (above) closes the more common blank-name case; this narrower rename-after-create case is left undocumented-but-low-impact rather than adding more machinery to close it.)
 
 - [ ] **Step 3: Wire into `EditBrandTabModal.tsx`**
 
@@ -1069,9 +1085,15 @@ Expected: FAIL — `TabKpis` has no `customPlatforms` field yet.
 
 - [ ] **Step 3: Implement**
 
-Add the import at the top of `queries.ts`:
+Add one new import, and extend the one Task 4 already added (do NOT add a
+second, separate import of `CustomPlatformConfig` — that would collide with
+Task 4's `import type { CustomPlatformConfig } from './customPlatforms.ts';`
+and fail as a duplicate identifier):
 ```ts
 import { getTabCustomPlatforms } from './customPlatformRegistry.ts';
+```
+```ts
+// was (added by Task 4): import type { CustomPlatformConfig } from './customPlatforms.ts';
 import { computeCustomPlatformCounts, type CustomPlatformConfig } from './customPlatforms.ts';
 ```
 
