@@ -3,7 +3,15 @@ import { computeCustomPlatformCounts, type CustomPlatformConfig } from './custom
 import type { Entry } from '../types/entry';
 
 function entry(data: Record<string, string | null>): Entry {
-  return { id: crypto.randomUUID(), tab: 'Test Tab', data, created_at: '', updated_at: '' } as Entry;
+  return {
+    id: crypto.randomUUID(),
+    tab: 'Test Tab',
+    sheet_row_id: '',
+    data,
+    updated_at: '',
+    last_edited_by: 'dashboard',
+    last_sync_tag: null,
+  };
 }
 
 const YELP: CustomPlatformConfig = {
