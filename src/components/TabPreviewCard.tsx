@@ -127,10 +127,10 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                 {gridColumns.map((col) => (
                   <th
                     key={col.iso}
-                    className={`px-1 py-1 text-center font-medium whitespace-nowrap ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : holidayDateSet.has(col.iso) ? 'w-px bg-rose-50 text-rose-400' : ''}`}
+                    className={`px-1 py-1 text-center font-medium whitespace-nowrap ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : holidayDateSet.has(col.iso) ? 'bg-rose-50 text-rose-400' : ''}`}
                     title={col.kind === 'weekend' ? "Weekends aren't scheduled" : undefined}
                   >
-                    {col.kind === 'weekend' ? col.label[0] : WEEKDAY_LABELS[col.weekday][0]}
+                    {(col.kind === 'weekend' ? col.label : WEEKDAY_LABELS[col.weekday]).slice(0, 2).toUpperCase()}
                   </th>
                 ))}
               </tr>
@@ -140,7 +140,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                   {gridColumns.map((col) => (
                     <th
                       key={col.iso}
-                      className={`px-1 py-0.5 text-center font-medium whitespace-nowrap ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : holidayDateSet.has(col.iso) ? 'w-px bg-rose-50 text-rose-400' : ''}`}
+                      className={`px-1 py-0.5 text-center font-medium whitespace-nowrap ${col.kind === 'weekend' ? 'w-px bg-slate-100 text-slate-400' : holidayDateSet.has(col.iso) ? 'bg-rose-50 text-rose-400' : ''}`}
                       title={col.kind === 'weekend' ? "Weekends aren't scheduled" : undefined}
                     >
                       {Number(col.iso.slice(8, 10))}
@@ -197,7 +197,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                         return (
                           <td
                             key={col.iso}
-                            className={`px-0.5 py-1 text-center ${holidayDateSet.has(col.iso) ? 'w-px bg-rose-50' : ''}`}
+                            className={`px-0.5 py-1 text-center ${holidayDateSet.has(col.iso) ? 'bg-rose-50' : ''}`}
                           >
                             <span className="flex flex-wrap items-center justify-center gap-0.5">
                               {executedEntries.map(({ platform: p, kind }) => (
