@@ -14,7 +14,7 @@
 // - "Upload image" compresses and uploads a custom image to the `tab-icons`
 //   Storage bucket, mirroring the avatar upload feature's approach.
 import { useRef, useState, type ChangeEvent } from 'react';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader2, Upload, Info } from 'lucide-react';
 import { DynamicIcon } from 'lucide-react/dynamic';
 import {
   ALL_DYNAMIC_ICON_NAMES, POPULAR_ICON_NAMES, isKnownDynamicIconName, faviconUrl,
@@ -22,8 +22,20 @@ import {
 } from '../lib/tabIcons';
 import { validateTabIconFile, compressTabIconImage } from '../lib/tabIconUpload';
 import { uploadTabIconImage } from '../lib/queries';
+import Tooltip from './Tooltip';
 
 const MAX_RESULTS = 60;
+
+// Mirrors EditBrandTabModal.tsx's own local InfoTip — kept as a separate
+// copy rather than a shared export since that file imports this component,
+// not the other way around.
+function InfoTip({ children }: { children: string }) {
+  return (
+    <Tooltip content={<span className="block w-56 whitespace-normal">{children}</span>}>
+      <Info className="size-3.5 text-slate-400" />
+    </Tooltip>
+  );
+}
 
 interface Props {
   value: TabIconSelection;
@@ -75,7 +87,12 @@ export default function IconPicker({ value, onChange }: Props) {
 
   return (
     <div>
-      <label className="block text-xs font-medium text-slate-500 mb-1.5">Icon</label>
+      <div className="mb-1.5 flex items-center gap-1">
+        <label className="block text-xs font-medium text-slate-500">Icon</label>
+        <InfoTip>
+          Choose how this tab's icon appears in the sidebar and header — a built-in icon, the tab's own website favicon, or an uploaded image.
+        </InfoTip>
+      </div>
 
       <div className="mb-1.5 inline-flex rounded-lg border border-slate-200 p-0.5 text-xs">
         <button

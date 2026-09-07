@@ -384,17 +384,19 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
                 Unchecking a platform hides its columns and data — nothing is deleted, and re-checking it brings everything back.
               </InfoTip>
             </div>
-            {PLATFORM_LIST.filter((p) => toggleable.includes(p.key)).map(({ key, label }) => (
-              <label key={key} className="flex items-center gap-2 mb-1.5 text-sm text-slate-700 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={platforms.includes(key)}
-                  onChange={() => togglePlatform(key)}
-                  className="size-4"
-                />
-                {label}
-              </label>
-            ))}
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5 mb-1.5">
+              {PLATFORM_LIST.filter((p) => toggleable.includes(p.key)).map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={platforms.includes(key)}
+                    onChange={() => togglePlatform(key)}
+                    className="size-4"
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
             {customPlatforms.map((p) => {
               const isEnabledHere = enabledCustomPlatformIds.includes(p.id);
               return (
