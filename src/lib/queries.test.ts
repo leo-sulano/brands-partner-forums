@@ -78,6 +78,12 @@ import {
   fetchApprovedScheduleWeeks,
   approveWeek,
   revokeWeekApproval,
+  fetchCustomPlatforms,
+  fetchTabCustomPlatforms,
+  createCustomPlatform,
+  enableCustomPlatformOnTab,
+  disableCustomPlatformOnTab,
+  deleteCustomPlatform,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -1621,5 +1627,123 @@ describe('statusCheckTabKeys', () => {
 
   it('returns one key per requested platform only', () => {
     expect(statusCheckTabKeys('Hanan', ['cg'])).toEqual(['cg__Hanan']);
+  });
+});
+
+describe('fetchCustomPlatforms / fetchTabCustomPlatforms / enableCustomPlatformOnTab / disableCustomPlatformOnTab', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('fetchCustomPlatforms maps rows to camelCase fields', async () => {
+    singletonFrom.mockReturnValue(
+      chain({
+        data: [{ id: 'p1', name: 'Yelp', short_label: 'YP', status_column: 'Yelp Review Status', date_column: 'Yelp Review Added', max_score: 5 }],
+        error: null,
+      }),
+    );
+    const rows = await fetchCustomPlatforms();
+    expect(rows).toEqual([
+      { id: 'p1', name: 'Yelp', shortLabel: 'YP', statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: 5 },
+    ]);
+  });
+
+  it('fetchTabCustomPlatforms maps joined rows and skips any with a null join', async () => {
+    singletonFrom.mockReturnValue(
+      chain({
+        data: [
+          {
+            tab: 'Hanan',
+            custom_platforms: { id: 'p1', name: 'Yelp', short_label: 'YP', status_column: 'Yelp Review Status', date_column: 'Yelp Review Added', max_score: null },
+          },
+          { tab: 'Hanan', custom_platforms: null },
+        ],
+        error: null,
+      }),
+    );
+    const rows = await fetchTabCustomPlatforms();
+    expect(rows).toEqual([
+      { id: 'p1', tab: 'Hanan', name: 'Yelp', shortLabel: 'YP', statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null },
+    ]);
+  });
+
+  it('enableCustomPlatformOnTab inserts a tab_custom_platforms row with the current actor', async () => {
+    const insert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    singletonFrom.mockReturnValue({ insert });
+    await enableCustomPlatformOnTab('Hanan', 'p1');
+    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ tab: 'Hanan', platform_id: 'p1' }));
+  });
+
+  it('enableCustomPlatformOnTab treats an already-enabled duplicate as success', async () => {
+    const insert = vi.fn().mockReturnValue({
+      then: (resolve: (v: { error: { code: string } }) => unknown) => resolve({ error: { code: '23505' } }),
+    });
+    singletonFrom.mockReturnValue({ insert });
+    await expect(enableCustomPlatformOnTab('Hanan', 'p1')).resolves.toBeUndefined();
+  });
+
+  it('disableCustomPlatformOnTab deletes the tab_custom_platforms row for that tab+platform', async () => {
+    const eq2 = vi.fn().mockResolvedValue({ error: null });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const del = vi.fn().mockReturnValue({ eq: eq1 });
+    singletonFrom.mockReturnValue({ delete: del });
+    await disableCustomPlatformOnTab('Hanan', 'p1');
+    expect(eq1).toHaveBeenCalledWith('tab', 'Hanan');
+    expect(eq2).toHaveBeenCalledWith('platform_id', 'p1');
+  });
+
+  it('disableCustomPlatformOnTab throws on error', async () => {
+    const eq2 = vi.fn().mockResolvedValue({ error: new Error('db down') });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const del = vi.fn().mockReturnValue({ eq: eq1 });
+    singletonFrom.mockReturnValue({ delete: del });
+    await expect(disableCustomPlatformOnTab('Hanan', 'p1')).rejects.toThrow('db down');
+  });
+});
+
+describe('createCustomPlatform / enableCustomPlatformOnTab / deleteCustomPlatform', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('rejects a name whose generated columns collide with a reserved column, before any DB call', async () => {
+    // No mock setup at all -- the reserved-name check must run and throw
+    // before createCustomPlatform ever calls supabase.from(...).
+    await expect(createCustomPlatform('TP', 'TP2', null, 'Hanan')).rejects.toThrow(/reserved/i);
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('throws a friendly error on a duplicate platform name', async () => {
+    const single = vi.fn().mockResolvedValue({ data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint' } });
+    const select = vi.fn().mockReturnValue({ single });
+    const insert = vi.fn().mockReturnValue({ select });
+    singletonFrom.mockReturnValue({ insert });
+    await expect(createCustomPlatform('Yelp', 'YP', null, 'Hanan')).rejects.toThrow('A platform named "Yelp" already exists.');
+  });
+
+  it('creates the platform then enables it on the given tab', async () => {
+    const single = vi.fn().mockResolvedValue({ data: { id: 'p1' }, error: null });
+    const select = vi.fn().mockReturnValue({ single });
+    const createInsert = vi.fn().mockReturnValue({ select });
+    const enableInsert = vi.fn().mockReturnValue({ then: (resolve: (v: { error: null }) => unknown) => resolve({ error: null }) });
+    singletonFrom.mockImplementation((table: string) =>
+      table === 'custom_platforms' ? { insert: createInsert } : { insert: enableInsert },
+    );
+    const platform = await createCustomPlatform('Yelp', 'YP', null, 'Hanan');
+    expect(platform).toEqual(expect.objectContaining({ id: 'p1', name: 'Yelp', statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added' }));
+    expect(enableInsert).toHaveBeenCalledWith(expect.objectContaining({ tab: 'Hanan', platform_id: 'p1' }));
+  });
+
+  it('deleteCustomPlatform is blocked while any tab still has it enabled', async () => {
+    const countChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 1, error: null }) }) };
+    singletonFrom.mockReturnValue(countChain);
+    await expect(deleteCustomPlatform('p1')).rejects.toThrow(/still enabled/i);
+  });
+
+  it('deleteCustomPlatform succeeds when no tab has it enabled', async () => {
+    const countChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 0, error: null }) }) };
+    const deleteChain = { delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) };
+    singletonFrom.mockImplementation((table: string) => (table === 'tab_custom_platforms' ? countChain : deleteChain));
+    await expect(deleteCustomPlatform('p1')).resolves.toBeUndefined();
   });
 });
