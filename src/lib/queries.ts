@@ -1533,6 +1533,63 @@ export async function clearScheduleCancellation(tab: string, brandKey: string, p
   if (error) throw error;
 }
 
+export interface ScheduleManualPause {
+  tab: string;
+  brand_key: string;
+  platform: Platform;
+  week_start: string;
+  weekday: Weekday;
+  paused_by: string | null;
+}
+
+// Pure display/audit trail (see the migration's own doc comment) — never
+// read by the scheduler engine, generation logic, or PMS sync. Only a
+// day-cell chip's "Paused by: <name>" tooltip line reads this, for a per-day
+// manual pause (status === 'paused' on one exact weekday) — distinct from an
+// override-driven pause's own set_by, which is per (tab, brand, platform)
+// for the whole week, not per day.
+export async function fetchScheduleManualPauses(tab: string, weekStart: string, client: SupabaseClient = supabase): Promise<ScheduleManualPause[]> {
+  const { data, error } = await client
+    .from('schedule_manual_pauses')
+    .select('tab, brand_key, platform, week_start, weekday, paused_by')
+    .eq('tab', tab)
+    .eq('week_start', weekStart);
+  if (error) throw error;
+  return (data ?? []) as ScheduleManualPause[];
+}
+
+// Upserts on the same (tab, brand_key, platform, week_start, weekday) key
+// the table's unique constraint enforces, so re-pausing an already-paused
+// day (a rare double-click race, or a Resume/Pause round-trip) just
+// refreshes paused_at/paused_by instead of erroring.
+export async function recordScheduleManualPause(tab: string, brand: string, platform: Platform, weekStart: string, weekday: Weekday, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
+    .from('schedule_manual_pauses')
+    .upsert(
+      { tab, brand, platform, week_start: weekStart, weekday, paused_at: new Date().toISOString(), paused_by: await currentUserEmail() },
+      { onConflict: 'tab,brand_key,platform,week_start,weekday' },
+    );
+  if (error) throw error;
+}
+
+// Called whenever a day leaves the 'paused' state (Resume, cycling on to
+// blank/cancel, or the explicit Cancel button) — clears the marker so a
+// later, different manual pause on that same day doesn't inherit a stale
+// "Paused by". A no-op (zero rows deleted) when the day was never manually
+// paused (e.g. it was only ever a scheduler/override-level pause), which is
+// the common case, so callers don't need to check first.
+export async function clearScheduleManualPause(tab: string, brandKey: string, platform: Platform, weekStart: string, weekday: Weekday, client: SupabaseClient = supabase): Promise<void> {
+  const { error } = await client
+    .from('schedule_manual_pauses')
+    .delete()
+    .eq('tab', tab)
+    .eq('brand_key', brandKey)
+    .eq('platform', platform)
+    .eq('week_start', weekStart)
+    .eq('weekday', weekday);
+  if (error) throw error;
+}
+
 export interface SchedulePmsLink {
   id: string;
   tab: string;

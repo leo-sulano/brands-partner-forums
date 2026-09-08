@@ -38,6 +38,9 @@ import {
   fetchScheduleCancellations,
   recordScheduleCancellation,
   clearScheduleCancellation,
+  fetchScheduleManualPauses,
+  recordScheduleManualPause,
+  clearScheduleManualPause,
   saveReviewAnalysis,
   fetchEntryReviewAnalyses,
   fetchSchedulePmsLinks,
@@ -406,6 +409,42 @@ describe('queries.ts injectable Supabase client', () => {
     const fakeFrom = vi.fn().mockReturnValue(chainObj);
     await clearScheduleCancellation('X', 'winmega', 'tp', '2026-08-31', 'monday', { from: fakeFrom } as any);
     expect(fakeFrom).toHaveBeenCalledWith('schedule_cancellations');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchScheduleManualPauses uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({
+      data: [{ tab: 'X', brand_key: 'y', platform: 'tp', week_start: '2026-08-31', weekday: 'monday', paused_by: 'leo@optinetsolutions.com' }],
+      error: null,
+    }));
+    const rows = await fetchScheduleManualPauses('X', '2026-08-31', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_manual_pauses');
+    expect(singletonFrom).not.toHaveBeenCalled();
+    expect(rows).toEqual([{ tab: 'X', brand_key: 'y', platform: 'tp', week_start: '2026-08-31', weekday: 'monday', paused_by: 'leo@optinetsolutions.com' }]);
+  });
+
+  it('fetchScheduleManualPauses falls back to the singleton when no client is passed', async () => {
+    singletonFrom.mockReturnValue(chain({ data: [], error: null }));
+    await fetchScheduleManualPauses('X', '2026-08-31');
+    expect(singletonFrom).toHaveBeenCalledWith('schedule_manual_pauses');
+  });
+
+  it('recordScheduleManualPause upserts into schedule_manual_pauses keyed on the full (tab, brand, platform, week, weekday)', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    const fakeFrom = vi.fn().mockReturnValue({ upsert });
+    await recordScheduleManualPause('X', 'WinMega', 'tp', '2026-08-31', 'monday', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_manual_pauses');
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'X', brand: 'WinMega', platform: 'tp', week_start: '2026-08-31', weekday: 'monday' }),
+      { onConflict: 'tab,brand_key,platform,week_start,weekday' },
+    );
+  });
+
+  it('clearScheduleManualPause deletes from schedule_manual_pauses', async () => {
+    const chainObj: any = { delete: () => chainObj, eq: () => chainObj, then: (resolve: any) => resolve({ error: null }) };
+    const fakeFrom = vi.fn().mockReturnValue(chainObj);
+    await clearScheduleManualPause('X', 'winmega', 'tp', '2026-08-31', 'monday', { from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('schedule_manual_pauses');
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 

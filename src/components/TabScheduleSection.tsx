@@ -17,6 +17,9 @@ import {
   fetchScheduleCancellations,
   recordScheduleCancellation,
   clearScheduleCancellation,
+  fetchScheduleManualPauses,
+  recordScheduleManualPause,
+  clearScheduleManualPause,
   fetchPublicHolidays,
   fetchTabWeekApprovals,
   revokeWeekApproval,
@@ -24,6 +27,7 @@ import {
   type BrandPlatformPause,
   type BrandAgentAssignmentRow,
   type ScheduleCancellation,
+  type ScheduleManualPause,
   type WeeklyScheduleApproval,
 } from '../lib/queries';
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
@@ -150,6 +154,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [scheduleRows, setScheduleRows] = useState<BrandScheduleRow[]>([]);
   const [pauses, setPauses] = useState<BrandPlatformPause[]>([]);
   const [cancellations, setCancellations] = useState<ScheduleCancellation[]>([]);
+  const [manualPauses, setManualPauses] = useState<ScheduleManualPause[]>([]);
   const [holidays, setHolidays] = useState<PublicHoliday[]>([]);
   const holidayDateSet = useMemo(() => buildHolidayDateSet(holidays), [holidays]);
   const [brandsLoading, setBrandsLoading] = useState(true);
@@ -444,10 +449,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
             });
           }
         }
-        const [rows, activePauses, weekCancellations] = await Promise.all([
+        const [rows, activePauses, weekCancellations, weekManualPauses] = await Promise.all([
           fetchBrandSchedule(tab, weekStartISO),
           fetchActiveBrandPlatformPauses(tab),
           fetchScheduleCancellations(tab, weekStartISO),
+          fetchScheduleManualPauses(tab, weekStartISO),
         ]);
         if (canceled) return;
         // Merge rather than replace: scheduleRows can also hold other weeks
@@ -457,6 +463,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         setScheduleRows((prev) => [...prev.filter((r) => r.week_start !== weekStartISO), ...rows]);
         setPauses(activePauses);
         setCancellations((prev) => [...prev.filter((c) => c.week_start !== weekStartISO), ...weekCancellations]);
+        setManualPauses((prev) => [...prev.filter((m) => m.week_start !== weekStartISO), ...weekManualPauses]);
       } catch (err) {
         if (!canceled) setError(err instanceof Error ? err.message : 'Failed to load schedule');
       } finally {
@@ -480,15 +487,18 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     const extraWeeks = columnWeekISOs.filter((w) => w !== weekStartISO);
     let canceled = false;
     (async () => {
-      const [rowsPerWeek, cancellationsPerWeek] = await Promise.all([
+      const [rowsPerWeek, cancellationsPerWeek, manualPausesPerWeek] = await Promise.all([
         extraWeeks.length > 0 ? Promise.all(extraWeeks.map((w) => fetchBrandSchedule(tab, w).catch(() => []))) : Promise.resolve([]),
         extraWeeks.length > 0 ? Promise.all(extraWeeks.map((w) => fetchScheduleCancellations(tab, w).catch(() => []))) : Promise.resolve([]),
+        extraWeeks.length > 0 ? Promise.all(extraWeeks.map((w) => fetchScheduleManualPauses(tab, w).catch(() => []))) : Promise.resolve([]),
       ]);
       if (canceled) return;
       const fresh = rowsPerWeek.flat();
       setScheduleRows((prev) => [...prev.filter((r) => r.week_start === weekStartISO), ...fresh]);
       const freshCancellations = cancellationsPerWeek.flat();
       setCancellations((prev) => [...prev.filter((c) => c.week_start === weekStartISO), ...freshCancellations]);
+      const freshManualPauses = manualPausesPerWeek.flat();
+      setManualPauses((prev) => [...prev.filter((m) => m.week_start === weekStartISO), ...freshManualPauses]);
     })();
     return () => {
       canceled = true;
@@ -778,6 +788,21 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return doneByPlatform;
   }
 
+  // Who manually paused this exact day cell, keyed by platform — unlike the
+  // four functions above (matched by real-entry date via dateStatusIndex),
+  // schedule_manual_pauses is keyed by (week_start, weekday) directly, same
+  // as brand_schedule itself, so this looks up col rather than a resolved
+  // dayISO.
+  function computeManualPausedByPlatform(brand: string, col: ScheduleColumn): Partial<Record<Platform, string>> {
+    const brandKey = normalizeBrandKey(brand);
+    const result: Partial<Record<Platform, string>> = {};
+    for (const platform of brandPlatforms(brand)) {
+      const m = manualPauses.find((x) => x.tab === tab && x.brand_key === brandKey && x.platform === platform && x.week_start === col.weekStartISO && x.weekday === col.weekday);
+      if (m?.paused_by) result[platform] = m.paused_by;
+    }
+    return result;
+  }
+
   // A brand with zero platforms left after brandPlatforms' hidden / restricted /
   // flagged-removed exclusion has nothing to show — dropped from the grid
   // entirely rather than listed as a permanently-empty row. A manually-paused
@@ -876,6 +901,36 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     clearScheduleCancellation(tab, brandKey, platform, col.weekStartISO, col.weekday).catch(() => {});
   }
 
+  // Same shape as clearCancellationIfAny above, for schedule_manual_pauses --
+  // called whenever a day leaves the 'paused' state (Resume, or a cancel),
+  // so a later, different manual pause on that same day doesn't inherit a
+  // stale "Paused by". Safe to call unconditionally (there's usually nothing
+  // to clear), same reasoning as clearCancellationIfAny.
+  function clearManualPauseIfAny(brand: string, platform: Platform, col: ScheduleColumn) {
+    const brandKey = normalizeBrandKey(brand);
+    setManualPauses((prev) => prev.filter((m) => !(m.tab === tab && m.brand_key === brandKey && m.platform === platform && m.week_start === col.weekStartISO && m.weekday === col.weekday)));
+    clearScheduleManualPause(tab, brandKey, platform, col.weekStartISO, col.weekday).catch(() => {});
+  }
+
+  // Records who just manually paused this exact day (the click-to-cycle's
+  // active -> paused leg, or the explicit Pause button/AddPlatformModal),
+  // optimistically first (profile.email — the same signed-in user
+  // recordScheduleManualPause itself resolves server-side via the current
+  // session) so the tooltip's "Paused by:" line reflects it immediately,
+  // then persists it. A failure surfaces as a toast but doesn't roll back
+  // the pause itself -- the day is still genuinely paused either way, only
+  // the "who" attribution would be stale/missing until the next reload.
+  function recordManualPause(brand: string, platform: Platform, col: ScheduleColumn) {
+    const brandKey = normalizeBrandKey(brand);
+    setManualPauses((prev) => [
+      ...prev.filter((m) => !(m.tab === tab && m.brand_key === brandKey && m.platform === platform && m.week_start === col.weekStartISO && m.weekday === col.weekday)),
+      { tab, brand_key: brandKey, platform, week_start: col.weekStartISO, weekday: col.weekday, paused_by: profile?.email ?? null },
+    ]);
+    recordScheduleManualPause(tab, brand, platform, col.weekStartISO, col.weekday).catch((err) => {
+      setToast({ message: err instanceof Error ? err.message : 'Failed to record who paused this day', kind: 'error' });
+    });
+  }
+
   // The other half of a Cancel action, shared by the explicit Cancel button
   // (handleCancelDay) and onToggle's own paused -> blank cycle leg
   // (handleCellClick) so the two paths to "blank" can't disagree about
@@ -892,6 +947,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     recordScheduleCancellation(tab, brand, platform, col.weekStartISO, col.weekday).catch((err) => {
       setToast({ message: err instanceof Error ? err.message : 'Failed to record cancellation', kind: 'error' });
     });
+    // A cancelled day is blank, not paused -- clear any stale "Paused by"
+    // attribution so a later, different manual pause on this same day
+    // doesn't inherit it.
+    clearManualPauseIfAny(brand, platform, col);
     cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
       setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
     });
@@ -917,13 +976,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         // cycle (see nextStatus in scheduleBrands.ts) -- that's a deliberate
         // cancellation, same as the explicit Cancel button.
         finalizeCancellation(brand, platform, col);
+      } else if (next === 'paused') {
+        // The only way a cell reaches 'paused' via this cycle is active ->
+        // paused -- record who did it so the chip's tooltip can show
+        // "Paused by: <name>". Paused always moves its PMS card to Project
+        // Paused via the normal status sync (pmsSync.ts), same as an
+        // algorithmic scheduler auto-pause, so no PMS action needed here.
+        recordManualPause(brand, platform, col);
       }
-      // next === 'paused' (active -> paused) needs no immediate client action
-      // here -- Paused always moves its PMS card to Project Paused via the
-      // normal status sync (pmsSync.ts), same as an algorithmic scheduler
-      // auto-pause. It can't have an existing cancellation record either
-      // (only reachable from 'active', which already clears one on the way
-      // in), so there's nothing to clear.
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
@@ -944,9 +1004,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       // cancelled one).
       clearCancellationIfAny(brand, platform, col);
       if (status === 'active') {
+        // Resuming a previously-paused day (or AddPlatformModal setting a
+        // fresh day Active) -- either way it's no longer paused, so any
+        // stale "Paused by" attribution should go with it.
+        clearManualPauseIfAny(brand, platform, col);
         pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
+      } else {
+        // The Pause button (or AddPlatformModal adding a day as Paused).
+        recordManualPause(brand, platform, col);
       }
     } catch (err) {
       setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
@@ -1439,6 +1506,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
                       const pendingByPlatform = computePendingByPlatform(brand, dayISO);
                       const doneByPlatform = computeDoneByPlatform(brand, dayISO);
+                      const dayPausedByPlatform = computeManualPausedByPlatform(brand, col);
                       return (
                         <td key={col.iso} className="px-3 py-2 text-left align-top">
                           <ScheduleCell
@@ -1455,6 +1523,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             country={country}
                             account={account}
                             pausedByPlatform={pausedByPlatform}
+                            dayPausedByPlatform={dayPausedByPlatform}
                             isPastDay={dayISO < todayISO}
                             // Legacy weeks (imported platform-null brand_schedule rows,
                             // pre-dating per-platform tracking) are read-only: forcing

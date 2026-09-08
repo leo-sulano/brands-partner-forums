@@ -70,6 +70,13 @@ interface ScheduleCellProps {
   // resolved from brand_platform_override.set_by. Absent (or no entry) means
   // "unknown/not applicable," never rendered as blank.
   pausedByPlatform?: Partial<Record<Platform, string>>;
+  // Who manually paused this exact day cell (status === 'paused' on this one
+  // weekday), keyed by platform, from schedule_manual_pauses.paused_by —
+  // distinct from pausedByPlatform above, which is per (platform, week) and
+  // only ever populated for an override-driven scheduler-level pause. Absent
+  // (or no entry) means "unknown" (e.g. paused before this tracking existed),
+  // never rendered as blank.
+  dayPausedByPlatform?: Partial<Record<Platform, string>>;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
   // day would otherwise look identical to a confirmed post even though the
@@ -250,7 +257,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, isPastDay, holidayName, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, dayPausedByPlatform, isPastDay, holidayName, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   const cell = (
     <div
@@ -302,12 +309,15 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         // Account) covers both pause shapes this cell can show: the
         // scheduler-level week pause (effectivePaused) and a per-day manual
         // pause (status === 'paused', set by cycling this exact day). Only
-        // the former has a reason/pausedBy to show — a per-day pause has no
-        // backing brand_platform_pause row, so its header label ("Paused
-        // (manual)") already says everything there is to say.
+        // the former has a reason to show — a per-day pause has no backing
+        // brand_platform_pause row, so there's nothing to say beyond who did
+        // it (schedule_manual_pauses.paused_by, resolved per-day via
+        // dayPausedByPlatform — distinct from pausedByPlatform, which is
+        // per-platform-for-the-week and only ever set for an override-driven
+        // pause).
         const isPausedState = effectivePaused || status === 'paused';
         const pauseReason = effectivePaused ? pausesByPlatform[platform]?.reason : undefined;
-        const pausedBy = effectivePaused ? pausedByPlatform?.[platform] : undefined;
+        const pausedBy = effectivePaused ? pausedByPlatform?.[platform] : (status === 'paused' ? dayPausedByPlatform?.[platform] : undefined);
         const label = isRemoved
           ? 'Removed'
           : isConfirmed
