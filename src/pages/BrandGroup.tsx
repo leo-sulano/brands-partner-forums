@@ -2058,7 +2058,8 @@ export default function BrandGroup() {
               className="inline-flex items-center gap-1.5 rounded-md bg-[#000060] px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#000060]/90 transition-colors"
             >
               <Plus className="size-4" />
-              Add Review Account
+              <span className="sm:hidden">Add</span>
+              <span className="hidden sm:inline">Add Review Account</span>
             </button>
           )}
           {isApproved && (
