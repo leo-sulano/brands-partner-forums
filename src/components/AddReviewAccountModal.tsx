@@ -69,7 +69,7 @@ const BEHAVIOR_EXTRA_FIELDS: FieldDef[] = [
 ];
 
 const TP_FIELDS: FieldDef[] = [
-  { key: 'TP Score added',      label: 'TP Score (1-5)' },
+  { key: 'TP Score added',      label: 'TP Score' },
   { key: 'Trust Pilot',         label: 'Trust Pilot Date' },
   { key: 'TP Review Status',    label: 'TP Review Status',    status: true },
   { key: 'Link to the profile', label: 'Link to Profile',     link: true },
