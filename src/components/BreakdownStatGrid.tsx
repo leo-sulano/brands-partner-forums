@@ -143,7 +143,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
               >
                 <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
                 <span className="text-slate-500">Published</span>
-                <span className="ml-auto font-semibold text-slate-800">{livePctLabel}%</span>
+                <span className="ml-auto font-semibold text-slate-800">{tile.live.toLocaleString()} ({livePctLabel}%)</span>
               </button>
               <button
                 type="button"
@@ -153,7 +153,7 @@ export default function BreakdownStatGrid({ tiles }: BreakdownStatGridProps) {
               >
                 <span className="size-2 shrink-0 rounded-full bg-rose-400" />
                 <span className="text-slate-500">Removed</span>
-                <span className="ml-auto font-semibold text-slate-800">{removedPctLabel}%</span>
+                <span className="ml-auto font-semibold text-slate-800">{tile.removed.toLocaleString()} ({removedPctLabel}%)</span>
               </button>
             </div>
           </div>
