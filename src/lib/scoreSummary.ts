@@ -84,7 +84,7 @@ export const PLATFORM_REVIEW_TEXT_KEYS: Record<Platform, readonly string[]> = {
   wo: ['WO Review Text'],
 };
 
-const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
+export const PLATFORM_SCORE_KEYS: Record<Platform, readonly string[]> = {
   tp: ['TP Score added', 'Score added', 'Score Added', 'Score'],
   ag: ['AG Score added'],
   cg: ['CG Score added'],

@@ -30,7 +30,7 @@ import { getTabCustomPlatforms } from '../lib/customPlatformRegistry';
 import { computeCustomPlatformCounts } from '../lib/customPlatforms';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getBrandLinkCol, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
-import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, type Platform } from '../lib/scoreSummary';
+import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, PLATFORM_SCORE_KEYS, pick, type Platform } from '../lib/scoreSummary';
 import { savePlatformRemoved } from '../lib/platformRemovedActions';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
@@ -51,6 +51,14 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 // Derived from scoreSummary.ts's PLATFORM_REVIEW_TEXT_KEYS (not a second
 // hardcoded literal) so the two can't silently drift apart.
 const REVIEW_TEXT_KEYS = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
+
+// Every raw header spelling a platform's score can be stored under (e.g. TP has
+// both the current 'TP Score added' and an older 'Score added' — confirmed live
+// to hold genuinely different values on some rows, not just a stale duplicate).
+// Excluded from export as individual columns and replaced with one merged
+// "<Platform> Score" column per platform (see scoreExportHeaders below), so the
+// export shows one authoritative score instead of every historical alias.
+const SCORE_ALIAS_KEYS = new Set(Object.values(PLATFORM_SCORE_KEYS).flat());
 
 // Every header spelling a real credential (login password, in-casino password,
 // backup codes, authenticator codes, AG/CG platform passwords) can appear
@@ -1177,8 +1185,15 @@ export default function BrandGroup() {
   // ~line 2965) always shows it. Injected the same way as removedStatusHeaders
   // above, before scoping, so the Platform filter narrows it identically.
   const reviewTextExportHeaders = getTabPlatforms(decodedTab).map((p) => PLATFORM_REVIEW_TEXT_KEYS[p][0]);
+  // One merged "<Platform> Score" synthetic column per platform, replacing
+  // every raw score-alias header (SCORE_ALIAS_KEYS) as an individual column —
+  // resolved via pick(entry.data, PLATFORM_SCORE_KEYS[p]) in getRows below, so
+  // it shows the current value and only falls back to an older alias (e.g.
+  // TP's legacy 'Score added') when the current one is blank, per direct user
+  // decision after finding the two can genuinely disagree on a live row.
+  const scoreExportHeaders = getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Score`);
   const exportHeaders = (() => {
-    const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders, ...reviewTextExportHeaders]))
+    const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders, ...reviewTextExportHeaders, ...scoreExportHeaders]))
       // Credential-shaped fields (Password, Casino Password, Backup Code(s),
       // Authenticator variants, AG/CG Password) must never leave the app as a
       // downloadable file, even though they're legitimately shown in the Edit
@@ -1186,7 +1201,7 @@ export default function BrandGroup() {
       // tabs — a CSV/XLSX is far easier to lose track of than an in-app view
       // gated by login. See entryCredentials.ts, which this list is shared with
       // so the two can't independently drift on what counts as a credential.
-      .filter((h) => h.toLowerCase() !== 'id' && !CREDENTIAL_EXPORT_EXCLUDE.has(h));
+      .filter((h) => h.toLowerCase() !== 'id' && !CREDENTIAL_EXPORT_EXCLUDE.has(h) && !SCORE_ALIAS_KEYS.has(h));
     const scoped = allFields.filter((h) => {
       // Resolve the TP/Wizard-of-Odds "Link to the profile" ambiguity the
       // same way visibleHeaders does, before falling back to sectionOf's
@@ -2018,12 +2033,20 @@ export default function BrandGroup() {
           <ExportMenuButton
             headers={exportHeaders.map((h) => getColLabel(h, decodedTab))}
             getRows={() => buildBrandRowsForExport(sorted, exportHeaders, decodedTab, (entry, header) => {
-              const platform = (Object.entries(PLATFORM_SHORT_LABEL) as [Platform, string][])
+              const removedStatusPlatform = (Object.entries(PLATFORM_SHORT_LABEL) as [Platform, string][])
                 .find(([, label]) => `${label} Page Removed Status` === header)?.[0];
-              if (!platform || !brandCol) return null;
-              const brandName = entry.data[brandCol];
-              const date = removedPlatformDateFor(brandName, platform);
-              return date ? formatCellValue(date) : '';
+              if (removedStatusPlatform && brandCol) {
+                const brandName = entry.data[brandCol];
+                const date = removedPlatformDateFor(brandName, removedStatusPlatform);
+                return date ? formatCellValue(date) : '';
+              }
+              // Merged "<Platform> Score" column (see scoreExportHeaders above) —
+              // current value, falling back to an older alias (e.g. TP's legacy
+              // 'Score added') only when the current one is blank.
+              const scorePlatform = (Object.entries(PLATFORM_SHORT_LABEL) as [Platform, string][])
+                .find(([, label]) => `${label} Score` === header)?.[0];
+              if (scorePlatform) return pick(entry.data, PLATFORM_SCORE_KEYS[scorePlatform]) ?? '';
+              return null;
             })}
             filenameBase={tabToSlug(decodedTab)}
             disabled={loading}

@@ -9718,3 +9718,45 @@ live-verified in a browser (no live Supabase session in this pass) — worth a q
 Rooster Partners or Hanan export no longer contains a `Password`/`Backup Codes`/`Authenticator`
 column and does contain a populated `TP Review Text`/`AG Review Text` column where reviews have
 been analyzed/translated.
+
+---
+
+## Task 330: Brand Tabs Export — Merge TP Score Added / TP Score (Legacy) Into One Column
+
+*2026-09-08:* Same-day follow-up to Task 329, reported directly off a real exported Rooster
+Partners file: the export showed two separate score columns, "TP Score added" and "TP Score
+(legacy)". Queried live Rooster Partners data directly (all 1928 rows, stable `order=id.asc`
+pagination — an unordered first pass had silently dropped/reordered rows and wrongly suggested
+the legacy field was always blank) and confirmed both are real, independently-stored values that
+can genuinely disagree on the same row (e.g. one Rollero entry: `TP Score added=5`, legacy
+`Score added=4`; a Fortuneplay entry: the reverse, 4 vs 5) — not a stale duplicate, an older
+scoring field ('Score added', labeled "TP Score (legacy)" via `COLUMN_LABELS`) that predates the
+current one and wasn't always cleared when a brand was re-scored under the new key.
+
+Per direct user decision (asked, since collapsing two disagreeing values into one necessarily
+discards information on the rows where they differ): merge into a single "TP Score" export
+column — current value, falling back to the legacy alias only when the current one is blank. Same
+mechanism generalized to all 4 platforms rather than special-cased to TP only, since AG/CG/WO
+already had exactly one score alias each (`PLATFORM_SCORE_KEYS`, exported from `scoreSummary.ts`
+for this) and folding them through the same path costs nothing today and protects against a future
+tab ever growing a second AG/CG alias the same way TP did.
+
+`BrandGroup.tsx`: new `SCORE_ALIAS_KEYS` (every raw header any platform's score can be stored
+under, `Object.values(PLATFORM_SCORE_KEYS).flat()`) excludes all of them from `exportHeaders`'s
+`allFields`, alongside a new `scoreExportHeaders` (`` `${PLATFORM_SHORT_LABEL[p]} Score` `` per
+platform the tab tracks) injected the same way `removedStatusHeaders`/`reviewTextExportHeaders`
+already are — narrowed by the Platform filter identically via `sectionOf`'s existing "tp "/"ag "/
+"cg "-prefix heuristic (WO falls to the 'account' bucket, matching every other WO field). The
+export's `resolveSynthetic` callback resolves the new header via
+`pick(entry.data, PLATFORM_SCORE_KEYS[platform]) ?? ''`, `pick` also newly exported from
+`scoreSummary.ts` for this. No change to the Edit Entry modal — it still shows both raw fields for
+whoever needs to see or correct the disagreement directly; only the downloadable export is merged.
+
+Full suite (2425 tests, unchanged) and `npm run build` both pass. Simulated the merge against the
+same 4 live Rooster Partners rows used to confirm the bug: Spinjo (TP Score added=4, legacy blank)
+→ merged "4"; Rollero (5 vs legacy 4) → merged "5"; Fortuneplay (4 vs legacy 5) → merged "4";
+Lucky7even (4 vs legacy 4, no disagreement) → merged "4" — all correctly prefer the current value.
+Tier 2 (light path), same file/scope as Task 329, implemented directly with one self-review pass,
+no spec/plan doc. Not yet independently live-verified in a browser (no live Supabase session in
+this pass) — worth confirming a fresh Rooster Partners export shows exactly one "TP Score" column
+with no "TP Score (legacy)" column alongside it.
