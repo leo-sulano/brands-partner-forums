@@ -19,7 +19,7 @@ import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
 import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, fetchBrandCatalog, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride, type BrandCatalogRow } from '../lib/queries';
-import { mergeCredentialsIntoData, preserveCredentialFields, type EntryCredentials } from '../lib/entryCredentials';
+import { mergeCredentialsIntoData, preserveCredentialFields, ALL_CREDENTIAL_HEADER_KEYS, type EntryCredentials } from '../lib/entryCredentials';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
 import { platformRemovedKey, buildRemovedPlatformBrandSet, buildRemovedPlatformBrandDateMap, normalizeBrandKey } from '../lib/removedPlatformBrands';
@@ -51,6 +51,14 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100] as const;
 // Derived from scoreSummary.ts's PLATFORM_REVIEW_TEXT_KEYS (not a second
 // hardcoded literal) so the two can't silently drift apart.
 const REVIEW_TEXT_KEYS = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
+
+// Every header spelling a real credential (login password, in-casino password,
+// backup codes, authenticator codes, AG/CG platform passwords) can appear
+// under, shared from entryCredentials.ts so this can't independently drift from
+// what that module considers sensitive. Used to keep the CSV/Excel export from
+// ever writing a credential to a downloadable file, even though these fields
+// are legitimately shown in the Edit Entry modal for editing.
+const CREDENTIAL_EXPORT_EXCLUDE = new Set(ALL_CREDENTIAL_HEADER_KEYS);
 
 // Dashboard-only fields with no Sheet column — never come from tab_schemas, so they're
 // force-inserted into the edit modal right after their paired "User"/"Status" field.
@@ -1163,9 +1171,22 @@ export default function BrandGroup() {
   // every other WO field's existing precedent) and the existing Platform-filter
   // check narrows them exactly like TP/AG/CG's real columns, with no new logic.
   const removedStatusHeaders = getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Page Removed Status`);
+  // Review text (TP/AG/CG/WO Review Text) has no Sheet/tab_schemas origin — it's
+  // written only by the Selenium scrapers straight into entries.data — so without
+  // this it silently never reaches export even though the Edit Entry modal (see
+  // ~line 2965) always shows it. Injected the same way as removedStatusHeaders
+  // above, before scoping, so the Platform filter narrows it identically.
+  const reviewTextExportHeaders = getTabPlatforms(decodedTab).map((p) => PLATFORM_REVIEW_TEXT_KEYS[p][0]);
   const exportHeaders = (() => {
-    const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders]))
-      .filter((h) => h.toLowerCase() !== 'id' && h !== 'Casino Password');
+    const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders, ...reviewTextExportHeaders]))
+      // Credential-shaped fields (Password, Casino Password, Backup Code(s),
+      // Authenticator variants, AG/CG Password) must never leave the app as a
+      // downloadable file, even though they're legitimately shown in the Edit
+      // Entry modal for editing and are real legacy tab_schemas columns for most
+      // tabs — a CSV/XLSX is far easier to lose track of than an in-app view
+      // gated by login. See entryCredentials.ts, which this list is shared with
+      // so the two can't independently drift on what counts as a credential.
+      .filter((h) => h.toLowerCase() !== 'id' && !CREDENTIAL_EXPORT_EXCLUDE.has(h));
     const scoped = allFields.filter((h) => {
       // Resolve the TP/Wizard-of-Odds "Link to the profile" ambiguity the
       // same way visibleHeaders does, before falling back to sectionOf's

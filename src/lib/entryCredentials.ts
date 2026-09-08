@@ -90,10 +90,16 @@ export function extractCredentials(fields: Record<string, string | null>): {
 // Merges a fetched entry_credentials row back onto `data` under whichever
 // real header spelling `headers` (that tab's live tab_schemas headers) uses
 // for each concept, so every existing reader (AddReviewAccountModal,
-// EditEntryModal, BrandGroup.tsx's table cells, CSV/Excel export) keeps
-// working with zero changes. Falls back to a field's first known key when
-// none of its variants are present in `headers` — e.g. tab_schemas hasn't
-// caught up yet, or a brand-new dashboard-only tab with no live headers.
+// EditEntryModal, BrandGroup.tsx's table cells) keeps working with zero
+// changes. Falls back to a field's first known key when none of its variants
+// are present in `headers` — e.g. tab_schemas hasn't caught up yet, or a
+// brand-new dashboard-only tab with no live headers.
+//
+// The CSV/Excel export is deliberately NOT one of those readers: it filters
+// every key in ALL_CREDENTIAL_HEADER_KEYS back out (see BrandGroup.tsx's
+// CREDENTIAL_EXPORT_EXCLUDE) before building its column list, so a merged
+// credential value never ends up in a downloadable file even though it's
+// present in the in-memory entry this function returns.
 export function mergeCredentialsIntoData(
   data: Record<string, string | null>,
   credentials: EntryCredentials | null | undefined,
@@ -111,7 +117,7 @@ export function mergeCredentialsIntoData(
   return merged ?? data;
 }
 
-const ALL_CREDENTIAL_HEADER_KEYS: readonly string[] = CREDENTIAL_FIELD_ENTRIES.flatMap(([, keys]) => keys);
+export const ALL_CREDENTIAL_HEADER_KEYS: readonly string[] = CREDENTIAL_FIELD_ENTRIES.flatMap(([, keys]) => keys);
 
 // A Postgres realtime UPDATE payload for `entries` reflects that table's row
 // exactly, which never carries credential-shaped fields any more (see the

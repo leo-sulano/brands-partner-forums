@@ -9652,3 +9652,69 @@ rendered as blank.
 (2425 tests) and `npm run build` both pass. **Deployed the same session:** `supabase db push`
 (confirmed via `supabase migration list` — local and remote both show `20260908120000`) and
 `git push origin main`.
+
+---
+
+## Task 329: Brand Tabs Export — Review Text Columns + Full Credential Exclusion
+
+*2026-09-08:* Follow-up to Task 208's "export gets the full Edit-Modal field set" claim, per a
+direct user report that export was still missing detail visible in Edit Entry. Investigating
+found the real gap plus one bigger, pre-existing bug the report didn't ask about but that a
+CSV/Excel export absolutely should never have.
+
+**Real gap, matches the report:** TP/AG/CG/WO Review Text (the actual scraped/translated review
+content) has no `tab_schemas` origin — per Task 208's own comment, it's written only by the
+Selenium scrapers straight into `entries.data` — so it was never part of `exportHeaders`'s
+`allFields` union even though the Edit Entry modal always force-inserts it (`BrandGroup.tsx`
+~line 2965). Fixed the same way `removedStatusHeaders` already is: a new
+`reviewTextExportHeaders` (`getTabPlatforms(decodedTab).map((p) => PLATFORM_REVIEW_TEXT_KEYS[p][0])`)
+injected into `allFields` before the scoping/bucketing step, so it's narrowed by the Platform
+filter identically to every other TP/AG/CG column.
+
+**Bigger, unreported bug found investigating the report:** `exportHeaders` only ever excluded
+`'Casino Password'` by name. Queried live `tab_schemas` directly (25 of 33 tabs) and confirmed
+`Password`, `Backup Code`/`Backup Codes`, and `Authenticator`/`Authenticator Backup`/its
+whitespace variants are still real legacy columns there for almost every operational tab
+(Rooster Partners, SilverPlay, Hanan, Revolution Casino, Trybet, HazEmirates, SuprPlay, BluffBet,
+Woom.bet, BitCoin, MegaBonanza, TrustedCasino/UK+CA, BetWay, Medier, and more) — meaning the
+export was writing real, plaintext review-account login credentials into every downloadable
+CSV/XLSX file, for every entry on those tabs. This directly undercuts what Task 277's
+`entry_credentials` migration set out to fix (getting credentials off a broadly-readable
+surface) — a downloadable file is a materially bigger exposure than an in-app view gated by
+login, since it can be emailed, synced to a personal drive, or otherwise separated from the
+dashboard's own access control. Confirmed with the user before changing this (a real
+security-scope decision, not mine to make silently): exclude all credential fields from export,
+same recommendation given.
+
+Fixed by exporting `ALL_CREDENTIAL_HEADER_KEYS` from `entryCredentials.ts` (was module-private)
+and building `CREDENTIAL_EXPORT_EXCLUDE` from it in `BrandGroup.tsx`, replacing the old
+`h !== 'Casino Password'` literal check — so `Password`/`Casino Password`/`Backup Code(s)`/every
+`Authenticator` spelling/`AG Password`/`CG Password` are now excluded from export the same way,
+sharing the one canonical list instead of a second hand-maintained one (this project's own
+recurring drift class — see `feedback_cross_dashboard_consistency`). The Edit Entry modal is
+untouched: it still legitimately shows all of these for editing, gated by the same
+approved-user login the rest of the page already requires — only the downloadable export is
+tightened. Updated `entryCredentials.ts`'s own `mergeCredentialsIntoData` comment, which had
+previously (and, as of this task, incorrectly) listed "CSV/Excel export" as an intended reader
+of merged credential values.
+
+Also verified, while investigating, that both other exports (Score Summary, Schedule Planner)
+and Brand Tabs' own filter-to-export path were already correct and needed no change: Score
+Summary's `getRows` reads `filteredBrands`/`result`, which already reflect its
+platform/date-range/tab filters; Schedule Planner's export reads `filteredBrands` (its own
+search filter) with an already-documented, unrelated single-week limitation; and Brand Tabs'
+`exportHeaders`/`getRows={() => buildBrandRowsForExport(sorted, ...)}` already exports `sorted`
+— every active filter (search/brand/agent/proxy/country/rating/platform/status/date) — across
+all pages, not just the current page, so no fix was needed there.
+
+No unit test exists for `exportHeaders`'s inline computation (page-level presentational logic in
+`BrandGroup.tsx`, same established convention as the rest of that file's derived-state
+verified via build, not dedicated tests); `entryCredentials.test.ts`/`brandExport.test.ts`/
+`exportFile.test.ts` (83 tests) and `npm run build` both pass unchanged. Tier 2 (light path) —
+confined to `BrandGroup.tsx`'s export-header computation plus one newly-exported constant in
+`entryCredentials.ts`, no `queries.ts`/`scoreSummary.ts`/date-status-platform filtering touched
+— implemented directly with one self-review pass, no spec/plan doc. Not yet independently
+live-verified in a browser (no live Supabase session in this pass) — worth a quick check that a
+Rooster Partners or Hanan export no longer contains a `Password`/`Backup Codes`/`Authenticator`
+column and does contain a populated `TP Review Text`/`AG Review Text` column where reviews have
+been analyzed/translated.
