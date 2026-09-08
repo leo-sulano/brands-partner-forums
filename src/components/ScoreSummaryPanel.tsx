@@ -22,6 +22,7 @@ import { readArrayParam, writeArrayParam, toArrayFilter } from '../lib/filterPar
 import ExportMenuButton from './ExportMenuButton';
 import { buildScoreSummaryExportHeaders, buildScoreSummaryExportRows } from '../lib/scoreSummaryExport';
 import Tooltip from './Tooltip';
+import TabIcon from './TabIcon';
 
 interface Props {
   entries: Entry[];
@@ -381,6 +382,7 @@ function GroupedSummary({ rows, maxScore, showStars, platform, successRates, tab
           >
             <header className="flex items-center justify-between border-b border-slate-100 bg-[#17225a] px-3 py-2">
               <div className="flex items-center gap-2">
+                {tab && <TabIcon tab={tab} className="size-4" />}
                 <h3 className="text-sm font-semibold text-white">{tab ? tabDisplayName(tab) : '(no tab)'}</h3>
                 <span className="text-xs text-slate-300">
                   {brands.length} brand{brands.length !== 1 ? 's' : ''} · {groupTotal.toLocaleString()} review{groupTotal !== 1 ? 's' : ''}
