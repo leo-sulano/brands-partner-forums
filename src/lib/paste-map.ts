@@ -11,7 +11,7 @@ export const PASTE_OFFSET_MAP: Record<number, string> = {
   [5]:  'Details',
   [6]:  'Brand Name',
   [7]:  'Removed / Not Published / stil published date',
-  [8]:  'Score added',
+  [8]:  'TP Score added',
   [9]:  'Trust Pilot',
   [10]: 'Link to the profile',
   [11]: 'TP Review Status',

@@ -9760,3 +9760,38 @@ Tier 2 (light path), same file/scope as Task 329, implemented directly with one 
 no spec/plan doc. Not yet independently live-verified in a browser (no live Supabase session in
 this pass) — worth confirming a fresh Rooster Partners export shows exactly one "TP Score" column
 with no "TP Score (legacy)" column alongside it.
+
+---
+
+## Task 331: Fix Root Cause of the TP Score Split — Add Review Account / Paste Both Wrote the Old Key
+
+*2026-09-08:* Direct follow-up to Task 330, per the user asking why the two TP score columns exist
+at all. Traced it further than the merge fix did: confirmed live (all 1928 Rooster Partners rows,
+stable pagination) that `Score added` never appears alone — it's only ever present alongside `TP
+Score added` (153 of 1928 rows), and 146 of those 153 agree exactly; only 7 disagree. That pattern
+pointed at an active write-path duplication, not a one-time historical import quirk, and grepping
+found it: `AddReviewAccountModal.tsx`'s `TP_FIELDS` (line 72) was still saving a brand-new TP score
+under the literal key `'Score added'`, never `'TP Score added'` — unlike AG/CG, whose forms
+correctly use `'AG Score added'`/`'CG Score added'` with no split at all. `src/lib/paste-map.ts`
+had the identical bug at its `[8]` offset (the row-paste shortcut shared by both Add Review Account
+and Edit Entry) — pasting a full row also wrote a fresh score to the old key. So every new TP
+account added — by typing into the form OR pasting a row — was still recreating the exact split
+the Task 330 export fix only papered over for already-existing rows.
+
+Per direct user confirmation, fixed both write paths to use `'TP Score added'`: `AddReviewAccountModal.tsx`'s
+`TP_FIELDS` entry (relabeled "Score Added" → "TP Score (1-5)", matching the AG/CG "AG Score
+(1-10)"/"CG Score (1-5)" label pattern) and `paste-map.ts`'s `[8]` offset. `EditEntryModal.tsx`'s
+existing `hasLegacyTpScore` merge (documented there since before this task, with its own comment
+explaining the same root cause) is untouched — it still correctly handles any already-existing
+entry that has both keys, and now simply has nothing new adding to that population going forward.
+No change to `entryFieldSections.ts`'s `sectionOf('Score added')` classification — that's about
+correctly bucketing the old key for display/export when it's still present on a historical row, not
+about which key gets written, so it's still needed and correct.
+
+Full suite (2425 tests, unchanged — no test asserted the literal key `AddReviewAccountModal`/
+`paste-map.ts` write to) and `npm run build` both pass. Tier 2 (light path) — two literal-string
+fixes in files with a clear, contained root cause, no `queries.ts`/`scoreSummary.ts`/date-status-
+platform filtering touched — implemented directly with one self-review pass, no spec/plan doc. Not
+yet independently live-verified in a browser (no live Supabase session in this pass) — worth adding
+a fresh Rooster Partners TP account (both via the form and via a row paste) and confirming its score
+lands under `TP Score added`, not `Score added`.
