@@ -9609,3 +9609,46 @@ between Tuesday/Thursday and Saturday/Sunday) to unambiguous 2-letter abbreviati
 FR/SA/SU) in both views.
 
 No schema change, no deploy. `npm run build` clean.
+
+---
+
+## Task 328: Schedule Planner — "Paused by" Attribution on a Manually-Paused Day Cell
+
+**Date:** September 8, 2026
+
+Reported directly off a screenshot: a day cell manually paused via click-to-cycle or the per-day
+Pause button showed only a generic "Trust Pilot: Paused (manual)" tooltip, with no record of who
+paused it — unlike an explicit Cancel (`schedule_cancellations.cancelled_by`) or an override-driven
+pause (`brand_platform_override.set_by`), both of which already carry attribution. New
+`schedule_manual_pauses` table (migration `20260908120000_add_schedule_manual_pauses.sql`) mirrors
+`schedule_cancellations` exactly — same shape, same 4-policy RLS, same
+`(tab, brand_key, platform, week_start, weekday)` upsert key — as a pure display/audit trail, never
+read by the scheduler engine, generation logic, or PMS sync. New
+`fetchScheduleManualPauses`/`recordScheduleManualPause`/`clearScheduleManualPause` in `queries.ts`
+mirror the cancellation functions' shape one-for-one, including `recordScheduleManualPause`
+resolving `paused_by` from the signed-in session the same way `recordScheduleCancellation` already
+does.
+
+`TabScheduleSection.tsx` records a manual pause (optimistic update with `profile.email`, then a
+best-effort persist) at both places a day can reach `'paused'` — `handleCellClick`'s active → paused
+cycle leg, and `handleSetDayStatus`'s Pause button/`AddPlatformModal` path — and clears it wherever a
+day leaves that state (Resume, or a cancellation via either `handleCellClick`'s paused → blank leg or
+the explicit Cancel button, both funneling through the shared `finalizeCancellation`), so a later,
+different pause on the same day cell can't inherit a stale attribution. New
+`computeManualPausedByPlatform(brand, col)` looks the record up by `(week_start, weekday)` — unlike
+the Removed/Confirmed/Pending/Done indices, this isn't matched by a real entry's add-date, so it
+keys off the same column the `brand_schedule` row itself uses, not a resolved calendar date.
+
+`calendarRenderer.tsx`'s `ScheduleCell` gained a `dayPausedByPlatform` prop (distinct from the
+existing `pausedByPlatform`, which is per-platform-for-the-week and only ever populated for an
+override-driven pause) — `PlatformChip`'s tooltip now shows a "Paused by: &lt;email&gt;" line for a
+per-day manual pause the same way it already does for an override pause, via the same
+`pausedBy && <div>Paused by: ...</div>` render path, no new UI element. A pause from before this
+migration existed (or one whose record failed to persist) simply shows no "Paused by" line, same as
+the existing "absent means unknown" convention `pausedByPlatform`/`set_by` already use — never
+rendered as blank.
+
+4 new `queries.test.ts` cases mirroring the existing `schedule_cancellations` coverage; full suite
+(2425 tests) and `npm run build` both pass. **Deployed the same session:** `supabase db push`
+(confirmed via `supabase migration list` — local and remote both show `20260908120000`) and
+`git push origin main`.
