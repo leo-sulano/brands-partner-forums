@@ -506,6 +506,94 @@ def test_parse_review_text_none_without_next_data_blob():
     assert crs.parse_review_text(_NO_NEXT_DATA) is None
 
 
+# ─── _profile_review_count_from_next_data / resolve_tp_status ────────────────
+# Real shape confirmed live 2026-09-10 against
+# https://ca.trustpilot.com/users/67bf1277e3269c83dc8ea79a, a "Link to the
+# profile" URL whose reviewer had 0 reviews visible ("Write your first
+# review") -- previously silently defaulted to Published since neither
+# _from_next_data (no pageProps.review/correlatedReview/reviewData on a
+# profile page) nor any TEXT_SIGNALS string matches a bare profile listing.
+
+_PROFILE_NEXT_DATA_ZERO_REVIEWS = '''<html><body><script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {"consumer": {"id": "67bf1277e3269c83dc8ea79a", "numberOfReviews": 1},
+"consumerStatistics": {"readsCount": 0, "likesCount": 0, "reviewsCount": 0},
+"consumerServiceReviews": [], "consumerProductReviews": [], "hasProductReviews": false}}}
+</script></body></html>'''
+
+_PROFILE_NEXT_DATA_ONE_REVIEW = '''<html><body><script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {"consumer": {"id": "abc", "numberOfReviews": 1},
+"consumerStatistics": {"readsCount": 0, "likesCount": 0, "reviewsCount": 1},
+"consumerServiceReviews": [{"id": "r1"}], "consumerProductReviews": [], "hasProductReviews": false}}}
+</script></body></html>'''
+
+_PROFILE_NEXT_DATA_MISSING_REVIEWS_COUNT_KEY = '''<html><body><script id="__NEXT_DATA__" type="application/json">
+{"props": {"pageProps": {"consumerStatistics": {"readsCount": 0},
+"consumerServiceReviews": [{"id": "r1"}, {"id": "r2"}], "consumerProductReviews": []}}}
+</script></body></html>'''
+
+
+def test_profile_review_count_from_next_data_zero_reviews():
+    assert crs._profile_review_count_from_next_data(_PROFILE_NEXT_DATA_ZERO_REVIEWS) == 0
+
+
+def test_profile_review_count_from_next_data_one_review():
+    assert crs._profile_review_count_from_next_data(_PROFILE_NEXT_DATA_ONE_REVIEW) == 1
+
+
+def test_profile_review_count_falls_back_to_list_lengths_when_reviewscount_missing():
+    assert crs._profile_review_count_from_next_data(_PROFILE_NEXT_DATA_MISSING_REVIEWS_COUNT_KEY) == 2
+
+
+def test_profile_review_count_none_for_single_review_confirmation_page_shape():
+    # _NEXT_DATA_WITH_REVIEW_TEXT has no consumerStatistics/consumerServiceReviews
+    # at all -- must not be misread as "0 reviews" on a completely different page shape.
+    assert crs._profile_review_count_from_next_data(_NEXT_DATA_WITH_REVIEW_TEXT) is None
+
+
+def test_profile_review_count_none_without_next_data_blob():
+    assert crs._profile_review_count_from_next_data(_NO_NEXT_DATA) is None
+
+
+def test_resolve_tp_status_prefers_structural_signal_over_profile_count():
+    # A page exposing pageProps.review directly (the confirmation-page shape)
+    # is authoritative on its own -- never falls through to profile counting.
+    assert crs.resolve_tp_status(_NEXT_DATA_WITH_REVIEW_TEXT, current_status='Done') == 'Published'
+
+
+def test_resolve_tp_status_profile_zero_reviews_from_published_is_removed():
+    assert crs.resolve_tp_status(_PROFILE_NEXT_DATA_ZERO_REVIEWS, current_status='Published') == 'Removed'
+
+
+def test_resolve_tp_status_profile_zero_reviews_from_done_within_grace_is_pending():
+    assert crs.resolve_tp_status(
+        _PROFILE_NEXT_DATA_ZERO_REVIEWS, current_status='Done', added_date=_days_ago(0),
+    ) == 'Pending'
+
+
+def test_resolve_tp_status_profile_zero_reviews_from_done_past_grace_is_refused():
+    assert crs.resolve_tp_status(
+        _PROFILE_NEXT_DATA_ZERO_REVIEWS, current_status='Done', added_date=_days_ago(2),
+    ) == 'Refused'
+
+
+def test_resolve_tp_status_profile_zero_reviews_from_removed_stays_removed():
+    assert crs.resolve_tp_status(_PROFILE_NEXT_DATA_ZERO_REVIEWS, current_status='Removed') == 'Removed'
+
+
+def test_resolve_tp_status_profile_one_review_is_published_regardless_of_current():
+    assert crs.resolve_tp_status(_PROFILE_NEXT_DATA_ONE_REVIEW, current_status='Done') == 'Published'
+    assert crs.resolve_tp_status(_PROFILE_NEXT_DATA_ONE_REVIEW, current_status='Removed') == 'Published'
+
+
+def test_resolve_tp_status_falls_back_to_text_signal_when_not_profile_shape():
+    html = '<html><body>thanks for your review</body></html>'
+    assert crs.resolve_tp_status(html, current_status='Done') == 'Published'
+
+
+def test_resolve_tp_status_defaults_to_published_with_no_signal_at_all():
+    assert crs.resolve_tp_status('<html><body>nothing recognizable here</body></html>') == 'Published'
+
+
 def test_review_text_keys_are_stable():
     assert crs.REVIEW_TEXT_KEYS == {
         "tp": "TP Review Text",

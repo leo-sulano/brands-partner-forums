@@ -704,6 +704,70 @@ def parse_review_status(html: str) -> Optional[str]:
     return _from_next_data(html) or _from_text_signals(html)
 
 
+def _profile_review_count_from_next_data(html: str) -> Optional[int]:
+    """Extract the number of reviews currently visible on a Trustpilot
+    *profile* page -- the shape of the "Link to the profile" URL most TP
+    entries actually store (a link to the reviewer's own profile, not a
+    single-review permalink). This is a different __NEXT_DATA__ shape than
+    _from_next_data handles: a profile page has no pageProps.review/
+    correlatedReview/reviewData object at all, so that function always
+    returns None for it, and the page previously fell through to
+    _from_text_signals -- which has nothing to match on a bare profile
+    listing (no "review removed" banner, just an empty list), silently
+    defaulting a removed review to "Published". Reported live 2026-09-10 via
+    a profile showing "Write your first review" (0 reviews) that the
+    checker had left marked Published. Returns None when the page isn't
+    this shape at all, so the caller can fall back to its existing logic --
+    never None for a page that legitimately has zero reviews (that's 0)."""
+    match = re.search(
+        r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>',
+        html, re.DOTALL,
+    )
+    if not match:
+        return None
+    try:
+        data = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    page_props = data.get("props", {}).get("pageProps", {})
+    stats = page_props.get("consumerStatistics")
+    if isinstance(stats, dict) and "reviewsCount" in stats:
+        try:
+            return int(stats["reviewsCount"])
+        except (TypeError, ValueError):
+            pass
+    service_reviews = page_props.get("consumerServiceReviews")
+    product_reviews = page_props.get("consumerProductReviews")
+    if isinstance(service_reviews, list) or isinstance(product_reviews, list):
+        return len(service_reviews or []) + len(product_reviews or [])
+    return None
+
+
+def resolve_tp_status(html: str, current_status: str = "", added_date: Optional[str] = None) -> str:
+    """Single entry point turning a loaded TP page's HTML into a status
+    value -- pulled out of fetch_status as its own pure function so it's
+    unit-testable without a live driver. Tries, in order:
+      1. The single-review confirmation-page shape (_from_next_data) -- a
+         structural signal that fully determines status on its own.
+      2. The profile-listing page shape
+         (_profile_review_count_from_next_data), resolved via the same
+         found/current/added_date grace-period logic AG/CG already use
+         (resolve_status) -- so a freshly-posted Done/Pending entry whose
+         profile hasn't cleared moderation yet (0 reviews visible) isn't
+         misread as Removed on its very first check; only an entry that was
+         already Published and later drops to 0 becomes Removed.
+      3. The existing i18n text-signal fallback, defaulting to Published
+         when nothing matches -- unchanged legacy behavior for any other
+         page shape."""
+    structural = _from_next_data(html)
+    if structural:
+        return structural
+    profile_count = _profile_review_count_from_next_data(html)
+    if profile_count is not None:
+        return resolve_status(profile_count >= 1, current_status, added_date)
+    return _from_text_signals(html) or "Published"
+
+
 def _normalize_rating(raw) -> Optional[int]:
     if raw is None:
         return None
@@ -1161,9 +1225,14 @@ def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
     return driver
 
 
-def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Optional[int], Optional[str]]:
+def fetch_status(driver: uc.Chrome, raw_url: str, current_status: str = "",
+                  added_date: Optional[str] = None) -> tuple[Optional[str], Optional[int], Optional[str]]:
     """Load the TP page and return (status, rating, review_text). Any may be
-    None. Rating is the 1-5 star count when visible on the page."""
+    None. Rating is the 1-5 star count when visible on the page.
+    `current_status`/`added_date` are the entry's own pre-check status/post
+    date, needed by resolve_tp_status's profile-page branch to distinguish a
+    freshly-posted (Done/Pending) entry awaiting moderation from a
+    previously-Published one that's since been removed."""
     url = raw_url.strip()
     if not url.startswith("http"):
         url = f"https://{url}"
@@ -1178,7 +1247,7 @@ def fetch_status(driver: uc.Chrome, raw_url: str) -> tuple[Optional[str], Option
             print(f"    redirected off-site -> {driver.current_url}")
             return ("Removed", None, None)
         html = driver.page_source
-        status = parse_review_status(html) or "Published"
+        status = resolve_tp_status(html, current_status, added_date)
         rating = parse_review_rating(html)
         try:
             review_text = parse_review_text(html)
@@ -1237,9 +1306,16 @@ def main() -> None:
                 current = data.get(status_col, "") or ""
                 current_score = str(data.get(score_col, "") or "") if score_col else ""
                 url: str = data["Link to the profile"]
+                added_date = None
+                for col in TP_DATE_COLS:
+                    v = (data.get(col) or "").strip()
+                    if v:
+                        added_date = v
+                        break
 
                 print(f"[{checked}/{total}] {url}")
-                new_status, new_rating, new_review_text = fetch_status(driver, url)
+                new_status, new_rating, new_review_text = fetch_status(
+                    driver, url, current_status=current, added_date=added_date)
 
                 if new_status is None:
                     print(f"    -> could not determine status (skipped)")
