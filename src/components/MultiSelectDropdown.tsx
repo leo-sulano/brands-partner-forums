@@ -15,6 +15,11 @@ interface Props {
   // Lets a caller lazy-load this dropdown's options the first time a user
   // actually opens it, instead of on every page load.
   onOpen?: () => void;
+  // Shows a "Loading…" line in place of the empty-options message while a
+  // caller's lazy-loaded options (see onOpen above) are still in flight, so
+  // the menu doesn't misleadingly read "No {noun}s match" before anything
+  // has actually been fetched.
+  loading?: boolean;
 }
 
 // Every filter dropdown in this codebase renders as a small pill button that
@@ -23,7 +28,7 @@ interface Props {
 // FilterDropdown) in exactly one interaction: clicking a row TOGGLES it and
 // keeps the menu open, instead of selecting-and-closing — every other visual
 // and positioning detail intentionally matches those existing components.
-export default function MultiSelectDropdown({ values, onChange, options, noun = 'option', searchable = false, placeholder, onOpen }: Props) {
+export default function MultiSelectDropdown({ values, onChange, options, noun = 'option', searchable = false, placeholder, onOpen, loading = false }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -143,9 +148,11 @@ export default function MultiSelectDropdown({ values, onChange, options, noun = 
               <span className="flex-1">{placeholder ?? `All ${noun}s`}</span>
               {!active && <Check className="size-3 text-blue-500" />}
             </button>
-            {visible.length === 0 && (
+            {loading && searchable ? (
+              <div className="px-3 py-4 text-center text-xs text-slate-400">Loading…</div>
+            ) : visible.length === 0 ? (
               <div className="px-3 py-4 text-center text-xs text-slate-400">No {noun}s match</div>
-            )}
+            ) : null}
             {visible.map((opt) => {
               const checked = values.includes(opt.value);
               return (

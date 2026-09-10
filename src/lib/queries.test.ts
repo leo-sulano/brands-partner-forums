@@ -1061,6 +1061,12 @@ describe('computeTabKpisFromEntries', () => {
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, undefined, 'Brand A')!;
     expect(kpis.countries).toEqual(['Germany']);
     expect(kpis.live).toBe(1);
+    // byCountryProxy (not just the flat countries/proxies option lists) is
+    // scoped to the brand too — Brand B's France/whatever-proxy pair must
+    // not leak in.
+    const pairs = Object.values(kpis.byCountryProxy);
+    expect(pairs).toHaveLength(1);
+    expect(pairs[0]).toMatchObject({ countryLabel: 'Germany', live: 1, removed: 0 });
   });
 
   it('brandFilter composes with countryFilter (AND), same as with dateFrom/dateTo', () => {
@@ -1081,6 +1087,35 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis!.live).toBe(0);
     expect(kpis!.removed).toBe(0);
     expect(kpis!.countries).toEqual([]);
+  });
+
+  it('brandFilter ignores the removedPlatformBrands flag entirely, showing the brand\'s real counts -- matching BrandGroup.tsx\'s own brandScoped precedent ("looking at that brand\'s own page, show its real numbers") instead of Overview\'s whole-tab exclusion', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Flagged Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+    ];
+    const flagged = new Set([platformRemovedKey('TP Affiliate', 'Flagged Brand', 'tp')]);
+    // Unscoped: the flag still applies, matching the existing tab-level
+    // aggregate test above (kept here as a same-test contrast, not a
+    // duplicate of that test's own assertions).
+    const unscoped = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged)!;
+    expect(unscoped.tp).toEqual({ live: 0, removed: 0 });
+
+    // Brand-scoped: the same flag must NOT suppress this brand's own real
+    // counts once brandFilter narrows to it.
+    const scoped = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', flagged, undefined, undefined, undefined, 'Flagged Brand')!;
+    expect(scoped.tp).toEqual({ live: 0, removed: 1 });
+    expect(scoped.removed).toBe(1);
+    expect(scoped.total).toBe(1);
+  });
+
+  it('brandFilter composed with a platformFilter the tab doesn\'t track at all still returns null, not an all-zero result -- the platform-filter gate fires before brand scoping, regardless of brandFilter', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+    ];
+    // rawHeaders (TP-only) has no AG column at all, so this tab's
+    // activePlatforms never includes 'ag' regardless of brandFilter.
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['ag'], 'Brand A');
+    expect(kpis).toBeNull();
   });
 });
 

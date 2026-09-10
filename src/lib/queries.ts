@@ -724,6 +724,14 @@ export function computeTabKpisFromEntries(
     ? entries.filter((e) => normalizeBrandKey((e.data[brandCol] ?? '').trim()) === normalizeBrandKey(brandFilter))
     : entries;
 
+  // Once scoped to one brand, drop the removedPlatformBrands flag exclusion
+  // entirely -- matches BrandGroup.tsx's own brandScoped precedent exactly
+  // ("looking at that brand's own page, show its real numbers"). Without
+  // this, a flagged brand renders as an all-zero "0 total" card here while
+  // its own Brand Tab page and Score Summary both show real counts -- the
+  // same cross-surface divergence class Task 214/215 already fixed once.
+  const effectiveRemovedBrands = brandFilter ? new Set<string>() : removedPlatformBrands;
+
   let live = 0, removed = 0, done = 0, pending = 0, onPause = 0, notDone = 0;
   let tpLive = 0, tpRemoved = 0;
   let agLive = 0, agRemoved = 0;
@@ -740,7 +748,7 @@ export function computeTabKpisFromEntries(
 
   for (const entry of filteredEntries) {
     const d = entry.data;
-    const c = classifyEntry(d, tab, brandCol, cols, dateFrom, dateTo, removedPlatformBrands, platformFilter);
+    const c = classifyEntry(d, tab, brandCol, cols, dateFrom, dateTo, effectiveRemovedBrands, platformFilter);
 
     if (c.tp === 'live') tpLive++; else if (c.tp === 'removed') tpRemoved++;
     if (c.ag === 'live') agLive++; else if (c.ag === 'removed') agRemoved++;

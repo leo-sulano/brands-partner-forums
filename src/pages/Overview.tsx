@@ -219,11 +219,15 @@ function KpiBreakdownModal({
   modal,
   tabs,
   platformFilter,
+  selectedBrandName,
   onClose,
 }: {
   modal: KpiModalState;
   tabs: TabSummary[];
   platformFilter: Platform[];
+  // When Overview is brand-scoped, each row's link should land on that
+  // brand's own filtered view, not the tab's full unfiltered ~1000+ row page.
+  selectedBrandName?: string;
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -290,7 +294,7 @@ function KpiBreakdownModal({
             return (
               <Link
                 key={r.tab}
-                to={`/brands/${tabToSlug(r.tab)}`}
+                to={selectedBrandName ? brandRowHref(r.tab, selectedBrandName) : `/brands/${tabToSlug(r.tab)}`}
                 onClick={onClose}
                 className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-blue-50 transition-colors -mx-3"
               >
@@ -571,7 +575,13 @@ export default function Overview() {
             .catch(() => [] as { tab: string; brand: string }[])
         )
       );
-      setBrandDirectory(lists.flat());
+      const flat = lists.flat();
+      // Only cache a genuinely non-empty result -- every per-tab .catch(() =>
+      // []) firing (a total failure) would otherwise leave brandDirectory
+      // truthy-but-empty forever, permanently locking the picker's "No
+      // brands match" state with no retry. Leaving it null on failure lets
+      // the next onOpen try again.
+      if (flat.length > 0) setBrandDirectory(flat);
     } finally {
       setBrandDirectoryLoading(false);
     }
@@ -583,7 +593,14 @@ export default function Overview() {
     if (selectedBrand) loadBrandDirectory();
   }, [selectedBrand, loadBrandDirectory]);
 
+  // A brand-scoped load fetches 1 tab, an unscoped load fetches ~11 -- their
+  // durations can differ wildly, so a fast brand-scoped result from a later
+  // call can otherwise be overwritten by a slower unscoped call still in
+  // flight from before the brand was picked. This sequence guard ensures
+  // only the most recently STARTED call's result is ever applied.
+  const loadSeqRef = useRef(0);
   const loadData = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
     setState(s => ({ ...s, loading: true }));
     try {
       const removedPlatformBrands = await fetchRemovedPlatformBrands()
@@ -617,8 +634,10 @@ export default function Overview() {
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
         )
       )).filter((r): r is TabSummary => r !== null);
+      if (seq !== loadSeqRef.current) return; // stale response, a newer load has started
       setState({ loading: false, error: null, tabs: tabResults });
     } catch (err) {
+      if (seq !== loadSeqRef.current) return; // stale response, a newer load has started
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
   }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter, selectedBrand]);
@@ -753,7 +772,7 @@ export default function Overview() {
         tab: t.tab,
         count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
       })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}${selectedBrand ? `&brand=${encodeURIComponent(selectedBrand.brand)}` : ''}`,
     });
   }
 
@@ -777,7 +796,7 @@ export default function Overview() {
         count: t.kpis.byCountryProxy[key]?.[kind] ?? 0,
       })),
       linkFor: (tab) =>
-        `/brands/${tabToSlug(tab)}?status=${kind}&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
+        `/brands/${tabToSlug(tab)}?status=${kind}&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}${selectedBrand ? `&brand=${encodeURIComponent(selectedBrand.brand)}` : ''}`,
     });
   }
 
@@ -892,21 +911,29 @@ export default function Overview() {
 
         <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
         <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
-        {allCountries.length > 1 && (
+        {/* Kept mounted whenever there's more than one real option OR a
+            filter value is already active — allCountries/allProxies now
+            derive from a single brand-scoped tab when a brand is selected,
+            so a brand with only one country/proxy would otherwise make the
+            dropdown vanish while a pre-existing filter value silently kept
+            applying with no visible control to see or clear it.
+            mergeDistinctValues keeps an active-but-no-longer-a-brand-option
+            value visible/removable in the list too. */}
+        {(allCountries.length > 1 || countryFilter.length > 0) && (
           <MultiSelectDropdown
             noun="countrie"
             values={countryFilter}
             onChange={(v) => updateFilterParam('country', v)}
-            options={allCountries.map((c) => ({ value: c, label: c }))}
+            options={mergeDistinctValues([allCountries, countryFilter]).map((c) => ({ value: c, label: c }))}
             searchable
           />
         )}
-        {allProxies.length > 1 && (
+        {(allProxies.length > 1 || proxyFilter.length > 0) && (
           <MultiSelectDropdown
             noun="proxie"
             values={proxyFilter}
             onChange={(v) => updateFilterParam('proxy', v)}
-            options={allProxies.map((p) => ({ value: p, label: p }))}
+            options={mergeDistinctValues([allProxies, proxyFilter]).map((p) => ({ value: p, label: p }))}
             searchable
           />
         )}
@@ -930,6 +957,7 @@ export default function Overview() {
           onChange={setBrandParam}
           onOpen={loadBrandDirectory}
           options={brandOptions}
+          loading={brandDirectoryLoading}
           searchable
         />
 
@@ -1407,6 +1435,7 @@ export default function Overview() {
           modal={kpiModal}
           tabs={state.tabs}
           platformFilter={platformFilter}
+          selectedBrandName={selectedBrand?.brand}
           onClose={() => setKpiModal(null)}
         />
       )}
