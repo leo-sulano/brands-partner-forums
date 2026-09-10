@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 
 import check_review_status as crs
@@ -629,3 +630,44 @@ def test_split_review_header_badge_alone_without_corroborating_date_is_noop():
     assert body == text
     assert date is None
     assert rating is None
+
+
+def test_ensure_tmp_headroom_noop_when_already_enough_free(tmp_path, monkeypatch):
+    monkeypatch.setattr(crs.tempfile, "gettempdir", lambda: str(tmp_path))
+    stale = tmp_path / "stale_leftover"
+    stale.write_text("x")
+    os.utime(str(stale), (0, 0))
+
+    class _Usage:
+        free = crs._TMP_MIN_FREE_BYTES
+
+    monkeypatch.setattr(crs.shutil, "disk_usage", lambda path: _Usage())
+    crs._ensure_tmp_headroom()
+    assert stale.exists()
+
+
+def test_ensure_tmp_headroom_sweeps_oldest_first_until_enough_free(tmp_path, monkeypatch):
+    # Regression test for the 2026-09-10 incident: /tmp (a separate,
+    # size-capped tmpfs on the EC2 box) silently filled to 100% because the
+    # cron sweep matched specific Chrome temp-dir names that stopped
+    # applying after a Chrome version change. This helper is deliberately
+    # name-agnostic -- it sweeps by age alone, oldest first, stopping as
+    # soon as there's enough headroom.
+    monkeypatch.setattr(crs.tempfile, "gettempdir", lambda: str(tmp_path))
+    oldest = tmp_path / "oldest"
+    newer = tmp_path / "newer"
+    oldest.write_text("x")
+    newer.write_text("y")
+    os.utime(str(oldest), (100, 100))
+    os.utime(str(newer), (200, 200))
+
+    def fake_disk_usage(path):
+        class _Usage:
+            free = 0 if oldest.exists() else crs._TMP_MIN_FREE_BYTES
+
+        return _Usage()
+
+    monkeypatch.setattr(crs.shutil, "disk_usage", fake_disk_usage)
+    crs._ensure_tmp_headroom()
+    assert not oldest.exists()
+    assert newer.exists()

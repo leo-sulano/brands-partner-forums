@@ -76,10 +76,11 @@ ssh -i "C:\Users\Leo\OneDrive\Documents\leoscraper\leoscraper.pem" ec2-user@54.1
 
 **2. Health check**
 ```bash
-df -h /                                                # disk usage — investigate if over ~80%
+df -h /                                                # root volume usage — investigate if over ~80%
+df -h /tmp                                             # /tmp is a SEPARATE 982M tmpfs — check this directly, df -h / looking fine proves nothing about it (see the 2026-09-10 incident in the Maintenance section below)
 sudo systemctl status status-server.service --no-pager  # is the API server up? active/crash-looping?
 ps aux | grep -E 'status_server|check_review_status'   # anything stuck, or an orphan not managed by systemd?
-crontab -l                                             # should show 3 jobs: daily brand-removal check, tmp sweep, weekly dnf clean (weekly all-platform scraper removed 2026-08-17)
+crontab -l                                             # should show 3 jobs: daily brand-removal check, tmp sweep (every 30 min), weekly dnf clean (weekly all-platform scraper removed 2026-08-17)
 tail -30 ~/scraper.log                                 # last scraper run — any errors?
 sudo journalctl -u status-server.service -n 30 --no-pager  # status server logs — ~/server.log is stale (systemd's stdout goes to journald, not that file)
 ```
@@ -693,7 +694,35 @@ The 8GB root volume has no headroom to waste, so three automated jobs keep it fr
 sudo logrotate -d /etc/logrotate.d/scraper   # dry run to verify the config
 ```
 
-**Stale Chrome profile sweep** — `undetected-chromedriver` creates a temp profile dir under `/tmp` per run (`tempfile.mkdtemp()`) and only cleans it up on a graceful exit; crashes, timeouts, or `pkill -f chrome` leave it behind. `~/cleanup_tmp.sh` deletes `/tmp/tmp*` dirs and Chrome unpacker artifacts older than 24h. Cron: daily at 15:30 UTC (after the 14:00 scraper run).
+**Stale Chrome profile sweep** — `undetected-chromedriver` creates a temp profile dir under `/tmp` per run (`tempfile.mkdtemp()`) and only cleans it up on a graceful exit; crashes, timeouts, or `pkill -f chrome` leave it behind. **`/tmp` is its own `tmpfs` mount, capped at ~982M independently of the root volume** (`mount | grep tmp`) — `df -h /` can look perfectly healthy while `/tmp` itself is 100% full.
+
+`~/cleanup_tmp.sh` runs via cron every **30 minutes** (changed from once-daily 2026-09-10, see incident below) and deletes anything `ec2-user` owns directly under `/tmp` older than 3 hours (comfortably above the longest observed single Check Status run, a ~2h degraded CG run) — **by age + ownership only, not by file/directory name**:
+```bash
+find /tmp -mindepth 1 -maxdepth 1 -user ec2-user -mmin +180 -exec rm -rf {} + 2>/dev/null
+```
+
+**2026-09-10 incident — `/tmp` silently filled to 100%, causing every Check Status click to 500:**
+the *previous* version of this script matched specific hardcoded names
+(`tmp*`, `com.google.Chrome.*`, `.com.google.Chrome*`) instead of sweeping by age alone. Chrome
+149's real per-run temp-dir name is `org.chromium.Chromium.scoped_dir.*` — none of those patterns
+matched it, so those directories were never swept and accumulated silently (some dated back 2+
+days) until `/tmp` hit exactly 982M/982M. Every `build_driver()` call after that failed with
+`OSError: [Errno 28] No space left on device` (inside `undetected_chromedriver`'s patcher, or
+Chrome's own profile-dir writes), surfacing to the dashboard as a bare `Status check failed: HTTP
+500` with the entry's status completely unchanged — the check never got far enough to touch
+TrustPilot. `sudo systemctl status status-server.service` still showed `active (running)` the
+whole time, so nothing looked wrong at a glance; `df -h /tmp` (not `df -h /`) was the command that
+actually revealed it. Fixed by rewriting the sweep to be name-pattern-agnostic (above) so it can't
+silently stop matching again the next time Chrome changes its temp-dir naming convention, and by
+raising cron frequency from daily to every 30 minutes so any future leak has a much smaller window
+to accumulate in.
+
+**Second, independent safety net (code-level, not just cron):** `check_review_status.py`'s
+`build_driver()` now calls `_ensure_tmp_headroom()` first — if `/tmp` free space is below 200MB it
+sweeps its own oldest-first, name-agnostic pass right there in the request path, before ever
+calling `uc.Chrome(...)`. This means even if the cron job above is ever disabled, misconfigured, or
+just hasn't ticked yet, the code path that actually failed in the incident defends itself instead
+of 500ing. Covered by `test_ensure_tmp_headroom_*` in `scripts/test_check_review_status.py`.
 
 **dnf cache** — `/var/cache/dnf` is almost entirely repo metadata (solv indexes), not cached packages, so `dnf clean packages` is a no-op here — use `dnf clean all`. Cron: weekly, Sunday 03:00 UTC.
 
@@ -708,11 +737,14 @@ swapon --show   # confirm it's active
 free -h         # Swap: line should show 1.0Gi total
 ```
 
-Current crontab:
+Current crontab (verified live 2026-09-10 — the daily 14:00 `check_review_status.py` line
+elsewhere in this doc no longer exists; see
+[Check Status Schedule (current)](#) in project memory / the "Weekly All-Platform Cron Job
+(removed 2026-08-17)" section above for why):
 ```
-0 14 * * * python3 /home/ec2-user/check_review_status.py --headless >> /home/ec2-user/scraper.log 2>&1
-30 15 * * * /home/ec2-user/cleanup_tmp.sh
 0 3 * * 0 sudo dnf clean all > /home/ec2-user/dnf_clean.log 2>&1
+0 1 * * * cd /home/ec2-user && python3 check_brand_page_removed.py >> /home/ec2-user/brand_removal_check.log 2>&1
+*/30 * * * * /home/ec2-user/cleanup_tmp.sh >> /home/ec2-user/cleanup_tmp.log 2>&1
 ```
 
 Check current disk usage:

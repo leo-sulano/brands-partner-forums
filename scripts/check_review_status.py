@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import tempfile
 import time
 import zipfile
@@ -1064,8 +1065,59 @@ def update_entry(entry_id: str, data: dict, updates: dict[str, str],
 
 # ─── Selenium ────────────────────────────────────────────────────────────────
 
+_TMP_MIN_FREE_BYTES = 200 * 1024 * 1024  # 200MB safety margin
+
+
+def _ensure_tmp_headroom(min_free_bytes: int = _TMP_MIN_FREE_BYTES) -> None:
+    """Defense-in-depth against /tmp filling up. On the EC2 box, /tmp is its
+    own size-capped tmpfs (982M), independent of the root volume's free
+    space -- a 2026-09-10 incident found it silently filled to 100% over a
+    couple of days from orphaned undetected-chromedriver profile dirs once
+    cleanup_tmp.sh's hardcoded name patterns stopped matching a newer
+    Chrome's real temp-dir naming, and every subsequent Check Status click
+    500'd with no entry ever actually re-checked. cleanup_tmp.sh is now
+    name-pattern-agnostic and runs every 30 minutes, but this is a second,
+    independent safety net living directly in the code path that failed, in
+    case that cron job is ever disabled, misconfigured, or just hasn't run
+    yet. Deliberately not scoped to any file-name pattern -- that's exactly
+    what silently broke last time.
+    """
+    tmp_dir = tempfile.gettempdir()
+    # os.getuid() doesn't exist on Windows (this repo's tests run cross-platform);
+    # the deploy target (EC2/Linux) always has it, so this only widens the
+    # candidate set (skips the ownership check) on a platform this never runs on.
+    current_uid = getattr(os, "getuid", None)
+    try:
+        if shutil.disk_usage(tmp_dir).free >= min_free_bytes:
+            return
+        candidates = []
+        for name in os.listdir(tmp_dir):
+            path = os.path.join(tmp_dir, name)
+            try:
+                st = os.stat(path)
+            except OSError:
+                continue
+            if current_uid is not None and st.st_uid != current_uid():
+                continue
+            candidates.append((st.st_mtime, path))
+    except OSError:
+        return
+    candidates.sort()  # oldest first
+    for _, path in candidates:
+        if shutil.disk_usage(tmp_dir).free >= min_free_bytes:
+            break
+        try:
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                os.remove(path)
+        except OSError:
+            continue
+
+
 def build_driver(headless: bool = False, proxy: str = "") -> uc.Chrome:
     """Build a Chrome driver. proxy format: 'host:port:user:pass' or 'host:port'."""
+    _ensure_tmp_headroom()
     options = uc.ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
