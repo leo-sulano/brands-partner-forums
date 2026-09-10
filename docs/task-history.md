@@ -9795,3 +9795,59 @@ platform filtering touched — implemented directly with one self-review pass, n
 yet independently live-verified in a browser (no live Supabase session in this pass) — worth adding
 a fresh Rooster Partners TP account (both via the form and via a row paste) and confirming its score
 lands under `TP Score added`, not `Score added`.
+
+---
+
+## Task 332: Overview Country x Proxy Performance Matrix
+
+*2026-09-10:* Added a new "Country x Proxy Performance" section to the Overview page, directly
+after Proxy Breakdown, per direct user request for a cross-tab of the two existing single-
+dimension breakdowns ("performance data every country in every proxy"). Both axes uncapped
+(every distinct country, every distinct proxy gets its own row/column, no top-N/"Other" folding)
+per direct user decision, confirmed via AskUserQuestion during brainstorming.
+
+Data layer: new `CountBreakdownPair` type + `byCountryProxy: Record<string, CountBreakdownPair>`
+field on `TabKpis` (`src/types/brand-entry.ts`); populated inside `computeTabKpisFromEntries`
+(`src/lib/queries.ts`) via a new `addToPairBreakdown` helper, called from the exact same
+entry-classification pass and the exact same resolved `resolveCountryLabel`/`resolveProxyLabel`
+values that already build `byCountry`/`byProxy` — so the new composite map can never disagree with
+those two on the same entries (an anti-drift guarantee, explicitly unit-tested). New
+`mergePairBreakdownMaps` (`src/lib/overviewBreakdown.ts`) merges the per-tab maps across all 11
+tabs, mirroring the existing `mergeBreakdownMaps`. New presentational `CountryProxyMatrix`
+component (`src/components/CountryProxyMatrix.tsx`) — a sticky-both-axes table (matches
+`TabScheduleSection.tsx`'s existing sticky-grid precedent), reusing `SuccessRateBadge` for each
+populated cell and a plain muted dash for an empty (no-data) combination. Wired into
+`Overview.tsx`: row axis reuses the existing `countryCards` (uncapped, `countrySortMode`-driven);
+column axis is a new uncapped `matrixProxyCards` (same `topNWithOther` function Proxy Breakdown
+uses, just `topN=Infinity`, "No Proxy" still pinned last); clicking a populated cell reuses the
+existing `SliceBreakdownModal` via a new `openCountryProxySlice` handler.
+
+Built via Subagent-Driven Development (5 tasks, each independently reviewed clean) plus a final
+whole-branch review (opus) that caught and fixed, in one consolidated fix wave: (Important) the
+drill-down link's `&proxy=` query param was silently ignored by Brand Tabs (`BrandGroup.tsx` had
+no `proxy` entry in its deep-link param handling, unlike the `country` param right next to it in
+the same 3 places) — fixed by adding `proxy` alongside `country` in `hasDeepLinkParams`, the
+tab-mount deep-link branch, and the same-tab URL re-sync effect; (Important) the click handler
+hardcoded `kind: 'live'`, so an all-removed cell (a real 0% badge) opened a modal reading "No
+data" instead of showing the removed rows that made it 0% in the first place — fixed to pick
+`live`/`removed` from the cell's actual counts; (Important) a test-coverage gap — added a
+structural assertion that `byCountryProxy`'s composite-key segments are literally the same keys
+`byCountry`/`byProxy` use (the join the whole feature depends on, which a label-only assertion
+could not have caught); plus 4 Minor fixes (a missing blank-value guard in `addToPairBreakdown`, a
+missing `isOther` guard in `openCountryProxySlice`, matrix-cell accessibility — `aria-label`,
+`scope="row"`/`"col"` — and header/cell text-alignment). Scoped re-review confirmed all 7 findings
+ADDRESSED, no new breakage.
+
+No schema/migration change — purely client-side, computed from entries already fetched for
+Country/Proxy Breakdown. No changes to Score Summary, Brand Tabs (beyond the 3-line deep-link
+fix above), Ask AI, or Schedule Planner — confirmed via repo-wide grep during the final review
+that `byCountry`/`byProxy`/`byCountryProxy` are read only in `Overview.tsx`. Full suite (1039
+tests) and `npm run build` both pass; live-verified via browser sessions twice (once per task,
+once in the fix wave) against real production data — section placement, sticky-both-axes
+rendering, populated/empty cell rendering, modal open + per-tab counts, the fixed drill-down
+link's destination filters (both country and proxy correctly pre-applied), sort-mode sync with
+Country/Proxy Breakdown above it, a filter-consistency check against Country Breakdown's own
+filtered numbers, and zero new console errors. Merged to `main` and pushed to `origin` —
+frontend-only, no deploy step beyond the normal Vercel redeploy. Spec:
+`docs/superpowers/specs/2026-09-10-country-proxy-matrix-design.md`. Plan:
+`docs/superpowers/plans/2026-09-10-country-proxy-matrix.md`.
