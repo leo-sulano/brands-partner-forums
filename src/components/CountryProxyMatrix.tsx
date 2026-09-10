@@ -65,8 +65,8 @@ export default function CountryProxyMatrix({ countries, proxies, getCell, onCell
             const countryColor = countryMuted ? '#64748b' : categoricalColorForKey(country.key);
             const flagUrl = countryMuted ? null : countryFlagImageUrl(country.label);
             return (
-              <tr key={country.key} className="border-b border-slate-100 last:border-b-0">
-                <th scope="row" className="sticky left-0 z-10 w-40 border-r border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">
+              <tr key={country.key} className="group border-b border-slate-100 last:border-b-0">
+                <th scope="row" className="sticky left-0 z-10 w-40 border-r border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap group-hover:bg-blue-50">
                   <div className="flex items-center gap-1.5">
                     {flagUrl
                       ? <img src={flagUrl} alt={country.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -79,7 +79,11 @@ export default function CountryProxyMatrix({ countries, proxies, getCell, onCell
                   const total = cell.live + cell.removed;
                   const color = proxyColor(proxy);
                   return (
-                    <td key={proxy.key} style={{ backgroundColor: `${color}0d` }} className="border-r border-slate-100 px-2 py-1.5 text-left">
+                    <td
+                      key={proxy.key}
+                      style={{ backgroundColor: `${color}0d` }}
+                      className="border-r border-slate-100 px-2 py-1.5 text-left transition-shadow group-hover:shadow-[inset_0_0_0_9999px_rgba(37,99,235,0.07)]"
+                    >
                       {total === 0 ? (
                         <span className="text-slate-300">—</span>
                       ) : (
