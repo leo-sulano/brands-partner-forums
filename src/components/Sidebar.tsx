@@ -1,20 +1,16 @@
 import { useEffect, useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, ScrollText, BookOpen,
   Users, ChevronDown, ChevronsLeft, ChevronUp, BarChart3, Bot, X,
   CalendarDays,
 } from 'lucide-react';
-import { Plus } from 'lucide-react';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
-import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
+import { getTabPlatforms } from '../lib/tab-configs';
 import { isTabPaused } from '../lib/pausedTabRegistry';
 import TabIcon from './TabIcon';
 import { prefetchRoute } from '../lib/routeChunks';
 import { useAuth } from '../contexts/AuthContext';
-import AddBrandTabModal from './AddBrandTabModal';
-import { registerDynamicTabs } from '../lib/dynamicTabRegistry';
-import type { DynamicTabPlatform } from '../lib/dynamicTabRegistry';
 import Tooltip from './Tooltip';
 import PausedBadgeIcon from './PausedBadgeIcon';
 
@@ -67,9 +63,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open = false, onClose, collapsed = false, onToggleCollapsed }: SidebarProps) {
-  const { isAdmin, session, isApproved } = useAuth();
-  const navigate = useNavigate();
-  const [showAddTab, setShowAddTab] = useState(false);
+  const { isAdmin, session } = useAuth();
   const [tabsVersion, setTabsVersion] = useState(0); // bumped to force a re-render after registerDynamicTabs/unregisterDynamicTab mutate OPERATIONAL_TABS in place
   const [brandsOpen, setBrandsOpen] = useState(true);
   const [adminOpen, setAdminOpen] = useState(true);
@@ -88,14 +82,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
     window.addEventListener('tab-platforms-changed', handleChange);
     return () => window.removeEventListener('tab-platforms-changed', handleChange);
   }, []);
-
-  function handleTabCreated(name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) {
-    registerDynamicTabs([{ name, platforms }]);
-    registerToolbarFilters([{ tab: name, enabled_filters: enabledFilters }]);
-    setShowAddTab(false);
-    navigate(`/brands/${tabToSlug(name)}`);
-    onClose?.();
-  }
 
   const header = (isCollapsed: boolean) => (
     <div className={`h-14 flex items-center border-b border-slate-800 ${isCollapsed ? 'justify-center px-3' : 'px-4 gap-2'}`}>
@@ -237,17 +223,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
           </div>
         )}
 
-        {brandsOpen && !isCollapsed && isApproved && (
-          <button
-            type="button"
-            onClick={() => setShowAddTab(true)}
-            className="w-full flex items-center gap-3 py-2 px-3 text-sm text-slate-400 hover:text-white hover:bg-blue-500/20 rounded-l-[10px] transition-colors"
-          >
-            <Plus className="size-4 shrink-0" />
-            Add Brand Tab
-          </button>
-        )}
-
         {!!session && (
           <>
             {isCollapsed
@@ -369,10 +344,6 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
             {navContent(false)}
           </aside>
         </div>
-      )}
-
-      {showAddTab && (
-        <AddBrandTabModal onCreated={handleTabCreated} onClose={() => setShowAddTab(false)} />
       )}
     </>
   );

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Users, CheckCircle2, XCircle, X,
-  Globe, Shield,
+  Globe, Shield, Plus,
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import SuccessRateBadge from '../components/SuccessRateBadge';
@@ -13,6 +13,7 @@ import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
 import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGrid';
 import CountryProxyMatrix from '../components/CountryProxyMatrix';
+import AddBrandTabModal from '../components/AddBrandTabModal';
 import { mergeDistinctValues, mergeBreakdownMaps, mergePairBreakdownMaps, topNWithOther, type BreakdownCard, type BreakdownSortMode } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
@@ -21,7 +22,9 @@ import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { tabToSlug, tabDisplayName, slugToTab } from '../lib/tabs';
 import { getActiveOperationalTabs, isTabPaused } from '../lib/pausedTabRegistry';
-import { getTabPlatforms } from '../lib/tab-configs';
+import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
+import { registerDynamicTabs, type DynamicTabPlatform } from '../lib/dynamicTabRegistry';
+import { useAuth } from '../contexts/AuthContext';
 import TabIcon from '../components/TabIcon';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
 import type { TabKpis, BrandKpis } from '../types/brand-entry';
@@ -516,12 +519,15 @@ const initial: State = { loading: true, error: null, tabs: [] };
 
 
 export default function Overview() {
+  const navigate = useNavigate();
+  const { isApproved } = useAuth();
   const [state, setState] = useState<State>(initial);
   const [kpiModal, setKpiModal] = useState<KpiModalState | null>(null);
   const [sliceModal, setSliceModal] = useState<SliceModalState | null>(null);
   const [otherModal, setOtherModal] = useState<OtherModalState | null>(null);
   const [countrySortMode, setCountrySortMode] = useState<BreakdownSortMode>('rate');
   const [proxySortMode, setProxySortMode] = useState<BreakdownSortMode>('rate');
+  const [showAddTab, setShowAddTab] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const dateFrom = searchParams.get('from') ?? '';
   const dateTo   = searchParams.get('to')   ?? '';
@@ -833,6 +839,13 @@ export default function Overview() {
     },
   ];
 
+  function handleTabCreated(name: string, platforms: DynamicTabPlatform[], enabledFilters: ToolbarFilterKey[]) {
+    registerDynamicTabs([{ name, platforms }]);
+    registerToolbarFilters([{ tab: name, enabled_filters: enabledFilters }]);
+    setShowAddTab(false);
+    navigate(`/brands/${tabToSlug(name)}`);
+  }
+
   const dateActive = !!(dateFrom || dateTo);
   const anyFilterActive = dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0 || !!selectedTab;
 
@@ -921,7 +934,22 @@ export default function Overview() {
             Clear
           </button>
         )}
+
+        {isApproved && (
+          <button
+            type="button"
+            onClick={() => setShowAddTab(true)}
+            className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-blue-600 bg-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-colors hover:border-blue-700 hover:bg-blue-700"
+          >
+            <Plus className="size-3.5" />
+            Add Brand Tab
+          </button>
+        )}
       </div>
+
+      {showAddTab && (
+        <AddBrandTabModal onCreated={handleTabCreated} onClose={() => setShowAddTab(false)} />
+      )}
 
       {/* Global KPIs */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
