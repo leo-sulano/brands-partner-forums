@@ -1041,6 +1041,47 @@ describe('computeTabKpisFromEntries', () => {
     ]);
     resetTabCustomPlatforms();
   });
+
+  it('brandFilter narrows results to only entries whose brand matches, case-insensitively and trimmed', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Aussie Online Pokies', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('2', { 'URL PAGE': ' aussie online pokies ', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+      entry('3', { 'URL PAGE': 'Other Brand', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, undefined, 'Aussie Online Pokies')!;
+    expect(kpis.live).toBe(2);
+    expect(kpis.removed).toBe(0);
+  });
+
+  it('brandFilter scopes the countries/proxies option lists to just that brand\'s own values, not the whole tab\'s', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
+      entry('2', { 'URL PAGE': 'Brand B', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, undefined, 'Brand A')!;
+    expect(kpis.countries).toEqual(['Germany']);
+    expect(kpis.live).toBe(1);
+  });
+
+  it('brandFilter composes with countryFilter (AND), same as with dateFrom/dateTo', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany' }),
+      entry('2', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), ['Germany'], undefined, undefined, 'Brand A')!;
+    expect(kpis.live).toBe(1);
+  });
+
+  it('a brandFilter matching no entries returns an all-zero result, not null', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'Brand A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, undefined, 'Nonexistent Brand');
+    expect(kpis).not.toBeNull();
+    expect(kpis!.live).toBe(0);
+    expect(kpis!.removed).toBe(0);
+    expect(kpis!.countries).toEqual([]);
+  });
 });
 
 describe('computeBrandKpisFromEntries', () => {
