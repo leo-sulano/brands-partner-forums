@@ -9988,3 +9988,53 @@ scenario. No new console errors (only pre-existing, unrelated favicon-404 and Re
 per the brainstorming skill's bounded path) — no spec/plan doc, since it's a same-day correction to
 Task 333's own scope rather than a new subsystem. Deployed via the normal Vercel redeploy on the
 next push — no separate deploy step.
+
+---
+
+## Task 335: TP Status Checker — Detect Removed Reviews on Profile-Page Links
+
+*2026-09-10:* Fixed a real live bug reported directly by the user via a screenshot: a "Link to the
+profile" TP entry (e.g. `https://ca.trustpilot.com/users/67bf1277e3269c83dc8ea79a`) whose review had
+actually been removed still showed `Published`, because `check_review_status.py`'s status detection
+only recognized two page shapes — an off-domain redirect, and the single-review "confirmation" page
+(`__NEXT_DATA__.pageProps.review`/`correlatedReview`/`reviewData`). A reviewer *profile* page (the
+shape most "Link to the profile" URLs actually are) is a third, previously-unhandled shape with none
+of those keys and no matching `TEXT_SIGNALS` string (no "review removed" banner on a bare listing) —
+so `parse_review_status()` returned `None` and `status = ... or "Published"` silently defaulted a
+removed review to Published. Confirmed live against the reported URL via Playwright: its
+`__NEXT_DATA__` carries `consumerStatistics.reviewsCount: 0` and `consumerServiceReviews: []` (while
+the separate, stale `consumer.numberOfReviews` field still said 1) — the real signal that the
+reviewer's one review is gone.
+
+Fix (`scripts/check_review_status.py`): new `_profile_review_count_from_next_data()` reads that
+signal (falling back to summing `consumerServiceReviews`/`consumerProductReviews` list lengths if
+`reviewsCount` itself is missing); new `resolve_tp_status()` layers this on top of the existing
+logic — structural single-review signal wins if present, else the profile review-count is run
+through the same `resolve_status()` found/current/added-date grace-period logic already shared by
+AG/CG, so a freshly-posted Done/Pending entry showing 0 reviews *before* moderation clears isn't
+misread as Removed on its very first check — only a previously-**Published** entry that later drops
+to 0 becomes Removed. `fetch_status()`/`main()` now thread the entry's current status and post-date
+through to make that grace period actually work. 20 new unit tests against the real captured JSON
+shape (`test_check_review_status.py`); full scripts suite passes, 154/154 (was 139 before this
+branch's other in-flight test additions).
+
+Deployed the same session: uploaded to EC2 (`scp`, md5 verified byte-identical,
+`6ecbb1293f0ba8b63924e8bb7b342a95`, before and after transfer), `sudo systemctl restart
+status-server.service` (never `pkill`/`nohup`, per this box's documented systemd precedent),
+confirmed `active` + `/health` → `{"ok":true}`.
+
+**Incident during deploy, self-inflicted:** the restart was issued without first checking for an
+in-progress Check Status run, and it killed one — a 230-entry TP check on the **Hanan** tab (started
+15:09:05, mid-run at entry 105/230 when restarted at 15:18:23). Reconstructed via
+`journalctl -u status-server.service`: entries 1–105 already had their results written to Supabase
+before the restart (each entry commits immediately, so nothing already-processed was lost); entries
+106–230 (~125 entries) were never reached and need a Check Status re-run on Hanan to complete —
+flagged directly to the user, along with a full 4-hour timeline confirming every *other* run in that
+window (Trybet, SilverPlay CG/AG, Wizard of Odds, FTP, BIT, and a long sequence of Rooster Partners
+batches) had already completed with a matching `Done.` line before the restart — Hanan was the only
+casualty. No code or process change came out of this beyond the disclosure itself; a future deploy
+to this box should check `ps aux`/the journal tail for an in-flight run before restarting.
+
+Bounded fix (Tier 2 equivalent — confined to one file's status-resolution logic, no schema/shared
+`queries.ts`-style surface touched), implemented directly with unit-test verification, no separate
+spec/plan doc.

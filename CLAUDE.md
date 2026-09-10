@@ -61,7 +61,25 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-10 (newest):* Same-day follow-up to Task 333 directly below: per direct user request,
+- *2026-09-10 (newest):* Fixed a real live bug (user-reported via screenshot): a TP "Link to the
+  profile" entry whose review had actually been removed still showed Published, because
+  `check_review_status.py` only recognized two page shapes (off-domain redirect; the single-review
+  confirmation page) — a reviewer *profile* page (the shape most of these links actually are) has
+  neither `__NEXT_DATA__.pageProps.review` nor any matching `TEXT_SIGNALS` string, so it silently
+  defaulted to Published. Confirmed live via Playwright: the profile's own `consumerStatistics.
+  reviewsCount: 0` / `consumerServiceReviews: []` is the real signal (the stale `consumer.
+  numberOfReviews` field still said 1). New `_profile_review_count_from_next_data()` +
+  `resolve_tp_status()` (`scripts/check_review_status.py`) layer this in, routed through the same
+  `resolve_status()` found/current/added-date grace-period logic AG/CG already use — so a
+  freshly-posted Done/Pending entry showing 0 reviews *before* moderation clears isn't misread as
+  Removed on its first check; only a previously-Published entry that drops to 0 becomes Removed. 20
+  new unit tests; full scripts suite 154/154. Deployed same session: EC2 upload (md5-verified),
+  `systemctl restart status-server.service`, `/health` confirmed. **Self-inflicted incident during
+  deploy:** the restart killed an in-progress Hanan-tab TP check (230 entries) mid-run at 105/230 —
+  entries 1–105 already had results written (no loss), 106–230 need a Check Status re-run on Hanan.
+  Confirmed via `journalctl` that no other tab's run was affected in the same window. Bounded fix,
+  no spec/plan doc. Task 335.
+- *2026-09-10 (prior):* Same-day follow-up to Task 333 directly below: per direct user request,
   replaced the individual-brand scope with a per-**Brand Tab** scope — the filter dropdown now
   lists whole tabs (BIT, FTP, Rooster Partners, ...) instead of individual brands within a tab
   (the earlier "Spinjo — Rooster Partners"-style entries), persisted as `?tab=<tabSlug>` instead of
