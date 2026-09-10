@@ -10053,3 +10053,65 @@ was needed because each cell already carries its own heatmap `backgroundColor` i
 Tailwind background utility can't win against an inline style. Tier 1 (fast path) — confined to one
 presentational component with no other importers of its hover behavior; verified via `npm run
 build` (clean) and a visual check in dev. No schema, data, or shared-logic change.
+
+---
+
+## Task 337: Top-Level React ErrorBoundary
+
+*2026-09-10:* Added a top-level `ErrorBoundary` (`src/components/ErrorBoundary.tsx`, class
+component — `getDerivedStateFromError`/`componentDidCatch`) wrapping `<BrowserRouter><App /></BrowserRouter>`
+in `src/main.tsx`. Previously an uncaught render error anywhere in the tree blanked the entire app
+to a white screen with no fallback and no way to recover short of a manual URL reload — now it shows
+a simple centered "Something went wrong" card with a Reload button, and the error + component stack
+is still logged to the console (`console.error`) for debugging. Tier 1 (fast path) — a single new
+component plus a 2-line wrapper change in `main.tsx`, no other file touches it. No schema/data
+change. Bounded fix, implemented directly, no spec/plan doc.
+
+---
+
+## Task 338: Cron-Failure Alerting via Email
+
+*2026-09-10:* `pg_cron` already logged every job's success/failure to `cron.job_run_details`, but
+nothing surfaced a failure — a silently-failing scheduled job (Monday schedule generation, the
+daily status audit, etc.) would only be noticed indirectly, once someone spotted a missing schedule
+or a stale PMS card days later. Added a new `cron-failure-alert` Edge Function, run every 15 minutes
+via its own `pg_cron` entry, that calls a new `claim_new_cron_failures()` Postgres RPC —
+atomically finds every active job's failures since the last check and advances a per-job watermark
+in the same transaction, so a job stuck failing on every tick alerts once by email rather than every
+15 minutes. Deliberately generic: it watches whatever's currently registered in `cron.job` rather
+than a hardcoded job list, so a job added later (e.g. a future cron) is covered automatically with
+no code change.
+
+The Gmail-sending logic already used by `notify-brand-removed` was extracted into a shared
+`supabase/functions/_shared/gmail.ts` module so the two senders can't drift — `notify-brand-removed`
+itself is behavior-unchanged (same tests, same output, confirmed still passing). Migration
+`20260910130000_add_cron_failure_alerting.sql` adds the watermark table + `claim_new_cron_failures()`
+RPC; a same-day follow-up migration (`..._fix_claim_new_cron_failures_ambiguous_column.sql`) fixes a
+real PL/pgSQL column-ambiguity bug in that RPC, found and fixed during live verification.
+
+Live-verified against production with a deliberately-broken test cron job: the broken job's first
+failure triggered a real alert email, and a second consecutive failure on the same job correctly did
+NOT send a second email (the watermark-dedup behavior working as designed) until the job was fixed
+and failed-then-succeeded again. Test cron job removed afterward. Bounded feature, implemented and
+verified directly in one session, no separate spec/plan doc.
+
+---
+
+## Task 339: Country × Proxy Matrix — Full Width + Per-Cell Live/Removed Breakdown
+
+*2026-09-10:* Same-day follow-up polish to Task 332 (Overview Country × Proxy Performance Matrix),
+after the initial version shipped and was live-verified. Two changes: (1) the table now spans the
+full width of its container (`w-full` on the `<table>`, plus a fixed `w-40` on both the sticky
+country column and the frozen header cell) instead of shrink-wrapping to content, matching every
+other full-bleed table on Overview; (2) each populated cell now shows two independently-clickable
+counts — Published (emerald) and Removed (rose) — instead of one ambiguous `SuccessRateBadge`
+button whose single click always opened whichever kind (`live`/`removed`) happened to be the
+majority in that cell. `onCellClick`'s signature gained an explicit `kind: 'live' | 'removed'`
+parameter, threaded from the two new per-count buttons through `Overview.tsx`'s
+`openCountryProxySlice` (which no longer has to guess the kind from `cell.live > 0`). Each proxy
+column also now carries a faint tinted background (`${color}1f` header / `${color}0d` body, via a
+new shared `proxyColor()` helper so a column's identity color can never disagree between its header
+and its data cells) to make scanning a wide grid easier, mirroring the existing per-cell heatmap
+tint Proxy Breakdown already uses. Tier 1 (fast path) — confined to `CountryProxyMatrix.tsx` plus
+the one caller in `Overview.tsx`, no other importers. `npm run build` clean. Bounded change,
+implemented directly, no spec/plan doc.

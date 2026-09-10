@@ -61,7 +61,18 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-10 (newest):* Added a row-hover highlight to Overview's Country × Proxy Performance
+- *2026-09-10 (newest):* Three small bounded items from earlier the same day, found undocumented
+  and backfilled: (Task 337) a top-level React `ErrorBoundary` wraps `<App />` in `main.tsx` — an
+  uncaught render error now shows a "Something went wrong" + Reload card instead of blanking the
+  whole app white; (Task 338) new `cron-failure-alert` Edge Function (15-min `pg_cron` tick) emails
+  on a `pg_cron` job's failure, deduped via a new `claim_new_cron_failures()` RPC + per-job
+  watermark so a stuck-failing job alerts once, not every tick — generic over whatever's in
+  `cron.job`, live-verified with a deliberately-broken test job; Gmail-sending logic shared with
+  `notify-brand-removed` via a new `supabase/functions/_shared/gmail.ts`; (Task 339) same-day
+  follow-up polish to Task 332's Country × Proxy matrix — full-width table, and each cell now shows
+  two independently-clickable Published/Removed counts instead of one ambiguous badge whose click
+  always opened the majority kind.
+- *2026-09-10 (prior):* Added a row-hover highlight to Overview's Country × Proxy Performance
   matrix (`src/components/CountryProxyMatrix.tsx`), matching the row-hover treatment already used
   on Score Summary/Schedule Planner tables. Sticky country-label cell gets `group-hover:bg-blue-50`;
   each proxy cell (which already carries its own inline heatmap `backgroundColor`) gets an inset-
