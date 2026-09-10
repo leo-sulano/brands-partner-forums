@@ -885,14 +885,6 @@ export default function Overview() {
 
         <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
         <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
-        <MultiSelectDropdown
-          noun="brand"
-          values={brandDropdownValues}
-          onChange={setBrandParam}
-          onOpen={loadBrandDirectory}
-          options={brandOptions}
-          searchable
-        />
         {allCountries.length > 1 && (
           <MultiSelectDropdown
             noun="countrie"
@@ -918,6 +910,19 @@ export default function Overview() {
           options={[
             { value: 'tp', label: 'TrustPilot' }, { value: 'ag', label: 'AskGamblers' }, { value: 'cg', label: 'CasinoGuru' }, { value: 'wo', label: 'Wizard of Odds' },
           ]}
+        />
+        {/* Wording-only "Brand Tab" noun (this project's proper noun for the
+            per-tab pages) — the dropdown still picks one individual brand
+            across tabs; brandOptions labels stay "<brand> — <tab>". Placed
+            last among the filter pills, right before Clear, per direct user
+            request. */}
+        <MultiSelectDropdown
+          noun="Brand Tab"
+          values={brandDropdownValues}
+          onChange={setBrandParam}
+          onOpen={loadBrandDirectory}
+          options={brandOptions}
+          searchable
         />
 
         {anyFilterActive && (
