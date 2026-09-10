@@ -9851,3 +9851,93 @@ filtered numbers, and zero new console errors. Merged to `main` and pushed to `o
 frontend-only, no deploy step beyond the normal Vercel redeploy. Spec:
 `docs/superpowers/specs/2026-09-10-country-proxy-matrix-design.md`. Plan:
 `docs/superpowers/plans/2026-09-10-country-proxy-matrix.md`.
+
+---
+
+## Task 333: Overview Per-Brand Scope
+
+*2026-09-10:* Added a new searchable "brand" filter dropdown to Overview (last pill in the
+toolbar, after Platform) that lets a user pick one brand across any tab — e.g.
+"Spinjo — Rooster Partners" — and re-scopes the entire Overview page to that brand's data only:
+Global KPIs, a single summary card in place of the "Brand Tabs / Brands" toggle+grid, Platform
+Breakdown, Country Breakdown, Proxy Breakdown, and the Country x Proxy Matrix (Task 332). Composes
+with the existing Date/Country/Proxy/Platform filters and persists as
+`?brand=<tabSlug>::<brandName>` in the URL, matching every other Overview filter.
+
+Data layer: `computeTabKpisFromEntries`/`fetchTabKpis` (`src/lib/queries.ts`) gained an optional
+`brandFilter?: string` parameter that narrows entries to one brand (case/whitespace-insensitive
+match via the existing `normalizeBrandKey`, the same normalization `computeBrandKpisFromEntries`
+already buckets brands by) before every other computation — KPI counts, `byCountry`/`byProxy`/
+`byCountryProxy`, and even the `countries`/`proxies` filter-dropdown option lists all scope
+together automatically. `loadData` narrows its fetch to just the selected brand's tab when active
+(instead of all 11), so every section that already derives from `state.tabs` — including both KPI/
+dimension drill-down modals — becomes brand-scoped for free with no parallel filtering logic
+anywhere. The brand picker's directory (every brand across all 11 tabs) reuses the existing,
+unfiltered `fetchBrandKpis(tab)` and is lazy-loaded on first open, not a new query.
+`MultiSelectDropdown` gained `onOpen` (fires once per closed-to-open transition, for the lazy
+directory load) and `loading` (shows "Loading..." instead of "No {noun}s match" while the directory
+fetch is in flight) props — both additive, no other call site affected.
+
+Built via Subagent-Driven Development (2 tasks: Task 1 the `queries.ts` data layer with 4 new unit
+tests, Task 2 the picker + full-page scoping in `Overview.tsx`/`MultiSelectDropdown.tsx`), each
+task reviewed clean. Two small mid-implementation fix rounds handled direct live user corrections
+before the whole-branch review: (1) the dropdown's wording was briefly changed to "Brand Tab(s)"
+per an ambiguous request, then reverted back to "brand" once the user clarified via a screenshot
+that "Brand Tabs" is this project's own proper noun for the tabs themselves (BIT, FTP, Rooster
+Partners, etc. — see the standing `feedback_brand_tabs_terminology` lesson), not for an individual
+brand within a tab; (2) the dropdown was moved from the first filter pill (before Country) to the
+last (after Platform, before Clear), per direct request.
+
+A final whole-branch review (opus) then caught 4 Important + 2 bundled Minor findings, all fixed in
+one consolidated fix wave (scoped re-review confirmed all 6 ADDRESSED, no new breakage):
+- **(Important) Flagged-brand cross-surface divergence.** Brand-scoping still applied the
+  `removed_platform_brands` exclusion, so a page-removed-flagged brand rendered as an all-zero "0
+  total" card, disagreeing with both Overview's own "Brands" view (which hides/strips flagged
+  platform rows differently) and that brand's own Brand Tab page (which deliberately skips the
+  exclusion entirely — `BrandGroup.tsx`'s `brandScoped`, per Task 214/215's "they're looking at
+  that brand's own page and want its real numbers"). The exact cross-surface data-divergence class
+  this project has shipped and fixed multiple times before. Fixed to skip the exclusion whenever
+  `brandFilter` is set, matching `BrandGroup.tsx`'s precedent exactly; pinned with a new regression
+  test (a brand flagged via `removedPlatformBrands` now shows its real, non-zero counts once
+  brand-scoped).
+- **(Important) Country/Proxy filter dropdowns could silently vanish while still filtering.**
+  Their `length > 1` mount-gate now derives from a single brand-scoped tab instead of all 11, so an
+  already-active filter value could become invisible and unremovable the moment a narrower brand
+  was selected (e.g. Country=Germany active, brand has only France rows -> dropdown gone, every
+  number 0, no visible cause). Fixed to stay mounted whenever a filter value is active too, unioning
+  it into the options via the existing `mergeDistinctValues` helper so an orphaned active value
+  stays visible and removable.
+- **(Important) `loadData` had no request-sequence guard.** Fetch duration now varies wildly (1 tab
+  vs. ~11) depending on brand scope, so a slow unscoped response landing after a fast brand-scoped
+  one could silently overwrite it, showing whole-tab data under a brand-scoped header with nothing
+  to re-trigger a correction. Fixed with a `useRef` sequence counter discarding stale responses.
+- **(Important) The brand picker showed no loading state and could lock up permanently empty.**
+  `brandDirectoryLoading` was tracked but never rendered (an open menu just showed "No brands
+  match" for the several seconds the directory fetch takes), and a total per-tab fetch failure
+  cached a truthy-but-empty array, permanently blocking any retry. Fixed: only cache a genuinely
+  non-empty directory result, and added the `MultiSelectDropdown` `loading` prop described above.
+- **(Minor) 3 of the 4 KPI/dimension drill-down link builders weren't brand-scoped** —
+  `openDimensionSlice`, `openCountryProxySlice`, and `KpiBreakdownModal`'s row link all now append
+  `&brand=<selectedBrand.brand>` when a brand is selected, landing on that brand's own filtered
+  Brand Tab view instead of the whole unfiltered tab. The 4th (`openPlatformSlice`, Platform
+  Breakdown's own drill-down) was found by the implementer during this same fix wave but wasn't
+  part of the named finding, so was deliberately left out of scope rather than extending the one
+  allowed fix wave unreviewed — see Known Issues.
+- **(Minor) 2 more unit tests added** alongside the regression test above: `brandFilter` composed
+  with a `platformFilter` the tab doesn't track still correctly returns `null` (not an all-zero
+  result); the existing "brandFilter scopes the countries/proxies option lists" test extended to
+  also assert `byCountryProxy` scoping.
+
+No schema or migration change — purely client-side, computed from entries already fetched. Full
+suite (344 tests, 4 new) and `npm run build` both pass. Live-verified via Playwright across both
+task rounds and the final fix wave against real production data: brand selection and full-page
+re-scoping, composing with an existing Platform filter, Clear restoring the full view, a bookmarked
+`?brand=` link resolving the picker's label correctly after the directory loads, a zero-rows
+brand+date-range combination rendering real zeros (not an error or blank page), a genuinely flagged
+brand (Hanan's Pribet.com) now showing its real TP counts instead of zeros, an orphaned Country
+filter staying visible and removable after narrowing to a single-country brand, the directory's new
+"Loading..." state directly timed (~213-416ms before real options appear), and all 3 fixed
+drill-down links confirmed carrying `&brand=` in their rendered hrefs. Merged to `main` — frontend
+only, no deploy step beyond the normal Vercel redeploy. Spec:
+`docs/superpowers/specs/2026-09-10-overview-per-brand-scope-design.md`. Plan:
+`docs/superpowers/plans/2026-09-10-overview-per-brand-scope.md`.

@@ -61,7 +61,46 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-04 (newest):* Edit Brand Tab's "Add a brand" control (added earlier the same session)
+- *2026-09-10 (newest):* Added an Overview "per-brand scope" — a new searchable "brand" filter
+  dropdown (last pill in the toolbar, after Platform) lets a user pick one brand across any tab
+  (e.g. "Spinjo — Rooster Partners") and re-scopes the entire Overview page — Global KPIs, a single
+  summary card (replacing the "Brand Tabs / Brands" toggle+grid), Platform Breakdown, Country
+  Breakdown, Proxy Breakdown, and the Country×Proxy Matrix — to that brand's data only, composable
+  with the existing Date/Country/Proxy/Platform filters and persisted as
+  `?brand=<tabSlug>::<brandName>`. Data layer: `computeTabKpisFromEntries`/`fetchTabKpis`
+  (`src/lib/queries.ts`) gained an optional `brandFilter` param that narrows entries to one brand
+  (case/whitespace-insensitive, via the existing `normalizeBrandKey`) before every other
+  computation, so KPI counts, `byCountry`/`byProxy`/`byCountryProxy`, and the countries/proxies
+  filter-dropdown option lists all scope together automatically — every downstream Overview section
+  picks this up for free since they already derive from `state.tabs`. The brand picker's directory
+  (every brand across all 11 tabs) is lazy-loaded on first open via the existing `fetchBrandKpis`,
+  not a new query. `MultiSelectDropdown` gained `onOpen`/`loading` props to support this. Built via
+  Subagent-Driven Development (2 tasks, each reviewed clean, plus 2 small mid-flight fix rounds for
+  direct user corrections — reverting a wrong "Brand Tabs" wording choice back to "brand" per this
+  project's own documented terminology lesson, and moving the dropdown to the end of the filter bar)
+  plus a final whole-branch review (opus) that caught and fixed, in one consolidated fix wave:
+  (Important) brand-scoping still applied the `removed_platform_brands` exclusion, so a flagged
+  brand rendered as an all-zero card disagreeing with both the "Brands" view above it and its own
+  Brand Tab page — fixed to skip the exclusion when brand-scoped, matching `BrandGroup.tsx`'s own
+  `brandScoped` precedent exactly (same class of cross-surface divergence this project has hit
+  before, see Task 214/215); (Important) the Country/Proxy filter dropdowns could silently vanish
+  while still filtering, once their option list narrowed to a single brand's own values — fixed to
+  stay mounted and show an orphaned active filter value; (Important) `loadData` had no
+  request-sequence guard, so a slow unscoped fetch could overwrite a fast brand-scoped one — fixed
+  with a sequence ref; (Important) the brand picker showed no loading state and could lock up
+  permanently empty after one failed fetch — fixed with a `loading` indicator and a
+  retry-on-failure directory cache; plus a Minor fix brand-scoping 3 of the 4 drill-down modal link
+  builders (the 4th, Platform Breakdown's own, was found but left out of scope — see Known Issues)
+  and 3 new/extended `queries.test.ts` cases. Scoped re-review confirmed all 6 addressed, no new
+  breakage. No schema/migration change — purely client-side. Full suite (344 tests) and
+  `npm run build` both pass; live-verified via Playwright across both task rounds and the fix wave
+  against real production data (brand selection + composing with a Platform filter, Clear,
+  bookmark-reload with directory-resolved label, a zero-rows brand+date combination, a genuinely
+  flagged brand — Hanan's Pribet.com — now showing real counts, an orphaned Country filter staying
+  visible, the directory's Loading state, and all 3 fixed drill-down links carrying `&brand=`).
+  Spec: `docs/superpowers/specs/2026-09-10-overview-per-brand-scope-design.md`. Plan:
+  `docs/superpowers/plans/2026-09-10-overview-per-brand-scope.md`. Task 333.
+- *2026-09-04 (prior):* Edit Brand Tab's "Add a brand" control (added earlier the same session)
   reworked per direct user follow-up to not create a phantom `entries` row — it now writes to a new
   standalone `brand_catalog` table instead (same shape as `brand_platform_override`/
   `flagged_platform_brands`: generated `brand_key`, unique `(tab, brand_key)`, 4-policy RLS, a plain
@@ -1690,6 +1729,17 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
+- **Overview per-brand scope (Task 333, 2026-09-10) — one drill-down link builder still isn't
+  brand-scoped, parked deliberately.** `openPlatformSlice`'s `linkFor` (`src/pages/Overview.tsx`,
+  Platform Breakdown's own drill-down) still links to a tab's full Brand Tab page without appending
+  `&brand=`, unlike the 3 other drill-down link builders (`openDimensionSlice`,
+  `openCountryProxySlice`, `KpiBreakdownModal`'s row link) that were all fixed in the final review's
+  fix wave. Found and self-flagged by the implementer during that same fix wave, but not part of
+  the named finding, so left out of scope for that round rather than extending it unreviewed. Low
+  impact — Platform Breakdown itself is already hidden whenever a platform filter is active, so
+  this only matters for the narrower case of a brand-only (no platform filter) scope. Fix
+  direction: same one-line pattern already applied to the other 3 (append
+  `&brand=${encodeURIComponent(selectedBrand.brand)}` when `selectedBrand` is set).
 - **Custom Platforms (Task 325, 2026-09-07) deliberately does not reach Schedule Planner, Ask AI,
   Score Summary, or `removed_platform_brands` — per the feature's own spec Non-goals, not an
   oversight.** A custom (user-defined) platform never appears on the Schedule Planner calendar
