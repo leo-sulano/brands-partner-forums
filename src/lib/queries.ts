@@ -700,7 +700,6 @@ export function computeTabKpisFromEntries(
   countryFilter?: string[],
   proxyFilter?: string[],
   platformFilter?: Platform[],
-  brandFilter?: string,
 ): TabKpis | null {
   const cols = resolveReviewColumns(rawHeaders, tab);
   const { activePlatforms } = cols;
@@ -713,42 +712,23 @@ export function computeTabKpisFromEntries(
     return null;
   }
 
-  // Overview's per-brand scope: narrow to just the rows belonging to one
-  // brand (matched the same case/whitespace-insensitive way
-  // computeBrandKpisFromEntries already buckets brands) before anything else
-  // is computed — so KPI counts, byCountry/byProxy/byCountryProxy, and even
-  // the countries/proxies option lists below are all scoped to that brand.
-  // Unlike platformFilter, a brandFilter that matches nothing simply yields
-  // an all-zero result for this tab, not null.
-  const brandScopedEntries = brandFilter
-    ? entries.filter((e) => normalizeBrandKey((e.data[brandCol] ?? '').trim()) === normalizeBrandKey(brandFilter))
-    : entries;
-
-  // Once scoped to one brand, drop the removedPlatformBrands flag exclusion
-  // entirely -- matches BrandGroup.tsx's own brandScoped precedent exactly
-  // ("looking at that brand's own page, show its real numbers"). Without
-  // this, a flagged brand renders as an all-zero "0 total" card here while
-  // its own Brand Tab page and Score Summary both show real counts -- the
-  // same cross-surface divergence class Task 214/215 already fixed once.
-  const effectiveRemovedBrands = brandFilter ? new Set<string>() : removedPlatformBrands;
-
   let live = 0, removed = 0, done = 0, pending = 0, onPause = 0, notDone = 0;
   let tpLive = 0, tpRemoved = 0;
   let agLive = 0, agRemoved = 0;
   let cgLive = 0, cgRemoved = 0;
   let woLive = 0, woRemoved = 0;
 
-  const filteredEntries = filterByCountryAndProxy(brandScopedEntries, tab, countryFilter, proxyFilter);
+  const filteredEntries = filterByCountryAndProxy(entries, tab, countryFilter, proxyFilter);
 
-  const countries = uniqueDisplayValues(brandScopedEntries.map((e) => resolveCountryLabel(e.data, tab)), canonicalCountryKey, canonicalCountryName);
-  const proxies = uniqueDisplayValues(brandScopedEntries.map((e) => resolveProxyLabel(e.data['Proxy Used'])), canonicalProxyKey, canonicalProxyName);
+  const countries = uniqueDisplayValues(entries.map((e) => resolveCountryLabel(e.data, tab)), canonicalCountryKey, canonicalCountryName);
+  const proxies = uniqueDisplayValues(entries.map((e) => resolveProxyLabel(e.data['Proxy Used'])), canonicalProxyKey, canonicalProxyName);
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
   const byCountryProxy: Record<string, CountBreakdownPair> = {};
 
   for (const entry of filteredEntries) {
     const d = entry.data;
-    const c = classifyEntry(d, tab, brandCol, cols, dateFrom, dateTo, effectiveRemovedBrands, platformFilter);
+    const c = classifyEntry(d, tab, brandCol, cols, dateFrom, dateTo, removedPlatformBrands, platformFilter);
 
     if (c.tp === 'live') tpLive++; else if (c.tp === 'removed') tpRemoved++;
     if (c.ag === 'live') agLive++; else if (c.ag === 'removed') agRemoved++;
@@ -803,14 +783,13 @@ export async function fetchTabKpis(
   countryFilter?: string[],
   proxyFilter?: string[],
   platformFilter?: Platform[],
-  brandFilter?: string,
 ): Promise<TabKpis | null> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
   const brandCol = getBrandNameCol(tab);
-  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter, brandFilter);
+  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter);
 }
 
 // Same per-entry classification as computeTabKpisFromEntries, bucketed by

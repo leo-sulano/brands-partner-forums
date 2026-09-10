@@ -219,15 +219,11 @@ function KpiBreakdownModal({
   modal,
   tabs,
   platformFilter,
-  selectedBrandName,
   onClose,
 }: {
   modal: KpiModalState;
   tabs: TabSummary[];
   platformFilter: Platform[];
-  // When Overview is brand-scoped, each row's link should land on that
-  // brand's own filtered view, not the tab's full unfiltered ~1000+ row page.
-  selectedBrandName?: string;
   onClose: () => void;
 }) {
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -294,7 +290,7 @@ function KpiBreakdownModal({
             return (
               <Link
                 key={r.tab}
-                to={selectedBrandName ? brandRowHref(r.tab, selectedBrandName) : `/brands/${tabToSlug(r.tab)}`}
+                to={`/brands/${tabToSlug(r.tab)}`}
                 onClick={onClose}
                 className="group flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-blue-50 transition-colors -mx-3"
               >
@@ -543,61 +539,18 @@ export default function Overview() {
     [platformParamRaw],
   );
 
-  // Overview's per-brand scope. Encoded as "<tabSlug>::<brandName>" since
-  // brand names aren't unique across tabs — URLSearchParams handles the
-  // percent-encoding of the whole opaque value transparently, same as every
-  // other filter param here.
-  const brandParamRaw = searchParams.get('brand') ?? '';
-  const selectedBrand = useMemo(() => {
-    if (!brandParamRaw) return null;
-    const sep = brandParamRaw.indexOf('::');
-    if (sep === -1) return null;
-    const tab = slugToTab(brandParamRaw.slice(0, sep));
-    const brand = brandParamRaw.slice(sep + 2);
-    if (!tab || !brand) return null;
-    return { tab, brand };
-  }, [brandParamRaw]);
+  // Overview's per-tab scope: pick one Brand Tab (BIT, FTP, Rooster
+  // Partners, ...) and the whole page re-scopes to it, encoded as its
+  // URL-safe slug so it round-trips through tabToSlug/slugToTab the same
+  // way BrandGroup's own /brands/:tab route already does.
+  const tabParamRaw = searchParams.get('tab') ?? '';
+  const selectedTab = useMemo(() => (tabParamRaw ? slugToTab(tabParamRaw) : null), [tabParamRaw]);
 
-  // Directory of every brand across every tab, for the brand picker's
-  // search list. Lazy-loaded (not fetched on initial page load) since it
-  // reads every raw entry across all 11 tabs, the same cost the "Brands"
-  // view's own lazy fetch already accepts.
-  const [brandDirectory, setBrandDirectory] = useState<{ tab: string; brand: string }[] | null>(null);
-  const [brandDirectoryLoading, setBrandDirectoryLoading] = useState(false);
-  const loadBrandDirectory = useCallback(async () => {
-    if (brandDirectory || brandDirectoryLoading) return;
-    setBrandDirectoryLoading(true);
-    try {
-      const lists = await Promise.all(
-        getActiveOperationalTabs().map((tab) =>
-          fetchBrandKpis(tab)
-            .then((brands) => brands.map((b) => ({ tab, brand: b.brand })))
-            .catch(() => [] as { tab: string; brand: string }[])
-        )
-      );
-      const flat = lists.flat();
-      // Only cache a genuinely non-empty result -- every per-tab .catch(() =>
-      // []) firing (a total failure) would otherwise leave brandDirectory
-      // truthy-but-empty forever, permanently locking the picker's "No
-      // brands match" state with no retry. Leaving it null on failure lets
-      // the next onOpen try again.
-      if (flat.length > 0) setBrandDirectory(flat);
-    } finally {
-      setBrandDirectoryLoading(false);
-    }
-  }, [brandDirectory, brandDirectoryLoading]);
-
-  // Arriving via a shared/bookmarked ?brand= link should resolve the
-  // dropdown's display label without requiring the user to open it first.
-  useEffect(() => {
-    if (selectedBrand) loadBrandDirectory();
-  }, [selectedBrand, loadBrandDirectory]);
-
-  // A brand-scoped load fetches 1 tab, an unscoped load fetches ~11 -- their
-  // durations can differ wildly, so a fast brand-scoped result from a later
-  // call can otherwise be overwritten by a slower unscoped call still in
-  // flight from before the brand was picked. This sequence guard ensures
-  // only the most recently STARTED call's result is ever applied.
+  // A tab-scoped load fetches 1 tab, an unscoped load fetches ~11 -- their
+  // durations can differ wildly, so a fast scoped result from a later call
+  // can otherwise be overwritten by a slower unscoped call still in flight
+  // from before the tab was picked. This sequence guard ensures only the
+  // most recently STARTED call's result is ever applied.
   const loadSeqRef = useRef(0);
   const loadData = useCallback(async () => {
     const seq = ++loadSeqRef.current;
@@ -606,17 +559,14 @@ export default function Overview() {
       const removedPlatformBrands = await fetchRemovedPlatformBrands()
         .then(buildRemovedPlatformBrandSet)
         .catch(() => new Set<string>());
-      // A selected brand narrows the fetch to just its own tab, already
-      // brand-scoped by fetchTabKpis's new brandFilter param — every other
+      // A selected tab narrows the fetch to just itself — every other
       // section on the page derives from state.tabs, so this one change is
-      // what makes the whole page re-scope. Still routed through
-      // isTabPaused, same as the unselected getActiveOperationalTabs() path
-      // below, so a bookmarked ?brand= link to a since-paused tab doesn't
-      // bypass the exclusion every other Overview data path already respects
-      // — an empty tabsToLoad here just falls through to the existing "No
-      // data for this brand" branch in the single-summary-card section.
-      const tabsToLoad = selectedBrand
-        ? (isTabPaused(selectedBrand.tab) ? [] : [selectedBrand.tab])
+      // what makes the whole page re-scope. Routed through isTabPaused, same
+      // as the unselected getActiveOperationalTabs() path below, so a
+      // bookmarked ?tab= link to a since-paused tab doesn't bypass the
+      // exclusion every other Overview data path already respects.
+      const tabsToLoad = selectedTab
+        ? (isTabPaused(selectedTab) ? [] : [selectedTab])
         : getActiveOperationalTabs();
       const tabResults = (await Promise.all(
         tabsToLoad.map((tab) =>
@@ -628,7 +578,6 @@ export default function Overview() {
             countryFilter,
             proxyFilter,
             platformFilter,
-            selectedBrand?.brand,
           )
             .then((kpis): TabSummary | null => (kpis ? { tab, kpis } : null))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
@@ -640,7 +589,7 @@ export default function Overview() {
       if (seq !== loadSeqRef.current) return; // stale response, a newer load has started
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
-  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter, selectedBrand]);
+  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter, selectedTab]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -656,8 +605,13 @@ export default function Overview() {
       const removedPlatformBrands = await fetchRemovedPlatformBrands()
         .then(buildRemovedPlatformBrandSet)
         .catch(() => new Set<string>());
+      // Same isTabPaused-guarded narrowing as loadData: a selected tab
+      // fetches just its own brands instead of every tab's.
+      const tabsToLoad = selectedTab
+        ? (isTabPaused(selectedTab) ? [] : [selectedTab])
+        : getActiveOperationalTabs();
       const groups = (await Promise.all(
-        getActiveOperationalTabs().map((tab) =>
+        tabsToLoad.map((tab) =>
           fetchBrandKpis(
             tab,
             dateFrom || undefined,
@@ -675,17 +629,17 @@ export default function Overview() {
     } catch (err) {
       setBrandState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
-  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter]);
+  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter, selectedTab]);
 
   // Lazy: only fetches once the user actually opens the Brands view (per-brand
   // aggregation reads every raw entry across all 11 tabs, unlike the Brand
   // Tabs view's cheaper pre-aggregated call) — refetches if filters change
-  // while already on that view. Skipped while a single brand is already
-  // selected — a per-brand breakdown of an already-single-brand scope has
-  // nothing to show.
+  // while already on that view. A selected tab always needs this data too,
+  // since the "Brands Performance" section shows that tab's individual
+  // brand cards (not the Brand Tabs grid) whenever one is scoped.
   useEffect(() => {
-    if (view === 'brands' && !selectedBrand) loadBrandData();
-  }, [view, loadBrandData, selectedBrand]);
+    if (view === 'brands' || selectedTab) loadBrandData();
+  }, [view, selectedTab, loadBrandData]);
 
   if (state.error) {
     return (
@@ -772,7 +726,7 @@ export default function Overview() {
         tab: t.tab,
         count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
       })),
-      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}${selectedBrand ? `&brand=${encodeURIComponent(selectedBrand.brand)}` : ''}`,
+      linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
     });
   }
 
@@ -796,7 +750,7 @@ export default function Overview() {
         count: t.kpis.byCountryProxy[key]?.[kind] ?? 0,
       })),
       linkFor: (tab) =>
-        `/brands/${tabToSlug(tab)}?status=${kind}&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}${selectedBrand ? `&brand=${encodeURIComponent(selectedBrand.brand)}` : ''}`,
+        `/brands/${tabToSlug(tab)}?status=${kind}&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
     });
   }
 
@@ -821,15 +775,15 @@ export default function Overview() {
   }
 
   // Single-select wrapper around MultiSelectDropdown: values passed in is
-  // always length 0 or 1 (see brandDropdownValues below), so the
+  // always length 0 or 1 (see tabDropdownValues below), so the
   // most-recently-toggled entry (the array's last element) is always the
   // one the user just picked, whether that's a genuinely new selection or
   // the empty array from deselecting/clearing.
-  function setBrandParam(values: string[]) {
+  function setTabParam(values: string[]) {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       const chosen = values[values.length - 1];
-      if (chosen) next.set('brand', chosen); else next.delete('brand');
+      if (chosen) next.set('tab', chosen); else next.delete('tab');
       return next;
     }, { replace: true });
   }
@@ -880,13 +834,10 @@ export default function Overview() {
   ];
 
   const dateActive = !!(dateFrom || dateTo);
-  const anyFilterActive = dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0 || !!selectedBrand;
+  const anyFilterActive = dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0 || !!selectedTab;
 
-  const brandOptions = (brandDirectory ?? []).map((b) => ({
-    value: `${tabToSlug(b.tab)}::${b.brand}`,
-    label: `${b.brand} — ${tabDisplayName(b.tab)}`,
-  }));
-  const brandDropdownValues = selectedBrand ? [`${tabToSlug(selectedBrand.tab)}::${selectedBrand.brand}`] : [];
+  const tabOptions = getActiveOperationalTabs().map((tab) => ({ value: tabToSlug(tab), label: tabDisplayName(tab) }));
+  const tabDropdownValues = selectedTab ? [tabToSlug(selectedTab)] : [];
 
   return (
     <div className="space-y-8">
@@ -945,19 +896,15 @@ export default function Overview() {
             { value: 'tp', label: 'TrustPilot' }, { value: 'ag', label: 'AskGamblers' }, { value: 'cg', label: 'CasinoGuru' }, { value: 'wo', label: 'Wizard of Odds' },
           ]}
         />
-        {/* noun="brand" (lowercase, matching country/proxie/platform above) —
-            NOT "Brand Tab": this dropdown lists individual brands within a
-            tab (e.g. "Spinjo — Rooster Partners"), and "Brand Tab" is this
-            project's own proper noun for the tabs themselves (BIT, FTP,
-            Rooster Partners, ...). Placed last among the filter pills,
-            right before Clear, per direct user request. */}
+        {/* noun="Brand Tab": this dropdown lists whole tabs (BIT, FTP,
+            Rooster Partners, ...) — this project's own proper noun for them
+            — not individual brands. Selecting one re-scopes the whole page
+            to that tab. */}
         <MultiSelectDropdown
-          noun="brand"
-          values={brandDropdownValues}
-          onChange={setBrandParam}
-          onOpen={loadBrandDirectory}
-          options={brandOptions}
-          loading={brandDirectoryLoading}
+          noun="Brand Tab"
+          values={tabDropdownValues}
+          onChange={setTabParam}
+          options={tabOptions}
           searchable
         />
 
@@ -966,7 +913,7 @@ export default function Overview() {
             type="button"
             onClick={() => setSearchParams((prev) => {
               const next = new URLSearchParams(prev);
-              ['from', 'to', 'country', 'proxy', 'platform', 'brand'].forEach((k) => next.delete(k));
+              ['from', 'to', 'country', 'proxy', 'platform', 'tab'].forEach((k) => next.delete(k));
               return next;
             }, { replace: true })}
             className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
@@ -988,7 +935,7 @@ export default function Overview() {
             label="Total Accounts"
             value={state.loading ? '…' : totalAccounts.toLocaleString()}
             icon={<Users className="size-5" />}
-            hint={selectedBrand ? `for ${selectedBrand.brand}` : 'across all brand tabs'}
+            hint={selectedTab ? `for ${tabDisplayName(selectedTab)}` : 'across all brand tabs'}
             color="blue"
           />
         </button>
@@ -1002,7 +949,7 @@ export default function Overview() {
             label="Live"
             value={state.loading ? '…' : totalLive.toLocaleString()}
             icon={<CheckCircle2 className="size-5" />}
-            hint={selectedBrand ? `for ${selectedBrand.brand}` : 'active across TP / AG / CG / WO'}
+            hint={selectedTab ? `for ${tabDisplayName(selectedTab)}` : 'active across TP / AG / CG / WO'}
             color="emerald"
           />
         </button>
@@ -1016,83 +963,39 @@ export default function Overview() {
             label="Removed"
             value={state.loading ? '…' : totalRemoved.toLocaleString()}
             icon={<XCircle className="size-5" />}
-            hint={selectedBrand ? `for ${selectedBrand.brand}` : 'across all tabs'}
+            hint={selectedTab ? `for ${tabDisplayName(selectedTab)}` : 'across all tabs'}
             color="rose"
           />
         </button>
       </div>
 
-      {selectedBrand ? (
-        /* Single-brand scope: one summary card in place of the tab/brand
-           grid and its view toggle — there is inherently only one brand to
-           show once a brand is selected. */
-        <section>
-          <div className="mb-3">
-            <h2 className="text-sm font-semibold text-slate-700">{selectedBrand.brand}</h2>
-            <p className="text-xs text-slate-400">{tabDisplayName(selectedBrand.tab)}</p>
-          </div>
-          {state.loading ? (
-            <div className="max-w-sm animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
-          ) : (() => {
-            const kpis = state.tabs.find((t) => t.tab === selectedBrand.tab)?.kpis;
-            if (!kpis) {
-              return (
-                <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
-                  No data for this brand under the current filters
-                </p>
-              );
-            }
-            return (
-              <div className="max-w-sm rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                <div className="flex items-center justify-between gap-2">
-                  <Link to={brandRowHref(selectedBrand.tab, selectedBrand.brand)} className="truncate text-sm font-semibold text-slate-800 hover:text-blue-600">
-                    {selectedBrand.brand}
-                  </Link>
-                  <span className="shrink-0 text-xs text-slate-500">
-                    <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
-                  </span>
-                </div>
-                <div className="mt-1.5 grid grid-cols-[auto_auto_auto_1fr_auto] gap-y-0.5 text-xs text-slate-600">
-                  {kpis.activePlatforms.map((p) => (
-                    <PlatformRow
-                      key={p}
-                      href={brandRowHref(selectedBrand.tab, selectedBrand.brand, p)}
-                      platform={p}
-                      live={kpis[p].live}
-                      removed={kpis[p].removed}
-                    />
-                  ))}
-                  {kpis.customPlatforms.map(({ platform, live, removed }) => (
-                    <CustomPlatformRow key={platform.id} shortLabel={platform.shortLabel} live={live} removed={removed} />
-                  ))}
-                </div>
-              </div>
-            );
-          })()}
-        </section>
-      ) : (
-      /* Tab summary grid */
+      {/* Tab summary grid. A selected Brand Tab always shows the "Brands"
+          sub-view (that tab's own individual brand cards) instead of the
+          toggle — "Brand Tabs" mode would just be the one already-selected
+          tab's own card, which is redundant once you've picked it. */}
       <section>
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Brands Performance</h2>
-          <div className="inline-flex shrink-0 rounded-md border border-slate-200 bg-white p-0.5 text-xs">
-            <button
-              type="button"
-              onClick={() => setView('tabs')}
-              className={`rounded px-2.5 py-1 font-medium transition-colors ${view === 'tabs' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Brand Tabs
-            </button>
-            <button
-              type="button"
-              onClick={() => setView('brands')}
-              className={`rounded px-2.5 py-1 font-medium transition-colors ${view === 'brands' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Brands
-            </button>
-          </div>
+          {!selectedTab && (
+            <div className="inline-flex shrink-0 rounded-md border border-slate-200 bg-white p-0.5 text-xs">
+              <button
+                type="button"
+                onClick={() => setView('tabs')}
+                className={`rounded px-2.5 py-1 font-medium transition-colors ${view === 'tabs' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Brand Tabs
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('brands')}
+                className={`rounded px-2.5 py-1 font-medium transition-colors ${view === 'brands' ? 'bg-blue-50 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                Brands
+              </button>
+            </div>
+          )}
         </div>
-        {view === 'tabs' ? (
+        {(selectedTab ? 'brands' : view) === 'tabs' ? (
         !state.loading && state.tabs.length === 0 && platformFilter.length > 0 ? (
           <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
             No brand tabs track {platformFilter.map((p) => PLATFORM_BADGE[p].label).join(' or ')}
@@ -1269,14 +1172,13 @@ export default function Overview() {
           )
         )}
       </section>
-      )}
 
       {/* Platform breakdown chart -- redundant once scoped to one platform */}
       {platformFilter.length === 0 && (
         <section>
           <div className="mb-4">
             <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform{selectedBrand ? ` for ${selectedBrand.brand}` : ''}</p>
+            <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform{selectedTab ? ` for ${tabDisplayName(selectedTab)}` : ''}</p>
           </div>
           {state.loading ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1320,7 +1222,7 @@ export default function Overview() {
           <div>
             <h2 className="text-base font-semibold text-slate-800">Country Breakdown</h2>
             <p className="mt-0.5 text-xs text-slate-400">
-              Published vs. removed by country{selectedBrand ? ` for ${selectedBrand.brand}` : ''}
+              Published vs. removed by country{selectedTab ? ` for ${tabDisplayName(selectedTab)}` : ''}
               {!state.loading && countryCards.length > 0 && ` — ${countryCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a country recorded`}
             </p>
           </div>
@@ -1367,7 +1269,7 @@ export default function Overview() {
           <div>
             <h2 className="text-base font-semibold text-slate-800">Proxy Breakdown</h2>
             <p className="mt-0.5 text-xs text-slate-400">
-              Published vs. removed by proxy{selectedBrand ? ` for ${selectedBrand.brand}` : ''}
+              Published vs. removed by proxy{selectedTab ? ` for ${tabDisplayName(selectedTab)}` : ''}
               {!state.loading && proxyCards.length > 0 && ` — ${proxyCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a proxy recorded`}
             </p>
           </div>
@@ -1413,7 +1315,7 @@ export default function Overview() {
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-800">Country × Proxy Performance</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Success rate for every country/proxy combination{selectedBrand ? ` for ${selectedBrand.brand}` : ''} — click a cell to see it by brand tab.
+            Success rate for every country/proxy combination{selectedTab ? ` for ${tabDisplayName(selectedTab)}` : ''} — click a cell to see it by brand tab.
           </p>
         </div>
         {state.loading ? (
@@ -1435,7 +1337,6 @@ export default function Overview() {
           modal={kpiModal}
           tabs={state.tabs}
           platformFilter={platformFilter}
-          selectedBrandName={selectedBrand?.brand}
           onClose={() => setKpiModal(null)}
         />
       )}

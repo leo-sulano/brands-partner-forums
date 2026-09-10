@@ -11,15 +11,6 @@ interface Props {
   noun?: string;
   searchable?: boolean;
   placeholder?: string;
-  // Fired exactly once per transition from closed to open — never on close.
-  // Lets a caller lazy-load this dropdown's options the first time a user
-  // actually opens it, instead of on every page load.
-  onOpen?: () => void;
-  // Shows a "Loading…" line in place of the empty-options message while a
-  // caller's lazy-loaded options (see onOpen above) are still in flight, so
-  // the menu doesn't misleadingly read "No {noun}s match" before anything
-  // has actually been fetched.
-  loading?: boolean;
 }
 
 // Every filter dropdown in this codebase renders as a small pill button that
@@ -28,7 +19,7 @@ interface Props {
 // FilterDropdown) in exactly one interaction: clicking a row TOGGLES it and
 // keeps the menu open, instead of selecting-and-closing — every other visual
 // and positioning detail intentionally matches those existing components.
-export default function MultiSelectDropdown({ values, onChange, options, noun = 'option', searchable = false, placeholder, onOpen, loading = false }: Props) {
+export default function MultiSelectDropdown({ values, onChange, options, noun = 'option', searchable = false, placeholder }: Props) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const ref = useRef<HTMLDivElement>(null);
@@ -87,21 +78,7 @@ export default function MultiSelectDropdown({ values, onChange, options, noun = 
     <div className="relative shrink-0" ref={ref}>
       <button
         type="button"
-        onClick={() => {
-          // Deliberately not a setOpen functional updater: `open` is already
-          // in scope, and calling onOpen (which lazy-loads the brand
-          // directory in Overview.tsx, i.e. another component's setState)
-          // from inside a useState updater function runs during this
-          // component's render phase, not the click handler — React logs
-          // "Cannot update a component while rendering a different
-          // component" for exactly that pattern. Reading `open` directly and
-          // calling onOpen as a plain step in the event handler keeps the
-          // same "fires once per closed-to-open transition" contract without
-          // it.
-          const next = !open;
-          if (next) onOpen?.();
-          setOpen(next);
-        }}
+        onClick={() => setOpen((v) => !v)}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors ${
           active
             ? 'border-blue-300 bg-blue-50 text-blue-700'
@@ -148,11 +125,9 @@ export default function MultiSelectDropdown({ values, onChange, options, noun = 
               <span className="flex-1">{placeholder ?? `All ${noun}s`}</span>
               {!active && <Check className="size-3 text-blue-500" />}
             </button>
-            {loading && searchable ? (
-              <div className="px-3 py-4 text-center text-xs text-slate-400">Loading…</div>
-            ) : visible.length === 0 ? (
+            {visible.length === 0 && (
               <div className="px-3 py-4 text-center text-xs text-slate-400">No {noun}s match</div>
-            ) : null}
+            )}
             {visible.map((opt) => {
               const checked = values.includes(opt.value);
               return (
