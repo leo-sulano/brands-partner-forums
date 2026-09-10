@@ -19,7 +19,7 @@ import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
 import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
-import { tabToSlug, tabDisplayName } from '../lib/tabs';
+import { tabToSlug, tabDisplayName, slugToTab } from '../lib/tabs';
 import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
 import { getTabPlatforms } from '../lib/tab-configs';
 import TabIcon from '../components/TabIcon';
@@ -539,14 +539,63 @@ export default function Overview() {
     [platformParamRaw],
   );
 
+  // Overview's per-brand scope. Encoded as "<tabSlug>::<brandName>" since
+  // brand names aren't unique across tabs — URLSearchParams handles the
+  // percent-encoding of the whole opaque value transparently, same as every
+  // other filter param here.
+  const brandParamRaw = searchParams.get('brand') ?? '';
+  const selectedBrand = useMemo(() => {
+    if (!brandParamRaw) return null;
+    const sep = brandParamRaw.indexOf('::');
+    if (sep === -1) return null;
+    const tab = slugToTab(brandParamRaw.slice(0, sep));
+    const brand = brandParamRaw.slice(sep + 2);
+    if (!tab || !brand) return null;
+    return { tab, brand };
+  }, [brandParamRaw]);
+
+  // Directory of every brand across every tab, for the brand picker's
+  // search list. Lazy-loaded (not fetched on initial page load) since it
+  // reads every raw entry across all 11 tabs, the same cost the "Brands"
+  // view's own lazy fetch already accepts.
+  const [brandDirectory, setBrandDirectory] = useState<{ tab: string; brand: string }[] | null>(null);
+  const [brandDirectoryLoading, setBrandDirectoryLoading] = useState(false);
+  const loadBrandDirectory = useCallback(async () => {
+    if (brandDirectory || brandDirectoryLoading) return;
+    setBrandDirectoryLoading(true);
+    try {
+      const lists = await Promise.all(
+        getActiveOperationalTabs().map((tab) =>
+          fetchBrandKpis(tab)
+            .then((brands) => brands.map((b) => ({ tab, brand: b.brand })))
+            .catch(() => [] as { tab: string; brand: string }[])
+        )
+      );
+      setBrandDirectory(lists.flat());
+    } finally {
+      setBrandDirectoryLoading(false);
+    }
+  }, [brandDirectory, brandDirectoryLoading]);
+
+  // Arriving via a shared/bookmarked ?brand= link should resolve the
+  // dropdown's display label without requiring the user to open it first.
+  useEffect(() => {
+    if (selectedBrand) loadBrandDirectory();
+  }, [selectedBrand, loadBrandDirectory]);
+
   const loadData = useCallback(async () => {
     setState(s => ({ ...s, loading: true }));
     try {
       const removedPlatformBrands = await fetchRemovedPlatformBrands()
         .then(buildRemovedPlatformBrandSet)
         .catch(() => new Set<string>());
+      // A selected brand narrows the fetch to just its own tab, already
+      // brand-scoped by fetchTabKpis's new brandFilter param — every other
+      // section on the page derives from state.tabs, so this one change is
+      // what makes the whole page re-scope.
+      const tabsToLoad = selectedBrand ? [selectedBrand.tab] : getActiveOperationalTabs();
       const tabResults = (await Promise.all(
-        getActiveOperationalTabs().map((tab) =>
+        tabsToLoad.map((tab) =>
           fetchTabKpis(
             tab,
             dateFrom || undefined,
@@ -555,6 +604,7 @@ export default function Overview() {
             countryFilter,
             proxyFilter,
             platformFilter,
+            selectedBrand?.brand,
           )
             .then((kpis): TabSummary | null => (kpis ? { tab, kpis } : null))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
@@ -564,7 +614,7 @@ export default function Overview() {
     } catch (err) {
       setState((s) => ({ ...s, loading: false, error: (err as Error).message }));
     }
-  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter]);
+  }, [dateFrom, dateTo, countryFilter, proxyFilter, platformFilter, selectedBrand]);
 
   useEffect(() => { loadData(); }, [loadData]);
 
@@ -604,10 +654,12 @@ export default function Overview() {
   // Lazy: only fetches once the user actually opens the Brands view (per-brand
   // aggregation reads every raw entry across all 11 tabs, unlike the Brand
   // Tabs view's cheaper pre-aggregated call) — refetches if filters change
-  // while already on that view.
+  // while already on that view. Skipped while a single brand is already
+  // selected — a per-brand breakdown of an already-single-brand scope has
+  // nothing to show.
   useEffect(() => {
-    if (view === 'brands') loadBrandData();
-  }, [view, loadBrandData]);
+    if (view === 'brands' && !selectedBrand) loadBrandData();
+  }, [view, loadBrandData, selectedBrand]);
 
   if (state.error) {
     return (
@@ -742,6 +794,20 @@ export default function Overview() {
     }, { replace: true });
   }
 
+  // Single-select wrapper around MultiSelectDropdown: values passed in is
+  // always length 0 or 1 (see brandDropdownValues below), so the
+  // most-recently-toggled entry (the array's last element) is always the
+  // one the user just picked, whether that's a genuinely new selection or
+  // the empty array from deselecting/clearing.
+  function setBrandParam(values: string[]) {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      const chosen = values[values.length - 1];
+      if (chosen) next.set('brand', chosen); else next.delete('brand');
+      return next;
+    }, { replace: true });
+  }
+
   function setDateFrom(v: string) {
     setSearchParams(p => { const n = new URLSearchParams(p); if (v) n.set('from', v); else n.delete('from'); return n; }, { replace: true });
   }
@@ -788,7 +854,13 @@ export default function Overview() {
   ];
 
   const dateActive = !!(dateFrom || dateTo);
-  const anyFilterActive = dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0;
+  const anyFilterActive = dateActive || countryFilter.length > 0 || proxyFilter.length > 0 || platformFilter.length > 0 || !!selectedBrand;
+
+  const brandOptions = (brandDirectory ?? []).map((b) => ({
+    value: `${tabToSlug(b.tab)}::${b.brand}`,
+    label: `${b.brand} — ${tabDisplayName(b.tab)}`,
+  }));
+  const brandDropdownValues = selectedBrand ? [`${tabToSlug(selectedBrand.tab)}::${selectedBrand.brand}`] : [];
 
   return (
     <div className="space-y-8">
@@ -813,6 +885,14 @@ export default function Overview() {
 
         <span className="mx-1 hidden sm:inline text-xs font-medium text-slate-300">|</span>
         <span className="text-xs font-medium text-slate-500 shrink-0">Filters</span>
+        <MultiSelectDropdown
+          noun="brand"
+          values={brandDropdownValues}
+          onChange={setBrandParam}
+          onOpen={loadBrandDirectory}
+          options={brandOptions}
+          searchable
+        />
         {allCountries.length > 1 && (
           <MultiSelectDropdown
             noun="countrie"
@@ -845,7 +925,7 @@ export default function Overview() {
             type="button"
             onClick={() => setSearchParams((prev) => {
               const next = new URLSearchParams(prev);
-              ['from', 'to', 'country', 'proxy', 'platform'].forEach((k) => next.delete(k));
+              ['from', 'to', 'country', 'proxy', 'platform', 'brand'].forEach((k) => next.delete(k));
               return next;
             }, { replace: true })}
             className="rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-500 shadow-sm transition-colors hover:border-blue-200 hover:bg-blue-50"
@@ -867,7 +947,7 @@ export default function Overview() {
             label="Total Accounts"
             value={state.loading ? '…' : totalAccounts.toLocaleString()}
             icon={<Users className="size-5" />}
-            hint="across all brand tabs"
+            hint={selectedBrand ? `for ${selectedBrand.brand}` : 'across all brand tabs'}
             color="blue"
           />
         </button>
@@ -881,7 +961,7 @@ export default function Overview() {
             label="Live"
             value={state.loading ? '…' : totalLive.toLocaleString()}
             icon={<CheckCircle2 className="size-5" />}
-            hint="active across TP / AG / CG / WO"
+            hint={selectedBrand ? `for ${selectedBrand.brand}` : 'active across TP / AG / CG / WO'}
             color="emerald"
           />
         </button>
@@ -895,13 +975,62 @@ export default function Overview() {
             label="Removed"
             value={state.loading ? '…' : totalRemoved.toLocaleString()}
             icon={<XCircle className="size-5" />}
-            hint="across all tabs"
+            hint={selectedBrand ? `for ${selectedBrand.brand}` : 'across all tabs'}
             color="rose"
           />
         </button>
       </div>
 
-      {/* Tab summary grid */}
+      {selectedBrand ? (
+        /* Single-brand scope: one summary card in place of the tab/brand
+           grid and its view toggle — there is inherently only one brand to
+           show once a brand is selected. */
+        <section>
+          <div className="mb-3">
+            <h2 className="text-sm font-semibold text-slate-700">{selectedBrand.brand}</h2>
+            <p className="text-xs text-slate-400">{tabDisplayName(selectedBrand.tab)}</p>
+          </div>
+          {state.loading ? (
+            <div className="max-w-sm animate-pulse rounded-lg bg-slate-100" style={{ height: 132 }} />
+          ) : (() => {
+            const kpis = state.tabs.find((t) => t.tab === selectedBrand.tab)?.kpis;
+            if (!kpis) {
+              return (
+                <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">
+                  No data for this brand under the current filters
+                </p>
+              );
+            }
+            return (
+              <div className="max-w-sm rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <Link to={brandRowHref(selectedBrand.tab, selectedBrand.brand)} className="truncate text-sm font-semibold text-slate-800 hover:text-blue-600">
+                    {selectedBrand.brand}
+                  </Link>
+                  <span className="shrink-0 text-xs text-slate-500">
+                    <span className="font-medium text-slate-900">{kpis.live + kpis.removed}</span> total
+                  </span>
+                </div>
+                <div className="mt-1.5 grid grid-cols-[auto_auto_auto_1fr_auto] gap-y-0.5 text-xs text-slate-600">
+                  {kpis.activePlatforms.map((p) => (
+                    <PlatformRow
+                      key={p}
+                      href={brandRowHref(selectedBrand.tab, selectedBrand.brand, p)}
+                      platform={p}
+                      live={kpis[p].live}
+                      removed={kpis[p].removed}
+                    />
+                  ))}
+                  {kpis.customPlatforms.map(({ platform, live, removed }) => (
+                    <CustomPlatformRow key={platform.id} shortLabel={platform.shortLabel} live={live} removed={removed} />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+        </section>
+      ) : (
+      /* Tab summary grid */
       <section>
         <div className="mb-3 flex items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-slate-700">Brands Performance</h2>
@@ -1099,13 +1228,14 @@ export default function Overview() {
           )
         )}
       </section>
+      )}
 
       {/* Platform breakdown chart -- redundant once scoped to one platform */}
       {platformFilter.length === 0 && (
         <section>
           <div className="mb-4">
             <h2 className="text-base font-semibold text-slate-800">Platform Breakdown</h2>
-            <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform</p>
+            <p className="mt-0.5 text-xs text-slate-400">Published vs. removed per platform{selectedBrand ? ` for ${selectedBrand.brand}` : ''}</p>
           </div>
           {state.loading ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1149,7 +1279,7 @@ export default function Overview() {
           <div>
             <h2 className="text-base font-semibold text-slate-800">Country Breakdown</h2>
             <p className="mt-0.5 text-xs text-slate-400">
-              Published vs. removed by country
+              Published vs. removed by country{selectedBrand ? ` for ${selectedBrand.brand}` : ''}
               {!state.loading && countryCards.length > 0 && ` — ${countryCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a country recorded`}
             </p>
           </div>
@@ -1196,7 +1326,7 @@ export default function Overview() {
           <div>
             <h2 className="text-base font-semibold text-slate-800">Proxy Breakdown</h2>
             <p className="mt-0.5 text-xs text-slate-400">
-              Published vs. removed by proxy
+              Published vs. removed by proxy{selectedBrand ? ` for ${selectedBrand.brand}` : ''}
               {!state.loading && proxyCards.length > 0 && ` — ${proxyCoverage.toLocaleString()} of ${totalAccounts.toLocaleString()} accounts have a proxy recorded`}
             </p>
           </div>
@@ -1242,7 +1372,7 @@ export default function Overview() {
         <div className="mb-4">
           <h2 className="text-base font-semibold text-slate-800">Country × Proxy Performance</h2>
           <p className="mt-0.5 text-xs text-slate-400">
-            Success rate for every country/proxy combination — click a cell to see it by brand tab.
+            Success rate for every country/proxy combination{selectedBrand ? ` for ${selectedBrand.brand}` : ''} — click a cell to see it by brand tab.
           </p>
         </div>
         {state.loading ? (
