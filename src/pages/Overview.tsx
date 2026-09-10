@@ -20,7 +20,7 @@ import { proxyIconUrl } from '../lib/proxyIcons';
 import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { tabToSlug, tabDisplayName, slugToTab } from '../lib/tabs';
-import { getActiveOperationalTabs } from '../lib/pausedTabRegistry';
+import { getActiveOperationalTabs, isTabPaused } from '../lib/pausedTabRegistry';
 import { getTabPlatforms } from '../lib/tab-configs';
 import TabIcon from '../components/TabIcon';
 import { readArrayParam, writeArrayParam } from '../lib/filterParams';
@@ -592,8 +592,15 @@ export default function Overview() {
       // A selected brand narrows the fetch to just its own tab, already
       // brand-scoped by fetchTabKpis's new brandFilter param — every other
       // section on the page derives from state.tabs, so this one change is
-      // what makes the whole page re-scope.
-      const tabsToLoad = selectedBrand ? [selectedBrand.tab] : getActiveOperationalTabs();
+      // what makes the whole page re-scope. Still routed through
+      // isTabPaused, same as the unselected getActiveOperationalTabs() path
+      // below, so a bookmarked ?brand= link to a since-paused tab doesn't
+      // bypass the exclusion every other Overview data path already respects
+      // — an empty tabsToLoad here just falls through to the existing "No
+      // data for this brand" branch in the single-summary-card section.
+      const tabsToLoad = selectedBrand
+        ? (isTabPaused(selectedBrand.tab) ? [] : [selectedBrand.tab])
+        : getActiveOperationalTabs();
       const tabResults = (await Promise.all(
         tabsToLoad.map((tab) =>
           fetchTabKpis(
@@ -911,13 +918,14 @@ export default function Overview() {
             { value: 'tp', label: 'TrustPilot' }, { value: 'ag', label: 'AskGamblers' }, { value: 'cg', label: 'CasinoGuru' }, { value: 'wo', label: 'Wizard of Odds' },
           ]}
         />
-        {/* Wording-only "Brand Tab" noun (this project's proper noun for the
-            per-tab pages) — the dropdown still picks one individual brand
-            across tabs; brandOptions labels stay "<brand> — <tab>". Placed
-            last among the filter pills, right before Clear, per direct user
-            request. */}
+        {/* noun="brand" (lowercase, matching country/proxie/platform above) —
+            NOT "Brand Tab": this dropdown lists individual brands within a
+            tab (e.g. "Spinjo — Rooster Partners"), and "Brand Tab" is this
+            project's own proper noun for the tabs themselves (BIT, FTP,
+            Rooster Partners, ...). Placed last among the filter pills,
+            right before Clear, per direct user request. */}
         <MultiSelectDropdown
-          noun="Brand Tab"
+          noun="brand"
           values={brandDropdownValues}
           onChange={setBrandParam}
           onOpen={loadBrandDirectory}
