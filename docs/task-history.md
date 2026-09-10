@@ -10038,3 +10038,18 @@ to this box should check `ps aux`/the journal tail for an in-flight run before r
 Bounded fix (Tier 2 equivalent — confined to one file's status-resolution logic, no schema/shared
 `queries.ts`-style surface touched), implemented directly with unit-test verification, no separate
 spec/plan doc.
+
+---
+
+## Task 336: Row Hover Highlight on Country × Proxy Performance Matrix
+
+*2026-09-10:* Added a row-hover highlight to Overview's Country × Proxy Performance matrix
+(`src/components/CountryProxyMatrix.tsx`), matching the row-hover treatment already used on the
+Score Summary and Schedule Planner tables — the matrix was the one remaining data table on Overview
+with no hover affordance. A `group` class on each `<tr>` drives `group-hover:bg-blue-50` on the
+sticky country-label `<th>` and a `group-hover:shadow-[inset_0_0_0_9999px_rgba(37,99,235,0.07)]`
+overlay on each proxy `<td>` — the inset-shadow approach (rather than a plain `group-hover:bg-*`)
+was needed because each cell already carries its own heatmap `backgroundColor` inline style, and a
+Tailwind background utility can't win against an inline style. Tier 1 (fast path) — confined to one
+presentational component with no other importers of its hover behavior; verified via `npm run
+build` (clean) and a visual check in dev. No schema, data, or shared-logic change.

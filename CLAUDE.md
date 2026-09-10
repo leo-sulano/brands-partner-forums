@@ -61,7 +61,14 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-10 (newest):* Fixed a real live bug (user-reported via screenshot): a TP "Link to the
+- *2026-09-10 (newest):* Added a row-hover highlight to Overview's Country × Proxy Performance
+  matrix (`src/components/CountryProxyMatrix.tsx`), matching the row-hover treatment already used
+  on Score Summary/Schedule Planner tables. Sticky country-label cell gets `group-hover:bg-blue-50`;
+  each proxy cell (which already carries its own inline heatmap `backgroundColor`) gets an inset-
+  shadow overlay instead of a background utility, since a Tailwind background class can't override
+  an inline style. Tier 1 (fast path), no other importers of this component's hover behavior.
+  Build clean. Task 336.
+- *2026-09-10 (prior):* Fixed a real live bug (user-reported via screenshot): a TP "Link to the
   profile" entry whose review had actually been removed still showed Published, because
   `check_review_status.py` only recognized two page shapes (off-domain redirect; the single-review
   confirmation page) — a reviewer *profile* page (the shape most of these links actually are) has
