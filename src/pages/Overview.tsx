@@ -12,7 +12,8 @@ import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
 import BreakdownRankedList, { type BreakdownRow } from '../components/BreakdownRankedList';
 import BreakdownStatGrid, { type StatTile } from '../components/BreakdownStatGrid';
-import { mergeDistinctValues, mergeBreakdownMaps, topNWithOther, type BreakdownCard, type BreakdownSortMode } from '../lib/overviewBreakdown';
+import CountryProxyMatrix from '../components/CountryProxyMatrix';
+import { mergeDistinctValues, mergeBreakdownMaps, mergePairBreakdownMaps, topNWithOther, type BreakdownCard, type BreakdownSortMode } from '../lib/overviewBreakdown';
 import { categoricalColorForKey } from '../lib/categoricalColor';
 import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
@@ -81,6 +82,7 @@ const EMPTY_KPIS: TabKpis = {
   customPlatforms: [],
   byCountry: {},
   byProxy: {},
+  byCountryProxy: {},
   countries: [],
   proxies: [],
 };
@@ -656,6 +658,18 @@ export default function Overview() {
   const proxyCoverage = Object.entries(proxyMerged)
     .reduce((s, [, v]) => s + v.live + v.removed, 0);
 
+  const countryProxyMerged = mergePairBreakdownMaps(state.tabs.map((t) => t.kpis.byCountryProxy));
+  // Both axes uncapped (topN=Infinity), per direct user decision — unlike
+  // Proxy Breakdown's own top-8-plus-Other cap. Reuses the exact same
+  // sort-mode toggles as Country/Proxy Breakdown above, so this matrix's
+  // row/column order always tracks those two sections.
+  const matrixProxyCards = topNWithOther(proxyMerged, Infinity, canonicalProxyKey(NO_PROXY_LABEL), proxySortMode);
+
+  function getCountryProxyCell(countryKey: string, proxyKey: string): { live: number; removed: number } {
+    const pair = countryProxyMerged[`${countryKey}::${proxyKey}`];
+    return pair ? { live: pair.live, removed: pair.removed } : { live: 0, removed: 0 };
+  }
+
   function openDimensionSlice(
     card: { key: string; label: string; isOther: boolean },
     dimension: 'country' | 'proxy',
@@ -681,6 +695,29 @@ export default function Overview() {
         count: (dimension === 'country' ? t.kpis.byCountry[card.key] : t.kpis.byProxy[card.key])?.[kind] ?? 0,
       })),
       linkFor: (tab) => `/brands/${tabToSlug(tab)}?status=${kind}${dimension === 'country' ? `&country=${encodeURIComponent(card.label)}` : ''}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
+    });
+  }
+
+  function openCountryProxySlice(country: BreakdownCard, proxy: BreakdownCard) {
+    const key = `${country.key}::${proxy.key}`;
+    const flagUrl = countryFlagImageUrl(country.label);
+    const icon = flagUrl
+      ? <img src={flagUrl} alt={country.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      : <Globe className="size-4 text-slate-500" />;
+    const rowIcon = flagUrl
+      ? <img src={flagUrl} alt={country.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      : <Globe className="size-3.5 shrink-0 text-slate-400" />;
+    setSliceModal({
+      title: `${country.label} — ${proxy.label}`,
+      headerIcon: icon,
+      rowIcon,
+      kind: 'live',
+      rows: state.tabs.map((t) => ({
+        tab: t.tab,
+        count: t.kpis.byCountryProxy[key]?.live ?? 0,
+      })),
+      linkFor: (tab) =>
+        `/brands/${tabToSlug(tab)}?status=live&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
     });
   }
 
@@ -1195,6 +1232,28 @@ export default function Overview() {
                   : (kind) => openDimensionSlice(card, 'proxy', kind),
               };
             })}
+          />
+        )}
+      </section>
+
+      {/* Country x Proxy performance matrix */}
+      <section>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-slate-800">Country × Proxy Performance</h2>
+          <p className="mt-0.5 text-xs text-slate-400">
+            Success rate for every country/proxy combination — click a cell to see it by brand tab.
+          </p>
+        </div>
+        {state.loading ? (
+          <div className="h-64 animate-pulse rounded-xl bg-slate-100" />
+        ) : countryCards.length === 0 || matrixProxyCards.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-400">No country/proxy data</p>
+        ) : (
+          <CountryProxyMatrix
+            countries={countryCards}
+            proxies={matrixProxyCards}
+            getCell={getCountryProxyCell}
+            onCellClick={openCountryProxySlice}
           />
         )}
       </section>
