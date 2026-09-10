@@ -699,7 +699,10 @@ export default function Overview() {
   }
 
   function openCountryProxySlice(country: BreakdownCard, proxy: BreakdownCard) {
+    if (country.isOther || proxy.isOther) return;
     const key = `${country.key}::${proxy.key}`;
+    const cell = getCountryProxyCell(country.key, proxy.key);
+    const kind: 'live' | 'removed' = cell.live > 0 ? 'live' : 'removed';
     const flagUrl = countryFlagImageUrl(country.label);
     const icon = flagUrl
       ? <img src={flagUrl} alt={country.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
@@ -711,13 +714,13 @@ export default function Overview() {
       title: `${country.label} — ${proxy.label}`,
       headerIcon: icon,
       rowIcon,
-      kind: 'live',
+      kind,
       rows: state.tabs.map((t) => ({
         tab: t.tab,
-        count: t.kpis.byCountryProxy[key]?.live ?? 0,
+        count: t.kpis.byCountryProxy[key]?.[kind] ?? 0,
       })),
       linkFor: (tab) =>
-        `/brands/${tabToSlug(tab)}?status=live&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
+        `/brands/${tabToSlug(tab)}?status=${kind}&country=${encodeURIComponent(country.label)}&proxy=${encodeURIComponent(proxy.label)}${platformFilter.length > 0 ? `&platform=${platformFilter.join(',')}` : ''}`,
     });
   }
 

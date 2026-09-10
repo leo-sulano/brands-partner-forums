@@ -35,7 +35,8 @@ export default function CountryProxyMatrix({ countries, proxies, getCell, onCell
               return (
                 <th
                   key={proxy.key}
-                  className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2 text-left font-medium text-slate-500"
+                  scope="col"
+                  className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 px-2 py-2 text-center font-medium text-slate-500"
                 >
                   <Tooltip content={proxy.label} className="flex max-w-[6rem] items-center gap-1 truncate">
                     {iconUrl
@@ -56,14 +57,14 @@ export default function CountryProxyMatrix({ countries, proxies, getCell, onCell
             const flagUrl = countryMuted ? null : countryFlagImageUrl(country.label);
             return (
               <tr key={country.key} className="border-b border-slate-100 last:border-b-0">
-                <td className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">
+                <th scope="row" className="sticky left-0 z-10 border-r border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 whitespace-nowrap">
                   <div className="flex items-center gap-1.5">
                     {flagUrl
                       ? <img src={flagUrl} alt={country.label} className="size-3.5 shrink-0 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       : <Globe className="size-3.5 shrink-0" style={{ color: countryColor }} />}
                     <span className="max-w-[9rem] truncate" title={country.label}>{country.label}</span>
                   </div>
-                </td>
+                </th>
                 {proxies.map((proxy) => {
                   const cell = getCell(country.key, proxy.key);
                   const total = cell.live + cell.removed;
@@ -75,6 +76,7 @@ export default function CountryProxyMatrix({ countries, proxies, getCell, onCell
                         <button
                           type="button"
                           onClick={() => onCellClick(country, proxy)}
+                          aria-label={`${country.label} — ${proxy.label}`}
                           className="rounded transition-transform hover:scale-105"
                         >
                           <SuccessRateBadge live={cell.live} removed={cell.removed} size="sm" />

@@ -793,6 +793,12 @@ describe('computeTabKpisFromEntries', () => {
 
     expect(germanyFromPairs).toBe(kpis.byCountry['DE'].live + kpis.byCountry['DE'].removed);
     expect(enigmaUs1FromPairs).toBe(kpis.byProxy['enigma-us1'].live + kpis.byProxy['enigma-us1'].removed);
+
+    for (const k of Object.keys(kpis.byCountryProxy)) {
+      const [c, p] = k.split('::');
+      expect(kpis.byCountry).toHaveProperty(c);
+      expect(kpis.byProxy).toHaveProperty(p);
+    }
   });
 
   it('countries and proxies distinct lists are built from unfiltered entries, independent of any active country/proxy filter', () => {

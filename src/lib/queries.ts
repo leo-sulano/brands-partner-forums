@@ -543,6 +543,7 @@ function addToPairBreakdown(
 ) {
   const countryLabel = canonicalCountryName(countryLabelRaw);
   const proxyLabel = canonicalProxyName(proxyLabelRaw);
+  if (!countryLabel.trim() || !proxyLabel.trim()) return;
   const key = `${canonicalCountryKey(countryLabel)}::${canonicalProxyKey(proxyLabel)}`;
   if (!map[key]) map[key] = { countryLabel, proxyLabel, live: 0, removed: 0 };
   map[key][kind]++;
