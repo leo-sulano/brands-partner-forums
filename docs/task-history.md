@@ -9941,3 +9941,50 @@ drill-down links confirmed carrying `&brand=` in their rendered hrefs. Merged to
 only, no deploy step beyond the normal Vercel redeploy. Spec:
 `docs/superpowers/specs/2026-09-10-overview-per-brand-scope-design.md`. Plan:
 `docs/superpowers/plans/2026-09-10-overview-per-brand-scope.md`.
+
+---
+
+## Task 334: Overview Per-Brand Scope -> Per-Brand-Tab Scope
+
+*2026-09-10:* Same-day follow-up to Task 333 directly above. Per direct user request (confirmed
+via a screenshot and a clarifying question during brainstorming), replaced the individual-brand
+scope with a per-Brand-Tab scope: the filter dropdown now lists whole tabs (BIT, FTP, Rooster
+Partners, Trybet, SilverPlay, Hanan, Wizard of Odds, Revolution Casino, SuprPlay Limited,
+HazEmirates UAE, GRG - Gulf Recovery Group) instead of individual brands within a tab, persisted as
+`?tab=<tabSlug>` (decoded via the existing `slugToTab`) instead of the previous
+`?brand=<tabSlug>::<brandName>` composite key.
+
+Selecting a tab re-scopes the whole page exactly the same way Task 333's version did — Global
+KPIs, Platform/Country/Proxy Breakdown, and the Country x Proxy Matrix all still derive from
+`state.tabs` narrowed to just the selected tab — but "Brands Performance" now always shows that
+tab's own individual brand cards (heading, no toggle) instead of a bespoke single-summary-card,
+reusing 100% of the pre-existing "Brands" toggle view's rendering code, just pre-scoped to one tab
+via the same narrowing applied to `loadBrandData`.
+
+Turned out substantially simpler than the brand-level version, since tab-level scoping needs no
+per-entry brand filtering at all — just narrowing which tab(s) get fetched, identical to how a
+single tab's data already worked before either feature existed. Reverted as dead weight: the
+`brandFilter` param on `computeTabKpisFromEntries`/`fetchTabKpis` (`src/lib/queries.ts`) and its 6
+dedicated unit tests, the lazy cross-tab brand-directory fetch, and `MultiSelectDropdown`'s
+`onOpen`/`loading` props (`src/components/MultiSelectDropdown.tsx`) — none of them are needed once
+the dropdown's options are just the synchronously-available list of active operational tabs. Net
+-220 lines versus Task 333's version. The `noun="Brand Tab"` wording Task 333 itself had briefly
+tried and then reverted (per the standing `feedback_brand_tabs_terminology` lesson — "Brand Tab" is
+this project's proper noun for the tabs themselves, not an individual brand) is now genuinely
+correct here, since this dropdown really does list Brand Tabs.
+
+No schema/migration change — purely client-side, same scope as Task 333. Full suite (2432 tests,
+6 fewer than Task 333's 2438 — the removed `brandFilter` tests) and `npm run build` both pass.
+Live-verified via Playwright: selecting BIT scoped the whole page correctly (Total Accounts 571,
+every KPI/section subtitle reading "for BIT", "Brands Performance" showing BIT's own brand cards —
+7Bit Casino crypto, Alf Casino, Amonbet Casino, etc. — with no Brand Tabs/Brands toggle visible);
+composing with an existing Platform filter (`?tab=bit&platform=tp`) correctly hid the now-redundant
+Platform Breakdown section per its pre-existing rule; Clear correctly restored the full multi-tab
+view and toggle; and a bookmarked `?tab=bit&platform=tp` link resolved the dropdown's label
+("BIT") instantly on load with no loading state at all — a structural improvement over Task 333's
+brand-level version, which needed an async directory fetch and a `loading` indicator for the same
+scenario. No new console errors (only pre-existing, unrelated favicon-404 and Recharts
+`ResponsiveContainer` warnings). Bounded change (implemented directly after a short in-chat design,
+per the brainstorming skill's bounded path) — no spec/plan doc, since it's a same-day correction to
+Task 333's own scope rather than a new subsystem. Deployed via the normal Vercel redeploy on the
+next push — no separate deploy step.

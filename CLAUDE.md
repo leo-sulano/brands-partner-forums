@@ -61,7 +61,30 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-10 (newest):* Added an Overview "per-brand scope" — a new searchable "brand" filter
+- *2026-09-10 (newest):* Same-day follow-up to Task 333 directly below: per direct user request,
+  replaced the individual-brand scope with a per-**Brand Tab** scope — the filter dropdown now
+  lists whole tabs (BIT, FTP, Rooster Partners, ...) instead of individual brands within a tab
+  (the earlier "Spinjo — Rooster Partners"-style entries), persisted as `?tab=<tabSlug>` instead of
+  `?brand=<tabSlug>::<brandName>`. Selecting a tab re-scopes the whole page the same way as before
+  (Global KPIs, Platform/Country/Proxy Breakdown, the Matrix all derive from `state.tabs` narrowed
+  to just that tab), but "Brands Performance" now always shows the tab's own individual brand cards
+  — reusing the exact same rendering the pre-existing "Brands" toggle view already had, just
+  pre-scoped to one tab, instead of a bespoke single-summary-card. Turned out simpler than the
+  brand-level version: no per-entry brand filtering is needed at all (just narrowing which tab gets
+  fetched, identical to how a single tab's data already worked), so `computeTabKpisFromEntries`/
+  `fetchTabKpis`'s `brandFilter` param (and its dedicated tests), the lazy brand-directory fetch,
+  and `MultiSelectDropdown`'s `onOpen`/`loading` props were all reverted as dead weight — net -220
+  lines vs. Task 333's version. The `noun="Brand Tab"` wording issue from Task 333's own mid-flight
+  correction resolves itself here: this dropdown genuinely does list Brand Tabs now, so that wording
+  is correct for the first time. Full suite (2432 tests, 6 removed) and `npm run build` both pass;
+  live-verified via Playwright — selecting BIT scoped the whole page (571 total, "for BIT" hints,
+  individual BIT brand cards under Brands Performance, no toggle shown), composing with an existing
+  Platform filter, Clear restoring the full view, and a bookmarked `?tab=bit&platform=tp` link
+  resolving instantly with no loading state at all (no async directory to wait on, unlike the
+  brand-level version). Bounded change (Tier 2/3 boundary — touches `queries.ts` but only to revert
+  it to its pre-Task-333 form) — implemented directly with one self-review pass, no separate
+  spec/plan doc. Frontend-only, no deploy step beyond the normal Vercel redeploy. Task 334.
+- *2026-09-10 (prior):* Added an Overview "per-brand scope" — a new searchable "brand" filter
   dropdown (last pill in the toolbar, after Platform) lets a user pick one brand across any tab
   (e.g. "Spinjo — Rooster Partners") and re-scopes the entire Overview page — Global KPIs, a single
   summary card (replacing the "Brand Tabs / Brands" toggle+grid), Platform Breakdown, Country
@@ -1729,17 +1752,6 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
-- **Overview per-brand scope (Task 333, 2026-09-10) — one drill-down link builder still isn't
-  brand-scoped, parked deliberately.** `openPlatformSlice`'s `linkFor` (`src/pages/Overview.tsx`,
-  Platform Breakdown's own drill-down) still links to a tab's full Brand Tab page without appending
-  `&brand=`, unlike the 3 other drill-down link builders (`openDimensionSlice`,
-  `openCountryProxySlice`, `KpiBreakdownModal`'s row link) that were all fixed in the final review's
-  fix wave. Found and self-flagged by the implementer during that same fix wave, but not part of
-  the named finding, so left out of scope for that round rather than extending it unreviewed. Low
-  impact — Platform Breakdown itself is already hidden whenever a platform filter is active, so
-  this only matters for the narrower case of a brand-only (no platform filter) scope. Fix
-  direction: same one-line pattern already applied to the other 3 (append
-  `&brand=${encodeURIComponent(selectedBrand.brand)}` when `selectedBrand` is set).
 - **Custom Platforms (Task 325, 2026-09-07) deliberately does not reach Schedule Planner, Ask AI,
   Score Summary, or `removed_platform_brands` — per the feature's own spec Non-goals, not an
   oversight.** A custom (user-defined) platform never appears on the Schedule Planner calendar
