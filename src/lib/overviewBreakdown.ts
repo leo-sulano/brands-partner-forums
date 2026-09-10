@@ -1,10 +1,24 @@
-import type { CountBreakdown } from '../types/brand-entry';
+import type { CountBreakdown, CountBreakdownPair } from '../types/brand-entry';
 
 export function mergeBreakdownMaps(maps: Record<string, CountBreakdown>[]): Record<string, CountBreakdown> {
   const merged: Record<string, CountBreakdown> = {};
   for (const map of maps) {
     for (const [key, value] of Object.entries(map)) {
       if (!merged[key]) merged[key] = { label: value.label, live: 0, removed: 0 };
+      merged[key].live += value.live;
+      merged[key].removed += value.removed;
+    }
+  }
+  return merged;
+}
+
+export function mergePairBreakdownMaps(
+  maps: Record<string, CountBreakdownPair>[],
+): Record<string, CountBreakdownPair> {
+  const merged: Record<string, CountBreakdownPair> = {};
+  for (const map of maps) {
+    for (const [key, value] of Object.entries(map)) {
+      if (!merged[key]) merged[key] = { countryLabel: value.countryLabel, proxyLabel: value.proxyLabel, live: 0, removed: 0 };
       merged[key].live += value.live;
       merged[key].removed += value.removed;
     }
