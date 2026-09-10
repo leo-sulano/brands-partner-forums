@@ -12,7 +12,7 @@ import type { DynamicTabPlatform } from './dynamicTabRegistry.ts';
 import type { Mention, MentionStatus } from '../types/mention.ts';
 import type { Entry } from '../types/entry.ts';
 import type { Profile } from '../types/profile.ts';
-import type { BrandEntry, TabKpis, BrandKpis, CountBreakdown } from '../types/brand-entry.ts';
+import type { BrandEntry, TabKpis, BrandKpis, CountBreakdown, CountBreakdownPair } from '../types/brand-entry.ts';
 import type { AuditEntityType, AuditLogEntry } from '../types/audit-log.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
@@ -535,6 +535,19 @@ function addToBreakdown(
   map[key][kind]++;
 }
 
+function addToPairBreakdown(
+  map: Record<string, CountBreakdownPair>,
+  countryLabelRaw: string,
+  proxyLabelRaw: string,
+  kind: 'live' | 'removed',
+) {
+  const countryLabel = canonicalCountryName(countryLabelRaw);
+  const proxyLabel = canonicalProxyName(proxyLabelRaw);
+  const key = `${canonicalCountryKey(countryLabel)}::${canonicalProxyKey(proxyLabel)}`;
+  if (!map[key]) map[key] = { countryLabel, proxyLabel, live: 0, removed: 0 };
+  map[key][kind]++;
+}
+
 function resolveReviewColumns(rawHeaders: string[], tab: string): {
   tpCol: string | null; agCol: string | null; cgCol: string | null; woCol: string | null; genericCol: string | null;
   activePlatforms: ('tp' | 'ag' | 'cg' | 'wo')[];
@@ -710,6 +723,7 @@ export function computeTabKpisFromEntries(
   const proxies = uniqueDisplayValues(entries.map((e) => resolveProxyLabel(e.data['Proxy Used'])), canonicalProxyKey, canonicalProxyName);
   const byCountry: Record<string, CountBreakdown> = {};
   const byProxy: Record<string, CountBreakdown> = {};
+  const byCountryProxy: Record<string, CountBreakdownPair> = {};
 
   for (const entry of filteredEntries) {
     const d = entry.data;
@@ -724,10 +738,12 @@ export function computeTabKpisFromEntries(
       live++;
       addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'live', canonicalCountryKey, canonicalCountryName);
       addToBreakdown(byProxy, resolveProxyLabel(d['Proxy Used']), 'live', canonicalProxyKey, canonicalProxyName);
+      addToPairBreakdown(byCountryProxy, resolveCountryLabel(d, tab), resolveProxyLabel(d['Proxy Used']), 'live');
     } else if (c.overall === 'removed') {
       removed++;
       addToBreakdown(byCountry, resolveCountryLabel(d, tab), 'removed', canonicalCountryKey, canonicalCountryName);
       addToBreakdown(byProxy, resolveProxyLabel(d['Proxy Used']), 'removed', canonicalProxyKey, canonicalProxyName);
+      addToPairBreakdown(byCountryProxy, resolveCountryLabel(d, tab), resolveProxyLabel(d['Proxy Used']), 'removed');
     }
     else if (c.overall === 'done') done++;
     else if (c.overall === 'pending') pending++;
@@ -754,7 +770,7 @@ export function computeTabKpisFromEntries(
     ag: { live: agLive, removed: agRemoved },
     cg: { live: cgLive, removed: cgRemoved },
     wo: { live: woLive, removed: woRemoved },
-    activePlatforms: visiblePlatforms, customPlatforms, byCountry, byProxy, countries, proxies,
+    activePlatforms: visiblePlatforms, customPlatforms, byCountry, byProxy, byCountryProxy, countries, proxies,
   };
 }
 
