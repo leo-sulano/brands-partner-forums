@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { mergeBreakdownMaps, topNWithOther, mergeDistinctValues } from './overviewBreakdown';
-import type { CountBreakdown } from '../types/brand-entry';
+import { mergeBreakdownMaps, mergePairBreakdownMaps, topNWithOther, mergeDistinctValues } from './overviewBreakdown';
+import type { CountBreakdown, CountBreakdownPair } from '../types/brand-entry';
 
 describe('mergeBreakdownMaps', () => {
   it('sums live/removed across maps that share a key, keeping the first label seen', () => {
@@ -22,6 +22,29 @@ describe('mergeBreakdownMaps', () => {
 
   it('returns an empty object for an empty input list', () => {
     expect(mergeBreakdownMaps([])).toEqual({});
+  });
+});
+
+describe('mergePairBreakdownMaps', () => {
+  it('sums live/removed across maps that share a composite key, keeping the first labels seen', () => {
+    const a: Record<string, CountBreakdownPair> = { 'DE::enigma-us1': { countryLabel: 'Germany', proxyLabel: 'Enigma-US1', live: 2, removed: 1 } };
+    const b: Record<string, CountBreakdownPair> = { 'DE::enigma-us1': { countryLabel: 'germany', proxyLabel: 'enigma-us1', live: 3, removed: 0 } };
+    const merged = mergePairBreakdownMaps([a, b]);
+    expect(merged).toEqual({ 'DE::enigma-us1': { countryLabel: 'Germany', proxyLabel: 'Enigma-US1', live: 5, removed: 1 } });
+  });
+
+  it('keeps disjoint composite keys from different tabs separate', () => {
+    const a: Record<string, CountBreakdownPair> = { 'DE::enigma-us1': { countryLabel: 'Germany', proxyLabel: 'Enigma-US1', live: 1, removed: 0 } };
+    const b: Record<string, CountBreakdownPair> = { 'FR::enigma-us2': { countryLabel: 'France', proxyLabel: 'Enigma-US2', live: 0, removed: 2 } };
+    const merged = mergePairBreakdownMaps([a, b]);
+    expect(merged).toEqual({
+      'DE::enigma-us1': { countryLabel: 'Germany', proxyLabel: 'Enigma-US1', live: 1, removed: 0 },
+      'FR::enigma-us2': { countryLabel: 'France', proxyLabel: 'Enigma-US2', live: 0, removed: 2 },
+    });
+  });
+
+  it('returns an empty object for an empty input list', () => {
+    expect(mergePairBreakdownMaps([])).toEqual({});
   });
 });
 

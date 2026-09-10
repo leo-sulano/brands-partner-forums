@@ -839,7 +839,7 @@ export default function BrandGroup() {
       // the sidebar's tab links, which never carry a query string — restores
       // the last view instead of always reopening blank.
       const saved = readFiltersFromStorage(decodedTab);
-      const hasDeepLinkParams = ['brand', 'platform', 'status', 'rating', 'country'].some((p) => searchParams.has(p));
+      const hasDeepLinkParams = ['brand', 'platform', 'status', 'rating', 'country', 'proxy'].some((p) => searchParams.has(p));
 
       setSearch(saved.search ?? '');
       setBrandFilter(hasDeepLinkParams ? readArrayParam(searchParams, 'brand') : (saved.brandFilter ?? []));
@@ -859,7 +859,7 @@ export default function BrandGroup() {
           })()
         : (saved.ratingFilter ?? null));
       setAgentFilter(saved.agentFilter ?? []);
-      setProxyFilter(saved.proxyFilter ?? []);
+      setProxyFilter(hasDeepLinkParams ? readArrayParam(searchParams, 'proxy') : (saved.proxyFilter ?? []));
       setCountryFilter(hasDeepLinkParams ? readArrayParam(searchParams, 'country') : (saved.countryFilter ?? []));
       setDateFrom(saved.dateFrom ?? '');
       setDateTo(saved.dateTo ?? '');
@@ -1040,6 +1040,7 @@ export default function BrandGroup() {
     setStatusFilter(readArrayParam(searchParams, 'status').filter((s): s is StatusValue => STATUS_FILTER_VALUES.includes(s as StatusValue)));
     setBrandFilter(readArrayParam(searchParams, 'brand'));
     setCountryFilter(readArrayParam(searchParams, 'country'));
+    setProxyFilter(readArrayParam(searchParams, 'proxy'));
     const raw = searchParams.get('rating');
     if (raw === 'unrated') {
       setRatingFilter('unrated');

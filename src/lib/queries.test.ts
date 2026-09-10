@@ -739,6 +739,68 @@ describe('computeTabKpisFromEntries', () => {
     expect(kpis.proxies).toEqual(['Enigma-US1', 'No Proxy']);
   });
 
+  it('byCountryProxy buckets live/removed per country+proxy pair, keyed by composite canonical key, with both display labels attached', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US1' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'Germany', 'Proxy Used': 'Enigma-US2' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+    expect(kpis.byCountryProxy).toEqual({
+      'DE::enigma-us1': { countryLabel: 'Germany', proxyLabel: 'Enigma-US1', live: 1, removed: 0 },
+      'DE::enigma-us2': { countryLabel: 'Germany', proxyLabel: 'Enigma-US2', live: 0, removed: 1 },
+    });
+  });
+
+  it('byCountryProxy merges every recognized spelling of the same country+proxy pair onto one bucket', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'UK', 'Proxy Used': 'enigma-us1' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'United Kingdom', 'Proxy Used': ' Enigma-US1 ' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+    // proxyLabel reflects the first-encountered entry's casing ('enigma-us1', entry '1') —
+    // addToPairBreakdown sets a bucket's display label once, on first insert, deliberately
+    // matching addToBreakdown's existing first-wins style (see the adjacent byCountry/byProxy
+    // tests above, which rely on the same rule). Unlike countryLabel (always the canonical full
+    // name via a lookup table, regardless of input order), there is no alias database for proxy
+    // names — canonicalProxyName is a pass-through typo-correction only — so proxyLabel genuinely
+    // depends on which spelling was seen first.
+    expect(kpis.byCountryProxy).toEqual({
+      'GB::enigma-us1': { countryLabel: 'United Kingdom', proxyLabel: 'enigma-us1', live: 2, removed: 0 },
+    });
+  });
+
+  it('byCountryProxy buckets a blank Country and blank Proxy Used under Unknown/No Proxy, same as byCountry/byProxy individually', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': '', 'Proxy Used': '' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+    expect(kpis.byCountryProxy).toEqual({
+      'unknown::no proxy': { countryLabel: 'Unknown', proxyLabel: 'No Proxy', live: 1, removed: 0 },
+    });
+  });
+
+  it('byCountryProxy cells sum back to the same per-country and per-proxy totals as byCountry/byProxy (anti-drift guarantee)', () => {
+    const entries = [
+      entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US1' }),
+      entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Removed', 'Country': 'Germany', 'Proxy Used': 'Enigma-US2' }),
+      entry('3', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'France', 'Proxy Used': 'Enigma-US1' }),
+    ];
+    const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
+
+    const pairs = Object.values(kpis.byCountryProxy);
+    const germanyFromPairs = pairs.filter((p) => p.countryLabel === 'Germany').reduce((s, p) => s + p.live + p.removed, 0);
+    const enigmaUs1FromPairs = pairs.filter((p) => p.proxyLabel === 'Enigma-US1').reduce((s, p) => s + p.live + p.removed, 0);
+
+    expect(germanyFromPairs).toBe(kpis.byCountry['DE'].live + kpis.byCountry['DE'].removed);
+    expect(enigmaUs1FromPairs).toBe(kpis.byProxy['enigma-us1'].live + kpis.byProxy['enigma-us1'].removed);
+
+    for (const k of Object.keys(kpis.byCountryProxy)) {
+      const [c, p] = k.split('::');
+      expect(kpis.byCountry).toHaveProperty(c);
+      expect(kpis.byProxy).toHaveProperty(p);
+    }
+  });
+
   it('countries and proxies distinct lists are built from unfiltered entries, independent of any active country/proxy filter', () => {
     const entries = [
       entry('1', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'Germany', 'Proxy Used': 'Enigma-US1' }),

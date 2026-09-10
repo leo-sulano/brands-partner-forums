@@ -22,6 +22,16 @@ export interface CountBreakdown {
   removed: number;
 }
 
+// One cell of the Overview Country x Proxy matrix — carries both labels
+// (unlike CountBreakdown's single label) since the composite key encodes
+// two independent dimensions.
+export interface CountBreakdownPair {
+  countryLabel: string;
+  proxyLabel: string;
+  live: number;
+  removed: number;
+}
+
 export interface TabKpis {
   total: number;
   live: number;
@@ -38,6 +48,11 @@ export interface TabKpis {
   customPlatforms: { platform: CustomPlatformConfig; total: number; live: number; removed: number; successRate: number | null }[];
   byCountry: Record<string, CountBreakdown>;
   byProxy: Record<string, CountBreakdown>;
+  // Composite country+proxy breakdown for Overview's Country x Proxy matrix —
+  // key is `${canonicalCountryKey}::${canonicalProxyKey}`. Built from the same
+  // classification pass as byCountry/byProxy in computeTabKpisFromEntries, so
+  // it can never disagree with those two maps for the same entries.
+  byCountryProxy: Record<string, CountBreakdownPair>;
   countries: string[];
   proxies: string[];
 }
