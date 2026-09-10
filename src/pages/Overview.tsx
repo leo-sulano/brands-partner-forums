@@ -698,11 +698,9 @@ export default function Overview() {
     });
   }
 
-  function openCountryProxySlice(country: BreakdownCard, proxy: BreakdownCard) {
+  function openCountryProxySlice(country: BreakdownCard, proxy: BreakdownCard, kind: 'live' | 'removed') {
     if (country.isOther || proxy.isOther) return;
     const key = `${country.key}::${proxy.key}`;
-    const cell = getCountryProxyCell(country.key, proxy.key);
-    const kind: 'live' | 'removed' = cell.live > 0 ? 'live' : 'removed';
     const flagUrl = countryFlagImageUrl(country.label);
     const icon = flagUrl
       ? <img src={flagUrl} alt={country.label} className="size-4 rounded-sm object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
