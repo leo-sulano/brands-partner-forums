@@ -21,7 +21,7 @@ export interface CountryProxyMatrixProps {
 export default function CountryProxyMatrix({ countries, proxies, getCell, onCellClick }: CountryProxyMatrixProps) {
   return (
     <div className="max-h-[32rem] overflow-auto rounded-xl border border-slate-200 bg-white">
-      <table className="border-collapse text-xs">
+      <table className="w-full border-collapse text-xs">
         <thead>
           <tr>
             <th className="sticky left-0 top-0 z-20 border-b border-r border-slate-200 bg-slate-50 px-3 py-2 text-left font-medium text-slate-500">
