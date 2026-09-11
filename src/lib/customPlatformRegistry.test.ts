@@ -10,8 +10,14 @@ const YELP: CustomPlatformConfig = {
   statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
 };
 
+// Separate constants for the new test suites, matching the brief's example values
+const YELP_BITP: CustomPlatformConfig = {
+  id: 'p1', tab: 'BITP', name: 'Yelp', shortLabel: 'YP',
+  statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+};
+
 const G2: CustomPlatformConfig = {
-  id: 'p2', tab: 'BITP', name: 'G2', shortLabel: 'G2',
+  id: 'p2', tab: 'Hanan', name: 'G2', shortLabel: 'G2',
   statusColumn: 'G2 Review Status', dateColumn: 'G2 Review Added', maxScore: null,
 };
 
@@ -68,13 +74,13 @@ describe('getCustomPlatformById', () => {
   afterEach(() => resetTabCustomPlatforms());
 
   it('finds a registered platform by id regardless of which tab registered it', () => {
-    registerTabCustomPlatforms([YELP, G2]);
-    expect(getCustomPlatformById('p1')).toEqual(YELP);
+    registerTabCustomPlatforms([YELP_BITP, G2]);
+    expect(getCustomPlatformById('p1')).toEqual(YELP_BITP);
     expect(getCustomPlatformById('p2')).toEqual(G2);
   });
 
   it('returns undefined for an unregistered id', () => {
-    registerTabCustomPlatforms([YELP]);
+    registerTabCustomPlatforms([YELP_BITP]);
     expect(getCustomPlatformById('nonexistent')).toBeUndefined();
   });
 });
@@ -83,9 +89,9 @@ describe('getCustomPlatformIds', () => {
   afterEach(() => resetTabCustomPlatforms());
 
   it('returns the ids of every custom platform registered for a tab', () => {
-    registerTabCustomPlatforms([YELP, G2]);
-    expect(getCustomPlatformIds('Hanan')).toEqual(['p1']);
-    expect(getCustomPlatformIds('BITP')).toEqual(['p2']);
+    registerTabCustomPlatforms([YELP_BITP, G2]);
+    expect(getCustomPlatformIds('BITP')).toEqual(['p1']);
+    expect(getCustomPlatformIds('Hanan')).toEqual(['p2']);
   });
 
   it('returns an empty array for a tab with no custom platforms', () => {
