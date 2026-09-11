@@ -10115,3 +10115,69 @@ and its data cells) to make scanning a wide grid easier, mirroring the existing 
 tint Proxy Breakdown already uses. Tier 1 (fast path) — confined to `CountryProxyMatrix.tsx` plus
 the one caller in `Overview.tsx`, no other importers. `npm run build` clean. Bounded change,
 implemented directly, no spec/plan doc.
+
+---
+
+## Task 340: Custom Platform "Page Removed" Flag
+
+*2026-09-11:* Closed the first of Custom Platforms' (Task 325) three deferred parity gaps — a
+custom (user-defined) platform's page can now be flagged "removed" per brand, with full parity to
+the built-in `removed_platform_brands` mechanism: KPI exclusion (Overview + Brand Tabs), a badge
+next to the brand name, an Edit Entry checkbox, an Edit Brand Tab bulk "Removed platform pages"
+section, a CSV/Excel export column, and the same "Brand Removed" notification email a built-in flag
+already triggers. Schedule Planner and Ask AI parity remain deferred, unchanged from Task 325's own
+scoping.
+
+New `removed_custom_platform_brands` table, keyed by `custom_platforms.id` rather than the closed
+4-value `Platform` union (`'tp'|'ag'|'cg'|'wo'`) used in 218 other places across this codebase —
+deliberately a separate, additive table + module rather than widening that union, since none of
+Schedule Planner/PMS sync/export/etc. need to know about it. The tricky diff/date-parsing/notify
+logic already in `platformRemovedActions.ts`'s `savePlatformRemoved` was extracted into a shared
+`applyRemovalFlagChanges` engine both the built-in and new `saveCustomPlatformRemoved` paths call,
+instead of duplicating it — the 8 pre-existing `savePlatformRemoved` tests pass unmodified, proving
+the extraction is behavior-preserving. `PlatformRemovedBadge` and `PlatformRemovedModal` were
+generalized from `{ platform: Platform }` props to plain string/descriptor shapes so both surfaces
+render built-in and custom flags through the same components.
+
+Built via Subagent-Driven Development (13 tasks). Two mid-task fix rounds: a Windows-tooling file
+edit accidentally introduced a UTF-8 BOM and corrupted 4 pre-existing em-dash characters elsewhere
+in `queries.test.ts` (fixed, unrelated to the feature logic itself); and `TabRemovedPlatformsSection`'s
+Restore button silently no-op'd when the flagged custom platform had since been disabled on the tab
+(the registry lookup missed, and `saveCustomPlatformRemoved` built zero descriptors) — fixed with a
+row-derived fallback config object, since an unflag never needs the platform's real name/columns.
+
+A final whole-branch review (opus) then found and fixed 3 real Important gaps in one consolidated
+fix wave: (1) Brand Tabs' custom-platform KPI cards didn't respect `brandScoped` (the flag that lets
+a brand's own page, or a single-brand tab, bypass the removed-exclusion and show real counts) —
+reintroducing the exact Task 214/215 divergence class for custom platforms, where a flagged brand's
+own page would show 0/0 while its built-in TP/AG/CG/WO cards showed real numbers; (2) the Edit Entry
+checkbox silently never rendered on any entry that predated a custom platform's creation, since a
+custom platform's status/date columns are only ever written onto NEW entries (via Add Review
+Account) — nothing backfills them onto existing rows, so the modal's headers never contained them;
+fixed by force-injecting those columns the same way `Agent`/`Brand Link`/Review Text already are;
+(3) `deleteCustomPlatform` had a friendly pre-check guard against the existing `tab_custom_platforms`
+FK but no equivalent guard against the new table's `on delete restrict` FK, so a blocked delete
+surfaced a raw Postgres `23503` error to the user — fixed with a matching guard. Full suite (1059
+tests) and build both passed after the fix wave; re-reviewed clean, no new breakage, no scope creep.
+
+A handful of Minor findings were deliberately deferred (documented in CLAUDE.md-adjacent session
+notes, not re-litigated here): disabled-platform rows in the combined Edit Brand Tab list show a raw
+UUID label and sort by UUID instead of name; `custom_platforms.short_label` has no uniqueness
+constraint, creating a narrow export-column-collision edge case if two platforms (or a custom one
+and a built-in) ever share a short label; and a save that newly flags both a built-in and a custom
+platform for the same brand fires two concurrent (harmless, per the reviewer's own trace against
+this project's PMS-sync history) `syncTabStatusToPms` calls.
+
+Merged to `main` with one trivial import-line conflict in `BrandGroup.tsx` against an unrelated,
+concurrently-merged commit (both branches had added different imports to the same line) — resolved
+by combining both. Full suite re-verified at 3511/3511 on the merged tree; build clean. Deploy
+caught and fixed one more real issue: the new migration's timestamp (`20260911120000`) collided
+with an unrelated migration (`add_check_status_config.sql`) that came in via the same merge —
+Supabase versions migrations by that numeric prefix alone, so pushing as-is would have silently
+skipped this one since the remote already had that version applied from the other file. Renamed to
+`20260911130000` before `supabase db push`; applied and live-verified via a direct anon-key REST
+call (`200 OK`, empty array, confirming the table and its RLS policies are live and correct). No
+Edge Function redeploy needed — the notification email path (`notify-brand-removed`) is untouched,
+just reused with a different `platformShortLabel` value. Spec:
+`docs/superpowers/specs/2026-09-11-custom-platform-removed-flag-design.md`. Plan:
+`docs/superpowers/plans/2026-09-11-custom-platform-removed-flag.md`.

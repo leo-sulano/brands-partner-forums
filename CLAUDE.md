@@ -61,7 +61,46 @@ Brands Partner Forum/
 - [ ] Add Vercel password protection on first deploy
 
 ### Recent Changes
-- *2026-09-10 (newest):* Three small bounded items from earlier the same day, found undocumented
+- *2026-09-11 (newest):* Closed one of the three deferred Custom Platforms (Task 325) parity gaps —
+  a custom (user-defined) platform can now have its page flagged "removed" on a per-brand basis,
+  with full parity to the built-in `removed_platform_brands` mechanism: KPI exclusion (Overview +
+  Brand Tabs), a badge next to the brand name, an Edit Entry checkbox, an Edit Brand Tab bulk
+  "Removed platform pages" section, a CSV/Excel export column, and the same "Brand Removed"
+  notification email a built-in flag already triggers. New `removed_custom_platform_brands` table
+  (keyed by `custom_platforms.id` rather than the closed 4-value `Platform` union used in 218 other
+  places across this codebase — deliberately kept as a separate, additive table + module rather than
+  widening that union, mirroring how Custom Platforms itself was added onto the hardcoded 11 tabs).
+  The tricky diff/date-parsing/notify logic already in `platformRemovedActions.ts`'s
+  `savePlatformRemoved` was extracted into a shared `applyRemovalFlagChanges` engine that both the
+  built-in and new custom-platform save paths call, instead of duplicating it — the 8 pre-existing
+  `savePlatformRemoved` tests pass unmodified, proving the extraction is behavior-preserving.
+  Schedule Planner and Ask AI parity remain deferred, unchanged from Task 325's own scoping — see
+  the Known Issues bullet below.
+
+  Built via Subagent-Driven Development (13 tasks, 2 mid-task fix rounds — a Windows file-encoding
+  corruption in one test file, and a silent-no-op Restore bug for a custom platform later disabled
+  on its tab) plus a final whole-branch review (opus) that found and fixed 3 real Important gaps in
+  one consolidated fix wave: the custom-platform KPI cards in Brand Tabs didn't respect
+  `brandScoped`, reintroducing the exact Task 214/215 divergence class for custom platforms (a
+  brand's own page would show 0/0 while its built-in cards showed real counts); the Edit Entry
+  checkbox silently never rendered on any entry that predated a custom platform's creation, since
+  its status/date columns were never force-injected into the modal's headers the way `Agent`/
+  `Brand Link`/Review Text already are; and `deleteCustomPlatform` had no friendly guard against the
+  new table's `on delete restrict` FK, so a blocked delete surfaced a raw Postgres error. Full suite
+  (1059 tests on the branch) and build both passed after the fix wave.
+
+  Merged to `main` with one trivial import-line conflict (another concurrent commit had touched the
+  same line in `BrandGroup.tsx`), full suite re-verified at 3511/3511 on the merged tree. Deploy
+  found and fixed one more real issue before it could bite: the new migration's timestamp
+  (`20260911120000`) collided with an unrelated migration that had come in via the same merge —
+  Supabase versions migrations by that numeric prefix alone, so pushing as-is would have silently
+  skipped this one since the remote already had that version from the other file. Renamed to
+  `20260911130000` before `supabase db push`; applied and live-verified via a direct anon-key REST
+  call (200 OK, empty array, confirming the table + RLS are live and correct). No Edge Function
+  redeploy needed — the notification email path is untouched, just reused. Spec:
+  `docs/superpowers/specs/2026-09-11-custom-platform-removed-flag-design.md`. Plan:
+  `docs/superpowers/plans/2026-09-11-custom-platform-removed-flag.md`. Task 340.
+- *2026-09-10 (prior):* Three small bounded items from earlier the same day, found undocumented
   and backfilled: (Task 337) a top-level React `ErrorBoundary` wraps `<App />` in `main.tsx` — an
   uncaught render error now shows a "Something went wrong" + Reload card instead of blanking the
   whole app white; (Task 338) new `cron-failure-alert` Edge Function (15-min `pg_cron` tick) emails
@@ -1788,24 +1827,27 @@ Brands Partner Forum/
 
 ### Known Issues / Backlog
 
-- **Custom Platforms (Task 325, 2026-09-07) deliberately does not reach Schedule Planner, Ask AI,
-  Score Summary, or `removed_platform_brands` — per the feature's own spec Non-goals, not an
-  oversight.** A custom (user-defined) platform never appears on the Schedule Planner calendar
-  grid (no scheduling, auto-pause, or PMS status sync for it); Ask AI's tools
-  (`get_score_summary`/`query_entries`/etc.) stay on the built-in `tp|ag|cg|wo` enum and are
-  unaware custom platforms exist; Score Summary (a cross-tab, combined view with no natural
-  meaning for a platform that's tab-scoped by construction) doesn't show it at all; and there is
-  no "page removed, exclude from KPIs" flag equivalent to `removed_platform_brands` for a custom
-  platform. Each is meant to be revisited as its own separate, later feature once the core
-  Overview/Brand-Tabs slice is proven in real use. Also deferred, added in the same session's
-  final-review fix wave: the "Rating scale (optional)" dropdown (1-5/1-10 stars) was removed from
-  `AddCustomPlatformModal.tsx` entirely — `custom_platforms.max_score` was stored but read by
-  nothing, so the control was pure UI theater; the DB column and the `maxScore` fields on
-  `CustomPlatformConfig`/`CustomPlatformSummary` stay in place for a future phase, just not
-  offered in the UI until something actually uses them. One more gap found live-verifying that fix
-  wave, not part of it and not yet fixed: `EditEntryModal` does not surface a newly-created custom
-  platform's status/date fields on an existing entry — only `AddReviewAccountModal` does (that was
-  the plan's actual scope); worth a follow-up if custom platforms see real adoption.
+- **Custom Platforms (Task 325, 2026-09-07) deliberately does not reach Schedule Planner or Ask AI
+  — per the feature's own spec Non-goals, not an oversight. The removed-flag gap and the
+  Score-Summary gap below are resolved/narrowed as of Task 340, 2026-09-11 — see that entry above.**
+  A custom (user-defined) platform still never appears on the Schedule Planner calendar grid (no
+  scheduling, auto-pause, or PMS status sync for it), and Ask AI's tools
+  (`get_score_summary`/`query_entries`/etc.) still stay on the built-in `tp|ag|cg|wo` enum and are
+  unaware custom platforms exist — Score Summary (a cross-tab, combined view) still doesn't show a
+  dedicated custom-platform row, though its own numbers derive from `entries` the same as always.
+  Each of these two is meant to be revisited as its own separate, later feature once the core
+  Overview/Brand-Tabs slice is proven in real use. **Resolved (Task 340):** a "page removed,
+  exclude from KPIs" flag equivalent to `removed_platform_brands` now exists for custom platforms
+  (`removed_custom_platform_brands`), with full parity across KPI exclusion, badge, Edit Entry
+  checkbox, Edit Brand Tab section, export column, and notification email. Also deferred, added in
+  the same session's final-review fix wave: the "Rating scale (optional)" dropdown (1-5/1-10 stars)
+  was removed from `AddCustomPlatformModal.tsx` entirely — `custom_platforms.max_score` was stored
+  but read by nothing, so the control was pure UI theater; the DB column and the `maxScore` fields
+  on `CustomPlatformConfig`/`CustomPlatformSummary` stay in place for a future phase, just not
+  offered in the UI until something actually uses them. **Resolved (Task 340):** `EditEntryModal`
+  now force-injects a custom platform's status/date columns into its headers for a pre-existing
+  entry (the same pattern already used for `Agent`/`Brand Link`/Review Text), closing the gap where
+  those fields previously appeared only via `AddReviewAccountModal` on newly-created entries.
 - **A NEW pause created in Edit Brand Tab's "Paused brands" section lags on the Schedule Planner
   grid, PMS status sync, and Ask AI's `get_paused_combos` until that tab's next `recalculatePauses`
   run (2026-09-03, Task 318) — accepted, self-healing.** That section reads/writes
