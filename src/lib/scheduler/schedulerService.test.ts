@@ -5,6 +5,7 @@ import { platformRemovedKey } from '../removedPlatformBrands';
 import { overrideKey } from '../scheduleOverrides';
 import { scheduleBrandKey } from '../scheduleBrandConfig';
 import { WEEKDAYS, toISODate, type Weekday } from '../scheduleBrands';
+import { registerTabCustomPlatforms, resetTabCustomPlatforms } from '../customPlatformRegistry';
 import type { Entry } from '../../types/entry';
 
 const queries = vi.hoisted(() => ({
@@ -503,6 +504,35 @@ describe('recalculatePauses', () => {
       expect(resumed).toEqual([{ brandKey: 'winmega', platform: 'tp' }]);
     });
   });
+
+  // Regression test for this task's real bug fix: recentStatusesFor used to
+  // read PLATFORM_STATUS_KEYS[platform]/PLATFORM_DATE_KEYS[platform] (both
+  // Record<Platform, string[]> from scoreSummary.ts), which is `undefined`
+  // for a custom platform's uuid -- silently breaking status/date reads and
+  // making auto-pause detection impossible for any custom platform. Fixed
+  // via getPlatformStatusDateKeys (scheduleUtils.ts), which falls back to the
+  // custom platform's own registered statusColumn/dateColumn.
+  it('pauses a custom platform after two consecutive Removed/Refused posts, reading its own registered status/date columns', async () => {
+    registerTabCustomPlatforms([{
+      id: 'custom-platform-id', tab: 'BITP', name: 'Yelp', shortLabel: 'YP',
+      statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+    }]);
+    try {
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['custom-platform-id'],
+        entries: [
+          entry({ Brands: 'WinMega', 'Yelp Review Status': 'removed', 'Yelp Review Added': '2026-07-28' }),
+          entry({ Brands: 'WinMega', 'Yelp Review Status': 'refused', 'Yelp Review Added': '2026-07-24' }),
+          entry({ Brands: 'WinMega', 'Yelp Review Status': 'published', 'Yelp Review Added': '2026-07-01' }),
+        ],
+      };
+      await recalculatePauses('BITP', '2026-08-03', ctx);
+      expect(queries.upsertBrandPlatformPause).toHaveBeenCalledWith('BITP', 'WinMega', 'custom-platform-id', '2026-08-03', expect.any(String), undefined);
+    } finally {
+      resetTabCustomPlatforms();
+    }
+  });
 });
 
 describe('ensureWeekGenerated', () => {
@@ -668,6 +698,45 @@ describe('ensureWeekGenerated', () => {
     const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
     const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
     expect(activeDays).toHaveLength(1); // normal frequency only, no carryover
+  });
+
+  // Regression test found during this task, beyond the plan's original
+  // recentStatusesFor-only fix: buildCarryover's completion check had the
+  // exact same PLATFORM_STATUS_KEYS[platform] direct-indexing bug --
+  // undefined for a custom platform's uuid, which pick() would then throw
+  // on. This only fires when last week has a real (non-empty) row for the
+  // combo, so the fixture below gives it one. Carryover itself stays
+  // disabled (CARRYOVER_RULES.completionThreshold = 0), so this only proves
+  // ensureWeekGenerated doesn't crash and still generates the custom
+  // platform's normal (1/week) row.
+  it('does not crash computing carryover completion for a custom platform, and still generates its normal weekly row', async () => {
+    registerTabCustomPlatforms([{
+      id: 'custom-platform-id', tab: 'BITP', name: 'Yelp', shortLabel: 'YP',
+      statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+    }]);
+    try {
+      queries.fetchBrandSchedule.mockImplementation((_tab: string, weekStart: string) => {
+        if (weekStart === '2026-08-03') return Promise.resolve([]); // this week: nothing yet
+        // last week: 1 slot scheduled for WinMega on the custom platform, not completed
+        return Promise.resolve([
+          { tab: 'BITP', brand_key: 'winmega', week_start: '2026-07-27', platform: 'custom-platform-id', monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null },
+        ]);
+      });
+      const ctx: TabContext = {
+        brands: ['WinMega'],
+        activePlatforms: ['custom-platform-id'],
+        entries: [entry({ Brands: 'WinMega', 'Yelp Review Status': 'pending' })], // not done
+      };
+      await ensureWeekGenerated('BITP', '2026-08-03', ctx, []);
+      expect(queries.bulkUpsertBrandSchedule).toHaveBeenCalledTimes(1);
+      const rows = queries.bulkUpsertBrandSchedule.mock.calls[0][0];
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ tab: 'BITP', brand: 'WinMega', week_start: '2026-08-03', platform: 'custom-platform-id' });
+      const activeDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'].filter((d) => rows[0][d] === 'active');
+      expect(activeDays).toHaveLength(1); // normal 1/week default rule, no carryover (disabled)
+    } finally {
+      resetTabCustomPlatforms();
+    }
   });
 
   // Regression test for future-week manual editing: a manually-created row

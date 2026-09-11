@@ -9,7 +9,7 @@ import {
   clearBrandPlatformOverride,
 } from '../queries.ts';
 import {
-  PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, parsePostDate,
+  PLATFORM_STATUS_KEYS, pick, isRemovedStatus, parsePostDate,
   computeSuccessRates, successRatePct, type SuccessRate, type DateRange,
 } from '../scoreSummary.ts';
 import { normalizeBrandKey, platformRemovedKey, type Platform } from '../removedPlatformBrands.ts';
@@ -19,20 +19,20 @@ import { holidayWeekdaysForDateSet } from '../publicHolidays.ts';
 import { WEEKDAYS, toISODate, mondayOf, type BrandScheduleUpsertRow } from '../scheduleBrands.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
 import { generateWeekSchedule, type PinnedCombo, type CarryoverItem, type ScheduledSlot } from './schedulerEngine.ts';
-import { weeklyCompletion, completedBrandPlatformKey } from './scheduleUtils.ts';
-import { CARRYOVER_RULES, PAUSE_RULES, PERSISTENT_PAUSE_REASONS } from './schedulerRules.ts';
+import { weeklyCompletion, completedBrandPlatformKey, getPlatformStatusDateKeys } from './scheduleUtils.ts';
+import { CARRYOVER_RULES, PAUSE_RULES, PERSISTENT_PAUSE_REASONS, type SchedulablePlatform } from './schedulerRules.ts';
 import type { Entry } from '../../types/entry.ts';
 
 export interface ActivatedSlot {
   brand: string;
   brandKey: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   date: string;
 }
 
 export interface TabContext {
   brands: string[];
-  activePlatforms: Platform[];
+  activePlatforms: SchedulablePlatform[];
   entries: Entry[];
   // Keys from platformRemovedKey(tab, brand, platform) for every brand+
   // platform whose page was flagged removed in Brand Tabs. Optional (defaults
@@ -74,9 +74,8 @@ function brandOf(entry: Entry): string {
 // brand+platform, drawn from that tab's raw entries. Rows with no date fall
 // last, in original order, rather than being dropped — an undated Removed
 // row should still be seen as "recent" rather than silently ignored.
-function recentStatusesFor(entries: Entry[], brandKey: string, platform: Platform): string[] {
-  const statusKeys = PLATFORM_STATUS_KEYS[platform];
-  const dateKeys = PLATFORM_DATE_KEYS[platform];
+function recentStatusesFor(entries: Entry[], brandKey: string, platform: SchedulablePlatform): string[] {
+  const { statusKeys, dateKeys } = getPlatformStatusDateKeys(platform);
   return entries
     .filter((e) => normalizeBrandKey(brandOf(e)) === brandKey)
     .map((e) => ({
@@ -125,6 +124,24 @@ function normalizedRates(rates: Map<string, SuccessRate>, tab: string): Map<stri
     result.set(brandKey, { live, removed, rate: total === 0 ? null : (live / total) * 100 });
   }
   return result;
+}
+
+// True for a built-in platform code only ('tp'/'ag'/'cg'/'wo') -- used as a
+// type-narrowing filter before calling computeSuccessRates (scoreSummary.ts),
+// which stays Platform-only in this plan's scope (see the Global Constraints
+// in the plan doc: scoreSummary.ts is outside the scheduler subsystem and is
+// never widened here). Without this guard, computeSuccessRates would index
+// PLATFORM_STATUS_KEYS with a custom platform's uuid, get back `undefined`,
+// and throw when it hands that to pick()'s `for (const k of keys)` --
+// the exact same class of bug recentStatusesFor had before this task's fix,
+// just one call deeper (via computeSuccessRates rather than direct
+// indexing here). A custom platform simply never gets a ratesByPlatform
+// entry, so its success-rate pause trigger doesn't fire (the
+// consecutive-Removed/Refused trigger, based on recentStatusesFor above,
+// still fully applies to it) -- an accepted, narrow gap until scoreSummary.ts
+// is ever widened in a future, separate task.
+function isBuiltInPlatform(platform: SchedulablePlatform): platform is Platform {
+  return platform in PLATFORM_STATUS_KEYS;
 }
 
 // Evaluates every active brand+platform combination for this tab: pauses one
@@ -197,19 +214,34 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
   // normalizedRates re-buckets by normalized brand keys so case variants
   // (e.g. "WinMega" / "winmega") merge correctly.
   const rateRange = last30DaysRange(weekStart);
-  const ratesByPlatform = new Map(
-    ctx.activePlatforms.map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, [platform], new Set(), rateRange), tab)]),
+  const ratesByPlatform = new Map<SchedulablePlatform, Map<string, SuccessRate>>(
+    ctx.activePlatforms
+      .filter(isBuiltInPlatform)
+      .map((platform) => [platform, normalizedRates(computeSuccessRates(ctx.entries, [platform], new Set(), rateRange), tab)]),
   );
 
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
-    const schedulablePlatforms = getSchedulableBrandPlatforms(tab, brand, ctx.activePlatforms, hiddenSet, restrictionMap);
+    // getSchedulableBrandPlatforms (scheduleBrandConfig.ts) is outside this
+    // plan's scope and stays Platform[]-typed -- at runtime it only does
+    // opaque hidden-set/restriction-map lookups and array filtering, never
+    // pattern-matching against a specific platform literal, so round-tripping
+    // a wider SchedulablePlatform[] through it here is safe; TypeScript just
+    // can't see that a custom platform's id flows through untouched. Mirrors
+    // the same accepted-cast precedent already used for
+    // BrandScheduleRow.platform/scheduleFor in scheduleUtils.ts.
+    const schedulablePlatforms: SchedulablePlatform[] = getSchedulableBrandPlatforms(tab, brand, ctx.activePlatforms as Platform[], hiddenSet, restrictionMap);
     for (const platform of ctx.activePlatforms) {
       // A page flagged removed has nothing to pause/resume — leave any
       // existing pause row untouched (harmless while hidden; a real resume
       // still applies correctly if the flag is ever cleared) and never
-      // evaluate it for a new pause.
-      if (removedSet.has(platformRemovedKey(tab, brand, platform))) continue;
+      // evaluate it for a new pause. platformRemovedKey (removedPlatformBrands.ts)
+      // stays Platform-only and out of scope -- the cast is safe (pure string
+      // concatenation) and, for a genuine custom platform id, this key can
+      // never match anyway since removedPlatformBrandSet is only ever
+      // populated from removed_platform_brands rows (tp/ag/cg/wo); custom
+      // platform removal uses its own separate table/mechanism, untouched here.
+      if (removedSet.has(platformRemovedKey(tab, brand, platform as Platform))) continue;
 
       // A brand hidden from Schedule Planner, or restricted to a different
       // platform than this one, has nothing to pause/resume here either --
@@ -227,7 +259,9 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // an already-generated week -- the pause row's mere existence dims
       // that week's cells regardless of whether brand_schedule already has
       // a row for it).
-      const override = overrideMap.get(overrideKey(tab, brandKey, platform));
+      // overrideKey (scheduleOverrides.ts) also stays Platform-only and out of
+      // scope -- same safe pure-string-concat cast as platformRemovedKey above.
+      const override = overrideMap.get(overrideKey(tab, brandKey, platform as Platform));
       const existingPause = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
 
       // A periodic override ('pause' with a resumeAt) auto-expires once its
@@ -243,30 +277,36 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       // "passed" (compared against that week's Sunday), so a periodic pause
       // resumes as soon as this same week is next evaluated, not one week
       // later.
+      // upsertBrandPlatformPause/deleteBrandPlatformPause/clearBrandPlatformOverride
+      // (queries.ts) also stay Platform-only and out of scope -- each cast
+      // below is the same safe pattern: the query functions themselves are
+      // mocked in tests and, in production, pass `platform` straight through
+      // to a `platform` column that Task 1's migration already widened to
+      // accept any text (built-in code or custom platform id alike).
       if (override?.state === 'pause' && override.resumeAt && override.resumeAt <= weekEndSunday(weekStart)) {
-        await clearBrandPlatformOverride(tab, brandKey, platform, client);
+        await clearBrandPlatformOverride(tab, brandKey, platform as Platform, client);
         if (existingPause) {
-          await deleteBrandPlatformPause(tab, brandKey, platform, client);
+          await deleteBrandPlatformPause(tab, brandKey, platform as Platform, client);
           resumed.push({ brandKey, platform });
         }
         continue;
       }
       if (override?.state === 'active') {
         if (existingPause) {
-          await deleteBrandPlatformPause(tab, brandKey, platform, client);
+          await deleteBrandPlatformPause(tab, brandKey, platform as Platform, client);
           resumed.push({ brandKey, platform });
         }
         continue;
       }
       if (override?.state === 'pause') {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, override.reason?.trim() || PERSISTENT_PAUSE_REASONS.manual, client);
+        await upsertBrandPlatformPause(tab, brand, platform as Platform, weekStart, override.reason?.trim() || PERSISTENT_PAUSE_REASONS.manual, client);
         continue;
       }
 
       const existing = pauses.find((p) => p.brand_key === brandKey && p.platform === platform);
       if (existing) {
         if (existing.paused_week_start < weekStart) {
-          await deleteBrandPlatformPause(tab, brandKey, platform, client);
+          await deleteBrandPlatformPause(tab, brandKey, platform as Platform, client);
           resumed.push({ brandKey, platform });
         }
         continue;
@@ -277,7 +317,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       const recent = recentStatusesFor(ctx.entries, brandKey, platform).slice(0, 2);
       const bothRemoved = recent.length === 2 && recent.every(isRemovedStatus);
       if (bothRemoved) {
-        await upsertBrandPlatformPause(tab, brand, platform, weekStart, 'Two consecutive Removed/Refused posts', client);
+        await upsertBrandPlatformPause(tab, brand, platform as Platform, weekStart, 'Two consecutive Removed/Refused posts', client);
         continue;
       }
 
@@ -295,7 +335,7 @@ export async function recalculatePauses(tab: string, weekStart: string, ctx: Tab
       if (lowSuccessRate) {
         const pct = successRatePct(sr!.rate);
         await upsertBrandPlatformPause(
-          tab, brand, platform, weekStart,
+          tab, brand, platform as Platform, weekStart,
           `Success rate below ${PAUSE_RULES.successRateThreshold}% in the last 30 days (${pct}% over ${decided} posts)`,
           client,
         );
@@ -337,7 +377,12 @@ async function buildCarryover(tab: string, weekStart: string, ctx: TabContext, c
     if (!brand) continue;
     const brandKey = normalizeBrandKey(brand);
     for (const platform of ctx.activePlatforms) {
-      const status = (pick(e.data, PLATFORM_STATUS_KEYS[platform]) ?? '').trim().toLowerCase();
+      // Found during this task: the same PLATFORM_STATUS_KEYS[platform]
+      // direct-indexing bug recentStatusesFor had -- undefined for a custom
+      // platform's uuid, which pick() would then throw on. Fixed the same
+      // way, via getPlatformStatusDateKeys (scheduleUtils.ts).
+      const { statusKeys } = getPlatformStatusDateKeys(platform);
+      const status = (pick(e.data, statusKeys) ?? '').trim().toLowerCase();
       if (status && isDoneStatus(status)) {
         completedBrandPlatforms.add(completedBrandPlatformKey(brandKey, platform));
       }
@@ -349,7 +394,12 @@ async function buildCarryover(tab: string, weekStart: string, ctx: TabContext, c
 
   const items: CarryoverItem[] = [];
   for (const row of lastWeekRows) {
-    const platform = row.platform as Platform;
+    // row.platform is Platform | null (BrandScheduleRow, scheduleBrands.ts --
+    // out of this plan's scope, never widened); already filtered non-null
+    // above. A custom platform's real id flows through this cast untouched
+    // (it's just a type assertion, not a runtime transform) into
+    // CarryoverItem.platform, which is SchedulablePlatform.
+    const platform = row.platform as SchedulablePlatform;
     if (completedBrandPlatforms.has(completedBrandPlatformKey(row.brand_key, platform))) continue;
     const slotCount = WEEKDAYS.filter((d) => row[d] != null).length;
     if (slotCount === 0) continue;
@@ -366,7 +416,13 @@ function groupSlotsIntoRows(tab: string, weekStart: string, slots: ScheduledSlot
     let row = map.get(key);
     if (!row) {
       row = {
-        tab, brand: slot.brand, week_start: weekStart, platform: slot.platform,
+        // BrandScheduleUpsertRow.platform is Platform (scheduleBrands.ts --
+        // out of this plan's scope, never widened). slot.platform is
+        // SchedulablePlatform; the cast is a compile-time assertion only --
+        // a custom platform's real id still flows through to
+        // bulkUpsertBrandSchedule/the DB column unchanged (Task 1's
+        // migration already widened brand_schedule.platform to accept it).
+        tab, brand: slot.brand, week_start: weekStart, platform: slot.platform as Platform,
         monday: null, tuesday: null, wednesday: null, thursday: null, friday: null,
       };
       map.set(key, row);
@@ -408,9 +464,11 @@ export async function ensureWeekGenerated(
   const excludedCombos: PinnedCombo[] = [];
   for (const brand of ctx.brands) {
     const brandKey = normalizeBrandKey(brand);
-    const schedulablePlatforms = getSchedulableBrandPlatforms(tab, brand, ctx.activePlatforms, hiddenSet, restrictionMap);
+    // Same accepted out-of-scope cast as recalculatePauses above --
+    // getSchedulableBrandPlatforms/platformRemovedKey stay Platform-only.
+    const schedulablePlatforms: SchedulablePlatform[] = getSchedulableBrandPlatforms(tab, brand, ctx.activePlatforms as Platform[], hiddenSet, restrictionMap);
     for (const platform of ctx.activePlatforms) {
-      if (removedSet.has(platformRemovedKey(tab, brand, platform))) {
+      if (removedSet.has(platformRemovedKey(tab, brand, platform as Platform))) {
         removedCombos.push({ brandKey, platform });
       } else if (!schedulablePlatforms.includes(platform)) {
         excludedCombos.push({ brandKey, platform });
