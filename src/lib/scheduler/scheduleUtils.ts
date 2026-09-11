@@ -2,6 +2,8 @@ import { WEEKDAYS, toISODate, mondayOf, addDays, scheduleFor, type Weekday, type
 import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
 import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS, pick, isRemovedStatus, isLiveStatus, isPendingStatus, isDoneStatus, parsePostDate, getReviewText } from '../scoreSummary.ts';
 import { BRAND_COLS } from '../tab-configs.ts';
+import { getCustomPlatformById } from '../customPlatformRegistry.ts';
+import type { SchedulablePlatform } from './schedulerRules.ts';
 import type { Entry } from '../../types/entry.ts';
 
 export const PLATFORM_BADGE: Record<Platform, { label: string; className: string }> = {
@@ -21,6 +23,45 @@ export const PLATFORM_FULL_LABEL: Record<Platform, string> = {
   wo: 'Wizard of Odds',
 };
 
+// A neutral, non-platform-specific className for a custom platform's badge
+// -- the 4 built-ins each have their own distinct color; a custom platform
+// gets one shared neutral color rather than inventing a per-platform palette
+// with no natural mapping.
+const CUSTOM_PLATFORM_BADGE_CLASSNAME = 'bg-slate-100 text-slate-700';
+
+// Resolves a platform's badge for any SchedulablePlatform -- built-in codes
+// return PLATFORM_BADGE's existing value unchanged; a custom platform's id
+// returns a badge built from its own shortLabel. An id with no registered
+// config (e.g. a stale schedule row for a since-deleted custom platform)
+// falls back to showing the raw id rather than throwing or rendering blank.
+export function getPlatformBadge(platform: SchedulablePlatform): { label: string; className: string } {
+  if (platform in PLATFORM_BADGE) return PLATFORM_BADGE[platform as Platform];
+  const custom = getCustomPlatformById(platform);
+  return { label: custom?.shortLabel ?? platform, className: CUSTOM_PLATFORM_BADGE_CLASSNAME };
+}
+
+// Resolves a platform's full display name for any SchedulablePlatform,
+// mirroring getPlatformBadge above.
+export function getPlatformFullLabel(platform: SchedulablePlatform): string {
+  if (platform in PLATFORM_FULL_LABEL) return PLATFORM_FULL_LABEL[platform as Platform];
+  const custom = getCustomPlatformById(platform);
+  return custom?.name ?? platform;
+}
+
+// Resolves which entry.data keys carry a platform's status/date for any
+// SchedulablePlatform. Built-in platforms use the existing scoreSummary.ts
+// Records unchanged; a custom platform uses its own registered
+// statusColumn/dateColumn (each wrapped in a single-element array, matching
+// pick()'s "list of candidate keys" signature -- a custom platform has
+// exactly one column name, unlike a built-in platform's multi-alias list).
+export function getPlatformStatusDateKeys(platform: SchedulablePlatform): { statusKeys: readonly string[]; dateKeys: readonly string[] } {
+  if (platform in PLATFORM_STATUS_KEYS) {
+    return { statusKeys: PLATFORM_STATUS_KEYS[platform as Platform], dateKeys: PLATFORM_DATE_KEYS[platform as Platform] };
+  }
+  const custom = getCustomPlatformById(platform);
+  return { statusKeys: custom ? [custom.statusColumn] : [], dateKeys: custom ? [custom.dateColumn] : [] };
+}
+
 // A platform counts as "scheduled" for a given day if it's scheduler-paused
 // for the whole week (pausedPlatforms[platform] truthy — a paused combo has
 // zero day rows by design, so it would otherwise look unscheduled every day)
@@ -29,11 +70,11 @@ export const PLATFORM_FULL_LABEL: Record<Platform, string> = {
 // compute the Add Platform modal's live addable list) so the two can never
 // disagree about what counts as "already there."
 export function unscheduledPlatforms(
-  platforms: Platform[],
+  platforms: SchedulablePlatform[],
   day: Weekday,
-  rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>,
-  pausedPlatforms: Partial<Record<Platform, unknown>>,
-): Platform[] {
+  rowsByPlatform: Partial<Record<SchedulablePlatform, BrandScheduleRow>>,
+  pausedPlatforms: Partial<Record<SchedulablePlatform, unknown>>,
+): SchedulablePlatform[] {
   return platforms.filter((p) => !pausedPlatforms[p] && rowsByPlatform[p]?.[day] == null);
 }
 
@@ -101,7 +142,7 @@ export function leastLoadedDay(dayCounts: Record<Weekday, number>, candidates: W
   return best;
 }
 
-export function completedBrandPlatformKey(brandKey: string, platform: Platform): string {
+export function completedBrandPlatformKey(brandKey: string, platform: SchedulablePlatform): string {
   return `${brandKey}::${platform}`;
 }
 
@@ -197,7 +238,7 @@ export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';
 // can never pick a different "winning" status than the detailed calendar
 // would for the same real data. Returns null when no evidence exists for
 // that exact key.
-export function resolveDateEvidenceKind(index: DateStatusIndex, brandKey: string, platform: Platform, iso: string): DateEvidenceKind | null {
+export function resolveDateEvidenceKind(index: DateStatusIndex, brandKey: string, platform: SchedulablePlatform, iso: string): DateEvidenceKind | null {
   const key = `${brandKey}::${platform}::${iso}`;
   if (index.removed.has(key)) return 'removed';
   if (index.confirmed.has(key)) return 'confirmed';
@@ -211,7 +252,7 @@ export function resolveDateEvidenceKind(index: DateStatusIndex, brandKey: string
 // Removed/Confirmed(Published)/Pending/Done. Shared by the landing-grid
 // preview cards and countActivePlatformSlots below so "executed" can't mean
 // two different things in two places.
-export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platform: Platform, iso: string): boolean {
+export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platform: SchedulablePlatform, iso: string): boolean {
   return resolveDateEvidenceKind(index, brandKey, platform, iso) !== null;
 }
 
@@ -228,7 +269,7 @@ export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'remov
 // not actively scheduled.
 export function resolvePmsSyncStatus(
   brandKey: string,
-  platform: Platform,
+  platform: SchedulablePlatform,
   dateISO: string,
   index: DateStatusIndex,
   isPaused: boolean,
@@ -412,7 +453,7 @@ export function buildFirstLastPostIndex(entries: Entry[]): Map<string, Partial<R
 export interface BrandAgentAssignmentRow {
   tab: string;
   brand: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   agent: string | null;
 }
 
@@ -435,7 +476,7 @@ export function buildAgentAssignmentMap(rows: BrandAgentAssignmentRow[]): Map<st
 // its own -- the same value is returned regardless of platform).
 export function resolveAgentForPlatform(
   brandKey: string,
-  platform: Platform,
+  platform: SchedulablePlatform,
   assignments: Map<string, string | null>,
   agentIndex: Map<string, string>,
 ): string | null {
@@ -451,7 +492,7 @@ export function resolveAgentForPlatform(
 // (callers pass getTabPlatforms(tab), that tab's own platform order).
 export function resolveAgentForBrand(
   brandKey: string,
-  platforms: Platform[],
+  platforms: SchedulablePlatform[],
   assignments: Map<string, string | null>,
   agentIndex: Map<string, string>,
 ): string | null {
@@ -474,7 +515,7 @@ export function resolveAgentForBrand(
 export function buildResolvedAgentIndex(
   entries: Entry[],
   assignmentRows: BrandAgentAssignmentRow[],
-  platforms: Platform[],
+  platforms: SchedulablePlatform[],
 ): Map<string, string> {
   const fallback = buildAgentIndex(entries);
   const assignments = buildAgentAssignmentMap(assignmentRows);
@@ -620,21 +661,28 @@ export function countActivePlatformSlots(
   rows: BrandScheduleRow[],
   tab: string,
   brands: string[],
-  brandPlatformsFn: (brand: string) => Platform[],
+  brandPlatformsFn: (brand: string) => SchedulablePlatform[],
   columns: ScheduleColumn[],
   dateStatusIndex: DateStatusIndex,
   todayISO: string,
-): Partial<Record<Platform, number>> {
-  const counts: Partial<Record<Platform, number>> = {};
+): Partial<Record<SchedulablePlatform, number>> {
+  const counts: Partial<Record<SchedulablePlatform, number>> = {};
   for (const brand of brands) {
     const brandKey = normalizeBrandKey(brand);
     const platforms = brandPlatformsFn(brand);
     for (const platform of platforms) {
       counts[platform] = counts[platform] ?? 0;
       for (const col of columns) {
+        // scheduleFor (scheduleBrands.ts) is outside this plan's scope and its
+        // `platform: Platform | null` parameter is never widened -- at
+        // runtime it only uses `platform` for an opaque `===` comparison
+        // against `BrandScheduleRow.platform` (itself stored/compared as a
+        // plain string, custom-platform uuid or built-in code alike), so
+        // this cast is safe; TypeScript just can't see that BrandScheduleRow
+        // rows for a custom platform carry its id in the same untyped field.
         const counted = col.iso < todayISO
           ? hasDateEvidence(dateStatusIndex, brandKey, platform, col.iso)
-          : scheduleFor(rows, tab, brand, col.weekStartISO, platform)?.[col.weekday] === 'active';
+          : scheduleFor(rows, tab, brand, col.weekStartISO, platform as Platform)?.[col.weekday] === 'active';
         if (counted) counts[platform] = (counts[platform] ?? 0) + 1;
       }
     }
@@ -650,6 +698,6 @@ export function countActivePlatformSlots(
 // another. Deliberately never touches the toolbar's own count badges (those
 // read the full, unfiltered resolution) -- a toggled-off pill still shows
 // what it's hiding, only the chips disappear.
-export function filterVisiblePlatforms(platforms: Platform[], visiblePlatforms: Platform[]): Platform[] {
+export function filterVisiblePlatforms(platforms: SchedulablePlatform[], visiblePlatforms: SchedulablePlatform[]): SchedulablePlatform[] {
   return platforms.filter((p) => visiblePlatforms.includes(p));
 }

@@ -1,8 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildBrandDisplayMap, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, buildAgentIndex, buildBrandDisplayMap, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, getPlatformBadge, getPlatformFullLabel, getPlatformStatusDateKeys, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
+import { registerTabCustomPlatforms, resetTabCustomPlatforms, type CustomPlatformConfig } from '../customPlatformRegistry';
+import { PLATFORM_STATUS_KEYS, PLATFORM_DATE_KEYS } from '../scoreSummary';
+
+const YELP: CustomPlatformConfig = {
+  id: 'p1', tab: 'BITP', name: 'Yelp', shortLabel: 'YP',
+  statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+};
 
 describe('leastLoadedDay', () => {
   it('picks the candidate with the fewest assignments', () => {
@@ -888,5 +895,65 @@ describe('filterVisiblePlatforms', () => {
 
   it('returns an empty array when the input platform list is empty', () => {
     expect(filterVisiblePlatforms([], ['tp'])).toEqual([]);
+  });
+});
+
+describe('getPlatformBadge', () => {
+  it('returns the exact built-in badge for each of the 4 built-in platforms', () => {
+    expect(getPlatformBadge('tp')).toEqual(PLATFORM_BADGE.tp);
+    expect(getPlatformBadge('ag')).toEqual(PLATFORM_BADGE.ag);
+    expect(getPlatformBadge('cg')).toEqual(PLATFORM_BADGE.cg);
+    expect(getPlatformBadge('wo')).toEqual(PLATFORM_BADGE.wo);
+  });
+
+  it('returns a badge built from the custom platform\'s own shortLabel when registered', () => {
+    registerTabCustomPlatforms([YELP]);
+    try {
+      expect(getPlatformBadge('p1')).toEqual({ label: 'YP', className: 'bg-slate-100 text-slate-700' });
+    } finally {
+      resetTabCustomPlatforms();
+    }
+  });
+
+  it('falls back to the raw platform key when the id is unregistered', () => {
+    expect(getPlatformBadge('unknown-id')).toEqual({ label: 'unknown-id', className: 'bg-slate-100 text-slate-700' });
+  });
+});
+
+describe('getPlatformFullLabel', () => {
+  it('returns the exact built-in label for each of the 4 built-in platforms', () => {
+    expect(getPlatformFullLabel('tp')).toBe(PLATFORM_FULL_LABEL.tp);
+    expect(getPlatformFullLabel('ag')).toBe(PLATFORM_FULL_LABEL.ag);
+    expect(getPlatformFullLabel('cg')).toBe(PLATFORM_FULL_LABEL.cg);
+    expect(getPlatformFullLabel('wo')).toBe(PLATFORM_FULL_LABEL.wo);
+  });
+
+  it('returns the custom platform\'s own name when registered', () => {
+    registerTabCustomPlatforms([YELP]);
+    try {
+      expect(getPlatformFullLabel('p1')).toBe('Yelp');
+    } finally {
+      resetTabCustomPlatforms();
+    }
+  });
+});
+
+describe('getPlatformStatusDateKeys', () => {
+  it('returns the exact built-in status/date keys for each of the 4 built-in platforms', () => {
+    expect(getPlatformStatusDateKeys('tp')).toEqual({ statusKeys: PLATFORM_STATUS_KEYS.tp, dateKeys: PLATFORM_DATE_KEYS.tp });
+    expect(getPlatformStatusDateKeys('ag')).toEqual({ statusKeys: PLATFORM_STATUS_KEYS.ag, dateKeys: PLATFORM_DATE_KEYS.ag });
+  });
+
+  it('returns the custom platform\'s own statusColumn/dateColumn, each as a single-element array', () => {
+    registerTabCustomPlatforms([YELP]);
+    try {
+      expect(getPlatformStatusDateKeys('p1')).toEqual({ statusKeys: ['Yelp Review Status'], dateKeys: ['Yelp Review Added'] });
+    } finally {
+      resetTabCustomPlatforms();
+    }
+  });
+
+  it('returns empty key arrays for an unregistered platform id (pick() then finds nothing, matching the built-in "no data" behavior)', () => {
+    expect(getPlatformStatusDateKeys('unknown-id')).toEqual({ statusKeys: [], dateKeys: [] });
   });
 });
