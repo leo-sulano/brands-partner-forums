@@ -28,6 +28,12 @@ import {
 import { iconNames } from 'lucide-react/dynamic';
 import { getTabIconOverride } from './tabIconOverrideRegistry';
 import { resolveHardcodedTabKey } from './hardcodedTabRenameRegistry';
+import { PLATFORM_FAVICON, type Platform } from './removedPlatformBrands.ts';
+import type { SchedulablePlatform } from './scheduler/schedulerRules.ts';
+import { getCustomPlatformById } from './customPlatformRegistry.ts';
+
+// Re-export PLATFORM_FAVICON so it's accessible from this module
+export { PLATFORM_FAVICON };
 
 export const TAB_ICONS: Record<string, LucideIcon> = {
   'TP Brand Injection':        Syringe,
@@ -125,4 +131,13 @@ export function computeInitialIconSelection(tab: string): TabIconSelection {
   if (override?.faviconDomain) return { type: 'favicon', value: override.faviconDomain };
   if (override?.icon) return { type: 'icon', value: override.icon };
   return { type: 'icon', value: DEFAULT_ICON_NAME };
+}
+
+// A custom platform has no favicon source (unlike the 4 built-ins, which
+// each resolve to a real domain's Google-favicon URL) -- undefined tells
+// callers to render no icon rather than a broken image, matching the
+// pattern PlatformRemovedBadge/PlatformRemovedModal already established
+// for custom platforms in Task 340 (favicon is an optional prop there too).
+export function getPlatformFavicon(platform: SchedulablePlatform): string | undefined {
+  return platform in PLATFORM_FAVICON ? PLATFORM_FAVICON[platform as Platform] : undefined;
 }

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   TAB_ICONS, DEFAULT_TAB_ICON, DEFAULT_ICON_NAME, POPULAR_ICON_NAMES, ALL_DYNAMIC_ICON_NAMES,
-  isKnownDynamicIconName, resolveTabIconKind, computeInitialIconSelection, faviconUrl,
+  isKnownDynamicIconName, resolveTabIconKind, computeInitialIconSelection, faviconUrl, PLATFORM_FAVICON, getPlatformFavicon,
 } from './tabIcons';
 import { registerTabIconOverrides, clearTabIconOverride } from './tabIconOverrideRegistry';
 import { renameHardcodedTabLocally, resetHardcodedTabRenames } from './hardcodedTabRenameRegistry';
@@ -112,5 +112,18 @@ describe('computeInitialIconSelection', () => {
   it('reflects an existing image override', () => {
     registerTabIconOverrides([{ tab: 'Test Dynamic Tab', icon: null, faviconDomain: null, imageUrl: 'https://x/icon.webp' }]);
     expect(computeInitialIconSelection('Test Dynamic Tab')).toEqual({ type: 'image', value: 'https://x/icon.webp' });
+  });
+});
+
+describe('getPlatformFavicon', () => {
+  it('returns the exact built-in favicon for each of the 4 built-in platforms', () => {
+    expect(getPlatformFavicon('tp')).toBe(PLATFORM_FAVICON.tp);
+    expect(getPlatformFavicon('ag')).toBe(PLATFORM_FAVICON.ag);
+    expect(getPlatformFavicon('cg')).toBe(PLATFORM_FAVICON.cg);
+    expect(getPlatformFavicon('wo')).toBe(PLATFORM_FAVICON.wo);
+  });
+
+  it('returns undefined for a custom platform (no favicon)', () => {
+    expect(getPlatformFavicon('some-custom-platform-uuid')).toBeUndefined();
   });
 });
