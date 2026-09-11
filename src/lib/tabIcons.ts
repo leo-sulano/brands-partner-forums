@@ -30,7 +30,6 @@ import { getTabIconOverride } from './tabIconOverrideRegistry';
 import { resolveHardcodedTabKey } from './hardcodedTabRenameRegistry';
 import { PLATFORM_FAVICON, type Platform } from './removedPlatformBrands.ts';
 import type { SchedulablePlatform } from './scheduler/schedulerRules.ts';
-import { getCustomPlatformById } from './customPlatformRegistry.ts';
 
 // Re-export PLATFORM_FAVICON so it's accessible from this module
 export { PLATFORM_FAVICON };
