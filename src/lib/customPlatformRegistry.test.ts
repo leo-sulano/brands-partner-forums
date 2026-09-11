@@ -1,12 +1,18 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { registerTabCustomPlatforms, resetTabCustomPlatforms, getTabCustomPlatforms, getCustomPlatformColumns } from './customPlatformRegistry';
+import { registerTabCustomPlatforms, resetTabCustomPlatforms, getTabCustomPlatforms, getCustomPlatformColumns, getCustomPlatformById, getCustomPlatformIds } from './customPlatformRegistry';
 import { getTabColumns, getTabPlatforms } from './tab-configs';
 import { registerDynamicTabs, unregisterDynamicTab } from './dynamicTabRegistry';
 import { DATE_ENTRY_HEADERS } from './dateUtils';
+import type { CustomPlatformConfig } from './customPlatformRegistry';
 
-const YELP = {
+const YELP: CustomPlatformConfig = {
   id: 'p1', tab: 'Hanan', name: 'Yelp', shortLabel: 'YP',
   statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+};
+
+const G2: CustomPlatformConfig = {
+  id: 'p2', tab: 'BITP', name: 'G2', shortLabel: 'G2',
+  statusColumn: 'G2 Review Status', dateColumn: 'G2 Review Added', maxScore: null,
 };
 
 afterEach(() => {
@@ -55,5 +61,34 @@ describe('customPlatformRegistry', () => {
     registerTabCustomPlatforms([YELP]);
     expect(getTabCustomPlatforms('Hanan')).toEqual([YELP]);
     expect(getTabColumns('Hanan')!.filter((c) => c === 'Yelp Review Status')).toHaveLength(1);
+  });
+});
+
+describe('getCustomPlatformById', () => {
+  afterEach(() => resetTabCustomPlatforms());
+
+  it('finds a registered platform by id regardless of which tab registered it', () => {
+    registerTabCustomPlatforms([YELP, G2]);
+    expect(getCustomPlatformById('p1')).toEqual(YELP);
+    expect(getCustomPlatformById('p2')).toEqual(G2);
+  });
+
+  it('returns undefined for an unregistered id', () => {
+    registerTabCustomPlatforms([YELP]);
+    expect(getCustomPlatformById('nonexistent')).toBeUndefined();
+  });
+});
+
+describe('getCustomPlatformIds', () => {
+  afterEach(() => resetTabCustomPlatforms());
+
+  it('returns the ids of every custom platform registered for a tab', () => {
+    registerTabCustomPlatforms([YELP, G2]);
+    expect(getCustomPlatformIds('Hanan')).toEqual(['p1']);
+    expect(getCustomPlatformIds('BITP')).toEqual(['p2']);
+  });
+
+  it('returns an empty array for a tab with no custom platforms', () => {
+    expect(getCustomPlatformIds('NoCustomTab')).toEqual([]);
   });
 });

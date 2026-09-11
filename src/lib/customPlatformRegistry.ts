@@ -44,6 +44,30 @@ export function getTabCustomPlatforms(tab: string): CustomPlatformConfig[] {
   return byTab[tab] ?? [];
 }
 
+// A custom platform's id is globally unique (custom_platforms.id, a uuid
+// primary key) even though `byTab` is organized per tab a platform is
+// enabled on -- the same custom platform can be enabled on more than one
+// tab, so this searches every tab's list rather than assuming a 1:1 mapping.
+// Used by scheduler code that only has an id (from a DB row's `platform`
+// column) and needs the platform's name/shortLabel for display, without
+// needing to also know which tab context it's being rendered in.
+export function getCustomPlatformById(id: string): CustomPlatformConfig | undefined {
+  for (const rows of Object.values(byTab)) {
+    const found = rows.find((r) => r.id === id);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+// The scheduler's chokepoint helper -- getTabPlatforms (tab-configs.ts) calls
+// this via the resolver-injection pattern below to append a tab's custom
+// platform ids to its built-in platform list, without tab-configs.ts ever
+// importing this module directly (see the circular-import note at the
+// bottom of this file).
+export function getCustomPlatformIds(tab: string): string[] {
+  return getTabCustomPlatforms(tab).map((p) => p.id);
+}
+
 export function getCustomPlatformColumns(tab: string): string[] {
   return getTabCustomPlatforms(tab).flatMap((p) => [p.statusColumn, p.dateColumn]);
 }
