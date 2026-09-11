@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeCustomPlatformCounts, type CustomPlatformConfig } from './customPlatforms';
-import { customPlatformRemovedKey, buildRemovedCustomPlatformBrandSet } from './removedCustomPlatformBrands';
+import { buildRemovedCustomPlatformBrandSet } from './removedCustomPlatformBrands';
 import type { Entry } from '../types/entry';
 
 function entry(data: Record<string, string | null>): Entry {
