@@ -36,7 +36,7 @@ import { computeCustomPlatformCounts } from '../lib/customPlatforms';
 import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPlatforms, getTabSequence, getTabSequenceCol, hasMultiPlatform, getBrandTpUrl, getBrandLinkCol, getEntryCountry, getCountryForAccount, getBrandGroup, BRAND_COLS, TABLE_HIDDEN_COLS, PLATFORM_SCORE_COLS, accountUsageKey, getEnabledToolbarFilters } from '../lib/tab-configs';
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, PLATFORM_SCORE_KEYS, pick, type Platform } from '../lib/scoreSummary';
-import { savePlatformRemoved } from '../lib/platformRemovedActions';
+import { savePlatformRemoved, saveCustomPlatformRemoved } from '../lib/platformRemovedActions';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
@@ -1188,7 +1188,10 @@ export default function BrandGroup() {
   // heuristics place them in the right section (WO falls to 'account', matching
   // every other WO field's existing precedent) and the existing Platform-filter
   // check narrows them exactly like TP/AG/CG's real columns, with no new logic.
-  const removedStatusHeaders = getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Page Removed Status`);
+  const removedStatusHeaders = [
+    ...getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Page Removed Status`),
+    ...getTabCustomPlatforms(decodedTab).map((p) => `${p.shortLabel} Page Removed Status`),
+  ];
   // Review text (TP/AG/CG/WO Review Text) has no Sheet/tab_schemas origin — it's
   // written only by the Selenium scrapers straight into entries.data — so without
   // this it silently never reaches export even though the Edit Entry modal (see
@@ -2007,6 +2010,16 @@ export default function BrandGroup() {
     editEntry && brandCol ? removedPlatformsFor(editEntry.data[brandCol]) : [];
   const initialRemovedPlatformDatesForEditEntry: Partial<Record<Platform, string>> =
     editEntry && brandCol ? removedPlatformDatesFor(editEntry.data[brandCol]) : {};
+  const initialRemovedCustomPlatformsForEditEntry: string[] =
+    editEntry && brandCol ? removedCustomPlatformsFor(editEntry.data[brandCol]).map((p) => p.id) : [];
+  const initialRemovedCustomPlatformDatesForEditEntry: Record<string, string> =
+    editEntry && brandCol
+      ? Object.fromEntries(
+          removedCustomPlatformsFor(editEntry.data[brandCol])
+            .map((p) => [p.id, removedCustomPlatformDateFor(editEntry.data[brandCol], p.id)])
+            .filter((pair): pair is [string, string] => !!pair[1]),
+        )
+      : {};
   const initialOverridesForEditEntry: Partial<Record<Platform, OverrideState>> =
     editEntry && brandCol ? overridesFor(editEntry.data[brandCol]) : {};
 
@@ -2079,6 +2092,13 @@ export default function BrandGroup() {
               if (removedStatusPlatform && brandCol) {
                 const brandName = entry.data[brandCol];
                 const date = removedPlatformDateFor(brandName, removedStatusPlatform);
+                return date ? formatCellValue(date) : '';
+              }
+              const removedCustomStatusPlatform = getTabCustomPlatforms(decodedTab)
+                .find((p) => `${p.shortLabel} Page Removed Status` === header);
+              if (removedCustomStatusPlatform && brandCol) {
+                const brandName = entry.data[brandCol];
+                const date = removedCustomPlatformDateFor(brandName, removedCustomStatusPlatform.id);
                 return date ? formatCellValue(date) : '';
               }
               // Merged "<Platform> Score" column (see scoreExportHeaders above) —
@@ -3076,9 +3096,11 @@ export default function BrandGroup() {
           entryReviewAnalyses={entryReviewAnalyses}
           initialRemovedPlatforms={initialRemovedPlatformsForEditEntry}
           initialRemovedPlatformDates={initialRemovedPlatformDatesForEditEntry}
+          initialRemovedCustomPlatforms={initialRemovedCustomPlatformsForEditEntry}
+          initialRemovedCustomPlatformDates={initialRemovedCustomPlatformDatesForEditEntry}
           initialOverrides={initialOverridesForEditEntry}
           onClose={() => setEditEntry(null)}
-          onSave={async (fields, newTab, removedPlatforms, overrides, removedPlatformDateTexts) => {
+          onSave={async (fields, newTab, removedPlatforms, overrides, removedPlatformDateTexts, removedCustomPlatforms, removedCustomPlatformDateTexts) => {
             if (newTab && newTab !== editEntry.tab) {
               await moveEntryToTab(editEntry.id, editEntry.tab, newTab);
             }
@@ -3120,6 +3142,26 @@ export default function BrandGroup() {
                   for (const p of notifyFailures) {
                     setToast({
                       message: `${brandName}'s ${PLATFORM_LABEL[p]} page was flagged removed, but the notification email failed to send.`,
+                      kind: 'error',
+                    });
+                  }
+                }
+
+                if (removedCustomPlatforms !== undefined) {
+                  const { notifyFailures: customNotifyFailures } = await saveCustomPlatformRemoved({
+                    tab: targetTab,
+                    lookupTab: decodedTab,
+                    brand: brandName,
+                    eligiblePlatforms: getTabCustomPlatforms(decodedTab),
+                    checkedPlatformIds: removedCustomPlatforms,
+                    dateTexts: removedCustomPlatformDateTexts ?? {},
+                    existingSet: removedCustomPlatformBrandSet,
+                    existingDateMap: removedCustomPlatformBrandDateMap,
+                  });
+                  for (const id of customNotifyFailures) {
+                    const label = getTabCustomPlatforms(decodedTab).find((p) => p.id === id)?.shortLabel ?? id;
+                    setToast({
+                      message: `${brandName}'s ${label} page was flagged removed, but the notification email failed to send.`,
                       kind: 'error',
                     });
                   }
