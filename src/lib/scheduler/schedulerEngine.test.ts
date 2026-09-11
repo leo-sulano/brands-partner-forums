@@ -285,6 +285,11 @@ describe('generateWeekSchedule', () => {
     expect(Math.max(...values) - Math.min(...values)).toBeLessThanOrEqual(1);
   });
 
+  it('schedules a custom platform (unregistered in PLATFORM_RULES) using the default 1/week rule', () => {
+    const input: SchedulerInput = { ...baseInput, activePlatforms: ['custom-platform-id'] };
+    expect(slotsFor(generateWeekSchedule(input), 'WinMega', 'custom-platform-id')).toHaveLength(1);
+  });
+
   it('splits TP across both preferred pairs when many brands are scheduled', () => {
     const input: SchedulerInput = {
       ...baseInput,

@@ -1,6 +1,6 @@
 import { WEEKDAYS, type Weekday } from '../scheduleBrands.ts';
-import { normalizeBrandKey, type Platform } from '../removedPlatformBrands.ts';
-import { PLATFORM_RULES, type PlatformRule } from './schedulerRules.ts';
+import { normalizeBrandKey } from '../removedPlatformBrands.ts';
+import { getPlatformRule, type PlatformRule, type SchedulablePlatform } from './schedulerRules.ts';
 import { makeRng, shuffle, pickIndex } from './seededRandom.ts';
 
 // If the least-loaded preferred day is at least this much more loaded than
@@ -28,25 +28,25 @@ function leastLoadedDayRandom(
 export interface ScheduledSlot {
   brand: string;
   brandKey: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   day: Weekday;
 }
 
 export interface PinnedCombo {
   brandKey: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
 }
 
 export interface CarryoverItem {
   brand: string;
   brandKey: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   count: number;
 }
 
 export interface SchedulerInput {
   brands: string[];
-  activePlatforms: Platform[];
+  activePlatforms: SchedulablePlatform[];
   pinnedBrandPlatforms: PinnedCombo[];
   pausedBrandPlatforms: PinnedCombo[];
   resumingBrandPlatforms: PinnedCombo[];
@@ -68,7 +68,7 @@ export interface SchedulerInput {
   rampBrandKeys?: string[];
 }
 
-function hasCombo(list: PinnedCombo[], brandKey: string, platform: Platform): boolean {
+function hasCombo(list: PinnedCombo[], brandKey: string, platform: SchedulablePlatform): boolean {
   return list.some((c) => c.brandKey === brandKey && c.platform === platform);
 }
 
@@ -134,10 +134,10 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
     }
   }
 
-  function assign(brand: string, brandKey: string, platform: Platform, numSlots: number) {
+  function assign(brand: string, brandKey: string, platform: SchedulablePlatform, numSlots: number) {
     if (numSlots <= 0) return;
     if (availableDays.length === 0) return;
-    const days = selectDays(PLATFORM_RULES[platform], numSlots, dayCounts, availableDays, rng);
+    const days = selectDays(getPlatformRule(platform), numSlots, dayCounts, availableDays, rng);
     for (const day of days) slots.push({ brand, brandKey, platform, day });
   }
 
@@ -147,7 +147,7 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
       if (!hasCombo(input.resumingBrandPlatforms, brandKey, platform)) continue;
       if (hasCombo(input.pinnedBrandPlatforms, brandKey, platform)) continue;
       if (hasCombo(input.pausedBrandPlatforms, brandKey, platform)) continue;
-      assign(brand, brandKey, platform, PLATFORM_RULES[platform].postsPerWeek);
+      assign(brand, brandKey, platform, getPlatformRule(platform).postsPerWeek);
     }
   }
 
@@ -162,7 +162,7 @@ export function generateWeekSchedule(input: SchedulerInput): ScheduledSlot[] {
       // Look up carryover for this combo (0 if none), add to normal frequency, assign once.
       const key = `${brandKey}::${platform}`;
       const carryoverExtra = carryoverMap.get(key) ?? 0;
-      const normalSlots = PLATFORM_RULES[platform].postsPerWeek + carryoverExtra;
+      const normalSlots = getPlatformRule(platform).postsPerWeek + carryoverExtra;
       // New-brand ramp-up: cap at 1 post on this platform for the brand's
       // first 2 calendar weeks since being added via the brand catalog,
       // rather than its normal frequency (+carryover).
