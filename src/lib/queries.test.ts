@@ -596,7 +596,7 @@ describe('computeTabKpisFromEntries', () => {
     const scoreSummaryTp = rates.get('TP Affiliate') ?? { live: 0, removed: 0 };
 
     // Entry 2's TP date (Jan) is genuinely outside the range, so both
-    // implementations correctly exclude it â€” only entry 3 (undated) and
+    // implementations correctly exclude it — only entry 3 (undated) and
     // entries 1/4 (in-range) should count: live 2 (entries 1, 4), removed 1
     // (entry 3 only; entry 2 is excluded, not counted as removed).
     expect(kpis.tp).toEqual({ live: scoreSummaryTp.live, removed: scoreSummaryTp.removed });
@@ -799,12 +799,12 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'United Kingdom', 'Proxy Used': ' Enigma-US1 ' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
-    // proxyLabel reflects the first-encountered entry's casing ('enigma-us1', entry '1') â€”
+    // proxyLabel reflects the first-encountered entry's casing ('enigma-us1', entry '1') —
     // addToPairBreakdown sets a bucket's display label once, on first insert, deliberately
     // matching addToBreakdown's existing first-wins style (see the adjacent byCountry/byProxy
     // tests above, which rely on the same rule). Unlike countryLabel (always the canonical full
     // name via a lookup table, regardless of input order), there is no alias database for proxy
-    // names â€” canonicalProxyName is a pass-through typo-correction only â€” so proxyLabel genuinely
+    // names — canonicalProxyName is a pass-through typo-correction only — so proxyLabel genuinely
     // depends on which spelling was seen first.
     expect(kpis.byCountryProxy).toEqual({
       'GB::enigma-us1': { countryLabel: 'United Kingdom', proxyLabel: 'enigma-us1', live: 2, removed: 0 },
@@ -970,7 +970,7 @@ describe('computeTabKpisFromEntries', () => {
     };
     const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg']);
     expect(kpis).not.toBeNull();
-    // TP is Removed and CG is Published/live on the same row â€” statuses.some(isLiveStatus)
+    // TP is Removed and CG is Published/live on the same row — statuses.some(isLiveStatus)
     // is checked before statuses.some(isRemovedStatus), so a row with a decided outcome on
     // both counts as live once, not once for each platform and not as removed.
     expect(kpis!.live).toBe(1);
