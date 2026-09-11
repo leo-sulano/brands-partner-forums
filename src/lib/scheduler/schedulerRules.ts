@@ -1,6 +1,8 @@
 import type { Weekday } from '../scheduleBrands.ts';
 import type { Platform } from '../removedPlatformBrands.ts';
 
+export type SchedulablePlatform = string;
+
 export interface PlatformRule {
   postsPerWeek: number;
   preferredDays?: Weekday[];
@@ -20,6 +22,21 @@ export const PLATFORM_RULES: Record<Platform, PlatformRule> = {
   // No preferredDays — load-balanced across the week, same as cg's 1/wk.
   wo: { postsPerWeek: 1 },
 };
+
+// The fixed scheduling rule every custom (user-defined) platform gets --
+// no per-platform configuration in v1, matching Casino Guru's existing
+// cadence as the least-presumptuous default. See the design spec's
+// confirmed-with-user decision.
+export const DEFAULT_CUSTOM_PLATFORM_RULE: PlatformRule = { postsPerWeek: 1, preferredDays: [] };
+
+// Resolves a platform's scheduling rule for any SchedulablePlatform (a
+// built-in Platform code, or a custom platform's custom_platforms.id) --
+// the one place schedulerEngine.ts/schedulerService.ts look up posting
+// frequency, so a custom platform gets real scheduling with zero changes
+// to the engine itself.
+export function getPlatformRule(platform: SchedulablePlatform): PlatformRule {
+  return platform in PLATFORM_RULES ? PLATFORM_RULES[platform as Platform] : DEFAULT_CUSTOM_PLATFORM_RULE;
+}
 
 export const PAUSE_RULES = {
   consecutiveRemovedThreshold: 2,
