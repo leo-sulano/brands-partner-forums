@@ -1,5 +1,6 @@
 import type { Entry } from '../types/entry.ts';
 import { pick, isLiveStatus, isRemovedStatus, isoToDate, startOfDay, endOfDay, passesDateFilter, rateFromCounts, successRatePct } from './scoreSummary.ts';
+import { customPlatformRemovedKey } from './removedCustomPlatformBrands.ts';
 
 export interface CustomPlatformConfig {
   id: string;
@@ -22,12 +23,17 @@ export interface CustomPlatformCounts {
 // the same date-filter semantics (undated rows always included) the 4
 // built-in platforms use in scoreSummary.ts -- zero new classification
 // logic, so a custom platform can't silently disagree with what "live" or
-// "in range" means anywhere else in the app.
+// "in range" means anywhere else in the app. removedCustomPlatformBrands
+// mirrors classifyEntry's isPlatformFlagged check in queries.ts for the
+// built-in platforms (see removedCustomPlatformBrands.ts).
 export function computeCustomPlatformCounts(
   entries: Entry[],
   platform: CustomPlatformConfig,
+  tab: string,
+  brandCol: string | null,
   fromISO?: string,
   toISO?: string,
+  removedCustomPlatformBrands: Set<string> = new Set(),
 ): CustomPlatformCounts {
   const fromDate = fromISO ? isoToDate(fromISO) : null;
   const toDate = toISO ? isoToDate(toISO) : null;
@@ -38,6 +44,8 @@ export function computeCustomPlatformCounts(
   let removed = 0;
   for (const e of entries) {
     if (!passesDateFilter(e.data, [platform.dateColumn], fromBound, toBound)) continue;
+    const brand = brandCol ? (e.data[brandCol] ?? '').trim() : '';
+    if (brand && removedCustomPlatformBrands.has(customPlatformRemovedKey(tab, brand, platform.id))) continue;
     const raw = (pick(e.data, [platform.statusColumn]) ?? '').trim().toLowerCase();
     if (!raw) continue;
     if (isLiveStatus(raw)) live++;

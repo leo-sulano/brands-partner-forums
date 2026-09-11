@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveTabRemovedPlatformRows } from './tabRemovedPlatforms';
+import { deriveTabRemovedPlatformRows, deriveTabRemovedCustomPlatformRows } from './tabRemovedPlatforms';
 
 describe('deriveTabRemovedPlatformRows', () => {
   it('maps every row through with brand/platform/removedAt/removedBy', () => {
@@ -35,5 +35,18 @@ describe('deriveTabRemovedPlatformRows', () => {
       { brand: 'B', platform: 'ag', removed_at: '2026-08-01', removed_by: null },
     ]);
     expect(rows).toHaveLength(2);
+  });
+});
+
+describe('deriveTabRemovedCustomPlatformRows', () => {
+  it('shapes and sorts rows by brand then platform id', () => {
+    const rows = deriveTabRemovedCustomPlatformRows([
+      { brand: 'Zeta Co', platform_id: 'p1', removed_at: '2026-09-01', removed_by: 'a@x.com' },
+      { brand: 'Alpha Co', platform_id: 'p2', removed_at: '2026-09-02', removed_by: null },
+    ]);
+    expect(rows).toEqual([
+      { brand: 'Alpha Co', platformId: 'p2', removedAt: '2026-09-02', removedBy: null },
+      { brand: 'Zeta Co', platformId: 'p1', removedAt: '2026-09-01', removedBy: 'a@x.com' },
+    ]);
   });
 });

@@ -30,6 +30,8 @@ import {
   fetchScheduleRestrictedBrands,
   fetchBrandAgentAssignments,
   bulkUpsertBrandSchedule,
+  fetchRemovedCustomPlatformBrands,
+  setCustomPlatformBrandRemoved,
   computeTabKpisFromEntries,
   computeBrandKpisFromEntries,
   fetchBrandPlatformOverrides,
@@ -92,6 +94,7 @@ import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
 import { registerHiddenTabPlatforms, resetHiddenTabPlatforms } from './tab-configs';
 import { registerTabCustomPlatforms, resetTabCustomPlatforms } from './customPlatformRegistry.ts';
+import { buildRemovedCustomPlatformBrandSet } from './removedCustomPlatformBrands.ts';
 import type { Entry } from '../types/entry.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
@@ -288,6 +291,46 @@ describe('queries.ts injectable Supabase client', () => {
     expect(selectSpy).toHaveBeenCalledWith('tab, brand, platform, removed_at');
   });
 
+
+  it('fetchRemovedCustomPlatformBrands uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
+    await fetchRemovedCustomPlatformBrands({ from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('removed_custom_platform_brands');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchRemovedCustomPlatformBrands selects removed_at alongside tab/brand/platform_id', async () => {
+    const selectSpy = vi.fn().mockReturnValue({
+      then: (resolve: (v: { data: unknown[]; error: null }) => unknown) => resolve({ data: [], error: null }),
+    });
+    const fakeFrom = vi.fn().mockReturnValue({ select: selectSpy });
+    await fetchRemovedCustomPlatformBrands({ from: fakeFrom } as any);
+    expect(selectSpy).toHaveBeenCalledWith('tab, brand, platform_id, removed_at');
+  });
+
+  it('setCustomPlatformBrandRemoved upserts a payload keyed by tab/brand_key/platform_id when removed=true', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await setCustomPlatformBrandRemoved('BITP', 'Brand X', 'p1', true, '2026-09-05');
+    expect(singletonFrom).toHaveBeenCalledWith('removed_custom_platform_brands');
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'BITP', brand: 'Brand X', platform_id: 'p1', removed_at: '2026-09-05' }),
+      { onConflict: 'tab,brand_key,platform_id' },
+    );
+  });
+
+  it('setCustomPlatformBrandRemoved deletes the row keyed by brand_key when removed=false', async () => {
+    const eq3 = vi.fn().mockResolvedValue({ error: null });
+    const eq2 = vi.fn().mockReturnValue({ eq: eq3 });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const del = vi.fn().mockReturnValue({ eq: eq1 });
+    singletonFrom.mockReturnValue({ delete: del });
+    await setCustomPlatformBrandRemoved('BITP', 'Brand X', 'p1', false);
+    expect(singletonFrom).toHaveBeenCalledWith('removed_custom_platform_brands');
+    expect(eq1).toHaveBeenCalledWith('tab', 'BITP');
+    expect(eq2).toHaveBeenCalledWith('brand_key', 'brand x');
+    expect(eq3).toHaveBeenCalledWith('platform_id', 'p1');
+  });
   it('bulkUpsertBrandSchedule uses the passed-in client for the upsert', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ upsert });
@@ -1040,6 +1083,28 @@ describe('computeTabKpisFromEntries', () => {
       { platform: expect.objectContaining({ name: 'Yelp' }), total: 2, live: 1, removed: 1, successRate: 50 },
     ]);
     resetTabCustomPlatforms();
+  });
+
+  it('excludes a brand flagged removed on a custom platform enabled for this tab', () => {
+    registerTabCustomPlatforms([{
+      id: 'p1', tab: 'TP Affiliate', name: 'Yelp', shortLabel: 'YP',
+      statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+    }]);
+    try {
+      const entries = [
+        entry('1', { 'URL PAGE': 'Flagged Co', 'Yelp Review Status': 'Published' }),
+        entry('2', { 'URL PAGE': 'Other Co', 'Yelp Review Status': 'Published' }),
+      ];
+      const removedCustom = buildRemovedCustomPlatformBrandSet([{ tab: 'TP Affiliate', brand: 'Flagged Co', platform_id: 'p1' }]);
+      const kpis = computeTabKpisFromEntries(
+        entries, rawHeaders, 'TP Affiliate', 'URL PAGE', undefined, undefined, new Set(),
+        undefined, undefined, undefined, removedCustom,
+      )!;
+      const yelp = kpis.customPlatforms.find((c) => c.platform.id === 'p1')!;
+      expect(yelp.total).toBe(1);
+    } finally {
+      resetTabCustomPlatforms();
+    }
   });
 });
 
@@ -1877,10 +1942,21 @@ describe('createCustomPlatform / enableCustomPlatformOnTab / deleteCustomPlatfor
     await expect(deleteCustomPlatform('p1')).rejects.toThrow(/still enabled/i);
   });
 
-  it('deleteCustomPlatform succeeds when no tab has it enabled', async () => {
+  it('deleteCustomPlatform is blocked while a brand is still flagged removed on it', async () => {
+    const zeroCountChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 0, error: null }) }) };
+    const flaggedCountChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 2, error: null }) }) };
+    singletonFrom.mockImplementation((table: string) =>
+      table === 'tab_custom_platforms' ? zeroCountChain : flaggedCountChain,
+    );
+    await expect(deleteCustomPlatform('p1')).rejects.toThrow(/still flagged removed/i);
+  });
+
+  it('deleteCustomPlatform succeeds when no tab has it enabled and no brand is flagged removed on it', async () => {
     const countChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 0, error: null }) }) };
     const deleteChain = { delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) };
-    singletonFrom.mockImplementation((table: string) => (table === 'tab_custom_platforms' ? countChain : deleteChain));
+    singletonFrom.mockImplementation((table: string) =>
+      (table === 'tab_custom_platforms' || table === 'removed_custom_platform_brands') ? countChain : deleteChain,
+    );
     await expect(deleteCustomPlatform('p1')).resolves.toBeUndefined();
   });
 });

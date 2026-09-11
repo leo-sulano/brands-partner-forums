@@ -280,6 +280,39 @@ export async function fetchRemovedPlatformBrandsForTab(
   return (data ?? []) as RemovedPlatformBrandRow[];
 }
 
+export async function fetchRemovedCustomPlatformBrands(
+  client: SupabaseClient = supabase,
+): Promise<{ tab: string; brand: string; platform_id: string; removed_at: string }[]> {
+  const { data, error } = await client
+    .from('removed_custom_platform_brands')
+    .select('tab, brand, platform_id, removed_at');
+  if (error) throw error;
+  return (data ?? []) as { tab: string; brand: string; platform_id: string; removed_at: string }[];
+}
+
+export interface RemovedCustomPlatformBrandRow {
+  tab: string;
+  brand: string;
+  platform_id: string;
+  removed_at: string;
+  removed_by: string | null;
+}
+
+// Tab-scoped sibling of fetchRemovedCustomPlatformBrands above, carrying
+// removed_by too -- mirrors fetchRemovedPlatformBrandsForTab exactly, feeds
+// the Edit Brand Tab "Removed platform pages" section's custom-platform rows.
+export async function fetchRemovedCustomPlatformBrandsForTab(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<RemovedCustomPlatformBrandRow[]> {
+  const { data, error } = await client
+    .from('removed_custom_platform_brands')
+    .select('tab, brand, platform_id, removed_at, removed_by')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as RemovedCustomPlatformBrandRow[];
+}
+
 export async function fetchScheduleHiddenBrands(
   tab: string,
   client: SupabaseClient = supabase,
@@ -700,6 +733,7 @@ export function computeTabKpisFromEntries(
   countryFilter?: string[],
   proxyFilter?: string[],
   platformFilter?: Platform[],
+  removedCustomPlatformBrands: Set<string> = new Set(),
 ): TabKpis | null {
   const cols = resolveReviewColumns(rawHeaders, tab);
   const { activePlatforms } = cols;
@@ -761,7 +795,7 @@ export function computeTabKpisFromEntries(
 
   const customPlatforms = getTabCustomPlatforms(tab).map((platform) => ({
     platform,
-    ...computeCustomPlatformCounts(filteredEntries, platform, dateFrom, dateTo),
+    ...computeCustomPlatformCounts(filteredEntries, platform, tab, brandCol, dateFrom, dateTo, removedCustomPlatformBrands),
   }));
 
   return {
@@ -783,13 +817,14 @@ export async function fetchTabKpis(
   countryFilter?: string[],
   proxyFilter?: string[],
   platformFilter?: Platform[],
+  removedCustomPlatformBrands: Set<string> = new Set(),
 ): Promise<TabKpis | null> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
   const brandCol = getBrandNameCol(tab);
-  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter);
+  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter, removedCustomPlatformBrands);
 }
 
 // Same per-entry classification as computeTabKpisFromEntries, bucketed by
@@ -1208,6 +1243,32 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
       .eq('tab', tab)
       .eq('brand_key', brandKey)
       .eq('platform', platform);
+    if (error) throw error;
+  }
+}
+
+// Mirrors setBrandPlatformRemoved exactly, for a custom platform identified
+// by its custom_platforms.id instead of the closed Platform union.
+export async function setCustomPlatformBrandRemoved(
+  tab: string, brand: string, platformId: string, removed: boolean, removedAt?: string,
+): Promise<void> {
+  const brandKey = normalizeBrandKey(brand);
+  if (removed) {
+    const payload: { tab: string; brand: string; platform_id: string; removed_by: string | null; removed_at?: string } = {
+      tab, brand, platform_id: platformId, removed_by: await currentUserEmail(),
+    };
+    if (removedAt) payload.removed_at = removedAt;
+    const { error } = await supabase
+      .from('removed_custom_platform_brands')
+      .upsert(payload, { onConflict: 'tab,brand_key,platform_id' });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('removed_custom_platform_brands')
+      .delete()
+      .eq('tab', tab)
+      .eq('brand_key', brandKey)
+      .eq('platform_id', platformId);
     if (error) throw error;
   }
 }
@@ -2291,6 +2352,18 @@ export async function deleteCustomPlatform(id: string): Promise<void> {
   if (countError) throw countError;
   if ((count ?? 0) > 0) {
     throw new Error('This platform is still enabled on one or more tabs. Disable it everywhere first.');
+  }
+  // Mirrors the guard above for the other FK custom_platforms.id is referenced
+  // by (removed_custom_platform_brands.platform_id, on delete restrict) — without
+  // this, deleting a platform that still has a brand flagged removed on it would
+  // throw a raw, unfriendly Postgres 23503 foreign-key-violation error instead.
+  const { count: flagged, error: flaggedError } = await supabase
+    .from('removed_custom_platform_brands')
+    .select('id', { count: 'exact', head: true })
+    .eq('platform_id', id);
+  if (flaggedError) throw flaggedError;
+  if ((flagged ?? 0) > 0) {
+    throw new Error('Some brands are still flagged removed on this platform. Restore them first.');
   }
   const { error } = await supabase.from('custom_platforms').delete().eq('id', id);
   if (error) throw error;

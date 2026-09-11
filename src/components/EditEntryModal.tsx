@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { X, Save, Loader2 } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
@@ -15,6 +15,7 @@ import { isYesNoCol, sectionOf } from '../lib/entryFieldSections';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import type { EntryReviewAnalysisRow } from '../lib/queries';
+import { getTabCustomPlatforms, type CustomPlatformConfig } from '../lib/customPlatformRegistry';
 
 const REVIEW_TEXT_KEY_NAMES = new Set(Object.values(PLATFORM_REVIEW_TEXT_KEYS).flat());
 
@@ -71,6 +72,8 @@ interface Props {
     removedPlatforms?: Platform[],
     overrides?: Partial<Record<Platform, 'pause' | 'active'>>,
     removedPlatformDateTexts?: Partial<Record<Platform, string>>,
+    removedCustomPlatforms?: string[],
+    removedCustomPlatformDateTexts?: Record<string, string>,
   ) => Promise<void>;
   currentTab?: string;
   availableBrands?: string[];
@@ -81,6 +84,8 @@ interface Props {
   initialRemovedPlatforms?: Platform[];
   initialRemovedPlatformDates?: Partial<Record<Platform, string>>;
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
+  initialRemovedCustomPlatforms?: string[];
+  initialRemovedCustomPlatformDates?: Record<string, string>;
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -100,7 +105,7 @@ const PLATFORM_ADDED_HEADER: Record<Platform, string> = {
   wo: 'Wizard of Odds',
 };
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, entryReviewAnalyses, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, entryReviewAnalyses, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides, initialRemovedCustomPlatforms, initialRemovedCustomPlatformDates }: Props) {
   // Recomputed on every render (deliberately not memoized, and deliberately
   // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
   // dynamic tab is created/deleted mid-session
@@ -125,6 +130,19 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   });
   const [removedDateErrors, setRemovedDateErrors] = useState<Set<Platform>>(new Set());
   const [overrides, setOverrides] = useState<Partial<Record<Platform, 'pause' | 'active'>>>(initialOverrides ?? {});
+  const [removedCustomPlatforms, setRemovedCustomPlatforms] = useState<Set<string>>(new Set(initialRemovedCustomPlatforms ?? []));
+  const [removedCustomPlatformDateTexts, setRemovedCustomPlatformDateTexts] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    if (initialRemovedCustomPlatformDates) {
+      for (const id of Object.keys(initialRemovedCustomPlatformDates)) {
+        const iso = initialRemovedCustomPlatformDates[id];
+        if (iso) init[id] = formatCellValue(iso);
+      }
+    }
+    return init;
+  });
+  const [removedCustomDateErrors, setRemovedCustomDateErrors] = useState<Set<string>>(new Set());
+  const tabCustomPlatforms: CustomPlatformConfig[] = currentTab ? getTabCustomPlatforms(currentTab) : [];
   const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
@@ -185,12 +203,20 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
       setError('Enter a valid Page Removed date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.');
       return;
     }
+    const invalidRemovedCustomDates = [...removedCustomPlatforms].filter(
+      (id) => !isValidDateText(removedCustomPlatformDateTexts[id] ?? ''),
+    );
+    if (invalidRemovedCustomDates.length > 0) {
+      setRemovedCustomDateErrors(new Set(invalidRemovedCustomDates));
+      setError('Enter a valid Page Removed date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.');
+      return;
+    }
     setSaving(true);
     try {
       const out: Record<string, string | null> = {};
       for (const h of headers) out[h] = fields[h] || null;
       const tabChanged = selectedTab && selectedTab !== currentTab ? selectedTab : undefined;
-      await onSave(out, tabChanged, [...removedPlatforms], overrides, removedPlatformDateTexts);
+      await onSave(out, tabChanged, [...removedPlatforms], overrides, removedPlatformDateTexts, [...removedCustomPlatforms], removedCustomPlatformDateTexts);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -383,13 +409,69 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
     );
   }
 
-  // Renders a section's fields, inserting `platform`'s Page Removed field
-  // right after its "Added" header (PLATFORM_ADDED_HEADER) — only fires when
-  // that header is actually present in this section's list.
-  function renderSectionFields(sectionHeaders: string[], platform: Platform, cols: 5 | 6 = 6) {
+  function renderCustomPlatformRemovedField(platform: CustomPlatformConfig) {
+    const checked = removedCustomPlatforms.has(platform.id);
+    return (
+      <div key={`removed-custom-${platform.id}`}>
+        <label className="mb-1.5 block text-xs font-medium text-slate-500">
+          {platform.shortLabel} Page Removed Status
+        </label>
+        <div className="flex h-[38px] items-center gap-2 rounded-md border border-slate-200 px-3">
+          <input
+            type="checkbox"
+            checked={checked}
+            disabled={saving}
+            onChange={(e) =>
+              setRemovedCustomPlatforms((prev) => {
+                const next = new Set(prev);
+                if (e.target.checked) next.add(platform.id); else next.delete(platform.id);
+                return next;
+              })
+            }
+            className="rounded border-slate-300 text-rose-600 focus:ring-rose-400"
+          />
+          <input
+            type="text"
+            value={removedCustomPlatformDateTexts[platform.id] ?? ''}
+            disabled={saving || !checked}
+            onChange={(e) => {
+              const val = e.target.value;
+              setRemovedCustomPlatformDateTexts((prev) => ({ ...prev, [platform.id]: val }));
+            }}
+            onBlur={() =>
+              setRemovedCustomDateErrors((prev) => {
+                const next = new Set(prev);
+                if (checked && !isValidDateText(removedCustomPlatformDateTexts[platform.id] ?? '')) next.add(platform.id);
+                else next.delete(platform.id);
+                return next;
+              })
+            }
+            placeholder="DD/MM/YYYY"
+            className={`w-full min-w-0 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none disabled:cursor-not-allowed disabled:text-slate-400 ${
+              removedCustomDateErrors.has(platform.id) ? 'text-rose-600' : ''
+            }`}
+          />
+        </div>
+        {removedCustomDateErrors.has(platform.id) && (
+          <p className="mt-1 text-xs text-rose-600">Enter a valid date (DD/MM/YYYY or YYYY-MM-DD) or leave it blank.</p>
+        )}
+      </div>
+    );
+  }
+
+  interface FieldInsertion {
+    afterHeader: string;
+    field: ReactElement;
+  }
+
+  // Renders a section's fields, inserting each matching insertion's field
+  // right after its `afterHeader` — only fires when that header is actually
+  // present in this section's list.
+  function renderSectionFields(sectionHeaders: string[], insertions: FieldInsertion[], cols: 5 | 6 = 6) {
     return sectionHeaders.flatMap((h) => {
       const out = [renderField(h, cols)];
-      if (h === PLATFORM_ADDED_HEADER[platform]) out.push(renderPageRemovedField(platform));
+      const match = insertions.find((i) => i.afterHeader === h);
+      if (match) out.push(match.field);
       return out;
     });
   }
@@ -495,7 +577,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Account Details" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-5">
-                {renderSectionFields(reorderAccountFields(sections.account), 'wo', 5)}
+                {renderSectionFields(reorderAccountFields(sections.account), [
+                  { afterHeader: PLATFORM_ADDED_HEADER.wo, field: renderPageRemovedField('wo') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ], 5)}
               </div>
             </>
           )}
@@ -505,7 +590,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label={currentTab && resolveHardcodedTabKey(currentTab) === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {renderSectionFields(sections.tp, 'tp')}
+                {renderSectionFields(sections.tp, [
+                  { afterHeader: PLATFORM_ADDED_HEADER.tp, field: renderPageRemovedField('tp') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ])}
               </div>
               {(tabPlatforms.includes('tp') || tabPlatforms.includes('wo')) && (() => {
                 const activePlatform: Platform = tabPlatforms.includes('wo') ? 'wo' : 'tp';
@@ -542,7 +630,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="AskGamblers" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {renderSectionFields(sections.ag, 'ag')}
+                {renderSectionFields(sections.ag, [
+                  { afterHeader: PLATFORM_ADDED_HEADER.ag, field: renderPageRemovedField('ag') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ])}
               </div>
               {tabPlatforms.includes('ag') && (
                 <div className="mt-3">
@@ -575,7 +666,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Casino Guru" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {renderSectionFields(sections.cg, 'cg')}
+                {renderSectionFields(sections.cg, [
+                  { afterHeader: PLATFORM_ADDED_HEADER.cg, field: renderPageRemovedField('cg') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ])}
               </div>
               {tabPlatforms.includes('cg') && (
                 <div className="mt-3">

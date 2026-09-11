@@ -5,24 +5,38 @@
 // modal's Page Removed Status checkboxes already offer, reached here
 // directly from the Brand Tab instead of needing to open one specific entry
 // first. Writes go through src/lib/platformRemovedActions.ts's
-// savePlatformRemoved — shared with BrandGroup.tsx's Edit Entry save path so
-// the two surfaces (and the notification email + PMS status sync that come
-// with a fresh flag) can never drift.
+// savePlatformRemoved (built-in platforms) and saveCustomPlatformRemoved
+// (custom platforms) — shared with BrandGroup.tsx's Edit Entry save path so
+// the surfaces (and the notification email + PMS status sync that come with
+// a fresh flag) can never drift. Built-in and custom platforms render in one
+// combined list/picker via PlatformRemovedModal's generic RemovableFlagOption
+// shape.
 import { useEffect, useMemo, useState } from 'react';
 import { Loader2, ChevronDown } from 'lucide-react';
-import PlatformRemovedModal from './PlatformRemovedModal';
+import PlatformRemovedModal, { type RemovableFlagOption } from './PlatformRemovedModal';
 import SelectDropdown from './SelectDropdown';
-import { fetchRemovedPlatformBrandsForTab, type RemovedPlatformBrandRow } from '../lib/queries';
-import { savePlatformRemoved, deriveRemovedModalInitial } from '../lib/platformRemovedActions';
+import {
+  fetchRemovedPlatformBrandsForTab, fetchRemovedCustomPlatformBrandsForTab,
+  type RemovedPlatformBrandRow, type RemovedCustomPlatformBrandRow,
+} from '../lib/queries';
+import {
+  savePlatformRemoved, deriveRemovedModalInitial,
+  saveCustomPlatformRemoved, deriveCustomPlatformRemovedModalInitial,
+} from '../lib/platformRemovedActions';
 import {
   buildRemovedPlatformBrandSet,
   buildRemovedPlatformBrandDateMap,
   PLATFORM_FAVICON,
   type Platform,
 } from '../lib/removedPlatformBrands';
-import { deriveTabRemovedPlatformRows } from '../lib/tabRemovedPlatforms';
+import {
+  buildRemovedCustomPlatformBrandSet,
+  buildRemovedCustomPlatformBrandDateMap,
+} from '../lib/removedCustomPlatformBrands';
+import { deriveTabRemovedPlatformRows, deriveTabRemovedCustomPlatformRows } from '../lib/tabRemovedPlatforms';
 import { PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { getTabCustomPlatforms, type CustomPlatformConfig } from '../lib/customPlatformRegistry';
 import { formatCellValue } from '../lib/format';
 
 interface Props {
@@ -31,21 +45,27 @@ interface Props {
   onChildModalOpenChange: (open: boolean) => void;
 }
 
+type CombinedRow =
+  | { kind: 'builtin'; brand: string; platform: Platform; label: string; favicon: string; removedAt: string; removedBy: string | null }
+  | { kind: 'custom'; brand: string; platformId: string; label: string; removedAt: string; removedBy: string | null };
+
 export default function TabRemovedPlatformsSection({ tabName, brands, onChildModalOpenChange }: Props) {
   const [rows, setRows] = useState<RemovedPlatformBrandRow[]>([]);
+  const [customRows, setCustomRows] = useState<RemovedCustomPlatformBrandRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [addingBrand, setAddingBrand] = useState('');
   const [pickerBrand, setPickerBrand] = useState<string | null>(null);
-  // Collapsed by default — a heavily-flagged tab's list can run to dozens of
-  // rows and would otherwise dominate the modal. The "Flag removed…" picker
-  // below stays visible regardless, so adding a new flag never requires
-  // expanding this list first.
   const [expanded, setExpanded] = useState(false);
 
   const tabPlatforms = useMemo(() => getTabPlatforms(tabName) as Platform[], [tabName]);
+  const tabCustomPlatforms = useMemo(() => getTabCustomPlatforms(tabName), [tabName]);
+  const customPlatformById = useMemo(
+    () => new Map<string, CustomPlatformConfig>(tabCustomPlatforms.map((p) => [p.id, p])),
+    [tabCustomPlatforms],
+  );
 
   useEffect(() => {
     onChildModalOpenChange(pickerBrand !== null);
@@ -55,9 +75,13 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
     let canceled = false;
     (async () => {
       try {
-        const data = await fetchRemovedPlatformBrandsForTab(tabName);
+        const [data, customData] = await Promise.all([
+          fetchRemovedPlatformBrandsForTab(tabName),
+          fetchRemovedCustomPlatformBrandsForTab(tabName),
+        ]);
         if (canceled) return;
         setRows(data);
+        setCustomRows(customData);
         setLoadError(false);
       } catch {
         if (!canceled) setLoadError(true);
@@ -70,22 +94,59 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
 
   const existingSet = useMemo(() => buildRemovedPlatformBrandSet(rows), [rows]);
   const existingDateMap = useMemo(() => buildRemovedPlatformBrandDateMap(rows), [rows]);
-  const displayRows = useMemo(() => deriveTabRemovedPlatformRows(rows), [rows]);
-  const hasRows = !loading && !loadError && displayRows.length > 0;
+  const existingCustomSet = useMemo(() => buildRemovedCustomPlatformBrandSet(customRows), [customRows]);
+  const existingCustomDateMap = useMemo(() => buildRemovedCustomPlatformBrandDateMap(customRows), [customRows]);
+
+  const combinedRows: CombinedRow[] = useMemo(() => [
+    ...deriveTabRemovedPlatformRows(rows).map((r) => ({
+      kind: 'builtin' as const, ...r, label: PLATFORM_FULL_LABEL[r.platform], favicon: PLATFORM_FAVICON[r.platform],
+    })),
+    ...deriveTabRemovedCustomPlatformRows(customRows).map((r) => ({
+      kind: 'custom' as const, ...r, label: customPlatformById.get(r.platformId)?.name ?? r.platformId,
+    })),
+  ].sort((a, b) => a.brand.localeCompare(b.brand)), [rows, customRows, customPlatformById]);
+
+  const hasRows = !loading && !loadError && combinedRows.length > 0;
 
   async function refresh() {
-    setRows(await fetchRemovedPlatformBrandsForTab(tabName));
+    const [data, customData] = await Promise.all([
+      fetchRemovedPlatformBrandsForTab(tabName),
+      fetchRemovedCustomPlatformBrandsForTab(tabName),
+    ]);
+    setRows(data);
+    setCustomRows(customData);
   }
 
-  async function handleRestore(brand: string, platform: Platform) {
+  async function handleRestore(row: CombinedRow) {
     setBusy(true);
     setError(null);
     let cleared = false;
     try {
-      await savePlatformRemoved({
-        tab: tabName, brand, eligiblePlatforms: [platform], checkedPlatforms: [],
-        dateTexts: {}, existingSet, existingDateMap,
-      });
+      if (row.kind === 'builtin') {
+        await savePlatformRemoved({
+          tab: tabName, brand: row.brand, eligiblePlatforms: [row.platform], checkedPlatforms: [],
+          dateTexts: {}, existingSet, existingDateMap,
+        });
+      } else {
+        // Fall back to a row-derived stand-in when the platform is no longer
+        // enabled on this tab (getTabCustomPlatforms only lists currently-
+        // enabled ones — disabling doesn't clean up removed_custom_platform_
+        // brands, and that table's platform_id FK is ON DELETE RESTRICT). An
+        // unflag never sends a notification (willBeRemoved is false), so the
+        // stand-in's name/shortLabel/statusColumn/dateColumn/maxScore values
+        // are never actually used for anything beyond building the removal
+        // key/descriptor here — this just guarantees Restore can always clear
+        // a row that's actually displayed, matching the built-in branch's
+        // registry-free behavior above.
+        const platform = customPlatformById.get(row.platformId)
+          ?? { id: row.platformId, tab: tabName, name: row.label, shortLabel: row.label, statusColumn: '', dateColumn: '', maxScore: null };
+        await saveCustomPlatformRemoved({
+          tab: tabName, brand: row.brand,
+          eligiblePlatforms: [platform],
+          checkedPlatformIds: [], dateTexts: {},
+          existingSet: existingCustomSet, existingDateMap: existingCustomDateMap,
+        });
+      }
       cleared = true;
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to restore');
@@ -101,15 +162,23 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
     }
   }
 
-  async function handleSaveRemoved(brand: string, checkedPlatforms: Platform[], dateTexts: Partial<Record<Platform, string>>) {
+  async function handleSaveRemoved(brand: string, checkedKeys: string[], dateTexts: Record<string, string>) {
     setBusy(true);
     setError(null);
+    const checkedPlatforms = tabPlatforms.filter((p) => checkedKeys.includes(p));
+    const checkedPlatformIds = tabCustomPlatforms.map((p) => p.id).filter((id) => checkedKeys.includes(id));
     try {
-      const { notifyFailures } = await savePlatformRemoved({
-        tab: tabName, brand, eligiblePlatforms: tabPlatforms, checkedPlatforms,
-        dateTexts, existingSet, existingDateMap,
-      });
-      if (notifyFailures.length > 0) {
+      const [builtInResult, customResult] = await Promise.all([
+        savePlatformRemoved({
+          tab: tabName, brand, eligiblePlatforms: tabPlatforms, checkedPlatforms,
+          dateTexts, existingSet, existingDateMap,
+        }),
+        saveCustomPlatformRemoved({
+          tab: tabName, brand, eligiblePlatforms: tabCustomPlatforms, checkedPlatformIds,
+          dateTexts, existingSet: existingCustomSet, existingDateMap: existingCustomDateMap,
+        }),
+      ]);
+      if (builtInResult.notifyFailures.length + customResult.notifyFailures.length > 0) {
         setError(`${brand}'s page was flagged removed, but the notification email failed to send.`);
       }
       setPickerBrand(null);
@@ -134,7 +203,7 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
         className="mb-1.5 flex w-full items-center justify-between gap-1 text-left enabled:cursor-pointer"
       >
         <span className="text-xs font-medium text-slate-500">
-          Removed platform pages{hasRows ? ` (${displayRows.length})` : ''}
+          Removed platform pages{hasRows ? ` (${combinedRows.length})` : ''}
         </span>
         {hasRows && (
           <ChevronDown className={`size-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`} />
@@ -147,22 +216,24 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
         </div>
       ) : loadError ? (
         <p className="text-xs text-rose-600">Failed to load removed platform pages.</p>
-      ) : displayRows.length === 0 ? (
+      ) : combinedRows.length === 0 ? (
         <p className="text-xs text-slate-400">No platform pages flagged removed on this tab.</p>
       ) : expanded ? (
         <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200">
-          {displayRows.map((r) => (
-            <li key={`${r.brand}::${r.platform}`} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+          {combinedRows.map((r) => (
+            <li key={r.kind === 'builtin' ? `${r.brand}::${r.platform}` : `${r.brand}::${r.platformId}`} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 font-medium text-slate-800">
-                  <img
-                    src={PLATFORM_FAVICON[r.platform]}
-                    alt={r.platform}
-                    className="size-3.5 rounded-sm"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                  />
+                  {r.kind === 'builtin' && (
+                    <img
+                      src={r.favicon}
+                      alt={r.label}
+                      className="size-3.5 rounded-sm"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
+                  )}
                   <span className="truncate">{r.brand}</span>
-                  <span className="text-slate-400">— {PLATFORM_FULL_LABEL[r.platform]}</span>
+                  <span className="text-slate-400">— {r.label}</span>
                 </div>
                 <div className="text-xs text-slate-500">
                   Removed {formatCellValue(r.removedAt)}
@@ -171,7 +242,7 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
               </div>
               <button
                 type="button"
-                onClick={() => handleRestore(r.brand, r.platform)}
+                onClick={() => handleRestore(r)}
                 disabled={busy}
                 className="shrink-0 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200 disabled:cursor-not-allowed disabled:opacity-50"
               >
@@ -208,12 +279,17 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
 
       {pickerBrand && (() => {
         const init = deriveRemovedModalInitial(tabName, pickerBrand, tabPlatforms, existingSet, existingDateMap);
+        const customInit = deriveCustomPlatformRemovedModalInitial(tabName, pickerBrand, tabCustomPlatforms, existingCustomSet, existingCustomDateMap);
+        const options: RemovableFlagOption[] = [
+          ...tabPlatforms.map((p) => ({ key: p, label: PLATFORM_FULL_LABEL[p], favicon: PLATFORM_FAVICON[p] })),
+          ...tabCustomPlatforms.map((p) => ({ key: p.id, label: p.name })),
+        ];
         return (
           <PlatformRemovedModal
             brand={pickerBrand}
-            platforms={tabPlatforms}
-            initialCheckedPlatforms={init.checkedPlatforms}
-            initialDateTexts={init.initialDateTexts}
+            platforms={options}
+            initialCheckedKeys={[...init.checkedPlatforms, ...customInit.checkedPlatformIds]}
+            initialDateTexts={{ ...init.initialDateTexts, ...customInit.initialDateTexts }}
             overlayZClass="z-[60]"
             busy={busy}
             onSave={(checked, dateTexts) => handleSaveRemoved(pickerBrand, checked, dateTexts)}

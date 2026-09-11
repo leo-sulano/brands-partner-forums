@@ -11,15 +11,17 @@
 // unflagging is a hard DELETE (see setBrandPlatformRemoved's own doc comment
 // in queries.ts), so re-flagging loses prior history. Accepted, pre-existing
 // tradeoff, not something this module changes.
-import { setBrandPlatformRemoved } from './queries';
+import { setBrandPlatformRemoved, setCustomPlatformBrandRemoved } from './queries';
 import { notifyBrandRemoved, type NotifyBrandRemovedPayload } from './brandRemovedNotification';
 import { syncTabStatusToPms } from './schedulePmsSync';
 import { platformRemovedKey, type Platform } from './removedPlatformBrands';
+import { customPlatformRemovedKey } from './removedCustomPlatformBrands';
 import { PLATFORM_SHORT_LABEL } from './scoreSummary';
 import { formatCellValue } from './format';
 import { dateTextToIsoDate } from './dateUtils';
 import { tabDisplayName, tabToSlug } from './tabs';
 import { SITE_URL } from './supabase';
+import type { CustomPlatformConfig } from './customPlatforms';
 
 export interface PlatformRemovedWriters {
   setRemoved: typeof setBrandPlatformRemoved;
@@ -33,11 +35,82 @@ const defaultWriters: PlatformRemovedWriters = {
   syncStatus: syncTabStatusToPms,
 };
 
+export interface CustomPlatformRemovedWriters {
+  setRemoved: typeof setCustomPlatformBrandRemoved;
+  notify: (payload: NotifyBrandRemovedPayload) => Promise<void>;
+  syncStatus: (tab: string) => Promise<void>;
+}
+
+const defaultCustomWriters: CustomPlatformRemovedWriters = {
+  setRemoved: setCustomPlatformBrandRemoved,
+  notify: notifyBrandRemoved,
+  syncStatus: syncTabStatusToPms,
+};
+
 export interface SavePlatformRemovedResult {
   // Platforms newly flagged removed this save whose notification email failed
   // to send — the flag write itself still succeeded; the caller decides how
   // to surface this (BrandGroup shows a toast per failed platform).
   notifyFailures: Platform[];
+}
+
+export interface SaveCustomPlatformRemovedResult {
+  notifyFailures: string[];
+}
+
+// One shared descriptor shape for a single platform's (built-in or custom)
+// removal-flag change -- the ONLY copy of the diff/date-parsing/notify logic,
+// called by both savePlatformRemoved and saveCustomPlatformRemoved below so
+// that logic can never drift between the two. `write` and `onNotifyFailure`
+// are pre-bound closures so this function itself never needs to know
+// whether it's handling a built-in Platform or a custom platform id.
+interface RemovalFlagDescriptor {
+  shortLabel: string;
+  wasRemoved: boolean;
+  willBeRemoved: boolean;
+  dateText?: string;
+  priorIso?: string;
+  write: (removed: boolean, removedAtIso?: string) => Promise<void>;
+  onNotifyFailure: () => void;
+}
+
+async function applyRemovalFlagChanges(
+  tab: string,
+  brand: string,
+  descriptors: RemovalFlagDescriptor[],
+  writers: { notify: (payload: NotifyBrandRemovedPayload) => Promise<void>; syncStatus: (tab: string) => Promise<void> },
+): Promise<void> {
+  let flaggedAnyRemoved = false;
+  for (const d of descriptors) {
+    const stateChanged = d.wasRemoved !== d.willBeRemoved;
+    // A platform that stays checked can still have had its date edited — diffed
+    // against the same display format the field was seeded with, so re-saving
+    // an untouched date is a no-op (mirrors BrandGroup.tsx's prior inline logic).
+    const dateText = d.dateText?.trim();
+    const priorDateDisplay = d.priorIso ? formatCellValue(d.priorIso) : undefined;
+    const dateChanged = d.willBeRemoved && !stateChanged && !!dateText && dateText !== priorDateDisplay;
+    if (!stateChanged && !dateChanged) continue;
+    const removedAtIso = d.willBeRemoved && dateText ? dateTextToIsoDate(dateText) ?? undefined : undefined;
+    await d.write(d.willBeRemoved, removedAtIso);
+    if (d.willBeRemoved && stateChanged) {
+      flaggedAnyRemoved = true;
+      try {
+        await writers.notify({
+          brand,
+          tabLabel: tabDisplayName(tab),
+          platformShortLabel: d.shortLabel,
+          removedAtLabel: removedAtIso ? formatCellValue(removedAtIso) : formatCellValue(new Date().toISOString()),
+          brandTabUrl: `${SITE_URL}/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`,
+        });
+      } catch {
+        d.onNotifyFailure();
+      }
+    }
+  }
+  // Fire-and-forget, same as the original BrandGroup.tsx logic this was
+  // extracted from — a failure here is silent, the every-minute cron still
+  // covers it on its own next tick.
+  if (flaggedAnyRemoved) writers.syncStatus(tab).catch(() => {});
 }
 
 export async function savePlatformRemoved(
@@ -75,42 +148,57 @@ export async function savePlatformRemoved(
   const { tab, brand, eligiblePlatforms, checkedPlatforms, dateTexts, existingSet, existingDateMap } = params;
   const lookupTab = params.lookupTab ?? tab;
   const nowChecked = new Set(checkedPlatforms);
-  let flaggedAnyRemoved = false;
   const notifyFailures: Platform[] = [];
-  for (const platform of eligiblePlatforms) {
+  const descriptors: RemovalFlagDescriptor[] = eligiblePlatforms.map((platform) => {
     const key = platformRemovedKey(lookupTab, brand, platform);
-    const wasRemoved = existingSet.has(key);
-    const willBeRemoved = nowChecked.has(platform);
-    const stateChanged = wasRemoved !== willBeRemoved;
-    // A platform that stays checked can still have had its date edited — diffed
-    // against the same display format the field was seeded with, so re-saving
-    // an untouched date is a no-op (mirrors BrandGroup.tsx's prior inline logic).
-    const dateText = dateTexts[platform]?.trim();
-    const priorIso = existingDateMap.get(key);
-    const priorDateDisplay = priorIso ? formatCellValue(priorIso) : undefined;
-    const dateChanged = willBeRemoved && !stateChanged && !!dateText && dateText !== priorDateDisplay;
-    if (!stateChanged && !dateChanged) continue;
-    const removedAtIso = willBeRemoved && dateText ? dateTextToIsoDate(dateText) ?? undefined : undefined;
-    await writers.setRemoved(tab, brand, platform, willBeRemoved, removedAtIso);
-    if (willBeRemoved && stateChanged) {
-      flaggedAnyRemoved = true;
-      try {
-        await writers.notify({
-          brand,
-          tabLabel: tabDisplayName(tab),
-          platformShortLabel: PLATFORM_SHORT_LABEL[platform],
-          removedAtLabel: removedAtIso ? formatCellValue(removedAtIso) : formatCellValue(new Date().toISOString()),
-          brandTabUrl: `${SITE_URL}/brands/${tabToSlug(tab)}?brand=${encodeURIComponent(brand)}`,
-        });
-      } catch {
-        notifyFailures.push(platform);
-      }
-    }
-  }
-  // Fire-and-forget, same as the original BrandGroup.tsx logic this was
-  // extracted from — a failure here is silent, the every-minute cron still
-  // covers it on its own next tick.
-  if (flaggedAnyRemoved) writers.syncStatus(tab).catch(() => {});
+    return {
+      shortLabel: PLATFORM_SHORT_LABEL[platform],
+      wasRemoved: existingSet.has(key),
+      willBeRemoved: nowChecked.has(platform),
+      dateText: dateTexts[platform],
+      priorIso: existingDateMap.get(key),
+      write: (removed, removedAtIso) => writers.setRemoved(tab, brand, platform, removed, removedAtIso),
+      onNotifyFailure: () => notifyFailures.push(platform),
+    };
+  });
+  await applyRemovalFlagChanges(tab, brand, descriptors, writers);
+  return { notifyFailures };
+}
+
+// Mirrors savePlatformRemoved exactly, for custom (user-defined) platforms
+// identified by custom_platforms.id instead of the closed Platform union.
+// Shares the same applyRemovalFlagChanges engine, so the diff/date-parsing/
+// notify logic can't drift between the two paths.
+export async function saveCustomPlatformRemoved(
+  params: {
+    tab: string;
+    lookupTab?: string;
+    brand: string;
+    eligiblePlatforms: CustomPlatformConfig[];
+    checkedPlatformIds: string[];
+    dateTexts: Record<string, string>;
+    existingSet: ReadonlySet<string>;
+    existingDateMap: ReadonlyMap<string, string>;
+  },
+  writers: CustomPlatformRemovedWriters = defaultCustomWriters,
+): Promise<SaveCustomPlatformRemovedResult> {
+  const { tab, brand, eligiblePlatforms, checkedPlatformIds, dateTexts, existingSet, existingDateMap } = params;
+  const lookupTab = params.lookupTab ?? tab;
+  const nowChecked = new Set(checkedPlatformIds);
+  const notifyFailures: string[] = [];
+  const descriptors: RemovalFlagDescriptor[] = eligiblePlatforms.map((platform) => {
+    const key = customPlatformRemovedKey(lookupTab, brand, platform.id);
+    return {
+      shortLabel: platform.shortLabel,
+      wasRemoved: existingSet.has(key),
+      willBeRemoved: nowChecked.has(platform.id),
+      dateText: dateTexts[platform.id],
+      priorIso: existingDateMap.get(key),
+      write: (removed, removedAtIso) => writers.setRemoved(tab, brand, platform.id, removed, removedAtIso),
+      onNotifyFailure: () => notifyFailures.push(platform.id),
+    };
+  });
+  await applyRemovalFlagChanges(tab, brand, descriptors, writers);
   return { notifyFailures };
 }
 
@@ -134,4 +222,25 @@ export function deriveRemovedModalInitial(
     }
   }
   return { checkedPlatforms, initialDateTexts };
+}
+
+// Mirrors deriveRemovedModalInitial exactly, for custom platforms.
+export function deriveCustomPlatformRemovedModalInitial(
+  tab: string,
+  brand: string,
+  eligiblePlatforms: CustomPlatformConfig[],
+  existingSet: ReadonlySet<string>,
+  existingDateMap: ReadonlyMap<string, string>,
+): { checkedPlatformIds: string[]; initialDateTexts: Record<string, string> } {
+  const checkedPlatformIds: string[] = [];
+  const initialDateTexts: Record<string, string> = {};
+  for (const platform of eligiblePlatforms) {
+    const key = customPlatformRemovedKey(tab, brand, platform.id);
+    if (existingSet.has(key)) {
+      checkedPlatformIds.push(platform.id);
+      const iso = existingDateMap.get(key);
+      if (iso) initialDateTexts[platform.id] = formatCellValue(iso);
+    }
+  }
+  return { checkedPlatformIds, initialDateTexts };
 }

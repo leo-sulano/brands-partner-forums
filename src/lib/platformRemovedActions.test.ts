@@ -131,3 +131,87 @@ describe('deriveRemovedModalInitial', () => {
     expect(res).toEqual({ checkedPlatforms: [], initialDateTexts: {} });
   });
 });
+
+import { saveCustomPlatformRemoved, deriveCustomPlatformRemovedModalInitial } from './platformRemovedActions';
+import {
+  buildRemovedCustomPlatformBrandSet,
+  buildRemovedCustomPlatformBrandDateMap,
+} from './removedCustomPlatformBrands';
+import type { CustomPlatformConfig } from './customPlatforms';
+
+const YELP: CustomPlatformConfig = {
+  id: 'p1', tab: 'BITP', name: 'Yelp', shortLabel: 'YP',
+  statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+};
+const G2: CustomPlatformConfig = {
+  id: 'p2', tab: 'BITP', name: 'G2', shortLabel: 'G2',
+  statusColumn: 'G2 Review Status', dateColumn: 'G2 Review Added', maxScore: null,
+};
+const CUSTOM_PLATS = [YELP, G2];
+
+function existingCustom(rows: { tab: string; brand: string; platform_id: string; removed_at: string }[]) {
+  return {
+    existingSet: buildRemovedCustomPlatformBrandSet(rows),
+    existingDateMap: buildRemovedCustomPlatformBrandDateMap(rows),
+  };
+}
+
+describe('saveCustomPlatformRemoved', () => {
+  it('flags a newly-checked custom platform removed and notifies + syncs status', async () => {
+    const { calls, writers } = fakeWriters();
+    const result = await saveCustomPlatformRemoved({
+      tab: TAB, brand: 'Brand X', eligiblePlatforms: CUSTOM_PLATS, checkedPlatformIds: ['p1'],
+      dateTexts: {}, ...existingCustom([]),
+    }, writers as never);
+    expect(calls[0]).toEqual(['setRemoved', TAB, 'Brand X', 'p1', true, undefined]);
+    expect(calls[1][0]).toBe('notify');
+    expect(calls[2]).toEqual(['syncStatus', TAB]);
+    expect(result.notifyFailures).toEqual([]);
+  });
+
+  it('unchecking a flagged custom platform clears it with no notify/sync', async () => {
+    const { calls, writers } = fakeWriters();
+    await saveCustomPlatformRemoved({
+      tab: TAB, brand: 'Brand X', eligiblePlatforms: CUSTOM_PLATS, checkedPlatformIds: [],
+      dateTexts: {}, ...existingCustom([{ tab: TAB, brand: 'Brand X', platform_id: 'p1', removed_at: '2026-09-05' }]),
+    }, writers as never);
+    expect(calls).toEqual([['setRemoved', TAB, 'Brand X', 'p1', false, undefined]]);
+  });
+
+  it('does not re-write an unchanged existing flag with the same displayed date', async () => {
+    const { calls, writers } = fakeWriters();
+    await saveCustomPlatformRemoved({
+      tab: TAB, brand: 'Brand X', eligiblePlatforms: CUSTOM_PLATS, checkedPlatformIds: ['p1'],
+      dateTexts: { p1: '05/09/2026' },
+      ...existingCustom([{ tab: TAB, brand: 'Brand X', platform_id: 'p1', removed_at: '2026-09-05' }]),
+    }, writers as never);
+    expect(calls).toEqual([]);
+  });
+
+  it('records a notify failure but still keeps the flag write and fires the status sync', async () => {
+    const { calls, writers } = fakeWriters(async () => { throw new Error('email down'); });
+    const result = await saveCustomPlatformRemoved({
+      tab: TAB, brand: 'Brand X', eligiblePlatforms: CUSTOM_PLATS, checkedPlatformIds: ['p1'],
+      dateTexts: {}, ...existingCustom([]),
+    }, writers as never);
+    expect(calls.map((c) => c[0])).toEqual(['setRemoved', 'notify', 'syncStatus']);
+    expect(result.notifyFailures).toEqual(['p1']);
+  });
+});
+
+describe('deriveCustomPlatformRemovedModalInitial', () => {
+  it('checks currently-flagged custom platforms and seeds their display dates', () => {
+    const { existingSet, existingDateMap } = existingCustom([
+      { tab: TAB, brand: 'Brand X', platform_id: 'p2', removed_at: '2026-09-05' },
+    ]);
+    const res = deriveCustomPlatformRemovedModalInitial(TAB, 'Brand X', CUSTOM_PLATS, existingSet, existingDateMap);
+    expect(res.checkedPlatformIds).toEqual(['p2']);
+    expect(res.initialDateTexts).toEqual({ p2: '05/09/2026' });
+  });
+
+  it('returns empty state when nothing is flagged', () => {
+    const { existingSet, existingDateMap } = existingCustom([]);
+    const res = deriveCustomPlatformRemovedModalInitial(TAB, 'Brand X', CUSTOM_PLATS, existingSet, existingDateMap);
+    expect(res).toEqual({ checkedPlatformIds: [], initialDateTexts: {} });
+  });
+});

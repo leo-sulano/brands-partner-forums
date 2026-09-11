@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import KpiCard from '../components/KpiCard';
 import SuccessRateBadge from '../components/SuccessRateBadge';
-import { fetchTabKpis, fetchBrandKpis, fetchRemovedPlatformBrands } from '../lib/queries';
+import { fetchTabKpis, fetchBrandKpis, fetchRemovedPlatformBrands, fetchRemovedCustomPlatformBrands } from '../lib/queries';
 import MultiSelectDropdown from '../components/MultiSelectDropdown';
 import DatePicker from '../components/DatePicker';
 import BreakdownDonutCard from '../components/BreakdownDonutCard';
@@ -20,6 +20,7 @@ import { countryFlagImageUrl } from '../lib/countryFlags';
 import { proxyIconUrl } from '../lib/proxyIcons';
 import { canonicalProxyKey, NO_PROXY_LABEL } from '../lib/proxyAliases';
 import { buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
+import { buildRemovedCustomPlatformBrandSet } from '../lib/removedCustomPlatformBrands';
 import { tabToSlug, tabDisplayName, slugToTab } from '../lib/tabs';
 import { getActiveOperationalTabs, isTabPaused } from '../lib/pausedTabRegistry';
 import { getTabPlatforms, registerToolbarFilters, type ToolbarFilterKey } from '../lib/tab-configs';
@@ -562,9 +563,10 @@ export default function Overview() {
     const seq = ++loadSeqRef.current;
     setState(s => ({ ...s, loading: true }));
     try {
-      const removedPlatformBrands = await fetchRemovedPlatformBrands()
-        .then(buildRemovedPlatformBrandSet)
-        .catch(() => new Set<string>());
+      const [removedPlatformBrands, removedCustomPlatformBrands] = await Promise.all([
+        fetchRemovedPlatformBrands().then(buildRemovedPlatformBrandSet).catch(() => new Set<string>()),
+        fetchRemovedCustomPlatformBrands().then(buildRemovedCustomPlatformBrandSet).catch(() => new Set<string>()),
+      ]);
       // A selected tab narrows the fetch to just itself — every other
       // section on the page derives from state.tabs, so this one change is
       // what makes the whole page re-scope. Routed through isTabPaused, same
@@ -584,6 +586,7 @@ export default function Overview() {
             countryFilter,
             proxyFilter,
             platformFilter,
+            removedCustomPlatformBrands,
           )
             .then((kpis): TabSummary | null => (kpis ? { tab, kpis } : null))
             .catch((): TabSummary => ({ tab, kpis: EMPTY_KPIS }))
