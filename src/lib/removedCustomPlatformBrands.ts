@@ -9,7 +9,7 @@
 // table/module from removedPlatformBrands.ts rather than widening that
 // module's closed Platform union -- see
 // docs/superpowers/specs/2026-09-11-custom-platform-removed-flag-design.md.
-import { normalizeBrandKey } from './removedPlatformBrands';
+import { normalizeBrandKey } from './removedPlatformBrands.ts';
 
 export { normalizeBrandKey };
 
