@@ -63,11 +63,16 @@ constrain their `platform` column to the 4 built-in codes:
 One migration drops each table's `check (... in ('tp','ag','cg','wo'))` constraint (keeping `not
 null` and every other constraint intact). No new tables, no new columns, no changes to any existing
 unique constraint or index — only the enumeration check goes away. A custom platform's rows in these
-tables store its `platform_key` (the same lowercase slug already used as its stable identifier
-elsewhere — e.g. `"yelp"`) in that same `platform`/`allowed_platform` text column, sitting alongside
-the 4 built-in codes. This mirrors how `entries.tab` is already a free-text column with no DB-level
-enum enforcement — Postgres can't enumeration-check a column against another table's live contents
-without a trigger, and this codebase doesn't use triggers for that purpose anywhere else.
+tables store its `custom_platforms.id` (a uuid string) in that same `platform`/`allowed_platform`
+text column, sitting alongside the 4 built-in 2-letter codes. **Correction from an earlier draft of
+this spec:** `platform_key` (the DB's generated lowercase-name column) is never actually exposed to
+the frontend — `CustomPlatformConfig` (`src/lib/customPlatforms.ts`) only carries `id`, `tab`, `name`,
+`shortLabel`, `statusColumn`, `dateColumn`, `maxScore`. Using `id` instead is also consistent with
+Task 340's removed-flag feature, which already keys `removed_custom_platform_brands.platform_id` off
+`custom_platforms.id` for the same reason. This mirrors how `entries.tab` is already a free-text
+column with no DB-level enum enforcement — Postgres can't enumeration-check a column against another
+table's live contents without a trigger, and this codebase doesn't use triggers for that purpose
+anywhere else.
 
 ### Type generalization
 
@@ -100,10 +105,24 @@ synthesized from the custom platform's registered config (`name`/`shortLabel`, v
 Every scheduler surface — the calendar grid, `ensureWeekGenerated`/`recalculatePauses`, PMS sync's
 eligibility filter, the weekly cron — already calls `getTabPlatforms(tab)` as its one source of "what
 platforms does this tab schedule." `getTabPlatforms` gains one line: after computing the built-in
-4-subset (unchanged logic), append `getTabCustomPlatforms(tab).map(p => p.platform_key)`. This one
-change is what makes every downstream consumer "just see" custom platforms with no further
-per-surface code changes — the entire rest of the scheduling algorithm, pause detection, and PMS sync
-already operate generically over "whatever `getTabPlatforms` returns," never a hardcoded 4-item list.
+4-subset (unchanged logic), append each of the tab's registered custom platforms' `id`. `tab-configs.ts`
+cannot import `getTabCustomPlatforms` directly — `customPlatformRegistry.ts` already imports FROM
+`tab-configs.ts` (`setCustomPlatformColumnsResolver`), so a reverse import would close a real
+circular-import cycle. This codebase already has an established pattern for exactly this situation
+(`setDynamicColumnsResolver`, `setCustomPlatformColumnsResolver`): `tab-configs.ts` exposes a new
+`setCustomPlatformKeysResolver(fn: (tab: string) => string[])` setter with a no-op default, and
+`customPlatformRegistry.ts` self-registers `getTabCustomPlatforms(tab).map(p => p.id)` against it at
+module load, right next to its existing `setCustomPlatformColumnsResolver(getCustomPlatformColumns)`
+call. This one change is what makes every downstream consumer "just see" custom platforms with no
+further per-surface code changes — the entire rest of the scheduling algorithm, pause detection, and
+PMS sync already operate generically over "whatever `getTabPlatforms` returns," never a hardcoded
+4-item list.
+
+`tab-configs.ts` also has its own separate hidden-platform registry (`hiddenTabPlatforms: Record<string, Set<'tp'|'ag'|'cg'|'wo'>>`,
+backing the `tab_hidden_platforms` table) with the same closed-union typing on its `Set` and on
+`registerHiddenTabPlatforms`'s parameter — this widens to `Set<string>`/`{ tab: string; platform: string }[]`
+alongside `getTabPlatforms` itself, so a custom platform can be hidden per-tab the same way a built-in
+one can.
 
 ### Registry bootstrap
 
@@ -139,8 +158,8 @@ renders through the same `ScheduleCell`/`PlatformChip` components, using the gen
   revisit only if the fixed default proves insufficient in real use.
 - Ask AI integration — separate sub-project.
 - Score Summary integration — separate sub-project, not currently planned.
-- Renaming a custom platform — already a Task 325 non-goal; `platform_key` is treated as immutable
-  here too, consistent with that decision.
+- Renaming a custom platform — already a Task 325 non-goal; `custom_platforms.id` is a stable primary
+  key regardless, so this doesn't add any new constraint beyond what already exists.
 
 ## Testing
 
