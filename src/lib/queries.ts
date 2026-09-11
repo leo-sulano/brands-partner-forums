@@ -733,6 +733,7 @@ export function computeTabKpisFromEntries(
   countryFilter?: string[],
   proxyFilter?: string[],
   platformFilter?: Platform[],
+  removedCustomPlatformBrands: Set<string> = new Set(),
 ): TabKpis | null {
   const cols = resolveReviewColumns(rawHeaders, tab);
   const { activePlatforms } = cols;
@@ -794,7 +795,7 @@ export function computeTabKpisFromEntries(
 
   const customPlatforms = getTabCustomPlatforms(tab).map((platform) => ({
     platform,
-    ...computeCustomPlatformCounts(filteredEntries, platform, dateFrom, dateTo),
+    ...computeCustomPlatformCounts(filteredEntries, platform, tab, brandCol, dateFrom, dateTo, removedCustomPlatformBrands),
   }));
 
   return {
@@ -816,13 +817,14 @@ export async function fetchTabKpis(
   countryFilter?: string[],
   proxyFilter?: string[],
   platformFilter?: Platform[],
+  removedCustomPlatformBrands: Set<string> = new Set(),
 ): Promise<TabKpis | null> {
   const [allEntries, rawHeaders] = await Promise.all([
     fetchAllTabEntries(tab),
     fetchTabHeaders(tab),
   ]);
   const brandCol = getBrandNameCol(tab);
-  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter);
+  return computeTabKpisFromEntries(allEntries, rawHeaders, tab, brandCol, dateFrom, dateTo, removedPlatformBrands, countryFilter, proxyFilter, platformFilter, removedCustomPlatformBrands);
 }
 
 // Same per-entry classification as computeTabKpisFromEntries, bucketed by

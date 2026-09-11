@@ -94,6 +94,7 @@ import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
 import { registerHiddenTabPlatforms, resetHiddenTabPlatforms } from './tab-configs';
 import { registerTabCustomPlatforms, resetTabCustomPlatforms } from './customPlatformRegistry.ts';
+import { buildRemovedCustomPlatformBrandSet } from './removedCustomPlatformBrands.ts';
 import type { Entry } from '../types/entry.ts';
 import type { ReviewRemovalAssessmentResult } from './reviewRemovalAssessment.ts';
 import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
@@ -1082,6 +1083,28 @@ describe('computeTabKpisFromEntries', () => {
       { platform: expect.objectContaining({ name: 'Yelp' }), total: 2, live: 1, removed: 1, successRate: 50 },
     ]);
     resetTabCustomPlatforms();
+  });
+
+  it('excludes a brand flagged removed on a custom platform enabled for this tab', () => {
+    registerTabCustomPlatforms([{
+      id: 'p1', tab: 'TP Affiliate', name: 'Yelp', shortLabel: 'YP',
+      statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+    }]);
+    try {
+      const entries = [
+        entry('1', { 'URL PAGE': 'Flagged Co', 'Yelp Review Status': 'Published' }),
+        entry('2', { 'URL PAGE': 'Other Co', 'Yelp Review Status': 'Published' }),
+      ];
+      const removedCustom = buildRemovedCustomPlatformBrandSet([{ tab: 'TP Affiliate', brand: 'Flagged Co', platform_id: 'p1' }]);
+      const kpis = computeTabKpisFromEntries(
+        entries, rawHeaders, 'TP Affiliate', 'URL PAGE', undefined, undefined, new Set(),
+        undefined, undefined, undefined, removedCustom,
+      )!;
+      const yelp = kpis.customPlatforms.find((c) => c.platform.id === 'p1')!;
+      expect(yelp.total).toBe(1);
+    } finally {
+      resetTabCustomPlatforms();
+    }
   });
 });
 
