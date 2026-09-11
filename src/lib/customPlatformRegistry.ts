@@ -9,7 +9,7 @@
 // imports it from a Deno context -- Schedule Planner/generate-weekly-schedule
 // are explicit non-goals -- kept safe for a possible future Phase 2, matching
 // every sibling registry module in src/lib.
-import { setCustomPlatformColumnsResolver } from './tab-configs.ts';
+import { setCustomPlatformColumnsResolver, setCustomPlatformKeysResolver } from './tab-configs.ts';
 import { DATE_ENTRY_HEADERS } from './dateUtils.ts';
 import type { CustomPlatformConfig } from './customPlatforms.ts';
 
@@ -73,3 +73,4 @@ export function getCustomPlatformColumns(tab: string): string[] {
 }
 
 setCustomPlatformColumnsResolver(getCustomPlatformColumns);
+setCustomPlatformKeysResolver(getCustomPlatformIds);

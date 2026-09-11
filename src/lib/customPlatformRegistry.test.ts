@@ -49,10 +49,22 @@ describe('customPlatformRegistry', () => {
     expect(DATE_ENTRY_HEADERS.has('Yelp Review Added')).toBe(true);
   });
 
-  it('never widens getTabPlatforms\'s built-in return type/value', () => {
+  // Reverses this test's original assertion from the Custom Platforms feature
+  // (2026-09-07, commit 72a7d60), which deliberately locked getTabPlatforms
+  // to NOT widen -- Schedule Planner integration was an explicit non-goal at
+  // the time (see CLAUDE.md's Known Issues entry for Task 325). The
+  // 2026-09-11 schedule-planner-custom-platform-support plan's whole premise
+  // is reversing that non-goal, via the setCustomPlatformKeysResolver
+  // self-registration wired up in this file (see the bottom of
+  // customPlatformRegistry.ts). This is the end-to-end proof that a
+  // registered custom platform's id really does flow through to
+  // getTabPlatforms via the real registry, not just via a test-injected
+  // resolver (tab-configs.test.ts's own 'custom platform resolver' describe
+  // block covers that half in isolation).
+  it('appends a registered platform\'s id after getTabPlatforms\'s built-in return value', () => {
     const before = getTabPlatforms('Hanan');
     registerTabCustomPlatforms([YELP]);
-    expect(getTabPlatforms('Hanan')).toEqual(before);
+    expect(getTabPlatforms('Hanan')).toEqual([...before, 'p1']);
   });
 
   it('resetTabCustomPlatforms clears every registration', () => {
