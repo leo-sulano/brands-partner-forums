@@ -280,6 +280,39 @@ export async function fetchRemovedPlatformBrandsForTab(
   return (data ?? []) as RemovedPlatformBrandRow[];
 }
 
+export async function fetchRemovedCustomPlatformBrands(
+  client: SupabaseClient = supabase,
+): Promise<{ tab: string; brand: string; platform_id: string; removed_at: string }[]> {
+  const { data, error } = await client
+    .from('removed_custom_platform_brands')
+    .select('tab, brand, platform_id, removed_at');
+  if (error) throw error;
+  return (data ?? []) as { tab: string; brand: string; platform_id: string; removed_at: string }[];
+}
+
+export interface RemovedCustomPlatformBrandRow {
+  tab: string;
+  brand: string;
+  platform_id: string;
+  removed_at: string;
+  removed_by: string | null;
+}
+
+// Tab-scoped sibling of fetchRemovedCustomPlatformBrands above, carrying
+// removed_by too -- mirrors fetchRemovedPlatformBrandsForTab exactly, feeds
+// the Edit Brand Tab "Removed platform pages" section's custom-platform rows.
+export async function fetchRemovedCustomPlatformBrandsForTab(
+  tab: string,
+  client: SupabaseClient = supabase,
+): Promise<RemovedCustomPlatformBrandRow[]> {
+  const { data, error } = await client
+    .from('removed_custom_platform_brands')
+    .select('tab, brand, platform_id, removed_at, removed_by')
+    .eq('tab', tab);
+  if (error) throw error;
+  return (data ?? []) as RemovedCustomPlatformBrandRow[];
+}
+
 export async function fetchScheduleHiddenBrands(
   tab: string,
   client: SupabaseClient = supabase,
@@ -1208,6 +1241,32 @@ export async function setBrandPlatformRemoved(tab: string, brand: string, platfo
       .eq('tab', tab)
       .eq('brand_key', brandKey)
       .eq('platform', platform);
+    if (error) throw error;
+  }
+}
+
+// Mirrors setBrandPlatformRemoved exactly, for a custom platform identified
+// by its custom_platforms.id instead of the closed Platform union.
+export async function setCustomPlatformBrandRemoved(
+  tab: string, brand: string, platformId: string, removed: boolean, removedAt?: string,
+): Promise<void> {
+  const brandKey = normalizeBrandKey(brand);
+  if (removed) {
+    const payload: { tab: string; brand: string; platform_id: string; removed_by: string | null; removed_at?: string } = {
+      tab, brand, platform_id: platformId, removed_by: await currentUserEmail(),
+    };
+    if (removedAt) payload.removed_at = removedAt;
+    const { error } = await supabase
+      .from('removed_custom_platform_brands')
+      .upsert(payload, { onConflict: 'tab,brand_key,platform_id' });
+    if (error) throw error;
+  } else {
+    const { error } = await supabase
+      .from('removed_custom_platform_brands')
+      .delete()
+      .eq('tab', tab)
+      .eq('brand_key', brandKey)
+      .eq('platform_id', platformId);
     if (error) throw error;
   }
 }

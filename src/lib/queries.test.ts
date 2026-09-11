@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+﻿import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const { singletonFrom, singletonRpc, singletonStorageFrom } = vi.hoisted(() => ({
   singletonFrom: vi.fn(), singletonRpc: vi.fn(), singletonStorageFrom: vi.fn(),
@@ -30,6 +30,8 @@ import {
   fetchScheduleRestrictedBrands,
   fetchBrandAgentAssignments,
   bulkUpsertBrandSchedule,
+  fetchRemovedCustomPlatformBrands,
+  setCustomPlatformBrandRemoved,
   computeTabKpisFromEntries,
   computeBrandKpisFromEntries,
   fetchBrandPlatformOverrides,
@@ -288,6 +290,46 @@ describe('queries.ts injectable Supabase client', () => {
     expect(selectSpy).toHaveBeenCalledWith('tab, brand, platform, removed_at');
   });
 
+
+  it('fetchRemovedCustomPlatformBrands uses the passed-in client', async () => {
+    const fakeFrom = vi.fn().mockReturnValue(chain({ data: [], error: null }));
+    await fetchRemovedCustomPlatformBrands({ from: fakeFrom } as any);
+    expect(fakeFrom).toHaveBeenCalledWith('removed_custom_platform_brands');
+    expect(singletonFrom).not.toHaveBeenCalled();
+  });
+
+  it('fetchRemovedCustomPlatformBrands selects removed_at alongside tab/brand/platform_id', async () => {
+    const selectSpy = vi.fn().mockReturnValue({
+      then: (resolve: (v: { data: unknown[]; error: null }) => unknown) => resolve({ data: [], error: null }),
+    });
+    const fakeFrom = vi.fn().mockReturnValue({ select: selectSpy });
+    await fetchRemovedCustomPlatformBrands({ from: fakeFrom } as any);
+    expect(selectSpy).toHaveBeenCalledWith('tab, brand, platform_id, removed_at');
+  });
+
+  it('setCustomPlatformBrandRemoved upserts a payload keyed by tab/brand_key/platform_id when removed=true', async () => {
+    const upsert = vi.fn().mockResolvedValue({ error: null });
+    singletonFrom.mockReturnValue({ upsert });
+    await setCustomPlatformBrandRemoved('BITP', 'Brand X', 'p1', true, '2026-09-05');
+    expect(singletonFrom).toHaveBeenCalledWith('removed_custom_platform_brands');
+    expect(upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ tab: 'BITP', brand: 'Brand X', platform_id: 'p1', removed_at: '2026-09-05' }),
+      { onConflict: 'tab,brand_key,platform_id' },
+    );
+  });
+
+  it('setCustomPlatformBrandRemoved deletes the row keyed by brand_key when removed=false', async () => {
+    const eq3 = vi.fn().mockResolvedValue({ error: null });
+    const eq2 = vi.fn().mockReturnValue({ eq: eq3 });
+    const eq1 = vi.fn().mockReturnValue({ eq: eq2 });
+    const del = vi.fn().mockReturnValue({ eq: eq1 });
+    singletonFrom.mockReturnValue({ delete: del });
+    await setCustomPlatformBrandRemoved('BITP', 'Brand X', 'p1', false);
+    expect(singletonFrom).toHaveBeenCalledWith('removed_custom_platform_brands');
+    expect(eq1).toHaveBeenCalledWith('tab', 'BITP');
+    expect(eq2).toHaveBeenCalledWith('brand_key', 'brand x');
+    expect(eq3).toHaveBeenCalledWith('platform_id', 'p1');
+  });
   it('bulkUpsertBrandSchedule uses the passed-in client for the upsert', async () => {
     const upsert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ upsert });
@@ -554,7 +596,7 @@ describe('computeTabKpisFromEntries', () => {
     const scoreSummaryTp = rates.get('TP Affiliate') ?? { live: 0, removed: 0 };
 
     // Entry 2's TP date (Jan) is genuinely outside the range, so both
-    // implementations correctly exclude it — only entry 3 (undated) and
+    // implementations correctly exclude it â€” only entry 3 (undated) and
     // entries 1/4 (in-range) should count: live 2 (entries 1, 4), removed 1
     // (entry 3 only; entry 2 is excluded, not counted as removed).
     expect(kpis.tp).toEqual({ live: scoreSummaryTp.live, removed: scoreSummaryTp.removed });
@@ -757,12 +799,12 @@ describe('computeTabKpisFromEntries', () => {
       entry('2', { 'URL PAGE': 'A', 'Trust Pilot': '10/06/2026', 'TP Review Status': 'Published', 'Country': 'United Kingdom', 'Proxy Used': ' Enigma-US1 ' }),
     ];
     const kpis = computeTabKpisFromEntries(entries, rawHeaders, 'TP Affiliate', 'URL PAGE', '2026-05-01', '2026-07-31', new Set())!;
-    // proxyLabel reflects the first-encountered entry's casing ('enigma-us1', entry '1') —
+    // proxyLabel reflects the first-encountered entry's casing ('enigma-us1', entry '1') â€”
     // addToPairBreakdown sets a bucket's display label once, on first insert, deliberately
     // matching addToBreakdown's existing first-wins style (see the adjacent byCountry/byProxy
     // tests above, which rely on the same rule). Unlike countryLabel (always the canonical full
     // name via a lookup table, regardless of input order), there is no alias database for proxy
-    // names — canonicalProxyName is a pass-through typo-correction only — so proxyLabel genuinely
+    // names â€” canonicalProxyName is a pass-through typo-correction only â€” so proxyLabel genuinely
     // depends on which spelling was seen first.
     expect(kpis.byCountryProxy).toEqual({
       'GB::enigma-us1': { countryLabel: 'United Kingdom', proxyLabel: 'enigma-us1', live: 2, removed: 0 },
@@ -928,7 +970,7 @@ describe('computeTabKpisFromEntries', () => {
     };
     const kpis = computeTabKpisFromEntries([multiEntry], rawHeadersMulti, 'Rooster Partners', 'Brands', '2026-05-01', '2026-07-31', new Set(), undefined, undefined, ['tp', 'cg']);
     expect(kpis).not.toBeNull();
-    // TP is Removed and CG is Published/live on the same row — statuses.some(isLiveStatus)
+    // TP is Removed and CG is Published/live on the same row â€” statuses.some(isLiveStatus)
     // is checked before statuses.some(isRemovedStatus), so a row with a decided outcome on
     // both counts as live once, not once for each platform and not as removed.
     expect(kpis!.live).toBe(1);
