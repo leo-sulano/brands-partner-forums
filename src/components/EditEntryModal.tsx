@@ -590,7 +590,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label={currentTab && resolveHardcodedTabKey(currentTab) === 'Wizard of Odds' ? 'Wizard of Odds' : 'Trust Pilot'} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {renderSectionFields(sections.tp, [{ afterHeader: PLATFORM_ADDED_HEADER.tp, field: renderPageRemovedField('tp') }])}
+                {renderSectionFields(sections.tp, [
+                  { afterHeader: PLATFORM_ADDED_HEADER.tp, field: renderPageRemovedField('tp') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ])}
               </div>
               {(tabPlatforms.includes('tp') || tabPlatforms.includes('wo')) && (() => {
                 const activePlatform: Platform = tabPlatforms.includes('wo') ? 'wo' : 'tp';
@@ -627,7 +630,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="AskGamblers" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {renderSectionFields(sections.ag, [{ afterHeader: PLATFORM_ADDED_HEADER.ag, field: renderPageRemovedField('ag') }])}
+                {renderSectionFields(sections.ag, [
+                  { afterHeader: PLATFORM_ADDED_HEADER.ag, field: renderPageRemovedField('ag') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ])}
               </div>
               {tabPlatforms.includes('ag') && (
                 <div className="mt-3">
@@ -660,7 +666,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             <>
               <SectionHeading label="Casino Guru" />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-6">
-                {renderSectionFields(sections.cg, [{ afterHeader: PLATFORM_ADDED_HEADER.cg, field: renderPageRemovedField('cg') }])}
+                {renderSectionFields(sections.cg, [
+                  { afterHeader: PLATFORM_ADDED_HEADER.cg, field: renderPageRemovedField('cg') },
+                  ...tabCustomPlatforms.map((p) => ({ afterHeader: p.dateColumn, field: renderCustomPlatformRemovedField(p) })),
+                ])}
               </div>
               {tabPlatforms.includes('cg') && (
                 <div className="mt-3">

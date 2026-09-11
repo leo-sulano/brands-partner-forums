@@ -83,6 +83,9 @@ async function applyRemovalFlagChanges(
   let flaggedAnyRemoved = false;
   for (const d of descriptors) {
     const stateChanged = d.wasRemoved !== d.willBeRemoved;
+    // A platform that stays checked can still have had its date edited — diffed
+    // against the same display format the field was seeded with, so re-saving
+    // an untouched date is a no-op (mirrors BrandGroup.tsx's prior inline logic).
     const dateText = d.dateText?.trim();
     const priorDateDisplay = d.priorIso ? formatCellValue(d.priorIso) : undefined;
     const dateChanged = d.willBeRemoved && !stateChanged && !!dateText && dateText !== priorDateDisplay;
@@ -104,6 +107,9 @@ async function applyRemovalFlagChanges(
       }
     }
   }
+  // Fire-and-forget, same as the original BrandGroup.tsx logic this was
+  // extracted from — a failure here is silent, the every-minute cron still
+  // covers it on its own next tick.
   if (flaggedAnyRemoved) writers.syncStatus(tab).catch(() => {});
 }
 

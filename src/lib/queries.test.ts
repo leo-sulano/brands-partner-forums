@@ -1942,10 +1942,21 @@ describe('createCustomPlatform / enableCustomPlatformOnTab / deleteCustomPlatfor
     await expect(deleteCustomPlatform('p1')).rejects.toThrow(/still enabled/i);
   });
 
-  it('deleteCustomPlatform succeeds when no tab has it enabled', async () => {
+  it('deleteCustomPlatform is blocked while a brand is still flagged removed on it', async () => {
+    const zeroCountChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 0, error: null }) }) };
+    const flaggedCountChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 2, error: null }) }) };
+    singletonFrom.mockImplementation((table: string) =>
+      table === 'tab_custom_platforms' ? zeroCountChain : flaggedCountChain,
+    );
+    await expect(deleteCustomPlatform('p1')).rejects.toThrow(/still flagged removed/i);
+  });
+
+  it('deleteCustomPlatform succeeds when no tab has it enabled and no brand is flagged removed on it', async () => {
     const countChain = { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 0, error: null }) }) };
     const deleteChain = { delete: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }) };
-    singletonFrom.mockImplementation((table: string) => (table === 'tab_custom_platforms' ? countChain : deleteChain));
+    singletonFrom.mockImplementation((table: string) =>
+      (table === 'tab_custom_platforms' || table === 'removed_custom_platform_brands') ? countChain : deleteChain,
+    );
     await expect(deleteCustomPlatform('p1')).resolves.toBeUndefined();
   });
 });

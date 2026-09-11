@@ -1752,7 +1752,7 @@ export default function BrandGroup() {
     ...computeCustomPlatformCounts(
       ratingFiltered, platform, decodedTab, brandCol,
       dateActive ? dateFrom : undefined, dateActive ? dateTo : undefined,
-      removedCustomPlatformBrandSet,
+      brandScoped ? new Set<string>() : removedCustomPlatformBrandSet,
     ),
   }));
 
@@ -3071,6 +3071,14 @@ export default function BrandGroup() {
             for (const p of getTabPlatforms(decodedTab)) {
               const reviewTextKey = PLATFORM_REVIEW_TEXT_KEYS[p][0];
               if (!hdrs.includes(reviewTextKey)) hdrs.push(reviewTextKey);
+            }
+            // Same fix for custom platforms' status/date columns — AddReviewAccountModal
+            // only writes these onto a NEW account added after the platform is enabled,
+            // so an entry that predates the platform has neither key at all and its Page
+            // Removed checkbox would otherwise silently never render.
+            for (const p of getTabCustomPlatforms(decodedTab)) {
+              if (!hdrs.includes(p.statusColumn)) hdrs.push(p.statusColumn);
+              if (!hdrs.includes(p.dateColumn)) hdrs.push(p.dateColumn);
             }
             for (const [afterCol, field] of DASHBOARD_ONLY_MODAL_FIELDS) {
               const dupIdx = hdrs.indexOf(field);

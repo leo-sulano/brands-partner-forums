@@ -74,4 +74,20 @@ describe('computeCustomPlatformCounts', () => {
     const result = computeCustomPlatformCounts(entries, YELP, 'Test Tab', 'Brand Name', undefined, undefined, removed);
     expect(result.total).toBe(1);
   });
+
+  it('does not exclude a flagged brand when the caller passes an empty removal set (brand-scoped view)', () => {
+    // Mirrors how BrandGroup.tsx calls this when brandScoped is true (viewing one
+    // specific brand, e.g. via the Brand filter, a ?brand= deep link, or a
+    // single-brand tab): it passes an empty Set instead of the real
+    // removedCustomPlatformBrandSet, so a brand that WOULD be excluded by a
+    // non-empty set (see the test directly above) shows its real counts instead.
+    const entries = [
+      entry({ 'Brand Name': 'Flagged Co', 'Yelp Review Status': 'Published' }),
+      entry({ 'Brand Name': 'Flagged Co', 'Yelp Review Status': 'Removed' }),
+    ];
+    const result = computeCustomPlatformCounts(
+      entries, YELP, 'Test Tab', 'Brand Name', undefined, undefined, new Set<string>(),
+    );
+    expect(result).toEqual({ total: 2, live: 1, removed: 1, successRate: 50 });
+  });
 });

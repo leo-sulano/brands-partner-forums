@@ -2330,6 +2330,18 @@ export async function deleteCustomPlatform(id: string): Promise<void> {
   if ((count ?? 0) > 0) {
     throw new Error('This platform is still enabled on one or more tabs. Disable it everywhere first.');
   }
+  // Mirrors the guard above for the other FK custom_platforms.id is referenced
+  // by (removed_custom_platform_brands.platform_id, on delete restrict) — without
+  // this, deleting a platform that still has a brand flagged removed on it would
+  // throw a raw, unfriendly Postgres 23503 foreign-key-violation error instead.
+  const { count: flagged, error: flaggedError } = await supabase
+    .from('removed_custom_platform_brands')
+    .select('id', { count: 'exact', head: true })
+    .eq('platform_id', id);
+  if (flaggedError) throw flaggedError;
+  if ((flagged ?? 0) > 0) {
+    throw new Error('Some brands are still flagged removed on this platform. Restore them first.');
+  }
   const { error } = await supabase.from('custom_platforms').delete().eq('id', id);
   if (error) throw error;
 }
