@@ -1244,7 +1244,7 @@ export default function BrandGroup() {
   function removedPlatformBadges(brandName: string | null | undefined) {
     return removedPlatformsFor(brandName).map((p) => {
       const date = removedPlatformDateFor(brandName, p);
-      return <PlatformRemovedBadge key={p} platform={p} removedAtLabel={date ? formatCellValue(date) : undefined} />;
+      return <PlatformRemovedBadge key={p} shortLabel={PLATFORM_SHORT_LABEL[p]} label={PLATFORM_LABEL[p]} removedAtLabel={date ? formatCellValue(date) : undefined} />;
     });
   }
   // Every platform actually active on this tab that's currently flagged for this
