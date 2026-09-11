@@ -20,3 +20,21 @@ export function deriveTabRemovedPlatformRows(
     .map((r) => ({ brand: r.brand, platform: r.platform, removedAt: r.removed_at, removedBy: r.removed_by }))
     .sort((a, b) => a.brand.localeCompare(b.brand) || a.platform.localeCompare(b.platform));
 }
+
+export interface TabRemovedCustomPlatformRow {
+  brand: string;
+  platformId: string;
+  removedAt: string;
+  removedBy: string | null;
+}
+
+// Mirrors deriveTabRemovedPlatformRows exactly, for custom-platform rows
+// (removed_custom_platform_brands), keyed by platform_id instead of a
+// Platform code.
+export function deriveTabRemovedCustomPlatformRows(
+  rows: { brand: string; platform_id: string; removed_at: string; removed_by: string | null }[],
+): TabRemovedCustomPlatformRow[] {
+  return rows
+    .map((r) => ({ brand: r.brand, platformId: r.platform_id, removedAt: r.removed_at, removedBy: r.removed_by }))
+    .sort((a, b) => a.brand.localeCompare(b.brand) || a.platformId.localeCompare(b.platformId));
+}
