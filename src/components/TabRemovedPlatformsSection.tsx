@@ -128,10 +128,21 @@ export default function TabRemovedPlatformsSection({ tabName, brands, onChildMod
           dateTexts: {}, existingSet, existingDateMap,
         });
       } else {
-        const platform = customPlatformById.get(row.platformId);
+        // Fall back to a row-derived stand-in when the platform is no longer
+        // enabled on this tab (getTabCustomPlatforms only lists currently-
+        // enabled ones — disabling doesn't clean up removed_custom_platform_
+        // brands, and that table's platform_id FK is ON DELETE RESTRICT). An
+        // unflag never sends a notification (willBeRemoved is false), so the
+        // stand-in's name/shortLabel/statusColumn/dateColumn/maxScore values
+        // are never actually used for anything beyond building the removal
+        // key/descriptor here — this just guarantees Restore can always clear
+        // a row that's actually displayed, matching the built-in branch's
+        // registry-free behavior above.
+        const platform = customPlatformById.get(row.platformId)
+          ?? { id: row.platformId, tab: tabName, name: row.label, shortLabel: row.label, statusColumn: '', dateColumn: '', maxScore: null };
         await saveCustomPlatformRemoved({
           tab: tabName, brand: row.brand,
-          eligiblePlatforms: platform ? [platform] : [],
+          eligiblePlatforms: [platform],
           checkedPlatformIds: [], dateTexts: {},
           existingSet: existingCustomSet, existingDateMap: existingCustomDateMap,
         });
