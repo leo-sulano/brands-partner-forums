@@ -7,11 +7,15 @@ interface Props {
   brand: string;
   dayLabel: string;
   platforms: Platform[];
+  // Adding a day as Active is ordinary scheduling, open to any approved
+  // user; adding it directly as Paused is still a pause action, so that
+  // button is admin-only, same as pausing an already-active day.
+  canPause: boolean;
   onSetStatus: (platform: Platform, status: 'active' | 'paused') => void;
   onClose: () => void;
 }
 
-export default function AddPlatformModal({ brand, dayLabel, platforms, onSetStatus, onClose }: Props) {
+export default function AddPlatformModal({ brand, dayLabel, platforms, canPause, onSetStatus, onClose }: Props) {
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -63,13 +67,15 @@ export default function AddPlatformModal({ brand, dayLabel, platforms, onSetStat
                   >
                     Active
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onSetStatus(platform, 'paused')}
-                    className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
-                  >
-                    Paused
-                  </button>
+                  {canPause && (
+                    <button
+                      type="button"
+                      onClick={() => onSetStatus(platform, 'paused')}
+                      className="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-200"
+                    >
+                      Paused
+                    </button>
+                  )}
                 </span>
               </div>
             ))

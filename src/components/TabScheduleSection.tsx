@@ -166,7 +166,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
   const [platformPauseTarget, setPlatformPauseTarget] = useState<{ brand: string; platform: Platform } | null>(null);
   const [platformPauseBusy, setPlatformPauseBusy] = useState(false);
-  const { isApproved, isSuperAdmin, profile } = useAuth();
+  const { isApproved, isAdmin, isSuperAdmin, profile } = useAuth();
+  // Pausing/resuming a scheduled entry is admin-only (per direct user
+  // request) — a plain approved user can still schedule/cancel a day, but
+  // any transition that sets a day to 'paused' or that changes an
+  // already-paused day (resuming it to active, or cancelling out of pause)
+  // requires this. See handleCellClick/handleSetDayStatus/handleCancelDay's
+  // own guards, and the Schedule Status column's `clickable` below.
+  const canPause = isAdmin;
 
   // Weekly schedule approval state.
   //   * A PENDING week: editable by any approved user; its plan never reaches
@@ -960,6 +967,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     if (!canEditWeek(col.weekStartISO)) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
     const next = nextStatus(currentStatus);
+    // The cycle's active -> paused leg, and its paused -> blank leg (a paused
+    // day's only other transition), both touch the pause axis and are
+    // admin-only; the blank/evidence-only -> active leg (currentStatus and
+    // next both non-'paused') stays open to any approved user.
+    if ((next === 'paused' || currentStatus === 'paused') && !canPause) {
+      setToast({ message: 'Only admins can pause or resume a scheduled entry.', kind: 'error' });
+      return;
+    }
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, next));
     try {
@@ -993,6 +1008,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   async function handleSetDayStatus(brand: string, platform: Platform, col: ScheduleColumn, status: 'active' | 'paused') {
     if (!canEditWeek(col.weekStartISO)) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
+    // Covers the Pause button (status 'paused'), the Resume button
+    // (currentStatus 'paused'), and AddPlatformModal's "Paused" option
+    // (status 'paused', currentStatus null) — all admin-only. Leaves
+    // AddPlatformModal's "Active" option (status 'active', currentStatus
+    // null) open to any approved user, same as handleCellClick's blank ->
+    // active leg.
+    if ((status === 'paused' || currentStatus === 'paused') && !canPause) {
+      setToast({ message: 'Only admins can pause or resume a scheduled entry.', kind: 'error' });
+      return;
+    }
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, status));
     try {
@@ -1027,6 +1052,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   async function handleCancelDay(brand: string, platform: Platform, col: ScheduleColumn) {
     if (!canEditWeek(col.weekStartISO)) return;
     const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
+    // Cancelling an active day is a normal scheduling action, open to any
+    // approved user; cancelling a paused day ends the pause, so it's
+    // admin-only like every other exit from 'paused'.
+    if (currentStatus === 'paused' && !canPause) {
+      setToast({ message: 'Only admins can resume or cancel a paused entry.', kind: 'error' });
+      return;
+    }
 
     setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, null));
     try {
@@ -1215,6 +1247,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     resumeAt: string | null,
   ) {
     if (!tabCtx) return;
+    // Defense in depth — the Schedule Status column's `clickable` (below)
+    // already keeps a non-admin from ever opening this modal, but every
+    // other pause-affecting handler in this file guards itself directly too.
+    if (!canPause) {
+      setToast({ message: 'Only admins can pause or resume a scheduled entry.', kind: 'error' });
+      return;
+    }
     setPlatformPauseBusy(true);
     try {
       await savePlatformPause({
@@ -1539,6 +1578,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             // section, since a multi-week range can mix legacy and
                             // platform-tracked weeks.
                             isApproved={canEditWeek(col.weekStartISO) && !isLegacyWeekAt(col.weekStartISO)}
+                            canPause={canPause}
                             holidayName={holidayName}
                             onToggle={(platform) => handleCellClick(brand, platform, col)}
                             onSetStatus={(platform, status) => handleSetDayStatus(brand, platform, col, status)}
@@ -1564,7 +1604,11 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           regardless of which bucket picked its icon. */}
                       <div className="flex flex-wrap gap-1">
                         {visibleBrandPlatforms(brand).map((platform) => {
-                          const clickable = canEditWeek(weekStartISO) && !isLegacyWeekAt(weekStartISO);
+                          // Every click here opens PauseDaysModal or PlatformPauseModal
+                          // — both are pause-management UI, so this column is entirely
+                          // admin-only; a non-admin still sees the icon/tooltip (real
+                          // pause state), just non-interactive.
+                          const clickable = canEditWeek(weekStartISO) && !isLegacyWeekAt(weekStartISO) && canPause;
                           // An override-driven pause (manual) routes its click to
                           // the reason/resume editor; every other state keeps the
                           // per-weekday PauseDaysModal. brandKey is in scope here
@@ -1621,6 +1665,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           brand={addPlatformTarget.brand}
           dayLabel={addPlatformModalData.dayLabel}
           platforms={addPlatformModalData.platforms}
+          canPause={canPause}
           onSetStatus={(platform, status) => handleSetDayStatus(addPlatformTarget.brand, platform, addPlatformTarget.col, status)}
           onClose={() => setAddPlatformTarget(null)}
         />

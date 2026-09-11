@@ -90,6 +90,15 @@ interface ScheduleCellProps {
   // dimmed — never removed from the DOM.
   holidayName?: string;
   isApproved: boolean;
+  // Pausing/resuming a scheduled entry is admin-only (per direct user
+  // request) — a click/button that would set a day to 'paused', or change an
+  // already-paused day (resume to active, or cancel out of pause), is
+  // disabled for a non-admin; scheduling a blank day active, or cancelling
+  // an active one, stays open to any approved user (isApproved above still
+  // governs those). The caller's handlers (handleCellClick/
+  // handleSetDayStatus/handleCancelDay) enforce this too — this prop only
+  // controls what's rendered as interactive.
+  canPause: boolean;
   onToggle: (platform: Platform) => void;
   // Explicit Pause ('active' -> 'paused') / Resume ('paused' -> 'active')
   // buttons rendered next to a chip with a real per-day status -- an
@@ -257,7 +266,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, dayPausedByPlatform, isPastDay, holidayName, isApproved, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, agent, country, account, pausedByPlatform, dayPausedByPlatform, isPastDay, holidayName, isApproved, canPause, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   const cell = (
     <div
@@ -300,6 +309,17 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         // recommendation to skip, not a lock — ops can still manually
         // schedule/pause an individual day within a paused week.
         const clickable = isApproved && !holidayName;
+        // A chip only ever renders here for a day with a real per-day status
+        // (active/paused), a week-level scheduler pause with no day-level
+        // override (status null), or real entry evidence (status null) — see
+        // this component's own doc comment above the render guard. Clicking a
+        // chip whose real per-day status is already 'active' or 'paused'
+        // always lands on the pause axis (active -> paused, or paused ->
+        // blank via TabScheduleSection's handleCellClick), so only those two
+        // require canPause; a null-status chip's only reachable transition
+        // (-> active) doesn't.
+        const pauseGatedClick = status === 'active' || status === 'paused';
+        const chipClickable = clickable && (!pauseGatedClick || canPause);
         // Real add-date evidence (any of the four) always wins over the plan
         // labels below, and always exempts the chip from past-day ghosting —
         // it's a verified fact about that exact day, the same footing
@@ -335,7 +355,13 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         // because of evidence (status null, hasEvidence true) has no specific
         // day-level plan to act on; onToggle's own cycle already covers
         // creating one from scratch if needed.
-        const showDayActions = clickable && (status === 'active' || status === 'paused');
+        // Pause and Resume are both admin-only (canPause); Cancel stays open
+        // to any approved user for an active day, but requires canPause too
+        // once the day is paused, since cancelling out of pause ends it just
+        // like Resume does (see TabScheduleSection's handleCancelDay).
+        const showPauseResumeButton = clickable && canPause && pauseGatedClick;
+        const showCancelButton = clickable && (status === 'active' || (status === 'paused' && canPause));
+        const showDayActions = showPauseResumeButton || showCancelButton;
         return (
           <Fragment key={platform}>
             {/* group/chip scopes hover to THIS platform's own chip -- a day
@@ -361,7 +387,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 isConfirmed={isConfirmed}
                 isPending={isPending}
                 isDone={isDone}
-                clickable={clickable}
+                clickable={chipClickable}
                 planUnverified={planUnverified}
                 label={label}
                 agent={agent}
@@ -384,7 +410,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 // intercept hover/click on whatever chip happens to render
                 // next to it in the same cell, even at opacity-0.
                 <span className="pointer-events-none absolute left-full top-1/2 z-10 ml-0.5 flex -translate-y-1/2 items-center gap-0.5 rounded bg-white p-0.5 opacity-0 shadow-sm transition-opacity group-hover/chip:pointer-events-auto group-hover/chip:opacity-100 focus-within:pointer-events-auto focus-within:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100">
-                  {status === 'active' ? (
+                  {showPauseResumeButton && (status === 'active' ? (
                     <button
                       type="button"
                       onClick={() => onSetStatus(platform, 'paused')}
@@ -404,7 +430,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                     >
                       ▶
                     </button>
-                  )}
+                  ))}
+                  {showCancelButton && (
                   <button
                     type="button"
                     onClick={() => onCancel(platform)}
@@ -414,6 +441,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                   >
                     🚫
                   </button>
+                  )}
                 </span>
               )}
             </span>
