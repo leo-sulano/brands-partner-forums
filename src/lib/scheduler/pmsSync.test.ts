@@ -6,8 +6,10 @@ import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 import { resolveAndSyncTabStatuses } from './pmsSync';
 import { cancelScheduleInPms, type PmsCancelItem } from './pmsSync';
 import { enforcePmsColumns, computeColumnSortMoves } from './pmsSync';
+import { getPmsPlatformLabel } from './pmsSync';
 import type { SchedulePmsLink } from '../queries';
 import { invalidateTabCache } from '../queries';
+import { registerTabCustomPlatforms, resetTabCustomPlatforms, type CustomPlatformConfig } from '../customPlatformRegistry';
 
 const CREDENTIALS = { apiToken: 'test-token' };
 const TODO_COL = 'cmsoh1uxz000204l46gf88k3f';
@@ -1910,5 +1912,28 @@ describe('backfillMissingScheduledLinks', () => {
     const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS);
     expect(result).toEqual({ created: [], skipped: [], failed: [] });
     expect(calls).toEqual(['brand_schedule']);
+  });
+});
+
+const YELP: CustomPlatformConfig = {
+  id: 'p1', tab: 'BITP', name: 'Yelp', shortLabel: 'YP',
+  statusColumn: 'Yelp Review Status', dateColumn: 'Yelp Review Added', maxScore: null,
+};
+
+describe('getPmsPlatformLabel', () => {
+  it('returns the exact built-in PMS label for each of the 4 built-in platforms', () => {
+    expect(getPmsPlatformLabel('tp')).toBe('TP');
+    expect(getPmsPlatformLabel('ag')).toBe('AG');
+    expect(getPmsPlatformLabel('cg')).toBe('CG');
+    expect(getPmsPlatformLabel('wo')).toBe('WO');
+  });
+
+  it('returns the custom platform\'s own shortLabel when registered', () => {
+    registerTabCustomPlatforms([YELP]);
+    try {
+      expect(getPmsPlatformLabel('p1')).toBe('YP');
+    } finally {
+      resetTabCustomPlatforms();
+    }
   });
 });

@@ -11,6 +11,8 @@ import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms
 import { getTabPlatforms } from '../tab-configs.ts';
 import { weekdayAndWeekStartFor, scheduleFor, type BrandScheduleRow } from '../scheduleBrands.ts';
 import { tabDisplayName } from '../tabs.ts';
+import { getCustomPlatformById } from '../customPlatformRegistry.ts';
+import type { SchedulablePlatform } from './schedulerRules.ts';
 
 // Confirmed live against the real "Forum Team" PMS project while writing
 // this spec (a throwaway test label/task was created via these exact
@@ -29,6 +31,15 @@ const PMS_PAGE_REMOVED_COLUMN_ID = 'cmtl7ao36000004kypos6pxkt';
 const PMS_TEAM_ID = 'cmsd98mtx000204lgyb0abodx';
 const PMS_CLIENT_LABEL_NAME = 'Client';
 const PMS_PLATFORM_LABEL_NAMES: Record<Platform, string> = { tp: 'TP', ag: 'AG', cg: 'CG', wo: 'WO' };
+
+// Resolves a platform's PMS task-label text for any SchedulablePlatform,
+// mirroring getPlatformBadge/getPlatformFullLabel (scheduleUtils.ts).
+export function getPmsPlatformLabel(platform: SchedulablePlatform): string {
+  if (platform in PMS_PLATFORM_LABEL_NAMES) return PMS_PLATFORM_LABEL_NAMES[platform as Platform];
+  const custom = getCustomPlatformById(platform);
+  return custom?.shortLabel ?? platform;
+}
+
 // Every existing platform label (TP/AG/CG) already has its own color; WO is
 // the one platform with no label yet in the live project, auto-created the
 // first time a WO item needs tagging.
@@ -59,7 +70,7 @@ export interface PmsSyncItem {
   tab: string;
   tabLabel: string;
   brand: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   date: string;
   // The dashboard's Agent value for this brand (resolved via
   // resolveAgentForPlatform, which checks brand_agent_assignments before
@@ -237,7 +248,7 @@ export async function pushScheduleToPms(
       }
 
       if (!labelCache) labelCache = await fetchPmsLabels(credentials, fetchFn);
-      const platformLabelId = await resolveLabelId(PMS_PLATFORM_LABEL_NAMES[item.platform], WO_LABEL_COLOR, labelCache, credentials, fetchFn);
+      const platformLabelId = await resolveLabelId(getPmsPlatformLabel(item.platform), WO_LABEL_COLOR, labelCache, credentials, fetchFn);
       const clientLabelId = await resolveLabelId(PMS_CLIENT_LABEL_NAME, WO_LABEL_COLOR, labelCache, credentials, fetchFn);
       // Lazy: only fetched the first time an item actually carries an agent
       // to resolve, so a push with no agent info (or run before this field
@@ -248,7 +259,16 @@ export async function pushScheduleToPms(
       const task = await createPmsTask(`${item.tabLabel} | ${item.brand}`, item.date, credentials, fetchFn);
       createdTaskId = task.id;
       await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
-      await insertSchedulePmsLink(item.tab, item.brand, item.platform, item.date, task.id, PMS_TODO_COLUMN_ID, client);
+      // queries.ts's insertSchedulePmsLink/SchedulePmsLink are not in this
+      // task's scope and still type `platform` as the narrow, built-in-only
+      // `Platform` -- the cast is opaque storage only (no pattern-matching on
+      // a specific literal), and schedule_pms_links.platform's CHECK
+      // constraint restricting it to the 4 built-in codes was already dropped
+      // in Task 1's migration, so a custom platform's uuid round-trips
+      // through this column safely. Same bridge-with-documented-cast pattern
+      // as the scheduleBrands.ts/BrandScheduleRow.platform gap this plan's
+      // ledger already ruled on for Task 6.
+      await insertSchedulePmsLink(item.tab, item.brand, item.platform as Platform, item.date, task.id, PMS_TODO_COLUMN_ID, client);
       // Reflect the just-created link back into this tab's in-memory `links`
       // array so a later item in the SAME batch that repeats this exact combo
       // (e.g. rapid re-cycling of one cell while a prior push is in flight)
@@ -256,7 +276,10 @@ export async function pushScheduleToPms(
       // attempting a second PMS task create that would then fail
       // insertSchedulePmsLink on the table's (tab, brand_key, platform, date)
       // unique constraint and leave an orphaned PMS task with no link at all.
-      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID });
+      // Same queries.ts-out-of-scope cast as insertSchedulePmsLink above --
+      // links is typed SchedulePmsLink[] (platform: Platform), this is a
+      // local in-memory mirror of what was just inserted, not a re-derivation.
+      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform as Platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID });
       created.push(item);
     } catch (err) {
       // The in-memory `links` guard above only protects against a duplicate
@@ -997,7 +1020,7 @@ export async function resolveAndSyncTabStatuses(
 export interface PmsDriftedItem {
   tab: string;
   brand: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   oldDate: string;
   newDate: string;
 }
@@ -1005,7 +1028,7 @@ export interface PmsDriftedItem {
 export interface PmsDeletedItem {
   tab: string;
   brand: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   date: string;
 }
 
@@ -1018,7 +1041,7 @@ export interface PmsDeletedItem {
 export interface PmsAssigneeInfo {
   tab: string;
   brand: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   date: string;
   assigneeName: string | null;
 }
@@ -1055,7 +1078,7 @@ async function fetchPmsProjectTasks(credentials: PmsCredentials, fetchFn: typeof
 export interface PmsCancelItem {
   tab: string;
   brand: string;
-  platform: Platform;
+  platform: SchedulablePlatform;
   date: string;
 }
 
