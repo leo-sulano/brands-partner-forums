@@ -1725,6 +1725,29 @@ export interface StatusCheckScope {
   dateTo?: string;
 }
 
+// Super-admin-only kill switch (check_status_config, a singleton row) — when
+// false, every user's Check Status button is disabled dashboard-wide. Purely
+// a frontend gate; does not touch the EC2 scraper or any Edge Function.
+export async function fetchCheckStatusEnabled(): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('check_status_config')
+    .select('enabled')
+    .eq('id', true)
+    .maybeSingle();
+  if (error) throw error;
+  // Fail open (default enabled) if the row is somehow missing rather than
+  // permanently locking the feature off with no visible cause.
+  return data?.enabled ?? true;
+}
+
+export async function setCheckStatusEnabled(enabled: boolean, updatedBy: string): Promise<void> {
+  const { error } = await supabase
+    .from('check_status_config')
+    .update({ enabled, updated_by: updatedBy, updated_at: new Date().toISOString() })
+    .eq('id', true);
+  if (error) throw error;
+}
+
 function statusCheckBody(tab: string, scope: StatusCheckScope, extra?: Record<string, unknown>) {
   return {
     tab,

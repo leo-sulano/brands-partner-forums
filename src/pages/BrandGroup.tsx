@@ -18,7 +18,7 @@ import MultiSelectDropdown, { type MultiSelectOption } from '../components/Multi
 import ExportMenuButton from '../components/ExportMenuButton';
 import Tooltip from '../components/Tooltip';
 import { buildBrandRowsForExport } from '../lib/brandExport';
-import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, fetchBrandCatalog, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride, type BrandCatalogRow } from '../lib/queries';
+import { fetchRawEntriesByTab, fetchTabHeaders, updateEntryData, triggerStatusCheck, triggerAgStatusCheck, triggerCgStatusCheck, triggerWoStatusCheck, getActiveChecks, statusCheckTabKeys, insertEntry, deleteEntries, moveEntryToTab, fetchRemovedPlatformBrands, fetchBrandPlatformOverrides, setBrandPlatformOverride, clearBrandPlatformOverride, fetchAllEntries, archiveTab, fetchEntryReviewAnalyses, fetchEntryCredentials, fetchBrandCatalog, fetchCheckStatusEnabled, setCheckStatusEnabled, StatusCheckTimeoutError, type StatusCheckScope, type EntryReviewAnalysisRow, type BrandPlatformOverride, type BrandCatalogRow } from '../lib/queries';
 import { mergeCredentialsIntoData, preserveCredentialFields, ALL_CREDENTIAL_HEADER_KEYS, type EntryCredentials } from '../lib/entryCredentials';
 import { entryReviewAnalysisKey } from '../lib/reviewRemovalAssessment';
 import { archiveTabLocally, isTabArchived, archivedTabForSlug } from '../lib/archivedTabRegistry';
@@ -621,7 +621,7 @@ export default function BrandGroup() {
   const [agentFilter, setAgentFilter] = useState<string[]>([]);
   const [proxyFilter, setProxyFilter] = useState<string[]>([]);
   const [countryFilter, setCountryFilter] = useState<string[]>([]);
-  const { isApproved, session } = useAuth();
+  const { isApproved, isSuperAdmin, session } = useAuth();
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [removedPlatformBrandRows, setRemovedPlatformBrandRows] = useState<{ tab: string; brand: string; platform: Platform; removed_at: string }[]>([]);
   const [overrideRows, setOverrideRows] = useState<BrandPlatformOverride[]>([]);
@@ -749,11 +749,40 @@ export default function BrandGroup() {
   const isThisTabChecking = checkingStatusTab === decodedTab || statusCheckTabKeys(decodedTab, getTabPlatforms(decodedTab))
     .some((k) => activeCheckKeys.includes(k));
   const isCheckRunning = isThisTabChecking || activeCheckKeys.length > 0;
-  const checkStatusTooltip = !isCheckRunning
-    ? undefined
-    : isThisTabChecking
-      ? 'A status check is running for this tab'
-      : 'A status check is running on another tab — only one can run at a time, please wait';
+
+  // Super-admin-only kill switch (check_status_config, a singleton row) —
+  // when false, Check Status is disabled dashboard-wide for every user; only
+  // a super_admin sees the toggle to flip it back on. Frontend gate only —
+  // doesn't touch the EC2 scraper or any Edge Function.
+  const [checkStatusEnabled, setCheckStatusEnabledState] = useState(true);
+  const [togglingCheckStatus, setTogglingCheckStatus] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetchCheckStatusEnabled()
+      .then((enabled) => { if (!cancelled) setCheckStatusEnabledState(enabled); })
+      .catch(() => {}); // fail open — button stays enabled if this read fails
+    return () => { cancelled = true; };
+  }, []);
+  async function handleToggleCheckStatus() {
+    const next = !checkStatusEnabled;
+    setTogglingCheckStatus(true);
+    try {
+      await setCheckStatusEnabled(next, session?.user?.email ?? 'unknown');
+      setCheckStatusEnabledState(next);
+    } catch {
+      setToast({ message: 'Failed to update Check Status toggle.', kind: 'error' });
+    } finally {
+      setTogglingCheckStatus(false);
+    }
+  }
+
+  const checkStatusTooltip = !checkStatusEnabled
+    ? 'Check Status is temporarily paused by an admin'
+    : !isCheckRunning
+      ? undefined
+      : isThisTabChecking
+        ? 'A status check is running for this tab'
+        : 'A status check is running on another tab — only one can run at a time, please wait';
   const [refreshingAfterCheck, setRefreshingAfterCheck] = useState(false);
   // Snapshot of the row ids visible on screen when a check was last kicked off, plus the
   // filter/sort/page signature at that moment. While the signature still matches the current
@@ -2445,6 +2474,22 @@ export default function BrandGroup() {
           <div className="h-4 w-px bg-slate-200 shrink-0" />
           {isApproved && (
             <div className="flex items-center gap-2">
+              {isSuperAdmin && (
+                <button
+                  type="button"
+                  onClick={handleToggleCheckStatus}
+                  disabled={togglingCheckStatus}
+                  title={checkStatusEnabled ? 'Turn Check Status off for everyone' : 'Turn Check Status back on for everyone'}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-semibold whitespace-nowrap transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                    checkStatusEnabled
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  }`}
+                >
+                  <span className={`size-1.5 rounded-full ${checkStatusEnabled ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                  Check Status: {checkStatusEnabled ? 'ON' : 'OFF'}
+                </button>
+              )}
               {lastChecked && (
                 <span className="text-[5px] text-slate-400 whitespace-nowrap">
                   Last checked: {lastChecked}
@@ -2461,7 +2506,7 @@ export default function BrandGroup() {
                     <button
                       type="button"
                       onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
-                      disabled={isCheckRunning}
+                      disabled={isCheckRunning || !checkStatusEnabled}
                       title={checkStatusTooltip}
                       className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                     >
@@ -2471,7 +2516,8 @@ export default function BrandGroup() {
                     <button
                       type="button"
                       onClick={() => setCheckDropdownOpen((o) => !o)}
-                      disabled={isCheckRunning}
+                      disabled={isCheckRunning || !checkStatusEnabled}
+                      title={checkStatusTooltip}
                       className="border-l border-slate-200 bg-white px-1.5 py-1.5 text-slate-500 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       aria-label="Select platform to check"
                     >
@@ -2497,7 +2543,7 @@ export default function BrandGroup() {
                 <button
                   type="button"
                   onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
-                  disabled={isCheckRunning}
+                  disabled={isCheckRunning || !checkStatusEnabled}
                   title={checkStatusTooltip}
                   className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
