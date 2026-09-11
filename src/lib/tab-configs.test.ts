@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll, afterEach, beforeEach } from 'vitest';
 import {
   TAB_COLUMN_CONFIGS, getEntryCountry, getCountryForAccount, getBrandGroup,
   getTabPlatforms, getTabPlatformsUnfiltered, registerHiddenTabPlatforms,
-  unregisterHiddenTabPlatform, resetHiddenTabPlatforms,
+  unregisterHiddenTabPlatform, resetHiddenTabPlatforms, setCustomPlatformKeysResolver,
   stripDupSuffix, accountUsageKey, hasMultiPlatform, getTabColumns, getBrandNameCol,
   getEnabledToolbarFilters, registerToolbarFilters, unregisterToolbarFilters, resetToolbarFilters, ALL_TOOLBAR_FILTERS,
   getColLabel, getTabSequence, getTabSequenceCol, getBrandTpUrl, getBrandLinkCol, resolveBrandLink,
@@ -155,6 +155,37 @@ describe('getTabPlatforms / hidden platform overrides', () => {
     resetHiddenTabPlatforms();
     expect(getTabPlatforms('Rooster Partners')).toEqual(['tp', 'ag', 'cg']);
     expect(getTabPlatforms('Hanan')).toEqual(['tp', 'ag', 'cg']);
+  });
+});
+
+// Note: the plan brief's draft of these tests used 'BITP' as the tab name,
+// but that's a display-name-only rename (docs/superpowers/specs/2026-09-01-
+// hardcoded-tab-rename-design.md) that only exists in live DB state via
+// registerHardcodedTabRenames -- a fresh test module has no rename
+// registered, so resolveHardcodedTabKey('BITP') would just pass 'BITP'
+// through unresolved and TAB_COLUMN_CONFIGS['BITP'] doesn't exist. Using the
+// real permanent key 'TP Brand Injection' instead (already asserted TP-only
+// in the 'getTabPlatforms' describe block above) keeps this test accurate.
+describe('getTabPlatforms with a custom platform resolver', () => {
+  afterEach(() => {
+    setCustomPlatformKeysResolver(() => []); // reset to the default no-op
+  });
+
+  it('appends custom platform ids after the built-in platforms', () => {
+    setCustomPlatformKeysResolver((tab) => (tab === 'TP Brand Injection' ? ['custom-id-1'] : []));
+    const result = getTabPlatforms('TP Brand Injection');
+    expect(result[result.length - 1]).toBe('custom-id-1');
+    expect(result).toContain('tp'); // TP Brand Injection is TP-only per its existing hardcoded config
+  });
+
+  it('getTabPlatformsUnfiltered also includes custom platform ids', () => {
+    setCustomPlatformKeysResolver((tab) => (tab === 'TP Brand Injection' ? ['custom-id-1'] : []));
+    expect(getTabPlatformsUnfiltered('TP Brand Injection')).toContain('custom-id-1');
+  });
+
+  it('a tab with no resolver-returned ids behaves exactly as before (regression)', () => {
+    setCustomPlatformKeysResolver(() => []);
+    expect(getTabPlatforms('TP Brand Injection')).toEqual(['tp']);
   });
 });
 

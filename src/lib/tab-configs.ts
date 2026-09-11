@@ -237,6 +237,18 @@ export function setCustomPlatformColumnsResolver(fn: (tab: string) => string[]):
   customPlatformColumnsResolver = fn;
 }
 
+let customPlatformKeysResolver: ((tab: string) => string[]) | null = null;
+
+// Injected by customPlatformRegistry.ts at module load, same resolver-
+// injection pattern as setCustomPlatformColumnsResolver above -- lets
+// getTabPlatforms/getTabPlatformsUnfiltered append a tab's custom platform
+// ids without this file importing customPlatformRegistry.ts directly (which
+// already imports FROM this file, so a reverse import would be circular).
+// Spec: docs/superpowers/specs/2026-09-11-schedule-planner-custom-platform-support-design.md
+export function setCustomPlatformKeysResolver(fn: (tab: string) => string[]): void {
+  customPlatformKeysResolver = fn;
+}
+
 // Returns the ordered column list for a tab, or null if no config exists.
 // Any columns from an enabled custom platform are appended after the tab's
 // own base columns (hardcoded or dynamic) -- an overlay, not a replacement,
@@ -720,12 +732,12 @@ export function hasMultiPlatform(tab: string): boolean {
 // tabs (self-service Brand Tab creation, src/lib/dynamicTabRegistry.ts)
 // have no default platform at all — every platform, including TP, is
 // derived purely from which columns buildDynamicTabColumns generated.
-function computeRawTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
+function computeRawTabPlatforms(tab: string): string[] {
   const cols = getTabColumns(tab);
   const key = resolveHardcodedTabKey(tab);
   if (key === 'Wizard of Odds') return ['wo'];
   if (key in TAB_COLUMN_CONFIGS) {
-    const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = ['tp'];
+    const platforms: string[] = ['tp'];
     if (cols) {
       const set = new Set(cols);
       if (set.has('AG Review Status')) platforms.push('ag');
@@ -735,7 +747,7 @@ function computeRawTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   }
   if (!cols) return [];
   const set = new Set(cols);
-  const platforms: ('tp' | 'ag' | 'cg' | 'wo')[] = [];
+  const platforms: string[] = [];
   if (set.has('TP Review Status')) platforms.push('tp');
   if (set.has('AG Review Status')) platforms.push('ag');
   if (set.has('CG Review Status')) platforms.push('cg');
@@ -743,12 +755,21 @@ function computeRawTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
   return platforms;
 }
 
+// The chokepoint every scheduler surface calls (directly or via
+// getTabPlatforms below) to learn "what platforms does this tab schedule" --
+// appends the tab's registered custom platform ids after its built-in set.
+function computeRawTabPlatformsWithCustom(tab: string): string[] {
+  const builtIn = computeRawTabPlatforms(tab);
+  const custom = customPlatformKeysResolver ? customPlatformKeysResolver(tab) : [];
+  return custom.length ? [...builtIn, ...custom] : builtIn;
+}
+
 // Exposed for the Edit Brand Tab modal (BrandGroup.tsx /
 // EditBrandTabModal.tsx), which must always offer every platform a
 // tab has ever tracked as a checkbox — including one currently hidden —
 // never just what's presently visible.
-export function getTabPlatformsUnfiltered(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
-  return computeRawTabPlatforms(tab);
+export function getTabPlatformsUnfiltered(tab: string): string[] {
+  return computeRawTabPlatformsWithCustom(tab);
 }
 
 // In-memory registry of platforms hidden per tab
@@ -762,7 +783,7 @@ export function getTabPlatformsUnfiltered(tab: string): ('tp' | 'ag' | 'cg' | 'w
 // (the only other candidate host) imports FROM this file too, so either
 // direction would close a cycle. Small, deliberate duplication — same event
 // name, same guard shape as the one in dynamicTabRegistry.ts.
-const hiddenTabPlatforms: Record<string, Set<'tp' | 'ag' | 'cg' | 'wo'>> = {};
+const hiddenTabPlatforms: Record<string, Set<string>> = {};
 
 function notifyTabPlatformsChanged(): void {
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
@@ -770,7 +791,7 @@ function notifyTabPlatformsChanged(): void {
   }
 }
 
-export function registerHiddenTabPlatforms(rows: { tab: string; platform: 'tp' | 'ag' | 'cg' | 'wo' }[]): void {
+export function registerHiddenTabPlatforms(rows: { tab: string; platform: string }[]): void {
   for (const row of rows) {
     if (!hiddenTabPlatforms[row.tab]) hiddenTabPlatforms[row.tab] = new Set();
     hiddenTabPlatforms[row.tab].add(row.platform);
@@ -778,7 +799,7 @@ export function registerHiddenTabPlatforms(rows: { tab: string; platform: 'tp' |
   notifyTabPlatformsChanged();
 }
 
-export function unregisterHiddenTabPlatform(tab: string, platform: 'tp' | 'ag' | 'cg' | 'wo'): void {
+export function unregisterHiddenTabPlatform(tab: string, platform: string): void {
   hiddenTabPlatforms[tab]?.delete(platform);
   notifyTabPlatformsChanged();
 }
@@ -792,8 +813,8 @@ export function resetHiddenTabPlatforms(): void {
 // registerHiddenTabPlatforms. A tab with nothing hidden gets back exactly
 // computeRawTabPlatforms's result, unchanged from this function's behavior
 // before hidden-platform overrides existed.
-export function getTabPlatforms(tab: string): ('tp' | 'ag' | 'cg' | 'wo')[] {
-  const raw = computeRawTabPlatforms(tab);
+export function getTabPlatforms(tab: string): string[] {
+  const raw = computeRawTabPlatformsWithCustom(tab);
   const hidden = hiddenTabPlatforms[tab];
   return hidden ? raw.filter((p) => !hidden.has(p)) : raw;
 }
