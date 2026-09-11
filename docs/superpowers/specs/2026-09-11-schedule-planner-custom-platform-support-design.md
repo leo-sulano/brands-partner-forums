@@ -160,6 +160,27 @@ renders through the same `ScheduleCell`/`PlatformChip` components, using the gen
 - Score Summary integration — separate sub-project, not currently planned.
 - Renaming a custom platform — already a Task 325 non-goal; `custom_platforms.id` is a stable primary
   key regardless, so this doesn't add any new constraint beyond what already exists.
+- The Schedule Planner grid's Confirmed/Removed real-entry-evidence overlay (`scheduleUtils.ts`'s
+  `buildDateStatusIndex` and its sibling, feeding the small ✓/✕ badges on a day cell) stays built-in
+  platforms only for this pass — both iterate a hardcoded `ALL_PLATFORMS` (derived from
+  `PLATFORM_STATUS_KEYS`'s own keys) rather than a caller-supplied platform list, and widening that
+  would need each to accept a platform list and thread `getPlatformStatusDateKeys` (below) through a
+  different code shape than a simple resolver swap. A custom platform's day cell still shows its
+  scheduled/paused chip correctly, just without the real-entry-evidence overlay on top.
+
+## Correction found during plan-writing
+
+`schedulerService.ts`'s `recentStatusesFor` — the function auto-pause detection depends on — reads
+an entry's status/date via `PLATFORM_STATUS_KEYS[platform]`/`PLATFORM_DATE_KEYS[platform]`
+(`scoreSummary.ts`, both `Record<Platform, string[]>`), which returns `undefined` for a custom
+platform's uuid. This is a real bug this spec's original architecture section didn't call out
+explicitly (it's a consequence of the same closed-union pattern the rest of the spec addresses, just
+in a file the initial exploration didn't read in full). Fixed via one more resolver function,
+`getPlatformStatusDateKeys(platform): { statusKeys: string[]; dateKeys: string[] }` in
+`scheduleUtils.ts`, following the exact same built-in-first/custom-fallback shape as
+`getPlatformRule`/`getPlatformBadge`/`getPlatformFullLabel`/`getPmsPlatformLabel` above — a custom
+platform's fallback reads its own registered `statusColumn`/`dateColumn` instead of a `scoreSummary.ts`
+lookup.
 
 ## Testing
 
