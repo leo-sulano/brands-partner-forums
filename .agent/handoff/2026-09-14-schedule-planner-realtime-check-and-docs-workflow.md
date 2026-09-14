@@ -52,20 +52,27 @@
   a manual browser check.
 
 **Recorded in:**
-- `docs/task-history.md` — no new task number filed yet for either thread (the realtime
-  investigation found no bug so nothing to log as a fix; the count-badge feature isn't
-  built yet).
-- Memory: `feedback_stop_growing_claude_md_use_memory_handoffs` (the workflow policy).
+- `docs/task-history.md` — Task 345 (docs workflow redesign) and Task 346 (Schedule
+  Planner realtime investigation), both short-form entries.
+- Memory: `feedback_stop_growing_claude_md_use_memory_handoffs` (the workflow policy),
+  `project_schedule_planner_multi_account_day_cell` (the realtime finding + approved
+  count-badge design, for continuity).
 - CLAUDE.md and `docs/task-history.md`'s Task 344 entry were both trimmed this session to
   match the new short-entry convention (Task 344's full detail already lived in memory
   `project_pms_schedule_planner_sync_direction_clarified` and the sibling handoff file
   `2026-09-14-pms-schedule-planner-sync-direction-clarified.md`, so nothing was lost).
+- Committed + pushed to `origin/main` (`docs: trim CLAUDE.md to architecture/rules only,
+  adopt .agent/handoff/ workflow`, commit `cbdd53f`).
+- PMS board (Review/QA, assigned Leo Sulano, 3 subtasks each, verified via GET after
+  creation):
+  - Task 345 → `cmu1ej4r5000304l8og26tnb1` (label: Infrastructure/Structure)
+  - Task 346 → `cmu1ejm5p000c04l8o4xqg49u` (label: Feature)
+  - Both added to `.claude/pms-synced-tasks.txt` so the Stop hook won't re-create them.
 
 **Open thread / possible next step:**
 - Build the per-account count badge per the approved design above — this is the next
-  concrete task, not yet started.
-- No PMS ticket filed for either thread yet (nothing shipped as code this session on the
-  Schedule Planner side).
+  concrete task, not yet started. No PMS ticket exists for it yet (it isn't done work) —
+  file one once it's actually built.
 
 **Resume prompt for next session:**
 

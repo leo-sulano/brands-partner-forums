@@ -10324,3 +10324,25 @@ this session.
 dashboard-authoritative — a manual PMS column move (e.g. into Project Paused) is never read back and
 gets overwritten on the next sync tick; only due-date/assignee drift pulls from PMS. No code changed.
 Full detail: memory `project_pms_schedule_planner_sync_direction_clarified`.
+
+---
+
+## Task 345: Documentation Workflow Redesign — CLAUDE.md Trim + .agent/handoff Adoption
+
+*2026-09-14:* Trimmed CLAUDE.md from 2,479 to ~70 lines (architecture/rules only), removing the
+per-task "Recent Changes"/"Known Issues" log that was auto-loaded into every session. Adopted
+`.agent/handoff/` (dated per-session files, newest read first) as the canonical "resume here" point;
+`docs/task-history.md` keeps only short headings going forward. Full detail: memory
+`feedback_stop_growing_claude_md_use_memory_handoffs` and `.agent/handoff/2026-09-14-schedule-planner-realtime-check-and-docs-workflow.md`.
+
+---
+
+## Task 346: Schedule Planner Realtime Sync — Investigated and Confirmed Working
+
+*2026-09-14:* User reported manually-added review accounts (Casino Magius, BIT tab) not reflected in
+Schedule Planner. Live-tested directly against production (two browser tabs) and confirmed the
+realtime `subscribeEntries` auto-refresh works correctly — a new entry appears in an already-open tab
+with no reload needed. No bug found: the calendar renders one chip per (brand, platform, weekday), not
+per account, which was the actual source of confusion. No code changed. A follow-up feature (a small
+per-account count badge on a day chip) was designed and approved but not yet built — see
+`.agent/handoff/2026-09-14-schedule-planner-realtime-check-and-docs-workflow.md`.
