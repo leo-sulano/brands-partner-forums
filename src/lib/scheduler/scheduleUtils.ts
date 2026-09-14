@@ -173,20 +173,22 @@ export interface DateStatusIndex {
   // point a key is added to one of the four sets, so it can never disagree
   // about which entries counted as evidence.
   details: Map<string, EntryDetails>;
-  // Same brandKey::platform::date keys as the four sets above, mapped to the
-  // total number of real entries that landed in ANY of the four sets for
-  // that key (not just whichever one "won") -- e.g. 2 accounts posted Done
-  // and 1 posted Removed for the same brand+platform+day counts as 3, even
-  // though the key itself only appears in `removed` (last-write) and `done`.
-  // Used to show "×N accounts" on an otherwise boolean evidence chip; see
-  // getEntryCount below. A key with only one matching entry still gets an
-  // entry here (count 1) -- callers gate the ">1" visual threshold
-  // themselves, this map doesn't hide the common case.
-  counts: Map<string, number>;
+  // Same brandKey::platform::date keys as the four sets above, mapped to
+  // EVERY real entry that landed in ANY of the four sets for that key (not
+  // just whichever one "won" in `details` above) -- e.g. 2 accounts posted
+  // Done and 1 posted Removed for the same brand+platform+day collects all
+  // 3, in encounter order, even though the key itself only appears in
+  // `removed` and `done`. Used to show "×N" and each account's own details
+  // on an otherwise boolean evidence chip; see getEntryCount/getEntryList
+  // below. A key with only one matching entry still gets a one-element
+  // array here -- callers gate the ">1" visual threshold themselves, this
+  // map doesn't hide the common case.
+  entries: Map<string, EntryDetails[]>;
 }
 
 export interface EntryDetails {
   account: string;
+  agent: string;
   country: string;
   proxy: string;
   content: string;
@@ -208,7 +210,7 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   const pending = new Set<string>();
   const done = new Set<string>();
   const details = new Map<string, EntryDetails>();
-  const counts = new Map<string, number>();
+  const entryLists = new Map<string, EntryDetails[]>();
   for (const entry of entries) {
     const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
     if (!brand) continue;
@@ -230,16 +232,20 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
       if (!date) continue;
       const key = `${brandKey}::${platform}::${toISODate(date)}`;
       target.add(key);
-      details.set(key, {
+      const entryDetail: EntryDetails = {
         account: (entry.data.Account ?? '').trim(),
+        agent: (entry.data.Agent ?? '').trim(),
         country: (entry.data.Country ?? '').trim(),
         proxy: (entry.data['Proxy Used'] ?? '').trim(),
         content: (getReviewText(entry.data, platform) ?? '').trim(),
-      });
-      counts.set(key, (counts.get(key) ?? 0) + 1);
+      };
+      details.set(key, entryDetail);
+      const list = entryLists.get(key);
+      if (list) list.push(entryDetail);
+      else entryLists.set(key, [entryDetail]);
     }
   }
-  return { removed, confirmed, pending, done, details, counts };
+  return { removed, confirmed, pending, done, details, entries: entryLists };
 }
 
 export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';
@@ -269,10 +275,19 @@ export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platfo
 }
 
 // Total number of real entries backing a brand+platform+date, regardless of
-// which of the four evidence categories they landed in — see counts' own
+// which of the four evidence categories they landed in — see `entries`' own
 // doc comment on DateStatusIndex. 0 when there's no evidence for that key.
 export function getEntryCount(index: DateStatusIndex, brandKey: string, platform: SchedulablePlatform, iso: string): number {
-  return index.counts.get(`${brandKey}::${platform}::${iso}`) ?? 0;
+  return index.entries.get(`${brandKey}::${platform}::${iso}`)?.length ?? 0;
+}
+
+// Every real entry backing a brand+platform+date, in encounter order — the
+// per-account breakdown behind getEntryCount's number, used to list each
+// account's own Account/Agent/Country individually (rather than one merged
+// brand-level value) once more than one account posted the same day. Empty
+// array (never undefined) when there's no evidence for that key.
+export function getEntryList(index: DateStatusIndex, brandKey: string, platform: SchedulablePlatform, iso: string): EntryDetails[] {
+  return index.entries.get(`${brandKey}::${platform}::${iso}`) ?? [];
 }
 
 export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed' | 'paused';
@@ -692,6 +707,19 @@ export function countActivePlatformSlots(
     for (const platform of platforms) {
       counts[platform] = counts[platform] ?? 0;
       for (const col of columns) {
+        // Real evidence (any day, including today) always wins and is
+        // SUMMED, not just counted as 1 -- 3 accounts posting the same
+        // brand+platform+day contribute 3 here, matching the day cell's own
+        // "×3" badge (EvidenceCornerBadge/getEntryCount), not 1. A day with
+        // no evidence yet falls back to the plan, but only for today/future
+        // (col.iso >= todayISO) -- a past day with no evidence still counts
+        // 0, ignoring the plan entirely, same as before this function
+        // summed real entries instead of just checking hasDateEvidence.
+        const evidenceCount = getEntryCount(dateStatusIndex, brandKey, platform, col.iso);
+        if (evidenceCount > 0) {
+          counts[platform] = (counts[platform] ?? 0) + evidenceCount;
+          continue;
+        }
         // scheduleFor (scheduleBrands.ts) is outside this plan's scope and its
         // `platform: Platform | null` parameter is never widened -- at
         // runtime it only uses `platform` for an opaque `===` comparison
@@ -699,10 +727,9 @@ export function countActivePlatformSlots(
         // plain string, custom-platform uuid or built-in code alike), so
         // this cast is safe; TypeScript just can't see that BrandScheduleRow
         // rows for a custom platform carry its id in the same untyped field.
-        const counted = col.iso < todayISO
-          ? hasDateEvidence(dateStatusIndex, brandKey, platform, col.iso)
-          : scheduleFor(rows, tab, brand, col.weekStartISO, platform as Platform)?.[col.weekday] === 'active';
-        if (counted) counts[platform] = (counts[platform] ?? 0) + 1;
+        if (col.iso >= todayISO && scheduleFor(rows, tab, brand, col.weekStartISO, platform as Platform)?.[col.weekday] === 'active') {
+          counts[platform] = (counts[platform] ?? 0) + 1;
+        }
       }
     }
   }

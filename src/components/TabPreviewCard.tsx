@@ -216,10 +216,11 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                               {executedEntries.map(({ platform: p, kind }) => {
                                 const badge = getPlatformBadge(p);
                                 const favicon = getPlatformFavicon(p);
+                                const count = getEntryCount(preview.dateStatusIndex, brandKey, p, col.iso);
                                 return (
-                                  <Tooltip key={p} content={badge.label}>
+                                  <Tooltip key={p} content={count > 1 ? `${badge.label} (${count} accounts)` : badge.label}>
                                     <span
-                                      className={`relative inline-flex items-center rounded-[2px] p-px ${badge.className}`}
+                                      className={`relative inline-flex items-center gap-px rounded-[2px] p-px ${badge.className}`}
                                     >
                                       {favicon ? (
                                         <img
@@ -239,7 +240,13 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                                         // way.
                                         <span className="px-0.5 text-[8px] font-semibold leading-none">{badge.label}</span>
                                       )}
-                                      {kind && <EvidenceCornerBadge kind={kind} count={getEntryCount(preview.dateStatusIndex, brandKey, p, col.iso)} />}
+                                      {/* Inline "xN" -- mirrors calendarRenderer.tsx's
+                                          PlatformChip treatment (same reasoning: a
+                                          floating corner pill was too small/easy to
+                                          miss). Shown outside the icon's own bounds
+                                          since there's no room to overlay it here. */}
+                                      {count > 1 && <span className="pr-0.5 text-[7px] font-bold leading-none">×{count}</span>}
+                                      {kind && <EvidenceCornerBadge kind={kind} />}
                                     </span>
                                   </Tooltip>
                                 );

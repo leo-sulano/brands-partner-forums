@@ -39,7 +39,7 @@ import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, getEntryCount, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, buildNewBrandAddedAtMap, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, getPlatformBadge, getPlatformFullLabel, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, getEntryList, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, buildNewBrandAddedAtMap, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, getPlatformBadge, getPlatformFullLabel, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type EntryDetails } from '../lib/scheduler/scheduleUtils';
 import { getPlatformFavicon } from '../lib/tabIcons';
 import type { SchedulablePlatform } from '../lib/scheduler/schedulerRules';
 import AddPlatformModal from './AddPlatformModal';
@@ -812,20 +812,20 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     return doneByPlatform;
   }
 
-  // Total real entries backing today's evidence for each platform — same
+  // Every real entry backing today's evidence for each platform — same
   // brandKey::platform::dayISO lookup as the four boolean functions above,
-  // via getEntryCount (scheduleUtils.ts). ScheduleCell only ever shows this
+  // via getEntryList (scheduleUtils.ts). ScheduleCell only ever shows this
   // once hasEvidence is true for that platform, same caller-gating as
-  // country/account, so a 0/undefined here for a platform with no evidence
-  // is simply never rendered.
-  function computeEntryCountByPlatform(brand: string, dayISO: string): Partial<Record<SchedulablePlatform, number>> {
+  // country/account, so an empty/undefined list for a platform with no
+  // evidence is simply never rendered.
+  function computeEntryListByPlatform(brand: string, dayISO: string): Partial<Record<SchedulablePlatform, EntryDetails[]>> {
     const brandKey = normalizeBrandKey(brand);
-    const entryCountByPlatform: Partial<Record<SchedulablePlatform, number>> = {};
+    const entryListByPlatform: Partial<Record<SchedulablePlatform, EntryDetails[]>> = {};
     for (const platform of brandPlatforms(brand)) {
-      const count = getEntryCount(dateStatusIndex, brandKey, platform, dayISO);
-      if (count > 0) entryCountByPlatform[platform] = count;
+      const list = getEntryList(dateStatusIndex, brandKey, platform, dayISO);
+      if (list.length > 0) entryListByPlatform[platform] = list;
     }
-    return entryCountByPlatform;
+    return entryListByPlatform;
   }
 
   // Who manually paused this exact day cell, keyed by platform — unlike the
@@ -1614,7 +1614,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       const confirmedByPlatform = computeConfirmedByPlatform(brand, dayISO);
                       const pendingByPlatform = computePendingByPlatform(brand, dayISO);
                       const doneByPlatform = computeDoneByPlatform(brand, dayISO);
-                      const entryCountByPlatform = computeEntryCountByPlatform(brand, dayISO);
+                      const entryListByPlatform = computeEntryListByPlatform(brand, dayISO);
                       const dayPausedByPlatform = computeManualPausedByPlatform(brand, col);
                       return (
                         <td key={col.iso} className="px-3 py-2 text-left align-top">
@@ -1628,7 +1628,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                             confirmedByPlatform={confirmedByPlatform}
                             pendingByPlatform={pendingByPlatform}
                             doneByPlatform={doneByPlatform}
-                            entryCountByPlatform={entryCountByPlatform}
+                            entryListByPlatform={entryListByPlatform}
                             agent={agent}
                             country={country}
                             account={account}

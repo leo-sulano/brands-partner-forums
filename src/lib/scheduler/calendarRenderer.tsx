@@ -2,7 +2,7 @@ import { Fragment } from 'react';
 import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
 import { WEEKDAY_LABELS } from '../scheduleBrands';
 import type { BrandPlatformPause } from '../queries';
-import { getPlatformBadge, getPlatformFullLabel, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
+import { getPlatformBadge, getPlatformFullLabel, unscheduledPlatforms, type DateEvidenceKind, type EntryDetails } from './scheduleUtils';
 import { getPlatformFavicon } from '../tabIcons';
 import type { SchedulablePlatform } from './schedulerRules';
 import Tooltip, { useTooltip } from '../../components/Tooltip';
@@ -20,6 +20,27 @@ function AgentCountryLines({ agent, country, account }: { agent?: string; countr
       {agent && <div>Agent: {agent}</div>}
       {country && <div>Country: {country}</div>}
       {account && <div>Account: {account}</div>}
+    </>
+  );
+}
+
+// Per-account breakdown for a day with more than one real posting — one line
+// per entry (Account, Agent, Country) instead of AgentCountryLines' single
+// merged brand-level value, so e.g. 3 accounts posting the same brand+
+// platform+day each show who actually posted it rather than collapsing to
+// whichever entry buildAgentIndex/buildCountryIndex/buildAccountIndex
+// happened to resolve last. Only ever rendered when entryList.length > 1 —
+// see PlatformChip's content below.
+function EntryAccountLines({ entryList }: { entryList: EntryDetails[] }) {
+  return (
+    <>
+      {entryList.map((e, i) => (
+        <div key={i}>
+          {e.account || '(no account)'}
+          {e.agent && ` — ${e.agent}`}
+          {e.country && ` (${e.country})`}
+        </div>
+      ))}
     </>
   );
 }
@@ -47,11 +68,11 @@ interface ScheduleCellProps {
   confirmedByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
   pendingByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
   doneByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
-  // Total real entries backing today's evidence for a platform (from
-  // getEntryCount) — same caller-gating rule as country/account below (only
+  // Every real entry backing today's evidence for a platform (from
+  // getEntryList) — same caller-gating rule as country/account below (only
   // meaningful once hasEvidence is true for that platform). Optional/absent
   // renders identically to before this prop existed.
-  entryCountByPlatform?: Partial<Record<SchedulablePlatform, number>>;
+  entryListByPlatform?: Partial<Record<SchedulablePlatform, EntryDetails[]>>;
   // Brand-level Agent/Country/Account (most-recently-updated entry, same
   // resolution rule buildAgentIndex/buildCountryIndex/buildAccountIndex use
   // for PMS assignment). Agent is shown unconditionally — it doubles as "who
@@ -156,11 +177,13 @@ interface PlatformChipProps {
   isPausedState: boolean;
   pauseReason?: string;
   pausedBy?: string;
-  // Total real entries backing today's evidence badge (from getEntryCount),
+  // Every real entry backing today's evidence badge (from getEntryList),
   // caller-gated the same way country/account are — only meaningful once
-  // this exact day has real evidence. Undefined/1 changes nothing; see
-  // EvidenceCornerBadge's own doc comment.
-  count?: number;
+  // this exact day has real evidence. Undefined/a single-element array
+  // changes nothing (the chip still shows the merged agent/country/account
+  // lines below); only length > 1 switches the tooltip to the per-account
+  // breakdown and adds the inline "×N" next to the platform label.
+  entryList?: EntryDetails[];
   onClick: () => void;
   iconOnly?: boolean;
 }
@@ -172,14 +195,7 @@ interface PlatformChipProps {
 // via resolveDateEvidenceKind. Kept here (not scheduleUtils.ts) since it's a
 // visual component, not scheduling logic — a given evidence kind can't look
 // different in the two surfaces because they both render this same function.
-// `count` (total real entries backing this exact evidence, from
-// getEntryCount) is optional and purely additive — omitting it, or passing 1,
-// renders identically to before this prop existed. Only when count > 1 does
-// a second small badge appear in the chip's bottom-left corner (top-right is
-// this function's own letter badge; bottom-right is PlatformChip's separate
-// PausedBadgeIcon), so the common single-account case has zero visual
-// change.
-export function EvidenceCornerBadge({ kind, count }: { kind: DateEvidenceKind; count?: number }) {
+export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
   const style: Record<DateEvidenceKind, { bg: string; text: string; label: string }> = {
     removed: { bg: 'bg-rose-600', text: 'text-white', label: '✕' },
     confirmed: { bg: 'bg-emerald-600', text: 'text-white', label: '✓' },
@@ -188,22 +204,12 @@ export function EvidenceCornerBadge({ kind, count }: { kind: DateEvidenceKind; c
   };
   const { bg, text, label } = style[kind];
   return (
-    <>
-      <span
-        aria-hidden="true"
-        className={`absolute -right-0.5 -top-0.5 flex size-2 items-center justify-center rounded-full ${bg} text-[6px] font-bold leading-none ${text}`}
-      >
-        {label}
-      </span>
-      {count != null && count > 1 && (
-        <span
-          aria-hidden="true"
-          className="absolute -bottom-0.5 -left-0.5 flex h-2 min-w-2 items-center justify-center rounded-full bg-slate-800 px-px text-[6px] font-bold leading-none text-white"
-        >
-          ×{count}
-        </span>
-      )}
-    </>
+    <span
+      aria-hidden="true"
+      className={`absolute -right-0.5 -top-0.5 flex size-2 items-center justify-center rounded-full ${bg} text-[6px] font-bold leading-none ${text}`}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -216,17 +222,23 @@ export function EvidenceCornerBadge({ kind, count }: { kind: DateEvidenceKind; c
 // chips) — wrapping it in Tooltip's own extra trigger <span> would add a
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
-function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, isPausedState, pauseReason, pausedBy, count, onClick, iconOnly }: PlatformChipProps) {
+function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, isPausedState, pauseReason, pausedBy, entryList, onClick, iconOnly }: PlatformChipProps) {
   const badge = getPlatformBadge(platform);
   const favicon = getPlatformFavicon(platform);
+  // >1 means more than one real account posted this exact brand+platform+day
+  // — see EntryAccountLines/entryList's own doc comments. A single-element
+  // (or absent) list renders identically to before this feature existed.
+  const count = entryList?.length ?? 0;
   const content = (
     <div>
-      <div>{getPlatformFullLabel(platform)}: {label}{count != null && count > 1 ? ` (${count} accounts)` : ''}</div>
+      <div>{getPlatformFullLabel(platform)}: {label}{count > 1 ? ` (${count} accounts)` : ''}</div>
       {isPausedState ? (
         <>
           {pauseReason && <div>Reason: {pauseReason}</div>}
           {pausedBy && <div>Paused by: {pausedBy}</div>}
         </>
+      ) : count > 1 ? (
+        <EntryAccountLines entryList={entryList!} />
       ) : (
         <AgentCountryLines agent={agent} country={country} account={account} />
       )}
@@ -250,10 +262,16 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
           />
         )}
         {!iconOnly && badge.label}
-        {isRemoved && <EvidenceCornerBadge kind="removed" count={count} />}
-        {isConfirmed && <EvidenceCornerBadge kind="confirmed" count={count} />}
-        {isPending && <EvidenceCornerBadge kind="pending" count={count} />}
-        {isDone && <EvidenceCornerBadge kind="done" count={count} />}
+        {/* Inline "×N" next to the platform label/icon — replaces an earlier
+            tiny floating corner-pill design per direct user feedback (too
+            small/easy to miss, overlapping the letter badge). Shown even in
+            iconOnly mode, right after the icon, since the count is
+            meaningful on its own. */}
+        {count > 1 && <span className="font-semibold">×{count}</span>}
+        {isRemoved && <EvidenceCornerBadge kind="removed" />}
+        {isConfirmed && <EvidenceCornerBadge kind="confirmed" />}
+        {isPending && <EvidenceCornerBadge kind="pending" />}
+        {isDone && <EvidenceCornerBadge kind="done" />}
         {isPausedState && <PausedBadgeIcon className="absolute -bottom-0.5 -right-0.5 size-2.5" />}
       </span>
       {portal}
@@ -297,7 +315,7 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
 // because it's confirmed (no underlying brand_schedule row) still cycles
 // null → active → paused → null on click like any other, since onToggle reads
 // the real row status independently of the confirmed overlay.
-export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, entryCountByPlatform, agent, country, account, pausedByPlatform, dayPausedByPlatform, isPastDay, holidayName, isApproved, canPause, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
+export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPlatform, removedByPlatform, confirmedByPlatform, pendingByPlatform, doneByPlatform, entryListByPlatform, agent, country, account, pausedByPlatform, dayPausedByPlatform, isPastDay, holidayName, isApproved, canPause, onToggle, onSetStatus, onCancel, onAddPlatform, iconOnly }: ScheduleCellProps) {
   const addable = unscheduledPlatforms(platforms, day, rowsByPlatform, pausesByPlatform);
   const cell = (
     <div
@@ -431,7 +449,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                 isPausedState={isPausedState}
                 pauseReason={pauseReason}
                 pausedBy={pausedBy}
-                count={hasEvidence ? entryCountByPlatform?.[platform] : undefined}
+                entryList={hasEvidence ? entryListByPlatform?.[platform] : undefined}
                 onClick={() => onToggle(platform)}
                 iconOnly={iconOnly}
               />

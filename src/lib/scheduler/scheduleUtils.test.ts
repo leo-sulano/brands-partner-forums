@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, getEntryCount, buildAgentIndex, buildBrandDisplayMap, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, getPlatformBadge, getPlatformFullLabel, getPlatformStatusDateKeys, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
+import { leastLoadedDay, weeklyCompletion, completedBrandPlatformKey, PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, buildDateStatusIndex, hasDateEvidence, resolveDateEvidenceKind, resolvePmsSyncStatus, getEntryCount, getEntryList, buildAgentIndex, buildBrandDisplayMap, buildNewBrandAddedAtMap, buildFirstLastPostIndex, trailingManualPauseDays, effectivePauseDays, hasNoScheduleThisWeek, pausableWeekdays, buildAgentAssignmentMap, resolveAgentForPlatform, resolveAgentForBrand, buildResolvedAgentIndex, weekdayColumnsInRange, columnsForWeek, currentWeekColumns, countActivePlatformSlots, filterVisiblePlatforms, getPlatformBadge, getPlatformFullLabel, getPlatformStatusDateKeys, type DateStatusIndex, type EntryDetails } from './scheduleUtils';
 import { mondayOf } from '../scheduleBrands';
 import type { BrandScheduleRow, Weekday } from '../scheduleBrands';
 import type { Entry } from '../../types/entry';
@@ -341,21 +341,21 @@ describe('buildDateStatusIndex', () => {
     expect(pending.has('winmega::tp::2026-07-28')).toBe(true);
   });
 
-  it('captures Account/Country/Proxy/content details alongside a classified entry', () => {
+  it('captures Account/Agent/Country/Proxy/content details alongside a classified entry', () => {
     const entries = [entry({
       Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28',
-      Account: 'agent@example.com', Country: 'Germany', 'Proxy Used': 'SpyderProxy', 'TP Review Text': 'Great service.',
+      Account: 'agent@example.com', Agent: 'ANN', Country: 'Germany', 'Proxy Used': 'SpyderProxy', 'TP Review Text': 'Great service.',
     })];
     const { details } = buildDateStatusIndex(entries);
     expect(details.get('winmega::tp::2026-07-28')).toEqual({
-      account: 'agent@example.com', country: 'Germany', proxy: 'SpyderProxy', content: 'Great service.',
+      account: 'agent@example.com', agent: 'ANN', country: 'Germany', proxy: 'SpyderProxy', content: 'Great service.',
     });
   });
 
-  it('captures details with empty strings when Account/Country/Proxy/content are all blank', () => {
+  it('captures details with empty strings when Account/Agent/Country/Proxy/content are all blank', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' })];
     const { details } = buildDateStatusIndex(entries);
-    expect(details.get('winmega::tp::2026-07-28')).toEqual({ account: '', country: '', proxy: '', content: '' });
+    expect(details.get('winmega::tp::2026-07-28')).toEqual({ account: '', agent: '', country: '', proxy: '', content: '' });
   });
 
   it('does not add a details entry for a status that matches none of the four sets', () => {
@@ -370,40 +370,43 @@ describe('buildDateStatusIndex', () => {
     expect(details.size).toBe(0);
   });
 
-  it('counts multiple entries for the same brand+platform+date regardless of which status each one has', () => {
+  it('collects one entry per real posting for the same brand+platform+date, regardless of which status each one has', () => {
     const entries = [
-      entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' }),
-      entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' }),
-      entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28' }),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28', Account: 'a1', Agent: 'ANN' }),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28', Account: 'a2', Agent: 'JEN' }),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28', Account: 'a3', Agent: 'LAI' }),
     ];
-    const { counts } = buildDateStatusIndex(entries);
-    expect(counts.get('winmega::tp::2026-07-28')).toBe(3);
+    const { entries: index } = buildDateStatusIndex(entries);
+    const list = index.get('winmega::tp::2026-07-28');
+    expect(list).toHaveLength(3);
+    expect(list?.map((e) => e.account)).toEqual(['a1', 'a2', 'a3']);
+    expect(list?.map((e) => e.agent)).toEqual(['ANN', 'JEN', 'LAI']);
   });
 
-  it('keeps counts independent across different brands, platforms, and dates', () => {
+  it('keeps entry lists independent across different brands, platforms, and dates', () => {
     const entries = [
       entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' }),
       entry({ Brands: 'WinMega', 'AG Review Status': 'Done', 'Ask Gambler review added': '2026-07-28' }),
       entry({ Brands: 'OtherBrand', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' }),
       entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-29' }),
     ];
-    const { counts } = buildDateStatusIndex(entries);
-    expect(counts.get('winmega::tp::2026-07-28')).toBe(1);
-    expect(counts.get('winmega::ag::2026-07-28')).toBe(1);
-    expect(counts.get('otherbrand::tp::2026-07-28')).toBe(1);
-    expect(counts.get('winmega::tp::2026-07-29')).toBe(1);
+    const { entries: index } = buildDateStatusIndex(entries);
+    expect(index.get('winmega::tp::2026-07-28')).toHaveLength(1);
+    expect(index.get('winmega::ag::2026-07-28')).toHaveLength(1);
+    expect(index.get('otherbrand::tp::2026-07-28')).toHaveLength(1);
+    expect(index.get('winmega::tp::2026-07-29')).toHaveLength(1);
   });
 
-  it('does not count an entry whose status matches none of the four sets (e.g. On Pause)', () => {
+  it('does not add an entry whose status matches none of the four sets (e.g. On Pause)', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'On Pause', 'Trust Pilot': '2026-07-28' })];
-    const { counts } = buildDateStatusIndex(entries);
-    expect(counts.has('winmega::tp::2026-07-28')).toBe(false);
+    const { entries: index } = buildDateStatusIndex(entries);
+    expect(index.has('winmega::tp::2026-07-28')).toBe(false);
   });
 
-  it('does not count an entry with a recognized status but no parseable date', () => {
+  it('does not add an entry with a recognized status but no parseable date', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': null })];
-    const { counts } = buildDateStatusIndex(entries);
-    expect(counts.size).toBe(0);
+    const { entries: index } = buildDateStatusIndex(entries);
+    expect(index.size).toBe(0);
   });
 });
 
@@ -427,6 +430,30 @@ describe('getEntryCount', () => {
   });
 });
 
+describe('getEntryList', () => {
+  const entry = (data: Record<string, string | null>): Entry => ({
+    id: 'x', tab: 'BITP', sheet_row_id: '1', data, updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null,
+  });
+
+  it('returns every real entry backing a brand+platform+date, each with its own Account/Agent', () => {
+    const entries = [
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28', Account: 'a1', Agent: 'ANN' }),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28', Account: 'a2', Agent: 'JEN' }),
+    ];
+    const index = buildDateStatusIndex(entries);
+    const list = getEntryList(index, 'winmega', 'tp', '2026-07-28');
+    expect(list.map((e) => ({ account: e.account, agent: e.agent }))).toEqual([
+      { account: 'a1', agent: 'ANN' },
+      { account: 'a2', agent: 'JEN' },
+    ]);
+  });
+
+  it('returns an empty array when there is no evidence for that exact key', () => {
+    const index = buildDateStatusIndex([]);
+    expect(getEntryList(index, 'winmega', 'tp', '2026-07-28')).toEqual([]);
+  });
+});
+
 describe('hasDateEvidence', () => {
   const index: DateStatusIndex = {
     removed: new Set(['winmega::tp::2026-08-20']),
@@ -434,7 +461,7 @@ describe('hasDateEvidence', () => {
     pending: new Set(['winmega::cg::2026-08-20']),
     done: new Set(['winmega::wo::2026-08-20']),
     details: new Map(),
-    counts: new Map(),
+    entries: new Map(),
   };
 
   it('returns true when the key is in removed', () => {
@@ -462,7 +489,7 @@ describe('hasDateEvidence', () => {
   });
 
   it('returns false against a completely empty index', () => {
-    const empty: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set(), details: new Map(), counts: new Map() };
+    const empty: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set(), details: new Map(), entries: new Map() };
     expect(hasDateEvidence(empty, 'winmega', 'tp', '2026-08-20')).toBe(false);
   });
 });
@@ -474,7 +501,7 @@ describe('resolveDateEvidenceKind', () => {
     pending: new Set(['winmega::cg::2026-08-20']),
     done: new Set(['winmega::wo::2026-08-20']),
     details: new Map(),
-    counts: new Map(),
+    entries: new Map(),
   };
 
   it('returns "removed" when the key is in the removed set', () => {
@@ -504,14 +531,14 @@ describe('resolveDateEvidenceKind', () => {
       pending: new Set(['winmega::tp::2026-08-20']),
       done: new Set(['winmega::tp::2026-08-20']),
       details: new Map(),
-      counts: new Map(),
+      entries: new Map(),
     };
     expect(resolveDateEvidenceKind(collision, 'winmega', 'tp', '2026-08-20')).toBe('removed');
   });
 });
 
 describe('resolvePmsSyncStatus', () => {
-  const emptyIndex = { removed: new Set<string>(), confirmed: new Set<string>(), pending: new Set<string>(), done: new Set<string>(), details: new Map<string, EntryDetails>(), counts: new Map<string, number>() };
+  const emptyIndex = { removed: new Set<string>(), confirmed: new Set<string>(), pending: new Set<string>(), done: new Set<string>(), details: new Map<string, EntryDetails>(), entries: new Map<string, EntryDetails[]>() };
 
   it('returns "removed" when the key is in the removed set', () => {
     const index = { ...emptyIndex, removed: new Set(['winmega::tp::2026-08-20']) };
@@ -553,7 +580,7 @@ describe('resolvePmsSyncStatus', () => {
       pending: new Set<string>(),
       done: new Set<string>(),
       details: new Map<string, EntryDetails>(),
-      counts: new Map<string, number>(),
+      entries: new Map<string, EntryDetails[]>(),
     };
     expect(resolvePmsSyncStatus('winmega', 'tp', '2026-08-20', index, false)).toBe('removed');
   });
@@ -854,7 +881,7 @@ describe('countActivePlatformSlots', () => {
     thursday: days.thursday ?? null, friday: days.friday ?? null,
   });
   const allPlatforms = () => ['tp', 'ag'] as const;
-  const emptyIndex: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set(), details: new Map(), counts: new Map() };
+  const emptyIndex: DateStatusIndex = { removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set(), details: new Map(), entries: new Map() };
   // Before every date used in the plan-only tests below, so those columns
   // are always "today or future" and behave exactly as they did before the
   // evidence-gating change.
@@ -909,7 +936,10 @@ describe('countActivePlatformSlots', () => {
   });
 
   it('for a past day, counts a brand+platform+day with evidence even when the plan has no row for it at all', () => {
-    const index: DateStatusIndex = { removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set(), details: new Map(), counts: new Map() };
+    const index: DateStatusIndex = {
+      removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set(),
+      details: new Map(), entries: new Map([['a::tp::2026-08-17', [{ account: 'x', agent: '', country: '', proxy: '', content: '' }]]]),
+    };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
     const todayISO = '2026-08-24';
     const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
@@ -917,13 +947,17 @@ describe('countActivePlatformSlots', () => {
   });
 
   it('for a past day, counts each of the four evidence types (removed/confirmed/pending/done) equally', () => {
+    const detail = { account: 'x', agent: '', country: '', proxy: '', content: '' };
     const index: DateStatusIndex = {
       removed: new Set(['a::tp::2026-08-17']),
       confirmed: new Set(['a::tp::2026-08-18']),
       pending: new Set(['a::tp::2026-08-19']),
       done: new Set(['a::tp::2026-08-20']),
       details: new Map(),
-      counts: new Map(),
+      entries: new Map([
+        ['a::tp::2026-08-17', [detail]], ['a::tp::2026-08-18', [detail]],
+        ['a::tp::2026-08-19', [detail]], ['a::tp::2026-08-20', [detail]],
+      ]),
     };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
     const todayISO = '2026-08-24';
@@ -931,13 +965,40 @@ describe('countActivePlatformSlots', () => {
     expect(counts).toEqual({ tp: 4 });
   });
 
-  it('treats today/future days as plan-only even when unrelated evidence exists for them', () => {
+  it('sums every real entry for a brand+platform+day, not just 1 per slot, when more than one account posted', () => {
+    const index: DateStatusIndex = {
+      removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set(['a::tp::2026-08-17']),
+      details: new Map(),
+      entries: new Map([['a::tp::2026-08-17', [
+        { account: 'a1', agent: 'ANN', country: '', proxy: '', content: '' },
+        { account: 'a2', agent: 'JEN', country: '', proxy: '', content: '' },
+        { account: 'a3', agent: 'LAI', country: '', proxy: '', content: '' },
+      ]]]),
+    };
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const todayISO = '2026-08-24';
+    const counts = countActivePlatformSlots([], 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
+    expect(counts).toEqual({ tp: 3 });
+  });
+
+  it("counts today's real evidence even when there's no plan row for it (today is no longer plan-only)", () => {
     const rows = [row('a', 'tp', '2026-08-17', {})]; // no plan for Monday
-    const index: DateStatusIndex = { removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set(), details: new Map(), counts: new Map() };
+    const index: DateStatusIndex = {
+      removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set(),
+      details: new Map(), entries: new Map([['a::tp::2026-08-17', [{ account: 'x', agent: '', country: '', proxy: '', content: '' }]]]),
+    };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
     const todayISO = '2026-08-17'; // Monday itself is "today"
     const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, index, todayISO);
-    expect(counts).toEqual({ tp: 0 }); // evidence present but ignored -- no plan, and not past yet
+    expect(counts).toEqual({ tp: 1 });
+  });
+
+  it('still falls back to the plan for a future day with no evidence yet', () => {
+    const rows = [row('a', 'tp', '2026-08-17', { monday: 'active' })];
+    const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
+    const todayISO = '2026-08-10'; // the whole displayed week is still in the future
+    const counts = countActivePlatformSlots(rows, 'BITP', ['a'], () => ['tp'], cols, emptyIndex, todayISO);
+    expect(counts).toEqual({ tp: 1 });
   });
 });
 
