@@ -1,6 +1,8 @@
 import { assertEquals, assertRejects } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { syncAllTabStatuses, handleSyncAllStatuses, handleAuditAllStatuses, handleReconcileColumns } from './index.ts';
+import { syncAllTabStatuses, handleSyncAllStatuses, handleAuditAllStatuses, handleReconcileColumns, buildParityAlertEmail } from './index.ts';
+import type { SchedulePmsParityIssue } from '../../../src/lib/scheduler/pmsSync.ts';
+import type { GmailCredentials } from '../_shared/gmail.ts';
 
 Deno.test('syncAllTabStatuses processes every given tab independently, isolating one failure', async () => {
   const calls: string[] = [];
@@ -400,6 +402,147 @@ Deno.test('handleAuditAllStatuses leaves a tab\'s result string untouched when i
     async () => ({ created: [], skipped: [], failed: [] }),
   );
   assertEquals(results['BITP'].includes('backfill'), false);
+});
+
+// Schedule Planner <-> PMS parity check (Task 341, docs/task-history.md): a
+// defense-in-depth guard, run once per active tab after the status sweep and
+// backfill, that flags any date where the calendar's active-plan count and
+// the linked PMS cards' active-status count still disagree even after both
+// of those already ran. parityFn is injectable so these never touch a real
+// Supabase client or PMS API, same pattern as backfillFn's own tests above.
+
+Deno.test('handleAuditAllStatuses calls parityFn once per active tab, never for a paused tab, and appends a non-empty result', async () => {
+  const parityCalls: string[] = [];
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => ['GRG - Gulf Recovery Group'],
+    async () => ({ created: [], skipped: [], failed: [] }),
+    async (tab: string) => {
+      parityCalls.push(tab);
+      return tab === 'BITP'
+        ? [{ tab, date: '2026-09-16', plannerActiveCount: 15, pmsActiveLinkCount: 14, pmsTotalLinkCount: 15 }]
+        : [];
+    },
+  );
+  assertEquals(parityCalls.sort(), ['BITP', 'Hanan']);
+  assertEquals(results['BITP'].endsWith('; parity mismatch on 1 date(s)'), true);
+  assertEquals(results['Hanan'].includes('parity'), false);
+});
+
+Deno.test('handleAuditAllStatuses isolates one tab\'s parity-check failure from the rest', async () => {
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP', 'Hanan'],
+    () => [],
+    async () => ({ created: [], skipped: [], failed: [] }),
+    async (tab: string) => {
+      if (tab === 'BITP') throw new Error('boom');
+      return [];
+    },
+  );
+  // A thrown parityFn is caught and logged, never surfaced into results --
+  // unlike a backfill failure (which IS surfaced, see the dedicated test
+  // above), a parity-check failure has nothing actionable to report beyond
+  // what the console.error already captures, and must never make a tab's
+  // otherwise-healthy sync/backfill result look like it failed too.
+  assertEquals(results['BITP'].includes('parity'), false);
+  assertEquals(results['Hanan'].includes('parity'), false);
+});
+
+Deno.test('handleAuditAllStatuses sends one alert email when parity issues are found and Gmail credentials are configured', async () => {
+  const sendCalls: { subject: string; text: string }[] = [];
+  await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+    async () => ({ created: [], skipped: [], failed: [] }),
+    async () => [{ tab: 'BITP', date: '2026-09-16', plannerActiveCount: 15, pmsActiveLinkCount: 14, pmsTotalLinkCount: 15 }],
+    { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh', senderEmail: 'bot@example.com' } as GmailCredentials,
+    async (_client, _creds, subject: string, text: string) => {
+      sendCalls.push({ subject, text });
+      return { sent: 1, failed: 0 };
+    },
+  );
+  assertEquals(sendCalls.length, 1);
+  assertEquals(sendCalls[0].text.includes('BITP / 2026-09-16'), true);
+});
+
+Deno.test('handleAuditAllStatuses never sends an alert email when no parity issues are found', async () => {
+  let sendCalls = 0;
+  await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+    async () => ({ created: [], skipped: [], failed: [] }),
+    async () => [],
+    { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh', senderEmail: 'bot@example.com' } as GmailCredentials,
+    async () => {
+      sendCalls++;
+      return { sent: 1, failed: 0 };
+    },
+  );
+  assertEquals(sendCalls, 0);
+});
+
+Deno.test('handleAuditAllStatuses skips the alert email when Gmail credentials are not configured, without failing the action', async () => {
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+    async () => ({ created: [], skipped: [], failed: [] }),
+    async () => [{ tab: 'BITP', date: '2026-09-16', plannerActiveCount: 15, pmsActiveLinkCount: 14, pmsTotalLinkCount: 15 }],
+    undefined,
+    async () => {
+      throw new Error('should never be called with no gmailCredentials');
+    },
+  );
+  assertEquals(results['BITP'].endsWith('; parity mismatch on 1 date(s)'), true);
+});
+
+Deno.test('handleAuditAllStatuses swallows a send-email failure without throwing', async () => {
+  const results = await handleAuditAllStatuses(
+    {} as SupabaseClient,
+    { apiToken: 'test-token' },
+    fetch,
+    async () => {},
+    () => ['BITP'],
+    () => [],
+    async () => ({ created: [], skipped: [], failed: [] }),
+    async () => [{ tab: 'BITP', date: '2026-09-16', plannerActiveCount: 15, pmsActiveLinkCount: 14, pmsTotalLinkCount: 15 }],
+    { clientId: 'id', clientSecret: 'secret', refreshToken: 'refresh', senderEmail: 'bot@example.com' } as GmailCredentials,
+    async () => {
+      throw new Error('Gmail 500');
+    },
+  );
+  assertEquals(results['BITP'].endsWith('; parity mismatch on 1 date(s)'), true);
+});
+
+Deno.test('buildParityAlertEmail lists each issue with its tab, date, and counts, and names every affected tab in the subject', () => {
+  const issues: SchedulePmsParityIssue[] = [
+    { tab: 'BITP', date: '2026-09-16', plannerActiveCount: 15, pmsActiveLinkCount: 14, pmsTotalLinkCount: 15 },
+    { tab: 'Hanan', date: '2026-09-17', plannerActiveCount: 12, pmsActiveLinkCount: 13, pmsTotalLinkCount: 13 },
+  ];
+  const { subject, text } = buildParityAlertEmail(issues);
+  assertEquals(subject.includes('2 date(s)'), true);
+  assertEquals(subject.includes('2 tab(s)'), true);
+  assertEquals(text.includes('BITP / 2026-09-16: Schedule Planner shows 15 active, PMS shows 14 active of 15 linked card(s)'), true);
+  assertEquals(text.includes('Hanan / 2026-09-17: Schedule Planner shows 12 active, PMS shows 13 active of 13 linked card(s)'), true);
 });
 
 // handleReconcileColumns tests: the column-drift reconcile is a separate

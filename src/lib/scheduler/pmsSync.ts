@@ -387,6 +387,117 @@ export async function backfillMissingScheduledLinks(
   return pushScheduleToPms(items, client, credentials, fetchFn);
 }
 
+export interface SchedulePmsParityIssue {
+  tab: string;
+  date: string;
+  plannerActiveCount: number;
+  pmsActiveLinkCount: number;
+  pmsTotalLinkCount: number;
+}
+
+// Independent, read-only cross-check between the Schedule Planner calendar's
+// own notion of "active today" (brand_schedule) and what schedule_pms_links
+// actually reflects for that same (tab, date) -- a defense-in-depth guard
+// against a FUTURE divergence between the two, not only the one this
+// function was added in response to (2026-09-14: a day manually cycled
+// active during a week-level scheduler auto-pause wasn't honored by
+// resolveAndSyncTabStatuses's isPaused computation, so a day that correctly
+// showed as an active chip on the calendar kept landing in PMS's Project
+// Paused column instead of To Do -- see docs/task-history.md Task 341).
+//
+// Deliberately does NOT re-derive resolveAndSyncTabStatuses's own pause
+// precedence rule a second time -- this project has been burned repeatedly
+// by two independently-written copies of the same business rule silently
+// diverging (see CLAUDE.md's cross-dashboard-consistency rule, Tasks
+// 173/174/180). It DOES reuse the one piece it structurally can't skip
+// without producing false positives on every already-happened day: real
+// entry evidence (hasDateEvidence/buildDateStatusIndex, the same functions
+// resolvePmsSyncStatus itself calls) always outranks the plan, so a Monday
+// whose post already resolved to Done/Removed correctly shows 0 active links
+// even though brand_schedule still says 'active' for that day -- found live
+// the first time this ran in production (2026-09-14: 4 tabs "flagged" purely
+// because today's already-decided entries hadn't been excluded from the
+// planner count yet). With evidence excluded, this checks the one invariant
+// that must ALWAYS hold once both the status-resolve sweep and the
+// missing-link backfill have run for the week: every brand_schedule day
+// explicitly marked 'active', with no real evidence and not hidden/
+// restricted/flagged-removed, has exactly one schedule_pms_links row whose
+// synced_status is 'active' too -- regardless of which OTHER rule
+// (pause precedence, or one not yet discovered) decided that. A mismatch
+// here means the two systems disagree for a reason not already covered by a
+// known, tested rule -- worth a human look (see runParityCheck's alert email
+// in sync-schedule-pms/index.ts), not something this function tries to fix
+// itself.
+//
+// Intentionally re-fetches its own data (entries/links/catalog/removed/
+// hidden/restricted) rather than sharing backfillMissingScheduledLinks's
+// fetch above -- kept as two small, independently-readable read-only
+// functions instead of one shared helper, since this one is a pure
+// diagnostic with no write path and no reason to ever special-case the
+// other's needs.
+export async function computeSchedulePmsParityIssues(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient,
+): Promise<SchedulePmsParityIssue[]> {
+  const rows = await fetchBrandSchedule(tab, weekStart, client);
+  if (rows.length === 0) return [];
+
+  const [links, entries, catalogRows, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+    fetchSchedulePmsLinks(tab, client),
+    fetchRawEntriesByTab(tab, client),
+    fetchBrandCatalog(tab, client).catch(() => []),
+    fetchRemovedPlatformBrands(client),
+    fetchScheduleHiddenBrands(tab, client),
+    fetchScheduleRestrictedBrands(tab, client),
+  ]);
+
+  const brandDisplay = buildBrandDisplayMap(entries, catalogRows.map((r) => r.brand));
+  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
+  const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
+  const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
+  const tabPlatforms = getTabPlatforms(tab);
+  const cols = columnsForWeek(new Date(`${weekStart}T00:00:00`));
+  const dateStatusIndex = buildDateStatusIndex(entries);
+
+  const plannerActiveByDate = new Map<string, number>();
+  for (const row of rows) {
+    if (row.platform == null) continue;
+    const platform = row.platform as Platform;
+    const brand = brandDisplay.get(row.brand_key) ?? row.brand_key;
+    const allowedPlatforms = resolveBrandPlatforms(tab, brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
+    if (!allowedPlatforms.includes(platform)) continue;
+    for (const col of cols) {
+      if (row[col.weekday] !== 'active') continue;
+      // Real evidence always outranks the plan (resolvePmsSyncStatus checks
+      // it before isPaused, which checks it before 'active') -- a day whose
+      // post already resolved to Done/Published/Pending/Removed correctly
+      // has 0 active links for it, so it must never count toward the planner
+      // side of this comparison either.
+      if (hasDateEvidence(dateStatusIndex, row.brand_key, platform, col.iso)) continue;
+      plannerActiveByDate.set(col.iso, (plannerActiveByDate.get(col.iso) ?? 0) + 1);
+    }
+  }
+
+  const linksByDate = new Map<string, { active: number; total: number }>();
+  for (const link of links) {
+    const bucket = linksByDate.get(link.date) ?? { active: 0, total: 0 };
+    bucket.total += 1;
+    if (link.synced_status === 'active') bucket.active += 1;
+    linksByDate.set(link.date, bucket);
+  }
+
+  const issues: SchedulePmsParityIssue[] = [];
+  for (const col of cols) {
+    const plannerActiveCount = plannerActiveByDate.get(col.iso) ?? 0;
+    const { active: pmsActiveLinkCount, total: pmsTotalLinkCount } = linksByDate.get(col.iso) ?? { active: 0, total: 0 };
+    if (plannerActiveCount !== pmsActiveLinkCount) {
+      issues.push({ tab, date: col.iso, plannerActiveCount, pmsActiveLinkCount, pmsTotalLinkCount });
+    }
+  }
+  return issues;
+}
+
 // Only 'active' stays in To Do. Once a scheduled slot resolves to any real
 // outcome -- Pending, Done, Published, or Removed -- its task moves straight
 // to Done, so a human can see at a glance that the slot is settled without

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { pushScheduleToPms, type PmsSyncItem } from './pmsSync';
 import { backfillMissingScheduledLinks } from './pmsSync';
+import { computeSchedulePmsParityIssues } from './pmsSync';
 import { pullScheduleFromPms } from './pmsSync';
 import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 import { resolveAndSyncTabStatuses } from './pmsSync';
@@ -1955,6 +1956,136 @@ describe('backfillMissingScheduledLinks', () => {
     } as any;
     const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS);
     expect(result).toEqual({ created: [], skipped: [], failed: [] });
+    expect(calls).toEqual(['brand_schedule']);
+  });
+});
+
+// The defense-in-depth guard added after Task 341 (docs/task-history.md) --
+// a day-level active override during a week-level auto-pause wasn't honored
+// by resolveAndSyncTabStatuses, so a day that correctly showed as an active
+// chip on the calendar kept landing in PMS's Paused column. This function
+// doesn't re-derive that (or any other) precedence rule -- it only checks
+// the one invariant that must always hold regardless of which rule produced
+// it: every explicitly-active brand_schedule day has a schedule_pms_links
+// row whose synced_status is 'active' too.
+describe('computeSchedulePmsParityIssues', () => {
+  const TAB = 'TP Brand Injection';
+  const WEEK = '2026-09-07';
+
+  // fetchRawEntriesByTab caches entries per tab name for 60s regardless of
+  // which client fetched them (see resolveAndSyncTabStatuses's own top-of-file
+  // beforeEach for the same note) -- 'TP Brand Injection' is reused across
+  // every test in this block, so a stale cache from one test's `entries`
+  // fixture would otherwise leak into the next.
+  beforeEach(() => {
+    invalidateTabCache(TAB);
+  });
+
+  function row(overrides: Partial<{ brand_key: string; platform: string; monday: string | null; tuesday: string | null }> = {}) {
+    return {
+      tab: TAB, brand_key: 'alf casino', week_start: WEEK, platform: 'tp',
+      monday: 'active', tuesday: null, wednesday: null, thursday: null, friday: null,
+      ...overrides,
+    };
+  }
+
+  it('reports no issues when every active plan day has a matching active-status link', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'active' }],
+      entries: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([]);
+  });
+
+  it('flags a day whose plan is active but whose only link is not in active status -- the exact Task 341 shape', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'paused' }],
+      entries: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([
+      { tab: TAB, date: '2026-09-07', plannerActiveCount: 1, pmsActiveLinkCount: 0, pmsTotalLinkCount: 1 },
+    ]);
+  });
+
+  it('does not flag a day whose plan is still active but whose post already resolved to real evidence -- the false positive found live 2026-09-14', async () => {
+    // brand_schedule still says 'active' for this Monday (nothing rewrites it
+    // once the day has passed), but the post itself already resolved to Done
+    // -- resolvePmsSyncStatus's own precedence checks evidence before
+    // isPaused/active, so the link is correctly synced_status: 'done', not
+    // 'active'. Without excluding evidenced days, this function would
+    // wrongly report plannerActiveCount: 1 vs pmsActiveLinkCount: 0 for
+    // every brand whose Monday already happened -- exactly what the first
+    // live production run of this check found on 4 real tabs.
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'done' }],
+      entries: [entry(TAB, 'e1', { Brands: 'Alf Casino', 'TP Review Status': 'Done', 'Trust Pilot': '07/09/2026' })],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([]);
+  });
+
+  it('flags a day whose plan is active but has no link at all (the class backfillMissingScheduledLinks already self-heals)', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [],
+      entries: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([
+      { tab: TAB, date: '2026-09-07', plannerActiveCount: 1, pmsActiveLinkCount: 0, pmsTotalLinkCount: 0 },
+    ]);
+  });
+
+  it('excludes a combo whose platform is flagged page-removed from the planner count, so a stale link for it never flags an issue', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [],
+      entries: [],
+      brand_catalog: [],
+      removed_platform_brands: [{ tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([]);
+  });
+
+  it('returns immediately with no fetches beyond brand_schedule when the tab has no rows for that week', async () => {
+    const calls: string[] = [];
+    const client = {
+      from: (table: string) => {
+        calls.push(table);
+        const self: any = {
+          select: () => self,
+          eq: () => self,
+          then: (r: any) => Promise.resolve({ data: [], error: null }).then(r),
+        };
+        return self;
+      },
+    } as any;
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([]);
     expect(calls).toEqual(['brand_schedule']);
   });
 });

@@ -5,15 +5,20 @@
 // pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
 // secret -- the browser never sees it.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, backfillMissingScheduledLinks, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, backfillMissingScheduledLinks, computeSchedulePmsParityIssues, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult, type SchedulePmsParityIssue } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
 import { getActiveOperationalTabs, getPausedOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { fetchAllSchedulePmsLinks, invalidateTabCache } from '../../../src/lib/queries.ts';
 import { toISODate, mondayOf } from '../../../src/lib/scheduleBrands.ts';
+import { sendToApprovedProfiles, type GmailCredentials } from '../_shared/gmail.ts';
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || '';
 const SERVICE_ROLE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const PMS_API_TOKEN = Deno.env.get('PMS_API_TOKEN') || '';
+const GMAIL_CLIENT_ID = Deno.env.get('GMAIL_CLIENT_ID') || '';
+const GMAIL_CLIENT_SECRET = Deno.env.get('GMAIL_CLIENT_SECRET') || '';
+const GMAIL_REFRESH_TOKEN = Deno.env.get('GMAIL_REFRESH_TOKEN') || '';
+const GMAIL_SENDER_EMAIL = Deno.env.get('GMAIL_SENDER_EMAIL') || '';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -98,6 +103,64 @@ async function backfillActiveTabs(
   }
 }
 
+// Runs computeSchedulePmsParityIssues for every active (non-paused) tab and
+// folds any findings into `results` the same way backfillActiveTabs already
+// appends its own note -- so a manual auditAllStatuses call surfaces a
+// parity problem in its JSON response immediately, not just via the email
+// below. Paused tabs are skipped: their links are being force-paused by the
+// status sweep regardless of brand_schedule's day status, so an "active"
+// planner count doesn't mean the same thing there (matches
+// backfillActiveTabs' own active-tabs-only scoping). One tab's failure is
+// isolated and logged, never allowed to block the rest or the alert email
+// for tabs that DID compute successfully.
+async function runParityCheck(
+  activeTabs: readonly string[],
+  results: Record<string, string>,
+  client: SupabaseClient,
+  parityFn: typeof computeSchedulePmsParityIssues,
+): Promise<SchedulePmsParityIssue[]> {
+  if (activeTabs.length === 0) return [];
+  const weekStart = toISODate(mondayOf(new Date()));
+  const allIssues: SchedulePmsParityIssue[] = [];
+  for (const tab of activeTabs) {
+    try {
+      const issues = await parityFn(tab, weekStart, client);
+      if (issues.length > 0) {
+        allIssues.push(...issues);
+        const note = `parity mismatch on ${issues.length} date(s)`;
+        results[tab] = results[tab] && results[tab] !== 'ok' ? `${results[tab]}; ${note}` : note;
+      }
+    } catch (err) {
+      console.error(`[sync-schedule-pms] parity check ${tab} failed:`, err);
+    }
+  }
+  return allIssues;
+}
+
+export function buildParityAlertEmail(issues: SchedulePmsParityIssue[]): { subject: string; text: string } {
+  const tabs = [...new Set(issues.map((i) => i.tab))];
+  const subject = `Schedule Planner ↔ PMS mismatch: ${issues.length} date(s) across ${tabs.length} tab(s)`;
+  const text = [
+    'Dear Team,',
+    '',
+    'This is an automated alert from the Forums Dashboard.',
+    '',
+    'The daily Schedule Planner ↔ PMS audit found active plan slots whose count',
+    "doesn't match the linked PMS cards' active count, after both the normal",
+    'status sync and the missing-link backfill already ran for today. This means',
+    'the two are disagreeing for a reason not already covered by a known, fixed',
+    'rule -- worth a manual look rather than waiting for it to self-heal.',
+    '',
+    ...issues.map(
+      (i) => `- ${i.tab} / ${i.date}: Schedule Planner shows ${i.plannerActiveCount} active, PMS shows ${i.pmsActiveLinkCount} active of ${i.pmsTotalLinkCount} linked card(s)`,
+    ),
+    '',
+    'Thank you,',
+    'Forums Dashboard',
+  ].join('\n');
+  return { subject, text };
+}
+
 // Extracted so the handler's own routing logic -- bootstrap unconditionally,
 // then select which tab(s) to sync -- is directly testable without a real
 // Supabase client or PMS API, mirroring how syncAllTabStatuses above was
@@ -164,6 +227,15 @@ export async function handleSyncAllStatuses(
 // independent safety net (same reasoning as the rest of this comment).
 // Same bootstrapFn/getActiveTabsFn/getPausedTabsFn/backfillFn injection
 // points as handleSyncAllStatuses, for the same testability reason.
+// gmailCredentials is undefined whenever GMAIL_* secrets aren't configured
+// (checked once by the Deno.serve handler below) -- the parity check and its
+// note in `results` still run either way, only the alert email is skipped, so
+// a missing/misconfigured mail secret degrades this to "visible in the JSON
+// response only" rather than failing the whole audit action (which also does
+// the actually-critical status-sync and missing-link backfill work). A send
+// failure (a Gmail API error, same as cron-failure-alert's own risk) is
+// logged and swallowed for the same reason -- it must never make the rest of
+// this action's results look like they failed too.
 export async function handleAuditAllStatuses(
   client: SupabaseClient,
   credentials: PmsCredentials,
@@ -172,6 +244,9 @@ export async function handleAuditAllStatuses(
   getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
   getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
   backfillFn: typeof backfillMissingScheduledLinks = backfillMissingScheduledLinks,
+  parityFn: typeof computeSchedulePmsParityIssues = computeSchedulePmsParityIssues,
+  gmailCredentials?: GmailCredentials,
+  sendAlertFn: typeof sendToApprovedProfiles = sendToApprovedProfiles,
 ): Promise<Record<string, string>> {
   await bootstrapFn(client, 'sync-schedule-pms');
   const activeTabs = getActiveTabsFn();
@@ -181,6 +256,15 @@ export async function handleAuditAllStatuses(
   ];
   const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
   await backfillActiveTabs(activeTabs, results, client, credentials, fetchFn, backfillFn);
+  const parityIssues = await runParityCheck(activeTabs, results, client, parityFn);
+  if (parityIssues.length > 0 && gmailCredentials) {
+    try {
+      const { subject, text } = buildParityAlertEmail(parityIssues);
+      await sendAlertFn(client, gmailCredentials, subject, text, fetchFn);
+    } catch (err) {
+      console.error('[sync-schedule-pms] parity alert email failed:', err);
+    }
+  }
   return results;
 }
 
@@ -245,7 +329,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return jsonResponse({ results });
     }
     if (body?.action === 'auditAllStatuses') {
-      const results = await handleAuditAllStatuses(client, credentials, fetch);
+      // Undefined (not an empty-string GmailCredentials) whenever any one of
+      // the 4 secrets is unset -- handleAuditAllStatuses treats that as "skip
+      // the alert email, keep everything else," matching how the rest of
+      // this action already degrades gracefully around optional add-ons.
+      const gmailCredentials: GmailCredentials | undefined =
+        GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN && GMAIL_SENDER_EMAIL
+          ? { clientId: GMAIL_CLIENT_ID, clientSecret: GMAIL_CLIENT_SECRET, refreshToken: GMAIL_REFRESH_TOKEN, senderEmail: GMAIL_SENDER_EMAIL }
+          : undefined;
+      const results = await handleAuditAllStatuses(
+        client, credentials, fetch, undefined, undefined, undefined, undefined, undefined, gmailCredentials,
+      );
       return jsonResponse({ results });
     }
     if (body?.action === 'reconcileColumns') {

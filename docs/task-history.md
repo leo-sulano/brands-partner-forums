@@ -10236,3 +10236,59 @@ counts exactly (15/15 on 16/09, 13/13 on 17/09 — the earlier "12" the user rep
 app's own hidden/restricted-platform-filtered display count, a separate, pre-existing, unrelated
 nuance, not a sync gap). Bounded fix (Tier 3 — touches shared `pmsSync.ts`), no spec/plan doc;
 root-caused via `superpowers:systematic-debugging` before any fix was attempted.
+
+---
+
+## Task 342: Schedule Planner → PMS Parity Check (Early-Warning Guard)
+
+*2026-09-14:* Same-session follow-up to Task 341, per direct user request for a guard against a
+*future*, not-yet-known divergence between the Schedule Planner calendar and PMS — not just the one
+mechanism Task 341 closed.
+
+New `computeSchedulePmsParityIssues` (`src/lib/scheduler/pmsSync.ts`) is a read-only, independent
+cross-check: for each active tab's current week, it counts how many `brand_schedule` days are
+explicitly `active` (for a combo that isn't hidden/restricted/flagged-removed and has no real entry
+evidence yet) and compares that against how many `schedule_pms_links` rows for that same date carry
+`synced_status: 'active'`. Deliberately does **not** re-derive `resolveAndSyncTabStatuses`'s own
+pause/evidence precedence rules a second time (this project has been burned repeatedly by two
+independently-written copies of the same business rule silently diverging, per CLAUDE.md's
+cross-dashboard-consistency rule) — it only checks the one invariant that must always hold once the
+normal status sync and the Task 325 missing-link backfill have both already run, regardless of which
+rule produced it. Wired into the daily `auditAllStatuses` sweep (`sync-schedule-pms/index.ts`) via a
+new `runParityCheck` step, which folds any finding into that tab's existing result string (so a manual
+audit call surfaces it immediately) and — new for this project — emails every approved user via the
+existing `_shared/gmail.ts` (`buildParityAlertEmail`, same `sendToApprovedProfiles` pattern
+`cron-failure-alert` already established) whenever an issue is found, so a genuinely new divergence
+gets caught by monitoring instead of by a human noticing a wrong count days later. Degrades gracefully
+when `GMAIL_*` secrets aren't configured (skips only the email, not the sync/backfill work) and when a
+single tab's parity computation itself fails (logged, isolated, never surfaces as a fake "parity"
+note). 7 new Deno tests in `index_test.ts`, 6 new Vitest tests in `pmsSync.test.ts`.
+
+**Caught and fixed a real bug in itself on its first live run.** Deployed as `sync-schedule-pms` v47
+and immediately triggered a live `auditAllStatuses` to verify — it reported false positives on 4 of
+11 tabs (BIT, FTP, Rooster Partners, Hanan), each "1 date mismatch." Investigated live rather than
+trusting the new tool blindly: confirmed via direct DB query that BIT's flagged date (today, the
+current Monday) had 3 `brand_schedule`-active combos but only 1 `active`-status link — not a real
+sync gap, but 2 of the 3 already having real posted evidence resolving them to `Done`, which
+`resolvePmsSyncStatus` (correctly) ranks above the plan. The new check's first version counted raw
+`brand_schedule`-active cells without excluding cells that already have real evidence, so any day that
+had already happened and been checked looked like a false mismatch. Fixed by folding in the same
+`hasDateEvidence`/`buildDateStatusIndex` (`scheduleUtils.ts`) `resolvePmsSyncStatus` itself already
+uses — evidence now excludes a cell from the planner-side count, matching the real precedence exactly.
+New regression test reproducing this exact shape (an already-Done Monday must report zero issues).
+Also found and fixed, during this same pass, a test-isolation gap in the new test's own `describe`
+block — `fetchRawEntriesByTab`'s 60s per-tab-name cache leaked one test's empty `entries` fixture into
+the next since the block was missing the `invalidateTabCache` `beforeEach` every other describe block
+in this file already has. Full suite (2484 tests), build, `deno check` (both consumers), and
+`deno test` (33 + 7) all pass after the fix.
+
+**Known, disclosed consequence:** the first (buggy) v47 deploy's live verification call, per this
+project's own established practice of confirming a change against production immediately after
+deploying, itself triggered a real alert email to every approved user — a false-positive "Schedule
+Planner ↔ PMS mismatch" report for BIT/FTP/Rooster Partners/Hanan. No corrective retraction is
+possible (the alert function only sends, same limitation `notify-brand-removed` already has,
+documented under "Review Text Feature" era incidents) — flagged directly to the user rather than left
+undisclosed. Redeployed the fixed version as `sync-schedule-pms` v48 and `generate-weekly-schedule`
+v26 (shares `pmsSync.ts`) in the same session; a follow-up live `auditAllStatuses` call confirmed all
+11 tabs report `"ok"` with no email sent. Bounded feature addition (Tier 3 — touches shared
+`pmsSync.ts`/`sync-schedule-pms`), no spec/plan doc.
