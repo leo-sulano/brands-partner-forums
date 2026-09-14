@@ -175,6 +175,23 @@ function linkColPlatform(header: string, tab: string): 'tp' | 'ag' | 'cg' | 'wo'
   return null;
 }
 
+// getTabPlatforms(tab) (src/lib/tab-configs.ts) now returns SchedulablePlatform[]
+// -- built-in codes plus any custom platform id enabled on the tab (Task 3 of the
+// schedule-planner-custom-platform-support plan). Several mechanisms on this page
+// are still genuinely built-in-only today -- removed_platform_brands,
+// brand_platform_override, the per-platform review-text/score export columns, and
+// the Check Status (EC2 scraper) trigger all key off the closed Platform union and
+// have no custom-platform equivalent yet (a custom platform's own removed-flag/KPI
+// counts are handled by entirely separate, already-built paths: see
+// removedCustomPlatformsFor/computeCustomPlatformCounts/getTabCustomPlatforms
+// below). This narrows back down to the 4 built-ins wherever one of those
+// mechanisms is reached, matching the identical isBuiltInPlatform-guard pattern
+// already established in schedulerService.ts/reviewRemovalEvidence.ts/
+// EditEntryModal.tsx/TabPausedBrandsSection.tsx.
+function isBuiltInPlatform(platform: string): platform is Platform {
+  return platform === 'tp' || platform === 'ag' || platform === 'cg' || platform === 'wo';
+}
+
 // Same flooring behavior as parseScore in lib/scoreSummary.ts, kept separate
 // since this one only needs to return a display value, not bucket a count.
 function parseStarScore(raw: string | null | undefined, maxScore: number): number | null {
@@ -589,6 +606,14 @@ export default function BrandGroup() {
   // lowercase slug and the isTabArchived guard below would never fire.
   const decodedTab = slugToTab(tab ?? '') ?? archivedTabForSlug(tab ?? '') ?? decodeURIComponent(tab ?? '');
 
+  // Shared narrowing for every built-in-only mechanism on this page (Check
+  // Status, removed_platform_brands, brand_platform_override, the review-text/
+  // score export columns) -- see isBuiltInPlatform's own comment above for why
+  // each of those still can't accept a custom platform id today. Recomputed
+  // per render like every other decodedTab-derived value in this component
+  // (activePlatforms, tabPlatforms below), not memoized.
+  const builtInTabPlatforms = getTabPlatforms(decodedTab).filter(isBuiltInPlatform);
+
   const [entries, setEntries] = useState<Entry[]>([]);
   const [entryReviewAnalyses, setEntryReviewAnalyses] = useState<Map<string, EntryReviewAnalysisRow>>(new Map());
   const [headers, setHeaders] = useState<string[]>([]);
@@ -752,7 +777,7 @@ export default function BrandGroup() {
   // True when *this* tab specifically is the one being checked (vs. some other
   // tab holding the global lock) — used only to word the disabled state's
   // tooltip accurately, not to decide whether the button is disabled.
-  const isThisTabChecking = checkingStatusTab === decodedTab || statusCheckTabKeys(decodedTab, getTabPlatforms(decodedTab))
+  const isThisTabChecking = checkingStatusTab === decodedTab || statusCheckTabKeys(decodedTab, builtInTabPlatforms)
     .some((k) => activeCheckKeys.includes(k));
   const isCheckRunning = isThisTabChecking || activeCheckKeys.length > 0;
 
@@ -1218,7 +1243,12 @@ export default function BrandGroup() {
   // every other WO field's existing precedent) and the existing Platform-filter
   // check narrows them exactly like TP/AG/CG's real columns, with no new logic.
   const removedStatusHeaders = [
-    ...getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Page Removed Status`),
+    // builtInTabPlatforms here, not the raw getTabPlatforms(tab) list -- a
+    // custom platform's own "Page Removed Status" export column is already
+    // covered by the getTabCustomPlatforms spread directly below, so
+    // including it here too (PLATFORM_SHORT_LABEL is Platform-only) would
+    // either throw or produce a bogus duplicate column.
+    ...builtInTabPlatforms.map((p) => `${PLATFORM_SHORT_LABEL[p]} Page Removed Status`),
     ...getTabCustomPlatforms(decodedTab).map((p) => `${p.shortLabel} Page Removed Status`),
   ];
   // Review text (TP/AG/CG/WO Review Text) has no Sheet/tab_schemas origin — it's
@@ -1226,14 +1256,19 @@ export default function BrandGroup() {
   // this it silently never reaches export even though the Edit Entry modal (see
   // ~line 2965) always shows it. Injected the same way as removedStatusHeaders
   // above, before scoping, so the Platform filter narrows it identically.
-  const reviewTextExportHeaders = getTabPlatforms(decodedTab).map((p) => PLATFORM_REVIEW_TEXT_KEYS[p][0]);
+  // Built-in-only: PLATFORM_REVIEW_TEXT_KEYS is a Platform-only Record and this
+  // scraper-written review-text feature has no custom-platform equivalent.
+  const reviewTextExportHeaders = builtInTabPlatforms.map((p) => PLATFORM_REVIEW_TEXT_KEYS[p][0]);
   // One merged "<Platform> Score" synthetic column per platform, replacing
   // every raw score-alias header (SCORE_ALIAS_KEYS) as an individual column —
   // resolved via pick(entry.data, PLATFORM_SCORE_KEYS[p]) in getRows below, so
   // it shows the current value and only falls back to an older alias (e.g.
   // TP's legacy 'Score added') when the current one is blank, per direct user
   // decision after finding the two can genuinely disagree on a live row.
-  const scoreExportHeaders = getTabPlatforms(decodedTab).map((p) => `${PLATFORM_SHORT_LABEL[p]} Score`);
+  // Built-in-only: a custom platform's max_score field is stored but unwired
+  // (see this project's own Known Issues on Custom Platforms), so there's no
+  // merged "<Platform> Score" column to build for one yet.
+  const scoreExportHeaders = builtInTabPlatforms.map((p) => `${PLATFORM_SHORT_LABEL[p]} Score`);
   const exportHeaders = (() => {
     const allFields = Array.from(new Set([...fullHeaders, ...headers, ...removedStatusHeaders, ...reviewTextExportHeaders, ...scoreExportHeaders]))
       // Credential-shaped fields (Password, Casino Password, Backup Code(s),
@@ -1270,7 +1305,11 @@ export default function BrandGroup() {
   // currently flagged for this brand — drives one badge per flagged platform.
   function removedPlatformsFor(brandName: string | null | undefined): Platform[] {
     if (!brandName) return [];
-    return getTabPlatforms(decodedTab).filter((p) => isPlatformRemoved(brandName, p));
+    // removed_platform_brands/isPlatformRemoved is built-in-only -- a custom
+    // platform's own removed flag lives in the separate
+    // removed_custom_platform_brands table, read via removedCustomPlatformsFor
+    // below (Task 340).
+    return builtInTabPlatforms.filter((p) => isPlatformRemoved(brandName, p));
   }
 
   const removedPlatformBrandDateMap = useMemo(
@@ -1321,7 +1360,8 @@ export default function BrandGroup() {
   function removedPlatformDatesFor(brandName: string | null | undefined): Partial<Record<Platform, string>> {
     if (!brandName) return {};
     const out: Partial<Record<Platform, string>> = {};
-    for (const p of getTabPlatforms(decodedTab)) {
+    // Built-in-only -- see removedPlatformsFor's own comment above.
+    for (const p of builtInTabPlatforms) {
       const date = removedPlatformDateFor(brandName, p);
       if (date) out[p] = date;
     }
@@ -1333,7 +1373,9 @@ export default function BrandGroup() {
     if (!brandName) return {};
     const brandKey = normalizeBrandKey(brandName);
     const out: Partial<Record<Platform, OverrideState>> = {};
-    for (const p of getTabPlatforms(decodedTab)) {
+    // brand_platform_override (overrideKey/OverrideState) is built-in-only --
+    // see isBuiltInPlatform's own comment.
+    for (const p of builtInTabPlatforms) {
       const override = overrideMap.get(overrideKey(decodedTab, brandKey, p));
       if (override) out[p] = override.state;
     }
@@ -1647,7 +1689,12 @@ export default function BrandGroup() {
   // treating it as "relevant" would make passesPlatformDateFilter's undated-row fallback
   // silently accept every row, making the date filter inert. Empty selection (or a
   // selection with no overlap here) still means "every platform this tab tracks."
-  const tabPlatforms = getTabPlatforms(decodedTab);
+  // matchesPlatform/displayKpis/displayTotals below are a Platform-only
+  // KPI/matching computation -- a custom platform's counts are computed
+  // entirely separately via customPlatformCounts/computeCustomPlatformCounts
+  // (Task 340), so this is built-in-only (builtInTabPlatforms), not the raw
+  // getTabPlatforms(tab) list, matching platformFilter's own Platform[] type.
+  const tabPlatforms = builtInTabPlatforms;
   const selectedTabPlatforms = platformFilter.filter((p) => tabPlatforms.includes(p));
   const relevantPlatforms = selectedTabPlatforms.length > 0 ? selectedTabPlatforms : tabPlatforms;
 
@@ -2560,12 +2607,12 @@ export default function BrandGroup() {
                   <Loader2 className="size-3 animate-spin" /> Refreshing statuses…
                 </span>
               )}
-              {getTabPlatforms(decodedTab).length > 1 ? (
+              {builtInTabPlatforms.length > 1 ? (
                 <div className="relative" ref={checkDropdownRef}>
                   <div className="inline-flex rounded-md border border-slate-200 overflow-hidden">
                     <button
                       type="button"
-                      onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
+                      onClick={() => handleCheckStatus(builtInTabPlatforms)}
                       disabled={isCheckRunning || !checkStatusEnabled}
                       title={checkStatusTooltip}
                       className="inline-flex items-center gap-1.5 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -2586,7 +2633,7 @@ export default function BrandGroup() {
                   </div>
                   {checkDropdownOpen && (
                     <div className="absolute right-0 top-full mt-1 z-20 min-w-[140px] rounded-md border border-slate-200 bg-white shadow-lg py-1">
-                      {getTabPlatforms(decodedTab).map((p) => (
+                      {builtInTabPlatforms.map((p) => (
                         <button
                           key={p}
                           type="button"
@@ -2602,7 +2649,7 @@ export default function BrandGroup() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => handleCheckStatus(getTabPlatforms(decodedTab))}
+                  onClick={() => handleCheckStatus(builtInTabPlatforms)}
                   disabled={isCheckRunning || !checkStatusEnabled}
                   title={checkStatusTooltip}
                   className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
@@ -3114,7 +3161,11 @@ export default function BrandGroup() {
             // headers for every platform this tab actually tracks, whether or not the current
             // entry has a value yet, so EditEntryModal's fields/handleSave (which only ever
             // touches whatever's in headers) can display AND save a manually-typed value.
-            for (const p of getTabPlatforms(decodedTab)) {
+            // Built-in-only: PLATFORM_REVIEW_TEXT_KEYS is a Platform-only Record and
+            // this scraper-written review-text feature has no custom-platform
+            // equivalent (a custom platform's own status/date columns are handled by
+            // the separate loop directly below).
+            for (const p of builtInTabPlatforms) {
               const reviewTextKey = PLATFORM_REVIEW_TEXT_KEYS[p][0];
               if (!hdrs.includes(reviewTextKey)) hdrs.push(reviewTextKey);
             }
@@ -3187,7 +3238,10 @@ export default function BrandGroup() {
                     tab: targetTab,
                     lookupTab: decodedTab,
                     brand: brandName,
-                    eligiblePlatforms: getTabPlatforms(decodedTab),
+                    // savePlatformRemoved's eligiblePlatforms is Platform[]-only
+                    // (removed_platform_brands) -- the custom-platform equivalent is
+                    // the separate saveCustomPlatformRemoved call directly below.
+                    eligiblePlatforms: builtInTabPlatforms,
                     checkedPlatforms: removedPlatforms,
                     dateTexts: removedPlatformDateTexts ?? {},
                     existingSet: removedPlatformBrandSet,
@@ -3222,7 +3276,10 @@ export default function BrandGroup() {
                 }
 
                 if (overrides !== undefined) {
-                  for (const p of getTabPlatforms(decodedTab)) {
+                  // brand_platform_override (setBrandPlatformOverride/
+                  // clearBrandPlatformOverride) is built-in-only -- see
+                  // isBuiltInPlatform's own comment.
+                  for (const p of builtInTabPlatforms) {
                     const was = initialOverridesForEditEntry[p];
                     const now = overrides[p];
                     if (was === now) continue;
