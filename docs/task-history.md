@@ -10292,3 +10292,26 @@ undisclosed. Redeployed the fixed version as `sync-schedule-pms` v48 and `genera
 v26 (shares `pmsSync.ts`) in the same session; a follow-up live `auditAllStatuses` call confirmed all
 11 tabs report `"ok"` with no email sent. Bounded feature addition (Tier 3 — touches shared
 `pmsSync.ts`/`sync-schedule-pms`), no spec/plan doc.
+
+---
+
+## Task 343: How It Works Page Content Refresh (Custom Platforms, Super Admin, Approval Gate)
+
+*2026-09-14:* Content refresh of `src/pages/HowItWorks.tsx` after auditing everything shipped since
+the last refresh (2026-08-26) — prompted directly by the user, alongside a matching update to the
+PMS project's own Documentation section (Project Overview, Important Notes, Features & API Docs,
+updated the same session via the PMS Documents API). Content-only, Tier 1 (no other file imports this
+page besides routing).
+
+Closed the biggest gap: Custom Platforms (Tasks 325/340) wasn't mentioned anywhere on the page despite
+being a full self-service feature spanning Edit Brand Tab, Edit Entry, exports, and notifications —
+added as its own standalone section (same eyebrow+paragraph+bullets pattern as Check Status/AI Review
+Assessment, placed between AI Review Assessment and the Features grid), explicitly noting it does not
+yet reach Schedule Planner or Ask AI. Also updated: Overview card gained the Country × Proxy
+Performance Matrix and the per-Brand-Tab scope filter (Tasks 333/334/336/339); Brand Tabs card gained
+built-in tab renaming (Task 306) and the "Add a brand" catalog + new-brand ramp-up (Task 324); Schedule
+Planner card gained public-holiday blocking (Task 307), the Super Admin weekly approval gate
+(Tasks 314-317), and "with a reason" on the manual pause bullet (Task 311/318); Admin Users card and
+blurb now describe the three-tier role system (Member/Admin/Super Admin) instead of two tiers; INTRO
+now mentions Custom Platforms. Verified with `npm run build` (clean). Not verified live in a browser
+this session.

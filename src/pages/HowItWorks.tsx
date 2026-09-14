@@ -29,7 +29,7 @@ const ICON_COLOR_CLASSES: Record<IconColor, string> = {
 };
 
 const INTRO =
-  "This dashboard is the team's internal tool for tracking review-removal requests across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds. It centralizes brand by brand entry tracking, automated status checks, and reporting in one place, plus an AI assistant that can answer questions over the data.";
+  "This dashboard is the team's internal tool for tracking review-removal requests across Trustpilot, AskGamblers, Casino.Guru, Wizard of Odds, and any Custom Platform a tab adds on top of those four. It centralizes brand by brand entry tracking, automated status checks, and reporting in one place, plus an AI assistant that can answer questions over the data.";
 
 const DATA_FLOW =
   "Entries are created and edited directly in the dashboard, which is the single source of truth for all data. Status changes (live vs. removed) come from the automated Check Status runs, not manual edits.";
@@ -53,6 +53,8 @@ const FEATURES: FeatureSection[] = [
       'KPI cards per brand tab: live, removed, pending, and done counts',
       'Platform breakdown chart across Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds',
       'A feed of recent mentions for quick scanning',
+      'A Country × Proxy Performance Matrix, click any cell to drill into that combination\'s live/removed entries',
+      'Scope the whole page to a single Brand Tab from the toolbar, composable with the Date/Country/Proxy/Platform filters',
     ],
     href: '/',
   },
@@ -64,7 +66,8 @@ const FEATURES: FeatureSection[] = [
     bullets: [
       'Browse every tracked account/entry for that brand group, filterable and sortable',
       'Add, edit, or delete entries directly, this is the live source of truth',
-      'Any approved user can create or delete a Brand Tab from the sidebar, no code change needed',
+      'Any approved user can create, delete, or rename a Brand Tab from the sidebar, no code change needed — including the 11 original built-in tabs',
+      'Add a brand straight from Edit Brand Tab; a newly added brand ramps up at a capped posting frequency for its first two weeks',
       "Edit Entry includes an AI-powered Review Assessment for removed and published reviews, see below",
     ],
   },
@@ -109,9 +112,10 @@ const FEATURES: FeatureSection[] = [
     iconColor: 'emerald',
     blurb: 'An intelligent per-tab weekly grid that auto-generates and tracks each brand\'s TP/AG/CG/WO posting schedule.',
     bullets: [
-      'Auto-generates each brand\'s weekly posting pattern per platform, click a day to cycle it active/paused, and auto-pauses (then resumes) a brand+platform whose recent success rate drops too low',
+      'Auto-generates each brand\'s weekly posting pattern per platform, click a day to cycle it active/paused, blocks public holidays, and auto-pauses (then resumes) a brand+platform whose recent success rate drops too low',
       'Day cells show real evidence over the plan — confirmed, removed, pending, and done overlays — plus a color-coded Success Rate column per brand',
-      'A Schedule Status column lets you bulk-pause or resume a whole platform\'s weekdays at once, instead of clicking through each day',
+      'A Schedule Status column lets you bulk-pause or resume a whole platform\'s weekdays at once, with a reason, instead of clicking through each day',
+      'A Super Admin must approve each week before it reaches the PMS; once approved, only a Super Admin can make further manual edits to it',
       'Two-way sync with the team\'s PMS: activating a chip creates a linked task, a PMS due-date edit reflects back on the calendar, and marking a day\'s real status moves the task to a matching PMS column',
     ],
     href: '/schedule-planner',
@@ -120,10 +124,11 @@ const FEATURES: FeatureSection[] = [
     title: 'Admin Users',
     icon: Users,
     iconColor: 'rose',
-    blurb: 'User approval and role management.',
+    blurb: 'User approval and three-tier role management.',
     bullets: [
       'New signups need admin approval before they can access the dashboard',
-      'Admins can promote/demote other admins and revoke access',
+      'Admins can promote/demote members and revoke access',
+      'Super Admin sits above Admin — required to approve a Schedule Planner week and to grant or revoke Super Admin itself',
     ],
     adminOnly: true,
     href: '/admin/users',
@@ -226,6 +231,25 @@ export default function HowItWorks() {
           <li className="text-sm text-slate-500 flex gap-2">
             <span className="text-slate-300">&bull;</span>
             <span>Cached per platform, so analyzing one platform's review never overwrites another platform's saved result on the same entry</span>
+          </li>
+        </ul>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm p-4 sm:p-5">
+        <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-3">
+          Custom Platforms
+        </p>
+        <p className="text-sm text-slate-600 leading-relaxed">
+          Beyond the built-in Trustpilot, AskGamblers, Casino.Guru, and Wizard of Odds, any approved user can register their own review platform for a Brand Tab from Edit Brand Tab.
+        </p>
+        <ul className="mt-3 space-y-1">
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Gets its own KPI cards, Edit Entry status/date fields, a "page removed" flag with badge, export column, and brand-removed notification email — full parity with the built-in platforms</span>
+          </li>
+          <li className="text-sm text-slate-500 flex gap-2">
+            <span className="text-slate-300">&bull;</span>
+            <span>Doesn't yet appear on the Schedule Planner grid or in Ask AI's tools — those still cover the four built-in platforms only, for now</span>
           </li>
         </ul>
       </div>
