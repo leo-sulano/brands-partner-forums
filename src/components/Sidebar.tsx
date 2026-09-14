@@ -21,6 +21,18 @@ const PLATFORM_FAVICON: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   wo: 'https://www.google.com/s2/favicons?domain=wizardofodds.com&sz=64',
 };
 
+// getTabPlatforms(tab) below can now also return a custom platform's id
+// (SchedulablePlatform, a plain string) -- this Sidebar-local 16px favicon
+// table stays built-in-only (it deliberately differs from the shared 32px
+// PLATFORM_FAVICON in removedPlatformBrands.ts/tabIcons.ts), so resolve
+// safely and return undefined for a custom platform rather than indexing
+// with an unchecked cast -- the caller skips rendering an <img> for it,
+// same as how PlatformRemovedModal already handles a favicon-less custom
+// platform.
+function resolvePlatformFavicon(platform: string): string | undefined {
+  return platform in PLATFORM_FAVICON ? PLATFORM_FAVICON[platform as keyof typeof PLATFORM_FAVICON] : undefined;
+}
+
 const topLinks = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
 ];
@@ -204,15 +216,19 @@ export default function Sidebar({ open = false, onClose, collapsed = false, onTo
                       {!isCollapsed && <span className="truncate flex-1">{tabDisplayName(tab)}</span>}
                       {!isCollapsed && (
                         <span className="flex items-center gap-0.5 shrink-0">
-                          {platforms.map((p) => (
-                            <img
-                              key={p}
-                              src={PLATFORM_FAVICON[p]}
-                              alt={p}
-                              className="size-3.5 rounded-sm"
-                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                            />
-                          ))}
+                          {platforms.map((p) => {
+                            const favicon = resolvePlatformFavicon(p);
+                            if (!favicon) return null;
+                            return (
+                              <img
+                                key={p}
+                                src={favicon}
+                                alt={p}
+                                className="size-3.5 rounded-sm"
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              />
+                            );
+                          })}
                         </span>
                       )}
                     </NavLink>

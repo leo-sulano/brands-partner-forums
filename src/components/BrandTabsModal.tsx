@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { OPERATIONAL_TABS, tabToSlug, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
-import { PLATFORM_FAVICON } from '../lib/removedPlatformBrands';
+import { getPlatformFavicon } from '../lib/tabIcons';
 
 interface Props {
   onClose: () => void;
@@ -49,15 +49,24 @@ export default function BrandTabsModal({ onClose }: Props) {
               >
                 <span className="text-sm font-medium text-slate-700 truncate">{tabDisplayName(tab)}</span>
                 <span className="flex items-center gap-1 shrink-0 ml-2">
-                  {platforms.map((p) => (
-                    <img
-                      key={p}
-                      src={PLATFORM_FAVICON[p]}
-                      alt={p}
-                      className="size-3.5 rounded-sm"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                  ))}
+                  {platforms.map((p) => {
+                    // getPlatformFavicon (tabIcons.ts) resolves the same
+                    // PLATFORM_FAVICON table used before for a built-in
+                    // platform (byte-identical URL), and undefined for a
+                    // custom platform (no favicon source) -- skip the icon
+                    // entirely rather than render a broken <img>.
+                    const favicon = getPlatformFavicon(p);
+                    if (!favicon) return null;
+                    return (
+                      <img
+                        key={p}
+                        src={favicon}
+                        alt={p}
+                        className="size-3.5 rounded-sm"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    );
+                  })}
                 </span>
               </Link>
             );

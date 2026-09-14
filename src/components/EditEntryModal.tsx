@@ -53,6 +53,20 @@ function isLinkCol(h: string) {
 }
 function isBrandNameCol(h: string) { return BRAND_NAME_COLS.has(h); }
 
+// getTabPlatforms(tab) can now also return a custom platform's id
+// (SchedulablePlatform, a plain string) -- the per-platform "force
+// pause/active" scheduling override below stays built-in-platform-only:
+// its DB write path (setBrandPlatformOverride/clearBrandPlatformOverride in
+// queries.ts, called from BrandGroup.tsx's onSave handler) sits outside the
+// SchedulablePlatform plan's scope and is still Platform-only, so an
+// override row for a custom platform couldn't be persisted anyway. Same
+// isBuiltInPlatform-guard pattern src/lib/scheduler/schedulerService.ts
+// uses to narrow before calling scoreSummary.ts's computeSuccessRates,
+// which is under the identical scope constraint.
+function isBuiltInPlatform(platform: string): platform is Platform {
+  return platform in PLATFORM_STATUS_KEYS;
+}
+
 function SectionHeading({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-3 mb-3 mt-5 first:mt-0">
@@ -144,6 +158,9 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const [removedCustomDateErrors, setRemovedCustomDateErrors] = useState<Set<string>>(new Set());
   const tabCustomPlatforms: CustomPlatformConfig[] = currentTab ? getTabCustomPlatforms(currentTab) : [];
   const tabPlatforms = currentTab ? getTabPlatforms(currentTab) : [];
+  // Scheduling-override UI below only ever renders a row per built-in
+  // platform -- see isBuiltInPlatform's comment above.
+  const builtInTabPlatforms = tabPlatforms.filter(isBuiltInPlatform);
   const [fields, setFields] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const h of headers) {
@@ -543,9 +560,9 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                   />
                 </div>
               )}
-              {brandCol && availableBrands && availableBrands.length > 0 && tabPlatforms.length > 0 && (
+              {brandCol && availableBrands && availableBrands.length > 0 && builtInTabPlatforms.length > 0 && (
                 <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-1 pb-1 sm:col-span-6">
-                  {tabPlatforms.map((p) => (
+                  {builtInTabPlatforms.map((p) => (
                     <label key={`override-${p}`} className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
                       {PLATFORM_LABEL[p]} scheduling:
                       <select

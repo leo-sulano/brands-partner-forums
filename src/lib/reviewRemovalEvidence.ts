@@ -53,6 +53,24 @@ function normalizeReviewText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+// getTabPlatforms(tab) can now also return a custom platform's id
+// (SchedulablePlatform, a plain string) -- the cross-entry/cross-platform/
+// hard-signal analysis below stays built-in-platform-only: it indexes
+// scoreSummary.ts's Platform-keyed PLATFORM_STATUS_KEYS and calls its
+// getReviewText(data, platform: Platform), neither of which this plan
+// widens (scoreSummary.ts sits outside the scheduler subsystem), and its
+// own RemovalEvidenceCrossPlatform.other return type is itself
+// Partial<Record<Platform, ...>>, already consumed as Platform-only by
+// ReviewRemovalAssessment.tsx. Narrowing here (rather than widening) means
+// a custom platform simply doesn't contribute cross-platform-corroboration/
+// same-tab-duplicate-text evidence yet -- an accepted, narrow gap for this
+// AI review-removal-assessment feature, matching the identical
+// isBuiltInPlatform-guard pattern src/lib/scheduler/schedulerService.ts
+// uses before calling the same scoreSummary.ts functions.
+function isBuiltInPlatform(platform: string): platform is Platform {
+  return platform in PLATFORM_STATUS_KEYS;
+}
+
 export function computeRemovalEvidence(
   tabEntries: Entry[],
   currentEntry: Entry,
@@ -61,7 +79,7 @@ export function computeRemovalEvidence(
   tab: string,
 ): RemovalEvidence {
   const others = tabEntries.filter((e) => e.id !== currentEntry.id);
-  const tabPlatforms = getTabPlatforms(tab);
+  const tabPlatforms = getTabPlatforms(tab).filter(isBuiltInPlatform);
 
   // Cross-entry proxy/country pattern.
   const currentProxyRaw = currentEntry.data['Proxy Used'] ?? '';

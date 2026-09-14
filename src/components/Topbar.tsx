@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePresence } from '../lib/realtime';
 import { slugToTab, tabDisplayName } from '../lib/tabs';
 import { getTabPlatforms } from '../lib/tab-configs';
+import { getPlatformBadge } from '../lib/scheduler/scheduleUtils';
 import { isTabPaused } from '../lib/pausedTabRegistry';
 import { avatarColor, initials } from '../lib/avatar';
 import { useState, useRef, useEffect } from 'react';
@@ -22,6 +23,27 @@ const PLATFORM_BADGE_CLS: Record<'tp' | 'ag' | 'cg' | 'wo', string> = {
   cg: 'bg-violet-100 text-violet-700 border border-violet-200',
   wo: 'bg-green-100 text-green-700 border border-green-200',
 };
+
+// A custom platform has no dedicated color in this Topbar-local badge
+// palette (each built-in has its own; a custom platform gets one shared
+// neutral treatment instead, matching CUSTOM_PLATFORM_BADGE_CLASSNAME's
+// same role in scheduler/scheduleUtils.ts's getPlatformBadge -- not
+// imported directly since that module's PLATFORM_BADGE colors differ from
+// this file's own palette and would change the built-in badges' look).
+const CUSTOM_PLATFORM_BADGE_CLS = 'bg-slate-100 text-slate-700 border border-slate-200';
+
+// Resolves this Topbar-local 16px favicon for a built-in platform
+// byte-identical to before; undefined for a custom platform (no favicon
+// source here) so the caller skips the <img> instead of rendering broken.
+function resolvePlatformFavicon(platform: string): string | undefined {
+  return platform in PLATFORM_FAVICON ? PLATFORM_FAVICON[platform as keyof typeof PLATFORM_FAVICON] : undefined;
+}
+
+// Resolves this Topbar-local badge className for a built-in platform
+// byte-identical to before; the neutral fallback for a custom platform.
+function resolvePlatformBadgeCls(platform: string): string {
+  return platform in PLATFORM_BADGE_CLS ? PLATFORM_BADGE_CLS[platform as keyof typeof PLATFORM_BADGE_CLS] : CUSTOM_PLATFORM_BADGE_CLS;
+}
 
 function PresenceAvatar({ email, avatarUrl, className }: { email: string; avatarUrl: string | null; className: string }) {
   const [imgFailed, setImgFailed] = useState(false);
@@ -121,12 +143,23 @@ export default function Topbar({ onMenuClick }: { onMenuClick?: () => void }) {
           <h1 className="hidden sm:block text-base font-semibold text-slate-800">{title}</h1>
           {platforms.length > 0 && (
             <div className="flex items-center gap-1">
-              {platforms.map((p) => (
-                <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none ${PLATFORM_BADGE_CLS[p]}`}>
-                  <img src={PLATFORM_FAVICON[p]} alt={p} className="size-3" />
-                  {p.toUpperCase()}
-                </span>
-              ))}
+              {platforms.map((p) => {
+                const favicon = resolvePlatformFavicon(p);
+                // getPlatformBadge (scheduler/scheduleUtils.ts) resolves the
+                // same short label text used before for a built-in platform
+                // ('tp' -> 'TP', byte-identical to the old p.toUpperCase()),
+                // and a custom platform's own shortLabel instead of its raw
+                // uuid -- only its .label is used here, not .className,
+                // since scheduleUtils' badge colors differ from this file's
+                // own palette (resolvePlatformBadgeCls above).
+                const label = getPlatformBadge(p).label;
+                return (
+                  <span key={p} className={`inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none ${resolvePlatformBadgeCls(p)}`}>
+                    {favicon && <img src={favicon} alt={p} className="size-3" />}
+                    {label}
+                  </span>
+                );
+              })}
             </div>
           )}
           {paused && (
