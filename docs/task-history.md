@@ -10181,3 +10181,58 @@ Edge Function redeploy needed — the notification email path (`notify-brand-rem
 just reused with a different `platformShortLabel` value. Spec:
 `docs/superpowers/specs/2026-09-11-custom-platform-removed-flag-design.md`. Plan:
 `docs/superpowers/plans/2026-09-11-custom-platform-removed-flag.md`.
+
+---
+
+## Task 341: Fix Schedule Planner → PMS Sync Ignoring a Day-Level Active Override During a Week-Level Auto-Pause
+
+*2026-09-14:* User reported a recurring Schedule Planner-vs-PMS count mismatch (e.g. BIT Casino
+Magius, Hanan DachBet.com/CG — "active and scheduled in Schedule Planner but not shipped to PMS"),
+with concrete day-by-day counts (16/09: 15 planner vs 14 PMS; 17/09: 12 planner vs 13 PMS) and a
+note that the same class of thing happened "last week" too (the unrelated Task 325 missing-link
+bug, already fixed).
+
+**Investigated live against production** (read-only `supabase db query --linked`, plus the real PMS
+API) rather than guessing: confirmed the 1-minute `syncAllStatuses` cron and daily `auditAllStatuses`
+audit were both running with zero failures, and — critically — a full anti-join of every `active`
+`brand_schedule` cell for the current week against `schedule_pms_links` found **zero** genuinely
+missing links across all 11 tabs. Task 325's backfill self-heal is working exactly as designed; this
+was a different, new bug.
+
+**Root cause:** `resolveAndSyncTabStatuses` (`src/lib/scheduler/pmsSync.ts`) computed
+`isPaused = autoPaused || manuallyPaused` unconditionally — a week-level scheduler auto-pause
+(`brand_platform_pause`, e.g. "Two consecutive Removed/Refused posts") always forced a link to the
+PMS "Project Paused" column, even for a specific day that had since been manually cycled back to
+Active in `brand_schedule`. But the calendar chip (`calendarRenderer.tsx`'s `effectivePaused = isPaused
+&& status == null`) already implements the opposite, deliberate precedence — an explicit per-day
+status wins over the week-level pause recommendation ("ops can still manually schedule/pause an
+individual day within a paused week," per that file's own comment) — so the day correctly rendered as
+an active chip on the Schedule Planner grid while PMS sync silently overrode it back to Paused. Live
+DB queries confirmed both reported examples were exactly this: `brand_platform_pause` rows existed
+for BIT/Casino Magius/tp and Hanan/DachBet.com/cg for the current week, but `brand_schedule` showed
+explicit `active` on the affected days (written ~7 hours after the pause, i.e. a manual re-activation
+click), so the linked PMS cards sat correctly-but-confusingly in Paused instead of To Do. This is a
+real cross-surface divergence between two independently-written pieces of the same feature, exactly
+the class this project's standing cross-dashboard-consistency rule exists to catch — not a "missing
+push."
+
+**Fix:** `isPaused` in `resolveAndSyncTabStatuses` now mirrors the calendar's own precedence exactly:
+`dayStatus == null ? autoPaused : manuallyPaused` — the week-level auto-pause only applies to a day
+with no explicit status of its own; an explicit `active` day now resolves to `active` (To Do) and an
+explicit `paused` day still resolves to `paused` (Project Paused), regardless of any week-level
+auto-pause. 2 new regression tests in `pmsSync.test.ts` (one confirming the override now wins, one
+confirming an untouched day elsewhere in the same paused week still correctly stays paused, so the
+fix doesn't overreach). Full suite (2478 tests), build, `deno check` (both Deno consumers), and
+`deno test` (26 + 7) all pass.
+
+**Deployed and live-verified same session:** `sync-schedule-pms` (v46) and `generate-weekly-schedule`
+(v25, shares `pmsSync.ts`). Forced an immediate `syncAllStatuses` for BIT, then `auditAllStatuses`
+across all 11 tabs (all `"ok"`, zero failures) — confirmed via direct DB query that both previously-
+paused Casino Magius links (16/09, 17/09) flipped to `synced_status: 'active'`, and via a direct PMS
+API `GET /api/tasks/:id` call that both real cards are now genuinely sitting in the live To Do column
+(`cmsoh1uxz000204l46gf88k3f`). Re-ran the whole-week query afterward: zero `paused`-status links
+remain for the current week, and the per-day link counts now match `brand_schedule`'s raw active
+counts exactly (15/15 on 16/09, 13/13 on 17/09 — the earlier "12" the user reported for 17/09 was the
+app's own hidden/restricted-platform-filtered display count, a separate, pre-existing, unrelated
+nuance, not a sync gap). Bounded fix (Tier 3 — touches shared `pmsSync.ts`), no spec/plan doc;
+root-caused via `superpowers:systematic-debugging` before any fix was attempted.

@@ -965,7 +965,19 @@ export async function resolveAndSyncTabStatuses(
     const autoPaused = pauses.some((p) => p.brand_key === link.brand_key && p.platform === link.platform && p.paused_week_start === loc?.weekStart);
     const dayStatus = loc != null ? (scheduleFor(manualPauseRows, tab, link.brand, loc.weekStart, link.platform)?.[loc.day] ?? null) : null;
     const manuallyPaused = dayStatus === 'paused';
-    const isPaused = autoPaused || manuallyPaused;
+    // A week-level scheduler auto-pause is only "effective" for a day while
+    // that day has no explicit status of its own -- mirrors
+    // calendarRenderer.tsx's effectivePaused (`isPaused && status == null`)
+    // exactly, so a day manually cycled to Active (ops overriding the
+    // week-level pause recommendation for one specific day, an intentional,
+    // supported action per that file's own comment) is honored here too
+    // instead of PMS silently overriding it back to Paused. Found 2026-09-14:
+    // the calendar chip already implemented this precedence, but this
+    // resolver still forced autoPaused unconditionally, so a day that looked
+    // "active" on the Schedule Planner grid kept landing in PMS's Project
+    // Paused column instead of To Do -- the exact cross-surface divergence
+    // this project's standing consistency rule exists to catch.
+    const isPaused = dayStatus == null ? autoPaused : manuallyPaused;
 
     // A link whose day is genuinely blank in brand_schedule (not active, not
     // paused), with no real evidence backing it either, has nothing left to

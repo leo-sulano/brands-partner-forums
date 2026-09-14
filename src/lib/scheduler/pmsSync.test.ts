@@ -922,6 +922,50 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(result.synced[0]?.targetStatus).toBe('paused');
   });
 
+  it('lets an explicit day-level active status override a scheduler auto-pause, resolving to active -- matching calendarRenderer.tsx\'s own "day status wins over the week-level pause" precedence (effectivePaused = isPaused && status == null)', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-24', reason: 'low success rate' }],
+      brand_schedule: [
+        { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-24', platform: 'tp', monday: null, tuesday: null, wednesday: null, thursday: 'active', friday: null },
+      ],
+    });
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced[0]?.targetStatus).toBe('active');
+  });
+
+  it('still treats the week as paused for a link whose day has no explicit status (status stays null) even though another day in the same week was manually reactivated', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-25', pms_task_id: 'task-1', synced_status: 'active' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [{ tab: 'Trybet', brand_key: 'trybet.com', platform: 'tp', paused_week_start: '2026-08-24', reason: 'low success rate' }],
+      brand_schedule: [
+        { tab: 'Trybet', brand_key: 'trybet.com', week_start: '2026-08-24', platform: 'tp', monday: null, tuesday: null, wednesday: null, thursday: 'active', friday: null },
+      ],
+    });
+    const fetchFn = vi.fn(async (_url: string, init: RequestInit = {}) => {
+      if ((init.method ?? 'GET') === 'GET') return { ok: true, status: 200, json: async () => [] };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const result = await resolveAndSyncTabStatuses('Trybet', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.synced[0]?.targetStatus).toBe('paused');
+  });
+
   it('cancels a link whose day is genuinely blank in brand_schedule, has no evidence, and is not paused -- the self-healing backstop for a cancellation whose client-side cleanup never ran', async () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
