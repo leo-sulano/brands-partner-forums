@@ -10346,3 +10346,14 @@ with no reload needed. No bug found: the calendar renders one chip per (brand, p
 per account, which was the actual source of confusion. No code changed. A follow-up feature (a small
 per-account count badge on a day chip) was designed and approved but not yet built — see
 `.agent/handoff/2026-09-14-schedule-planner-realtime-check-and-docs-workflow.md`.
+
+---
+
+## Task 347: Schedule Planner — Per-Account Count Badge on Day Chips
+
+*2026-09-14:* Built the Task 346 follow-up: `buildDateStatusIndex` gains a `counts` map (total real
+entries per brand+platform+day, any status) and `EvidenceCornerBadge` gains a small `×N` bottom-left
+badge shown only when count > 1, threaded through `TabScheduleSection.tsx` and the landing-grid
+preview cards. 7 new unit tests, full suite (2490) and build pass, deno check clean. Live-verified on
+real BIT data: Casino Magius (3 accounts) shows `×3`; single-account brands show no badge. Full detail:
+memory `project_schedule_planner_multi_account_day_cell`.
