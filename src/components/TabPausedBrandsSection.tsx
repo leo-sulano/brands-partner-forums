@@ -101,8 +101,17 @@ export default function TabPausedBrandsSection({ tabName, brands, onChildModalOp
     return () => { canceled = true; };
   }, [tabName]);
 
+  // brand_platform_override (the table this whole section manages) is a
+  // built-in-platform-only mechanism today -- a custom platform never
+  // appears in `overrides` in the first place, so narrowing the eligible
+  // set here changes nothing observable, it only satisfies the type
+  // deriveTabPausedBrandRows' `eligible` callback expects. Same
+  // isBuiltInPlatform-guard pattern as src/lib/scheduler/schedulerService.ts.
+  const isBuiltInPlatform = (platform: string): platform is Platform =>
+    platform === 'tp' || platform === 'ag' || platform === 'cg' || platform === 'wo';
+
   const eligibleFor = (brand: string): Platform[] =>
-    resolveBrandPlatforms(tabName, brand, tabPlatforms, hiddenSet, restrictionMap, removedSet);
+    resolveBrandPlatforms(tabName, brand, tabPlatforms, hiddenSet, restrictionMap, removedSet).filter(isBuiltInPlatform);
 
   const rows = useMemo(
     () =>

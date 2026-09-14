@@ -8,6 +8,7 @@
 // and schedulerService.ts (auto-generation/pause) can't drift out of sync.
 
 import { normalizeBrandKey, platformRemovedKey, type Platform } from './removedPlatformBrands.ts';
+import type { SchedulablePlatform } from './scheduler/schedulerRules.ts';
 
 export function scheduleBrandKey(tab: string, brand: string): string {
   return `${tab}::${normalizeBrandKey(brand)}`;
@@ -26,10 +27,10 @@ export function buildPlatformRestrictionMap(
 export function getSchedulableBrandPlatforms(
   tab: string,
   brand: string,
-  tabPlatforms: Platform[],
+  tabPlatforms: SchedulablePlatform[],
   hiddenSet: Set<string>,
   restrictionMap: Map<string, Platform>,
-): Platform[] {
+): SchedulablePlatform[] {
   if (hiddenSet.has(scheduleBrandKey(tab, brand))) return [];
   const restriction = restrictionMap.get(scheduleBrandKey(tab, brand));
   if (restriction) return tabPlatforms.filter((p) => p === restriction);
@@ -44,11 +45,17 @@ export function getSchedulableBrandPlatforms(
 export function resolveBrandPlatforms(
   tab: string,
   brand: string,
-  tabPlatforms: Platform[],
+  tabPlatforms: SchedulablePlatform[],
   hiddenSet: Set<string>,
   restrictionMap: Map<string, Platform>,
   removedPlatformBrandSet: Set<string>,
-): Platform[] {
+): SchedulablePlatform[] {
   const schedulable = getSchedulableBrandPlatforms(tab, brand, tabPlatforms, hiddenSet, restrictionMap);
-  return schedulable.filter((p) => !removedPlatformBrandSet.has(platformRemovedKey(tab, brand, p)));
+  // platformRemovedKey/removedPlatformBrandSet are built-in-platform-only
+  // (removed_platform_brands has its own separate custom-platform sibling,
+  // removed_custom_platform_brands, wired in elsewhere) -- a custom
+  // platform id can never appear as a key in this set, so the cast is a
+  // type-only formality: platformRemovedKey does plain string
+  // interpolation and the lookup is always a safe miss for a custom id.
+  return schedulable.filter((p) => !removedPlatformBrandSet.has(platformRemovedKey(tab, brand, p as Platform)));
 }
