@@ -173,6 +173,16 @@ export interface DateStatusIndex {
   // point a key is added to one of the four sets, so it can never disagree
   // about which entries counted as evidence.
   details: Map<string, EntryDetails>;
+  // Same brandKey::platform::date keys as the four sets above, mapped to the
+  // total number of real entries that landed in ANY of the four sets for
+  // that key (not just whichever one "won") -- e.g. 2 accounts posted Done
+  // and 1 posted Removed for the same brand+platform+day counts as 3, even
+  // though the key itself only appears in `removed` (last-write) and `done`.
+  // Used to show "×N accounts" on an otherwise boolean evidence chip; see
+  // getEntryCount below. A key with only one matching entry still gets an
+  // entry here (count 1) -- callers gate the ">1" visual threshold
+  // themselves, this map doesn't hide the common case.
+  counts: Map<string, number>;
 }
 
 export interface EntryDetails {
@@ -198,6 +208,7 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   const pending = new Set<string>();
   const done = new Set<string>();
   const details = new Map<string, EntryDetails>();
+  const counts = new Map<string, number>();
   for (const entry of entries) {
     const brand = (pick(entry.data, BRAND_COLS) ?? '').trim();
     if (!brand) continue;
@@ -225,9 +236,10 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
         proxy: (entry.data['Proxy Used'] ?? '').trim(),
         content: (getReviewText(entry.data, platform) ?? '').trim(),
       });
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
   }
-  return { removed, confirmed, pending, done, details };
+  return { removed, confirmed, pending, done, details, counts };
 }
 
 export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';
@@ -254,6 +266,13 @@ export function resolveDateEvidenceKind(index: DateStatusIndex, brandKey: string
 // two different things in two places.
 export function hasDateEvidence(index: DateStatusIndex, brandKey: string, platform: SchedulablePlatform, iso: string): boolean {
   return resolveDateEvidenceKind(index, brandKey, platform, iso) !== null;
+}
+
+// Total number of real entries backing a brand+platform+date, regardless of
+// which of the four evidence categories they landed in — see counts' own
+// doc comment on DateStatusIndex. 0 when there's no evidence for that key.
+export function getEntryCount(index: DateStatusIndex, brandKey: string, platform: SchedulablePlatform, iso: string): number {
+  return index.counts.get(`${brandKey}::${platform}::${iso}`) ?? 0;
 }
 
 export type PmsSyncStatus = 'active' | 'pending' | 'done' | 'published' | 'removed' | 'paused';

@@ -6,7 +6,7 @@ import { tabDisplayName } from '../lib/tabs';
 import { scheduleFor, WEEKDAY_LABELS } from '../lib/scheduleBrands';
 import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { getPlatformBadge, resolveDateEvidenceKind, filterVisiblePlatforms, type GridColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { getPlatformBadge, resolveDateEvidenceKind, getEntryCount, filterVisiblePlatforms, type GridColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
 import { getPlatformFavicon } from '../lib/tabIcons';
 import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
 import type { SchedulablePlatform } from '../lib/scheduler/schedulerRules';
@@ -239,7 +239,7 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                                         // way.
                                         <span className="px-0.5 text-[8px] font-semibold leading-none">{badge.label}</span>
                                       )}
-                                      {kind && <EvidenceCornerBadge kind={kind} />}
+                                      {kind && <EvidenceCornerBadge kind={kind} count={getEntryCount(preview.dateStatusIndex, brandKey, p, col.iso)} />}
                                     </span>
                                   </Tooltip>
                                 );
