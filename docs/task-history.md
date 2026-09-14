@@ -10357,3 +10357,17 @@ badge shown only when count > 1, threaded through `TabScheduleSection.tsx` and t
 preview cards. 7 new unit tests, full suite (2490) and build pass, deno check clean. Live-verified on
 real BIT data: Casino Magius (3 accounts) shows `×3`; single-account brands show no badge. Full detail:
 memory `project_schedule_planner_multi_account_day_cell`.
+
+---
+
+## Task 348: Count Badge Redesign + Toolbar Total Fix + Per-Account PMS Spec
+
+*2026-09-15:* Follow-up to Task 347 per direct user feedback. Redesigned the `×N` indicator from a
+tiny floating corner pill to inline text next to the platform label (detailed grid + landing preview);
+tooltip now lists each backing account individually (Account — Agent) once count > 1. Fixed
+`countActivePlatformSlots` (the toolbar's "TP N" total) to sum real entries per day instead of
+counting 1 per active slot — live-verified "TP 3" → "TP 5" on BIT (3 Magius + 1 + 1). Also wrote and
+committed a design spec (`docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md`) for a
+separate, larger follow-up: giving each account its own PMS task card instead of sharing one per
+brand+platform+day — not yet implemented, pending spec review. Full suite (2494) and build pass, deno
+check clean. Full detail: memory `project_schedule_planner_multi_account_day_cell`.
