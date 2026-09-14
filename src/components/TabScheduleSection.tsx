@@ -32,14 +32,16 @@ import {
 } from '../lib/queries';
 import { buildHolidayDateSet, holidayOn, holidaysInWeek, type PublicHoliday } from '../lib/publicHolidays';
 import { WEEKDAY_LABELS, scheduleFor, nextStatus, withDayStatus, formatWeekdayDate, isCurrentWeekStart, weekdayAndWeekStartFor, toISODate, mondayOf, addDays, type BrandScheduleRow, type DayStatus, type Weekday } from '../lib/scheduleBrands';
-import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
+import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../lib/removedPlatformBrands';
 import { buildOverrideMap, overrideKey, type OverrideDetails } from '../lib/scheduleOverrides';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
 import { recalculatePauses, ensureWeekGenerated, type TabContext } from '../lib/scheduler/schedulerService';
 import { pushScheduleActivations, pullScheduleDrift, syncTabStatusToPms, cancelScheduleActivations } from '../lib/schedulePmsSync';
 import { approveWeekAndFlush, buildActiveSlotItems, PmsFlushError } from '../lib/scheduleApproval';
 import { ScheduleCell, ScheduleStatusIcon } from '../lib/scheduler/calendarRenderer';
-import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, buildNewBrandAddedAtMap, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, PLATFORM_BADGE, PLATFORM_FULL_LABEL, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { unscheduledPlatforms, buildDateStatusIndex, resolveDateEvidenceKind, buildAgentIndex, buildAgentAssignmentMap, resolveAgentForPlatform, buildResolvedAgentIndex, buildCountryIndex, buildAccountIndex, buildNewBrandAddedAtMap, trailingManualPauseDays, effectivePauseDays, pausableWeekdays, hasNoScheduleThisWeek, getPlatformBadge, getPlatformFullLabel, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn } from '../lib/scheduler/scheduleUtils';
+import { getPlatformFavicon } from '../lib/tabIcons';
+import type { SchedulablePlatform } from '../lib/scheduler/schedulerRules';
 import AddPlatformModal from './AddPlatformModal';
 import PauseDaysModal from './PauseDaysModal';
 import PlatformPauseModal from './PlatformPauseModal';
@@ -48,7 +50,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Toast, { type ToastKind } from './Toast';
 import ExportMenuButton from './ExportMenuButton';
 import Tooltip from './Tooltip';
-import { buildScheduleExportRows, SCHEDULE_EXPORT_HEADERS } from '../lib/scheduler/scheduleExport';
+import { buildScheduleExportRows, SCHEDULE_EXPORT_HEADERS, type ScheduleExportBrandData } from '../lib/scheduler/scheduleExport';
 import { subscribeEntries } from '../lib/realtime';
 import type { Entry } from '../types/entry';
 
@@ -57,15 +59,19 @@ import type { Entry } from '../types/entry';
 // icon-based chips this page already uses everywhere else (ScheduleCell,
 // ScheduleStatusIcon), so a brand's Schedule Planner row stays visually
 // consistent with its own day cells.
-function RemovedPlatformIcon({ platform }: { platform: Platform }) {
+function RemovedPlatformIcon({ platform }: { platform: SchedulablePlatform }) {
+  const favicon = getPlatformFavicon(platform);
+  const badge = getPlatformBadge(platform);
   return (
-    <Tooltip content={`${PLATFORM_FULL_LABEL[platform]} page removed`} className="relative ml-1.5 shrink-0 items-center">
-      <img
-        src={PLATFORM_FAVICON[platform]}
-        alt={PLATFORM_BADGE[platform].label}
-        className="size-4 rounded-sm"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-      />
+    <Tooltip content={`${getPlatformFullLabel(platform)} page removed`} className="relative ml-1.5 shrink-0 items-center">
+      {favicon && (
+        <img
+          src={favicon}
+          alt={badge.label}
+          className="size-4 rounded-sm"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
       <X
         aria-hidden="true"
         className="absolute -right-1.5 -top-1.5 size-3 text-rose-600 drop-shadow-[0_0_1.5px_white]"
@@ -78,7 +84,7 @@ function RemovedPlatformIcon({ platform }: { platform: Platform }) {
 // Stable singleton fallback for "no active platforms yet" (tabCtx still
 // loading) — see the activePlatforms doc comment below for why a fresh `[]`
 // literal here caused a real infinite render loop.
-const EMPTY_PLATFORMS: Platform[] = [];
+const EMPTY_PLATFORMS: SchedulablePlatform[] = [];
 
 interface Props {
   tab: string;
@@ -115,8 +121,8 @@ interface Props {
   // sync, and the platform-count strip all still see every platform this
   // brand actually has, so toggling a pill off only changes what's drawn,
   // never what's tracked/counted/synced.
-  visiblePlatforms: Platform[];
-  onPlatformCounts?: (tab: string, counts: Partial<Record<Platform, number>>) => void;
+  visiblePlatforms: SchedulablePlatform[];
+  onPlatformCounts?: (tab: string, counts: Partial<Record<SchedulablePlatform, number>>) => void;
   onRemove: () => void;
 }
 
@@ -141,7 +147,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [tabCtx, setTabCtx] = useState<{
     tab: string;
     brands: string[];
-    activePlatforms: Platform[];
+    activePlatforms: SchedulablePlatform[];
     entries: Entry[];
     removedPlatformBrandSet: Set<string>;
     overrideMap: Map<string, OverrideDetails>;
@@ -163,8 +169,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; kind: ToastKind } | null>(null);
   const [addPlatformTarget, setAddPlatformTarget] = useState<{ brand: string; col: ScheduleColumn } | null>(null);
-  const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: Platform } | null>(null);
-  const [platformPauseTarget, setPlatformPauseTarget] = useState<{ brand: string; platform: Platform } | null>(null);
+  const [pauseDaysTarget, setPauseDaysTarget] = useState<{ brand: string; platform: SchedulablePlatform } | null>(null);
+  const [platformPauseTarget, setPlatformPauseTarget] = useState<{ brand: string; platform: SchedulablePlatform } | null>(null);
   const [platformPauseBusy, setPlatformPauseBusy] = useState(false);
   const { isApproved, isAdmin, isSuperAdmin, profile } = useAuth();
   // Pausing/resuming a scheduled entry is admin-only (per direct user
@@ -450,7 +456,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
           if (canceled) return;
           if (activated.length > 0) {
             pushScheduleActivations(
-              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform, date: a.date, agent: resolveAgentForPlatform(a.brandKey, a.platform, agentAssignments, rawAgentFallback) })),
+              // PmsSyncItem (schedulePmsSync.ts) stays Platform-typed and out
+              // of this plan's scope -- same accepted cast precedent used
+              // throughout this file's other out-of-scope boundaries.
+              activated.map((a) => ({ tab, tabLabel: tabDisplayName(tab), brand: a.brand, platform: a.platform as Platform, date: a.date, agent: resolveAgentForPlatform(a.brandKey, a.platform, agentAssignments, rawAgentFallback) })),
             ).catch((err) => {
               setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
             });
@@ -733,18 +742,23 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // applies to Score Summary, so a TP-removed brand keeps its AG/CG/WO chips
   // but never shows TP again here, in any cell state (scheduled, confirmed,
   // removed-evidence, or addable).
-  function brandPlatforms(brand: string): Platform[] {
+  function brandPlatforms(brand: string): SchedulablePlatform[] {
     const removedSet = tabCtx?.removedPlatformBrandSet ?? new Set<string>();
     const hiddenSet = tabCtx?.hiddenBrandSet ?? new Set<string>();
     const restrictionMap = tabCtx?.platformRestrictionMap ?? new Map<string, Platform>();
-    return resolveBrandPlatforms(tab, brand, activePlatforms, hiddenSet, restrictionMap, removedSet);
+    // resolveBrandPlatforms (scheduleBrandConfig.ts) stays Platform[]-typed
+    // and out of this plan's scope -- same accepted cast precedent already
+    // used throughout schedulerService.ts for this exact function. Its
+    // return (Platform[]) is itself assignable straight into this function's
+    // own SchedulablePlatform[] return type, no cast needed there.
+    return resolveBrandPlatforms(tab, brand, activePlatforms as Platform[], hiddenSet, restrictionMap, removedSet);
   }
 
   // Rendering-only narrowing to the toolbar's visiblePlatforms toggle — used
   // solely at the two chip-drawing call sites (day-cell grid + Schedule Status
   // column). Everything else (PMS sync, pause detection, export) calls
   // brandPlatforms() directly.
-  function visibleBrandPlatforms(brand: string): Platform[] {
+  function visibleBrandPlatforms(brand: string): SchedulablePlatform[] {
     return filterVisiblePlatforms(brandPlatforms(brand), visiblePlatforms);
   }
 
@@ -754,41 +768,44 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // BrandGroup.tsx's removedPlatformsFor. Purely informational: it doesn't
   // change which platforms get chips in the day cells (brandPlatforms above
   // still governs that).
-  function flaggedRemovedPlatforms(brand: string): Platform[] {
+  function flaggedRemovedPlatforms(brand: string): SchedulablePlatform[] {
     const removedSet = tabCtx?.removedPlatformBrandSet ?? new Set<string>();
-    return activePlatforms.filter((p) => removedSet.has(platformRemovedKey(tab, brand, p)));
+    // platformRemovedKey (removedPlatformBrands.ts) stays Platform-typed and
+    // out of this plan's scope -- same accepted cast precedent as elsewhere
+    // in this file.
+    return activePlatforms.filter((p) => removedSet.has(platformRemovedKey(tab, brand, p as Platform)));
   }
 
-  function computeRemovedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
+  function computeRemovedByPlatform(brand: string, dayISO: string): Partial<Record<SchedulablePlatform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
-    const removedByPlatform: Partial<Record<Platform, boolean>> = {};
+    const removedByPlatform: Partial<Record<SchedulablePlatform, boolean>> = {};
     for (const platform of brandPlatforms(brand)) {
       if (dateStatusIndex.removed.has(`${brandKey}::${platform}::${dayISO}`)) removedByPlatform[platform] = true;
     }
     return removedByPlatform;
   }
 
-  function computeConfirmedByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
+  function computeConfirmedByPlatform(brand: string, dayISO: string): Partial<Record<SchedulablePlatform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
-    const confirmedByPlatform: Partial<Record<Platform, boolean>> = {};
+    const confirmedByPlatform: Partial<Record<SchedulablePlatform, boolean>> = {};
     for (const platform of brandPlatforms(brand)) {
       if (dateStatusIndex.confirmed.has(`${brandKey}::${platform}::${dayISO}`)) confirmedByPlatform[platform] = true;
     }
     return confirmedByPlatform;
   }
 
-  function computePendingByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
+  function computePendingByPlatform(brand: string, dayISO: string): Partial<Record<SchedulablePlatform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
-    const pendingByPlatform: Partial<Record<Platform, boolean>> = {};
+    const pendingByPlatform: Partial<Record<SchedulablePlatform, boolean>> = {};
     for (const platform of brandPlatforms(brand)) {
       if (dateStatusIndex.pending.has(`${brandKey}::${platform}::${dayISO}`)) pendingByPlatform[platform] = true;
     }
     return pendingByPlatform;
   }
 
-  function computeDoneByPlatform(brand: string, dayISO: string): Partial<Record<Platform, boolean>> {
+  function computeDoneByPlatform(brand: string, dayISO: string): Partial<Record<SchedulablePlatform, boolean>> {
     const brandKey = normalizeBrandKey(brand);
-    const doneByPlatform: Partial<Record<Platform, boolean>> = {};
+    const doneByPlatform: Partial<Record<SchedulablePlatform, boolean>> = {};
     for (const platform of brandPlatforms(brand)) {
       if (dateStatusIndex.done.has(`${brandKey}::${platform}::${dayISO}`)) doneByPlatform[platform] = true;
     }
@@ -800,9 +817,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // schedule_manual_pauses is keyed by (week_start, weekday) directly, same
   // as brand_schedule itself, so this looks up col rather than a resolved
   // dayISO.
-  function computeManualPausedByPlatform(brand: string, col: ScheduleColumn): Partial<Record<Platform, string>> {
+  function computeManualPausedByPlatform(brand: string, col: ScheduleColumn): Partial<Record<SchedulablePlatform, string>> {
     const brandKey = normalizeBrandKey(brand);
-    const result: Partial<Record<Platform, string>> = {};
+    const result: Partial<Record<SchedulablePlatform, string>> = {};
     for (const platform of brandPlatforms(brand)) {
       const m = manualPauses.find((x) => x.tab === tab && x.brand_key === brandKey && x.platform === platform && x.week_start === col.weekStartISO && x.weekday === col.weekday);
       if (m?.paused_by) result[platform] = m.paused_by;
@@ -856,35 +873,38 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Paused-column summary, Export — can keep calling this with no argument.
   // The day-cell render loop below passes each column's own week explicitly.
   function computeCellData(brand: string, colWeekStartISO: string = weekStartISO): {
-    rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
-    pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+    rowsByPlatform: Partial<Record<SchedulablePlatform, BrandScheduleRow>>;
+    pausesByPlatform: Partial<Record<SchedulablePlatform, BrandPlatformPause>>;
     // Who forced the pause — only populated when this platform's active
     // pause is override-driven (checked directly against tabCtx.overrideMap,
     // NOT by comparing the pause's own reason text against a generic
     // constant — see calendarRenderer.tsx's titleFor for why that string
     // comparison was a bug waiting to happen once reasons became custom
     // text).
-    pausedByPlatform: Partial<Record<Platform, string>>;
+    pausedByPlatform: Partial<Record<SchedulablePlatform, string>>;
     // undefined = not override-driven (auto-detected, or no pause at all for
     // this exact week); null = override-driven, permanent; an ISO date =
     // override-driven, periodic. Threaded straight into ScheduleStatusIcon's
     // pauseResumeAt prop.
-    resumeAtByPlatform: Partial<Record<Platform, string | null>>;
+    resumeAtByPlatform: Partial<Record<SchedulablePlatform, string | null>>;
   } {
     const brandKey = normalizeBrandKey(brand);
-    const rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>> = {};
-    const pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>> = {};
-    const pausedByPlatform: Partial<Record<Platform, string>> = {};
-    const resumeAtByPlatform: Partial<Record<Platform, string | null>> = {};
+    const rowsByPlatform: Partial<Record<SchedulablePlatform, BrandScheduleRow>> = {};
+    const pausesByPlatform: Partial<Record<SchedulablePlatform, BrandPlatformPause>> = {};
+    const pausedByPlatform: Partial<Record<SchedulablePlatform, string>> = {};
+    const resumeAtByPlatform: Partial<Record<SchedulablePlatform, string | null>> = {};
     for (const platform of brandPlatforms(brand)) {
-      const r = scheduleFor(scheduleRows, tab, brand, colWeekStartISO, platform);
+      // scheduleFor (scheduleBrands.ts) and overrideKey (scheduleOverrides.ts)
+      // both stay Platform-only and out of this plan's scope -- same accepted
+      // cast precedent used throughout this file and schedulerService.ts.
+      const r = scheduleFor(scheduleRows, tab, brand, colWeekStartISO, platform as Platform);
       if (r) rowsByPlatform[platform] = r;
       const p = pauses.find(
         (x) => x.brand_key === brandKey && x.platform === platform && x.paused_week_start === colWeekStartISO,
       );
       if (p) {
         pausesByPlatform[platform] = p;
-        const override = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform));
+        const override = tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform as Platform));
         if (override?.state === 'pause') {
           resumeAtByPlatform[platform] = override.resumeAt;
           if (override.setBy) pausedByPlatform[platform] = override.setBy;
@@ -902,10 +922,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // clear), since a genuinely-cancelled day is just as "blank" as one that
   // was never scheduled -- the caller can't tell which without this table,
   // so it never needs to check first.
-  function clearCancellationIfAny(brand: string, platform: Platform, col: ScheduleColumn) {
+  function clearCancellationIfAny(brand: string, platform: SchedulablePlatform, col: ScheduleColumn) {
     const brandKey = normalizeBrandKey(brand);
     setCancellations((prev) => prev.filter((c) => !(c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === col.weekStartISO && c.weekday === col.weekday)));
-    clearScheduleCancellation(tab, brandKey, platform, col.weekStartISO, col.weekday).catch(() => {});
+    // clearScheduleCancellation (queries.ts) stays Platform-typed and out of
+    // this plan's scope -- same accepted cast precedent used throughout this
+    // file's other out-of-scope boundaries.
+    clearScheduleCancellation(tab, brandKey, platform as Platform, col.weekStartISO, col.weekday).catch(() => {});
   }
 
   // Same shape as clearCancellationIfAny above, for schedule_manual_pauses --
@@ -913,10 +936,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // so a later, different manual pause on that same day doesn't inherit a
   // stale "Paused by". Safe to call unconditionally (there's usually nothing
   // to clear), same reasoning as clearCancellationIfAny.
-  function clearManualPauseIfAny(brand: string, platform: Platform, col: ScheduleColumn) {
+  function clearManualPauseIfAny(brand: string, platform: SchedulablePlatform, col: ScheduleColumn) {
     const brandKey = normalizeBrandKey(brand);
     setManualPauses((prev) => prev.filter((m) => !(m.tab === tab && m.brand_key === brandKey && m.platform === platform && m.week_start === col.weekStartISO && m.weekday === col.weekday)));
-    clearScheduleManualPause(tab, brandKey, platform, col.weekStartISO, col.weekday).catch(() => {});
+    // clearScheduleManualPause (queries.ts) stays Platform-typed and out of
+    // this plan's scope -- same accepted cast precedent as above.
+    clearScheduleManualPause(tab, brandKey, platform as Platform, col.weekStartISO, col.weekday).catch(() => {});
   }
 
   // Records who just manually paused this exact day (the click-to-cycle's
@@ -927,13 +952,16 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // then persists it. A failure surfaces as a toast but doesn't roll back
   // the pause itself -- the day is still genuinely paused either way, only
   // the "who" attribution would be stale/missing until the next reload.
-  function recordManualPause(brand: string, platform: Platform, col: ScheduleColumn) {
+  function recordManualPause(brand: string, platform: SchedulablePlatform, col: ScheduleColumn) {
     const brandKey = normalizeBrandKey(brand);
+    // ScheduleManualPause (queries.ts) stays Platform-typed and out of this
+    // plan's scope -- same accepted cast precedent used throughout this
+    // file's other out-of-scope boundaries.
     setManualPauses((prev) => [
       ...prev.filter((m) => !(m.tab === tab && m.brand_key === brandKey && m.platform === platform && m.week_start === col.weekStartISO && m.weekday === col.weekday)),
-      { tab, brand_key: brandKey, platform, week_start: col.weekStartISO, weekday: col.weekday, paused_by: profile?.email ?? null },
+      { tab, brand_key: brandKey, platform: platform as Platform, week_start: col.weekStartISO, weekday: col.weekday, paused_by: profile?.email ?? null },
     ]);
-    recordScheduleManualPause(tab, brand, platform, col.weekStartISO, col.weekday).catch((err) => {
+    recordScheduleManualPause(tab, brand, platform as Platform, col.weekStartISO, col.weekday).catch((err) => {
       setToast({ message: err instanceof Error ? err.message : 'Failed to record who paused this day', kind: 'error' });
     });
   }
@@ -945,27 +973,34 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Schedule Status column can show it) and deletes any already-created PMS
   // task for this exact combo immediately, rather than leaving it to
   // re-resolve on the next status sync.
-  function finalizeCancellation(brand: string, platform: Platform, col: ScheduleColumn) {
+  function finalizeCancellation(brand: string, platform: SchedulablePlatform, col: ScheduleColumn) {
     const brandKey = normalizeBrandKey(brand);
+    // ScheduleCancellation (queries.ts) and PmsCancelItem (schedulePmsSync.ts)
+    // both stay Platform-typed and out of this plan's scope -- same accepted
+    // cast precedent used throughout this file's other out-of-scope
+    // boundaries.
     setCancellations((prev) => [
       ...prev.filter((c) => !(c.tab === tab && c.brand_key === brandKey && c.platform === platform && c.week_start === col.weekStartISO && c.weekday === col.weekday)),
-      { tab, brand_key: brandKey, platform, week_start: col.weekStartISO, weekday: col.weekday },
+      { tab, brand_key: brandKey, platform: platform as Platform, week_start: col.weekStartISO, weekday: col.weekday },
     ]);
-    recordScheduleCancellation(tab, brand, platform, col.weekStartISO, col.weekday).catch((err) => {
+    recordScheduleCancellation(tab, brand, platform as Platform, col.weekStartISO, col.weekday).catch((err) => {
       setToast({ message: err instanceof Error ? err.message : 'Failed to record cancellation', kind: 'error' });
     });
     // A cancelled day is blank, not paused -- clear any stale "Paused by"
     // attribution so a later, different manual pause on this same day
     // doesn't inherit it.
     clearManualPauseIfAny(brand, platform, col);
-    cancelScheduleActivations([{ tab, brand, platform, date: col.iso }]).catch((err) => {
+    cancelScheduleActivations([{ tab, brand, platform: platform as Platform, date: col.iso }]).catch((err) => {
       setToast({ message: err instanceof Error ? err.message : 'Failed to cancel PMS task', kind: 'error' });
     });
   }
 
-  async function handleCellClick(brand: string, platform: Platform, col: ScheduleColumn) {
+  async function handleCellClick(brand: string, platform: SchedulablePlatform, col: ScheduleColumn) {
     if (!canEditWeek(col.weekStartISO)) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
+    // scheduleFor/withDayStatus (scheduleBrands.ts) and setBrandScheduleDay
+    // (queries.ts) all stay Platform-typed and out of this plan's scope --
+    // same accepted cast precedent used throughout this file.
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform as Platform)?.[col.weekday] ?? null;
     const next = nextStatus(currentStatus);
     // The cycle's active -> paused leg, and its paused -> blank leg (a paused
     // day's only other transition), both touch the pause axis and are
@@ -976,14 +1011,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       return;
     }
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, next));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform as Platform, col.weekday, next));
     try {
-      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, next);
+      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform as Platform, col.weekday, next);
       if (next === 'active') {
         // Reaching 'active' from blank is this cycle's own "un-cancel" leg --
         // harmless no-op when the day was never cancelled in the first place.
         clearCancellationIfAny(brand, platform, col);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform: platform as Platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       } else if (next === null) {
@@ -1000,14 +1035,17 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         recordManualPause(brand, platform, col);
       }
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform as Platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     }
   }
 
-  async function handleSetDayStatus(brand: string, platform: Platform, col: ScheduleColumn, status: 'active' | 'paused') {
+  async function handleSetDayStatus(brand: string, platform: SchedulablePlatform, col: ScheduleColumn, status: 'active' | 'paused') {
     if (!canEditWeek(col.weekStartISO)) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
+    // scheduleFor/withDayStatus (scheduleBrands.ts) and setBrandScheduleDay
+    // (queries.ts) all stay Platform-typed and out of this plan's scope --
+    // same accepted cast precedent used throughout this file.
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform as Platform)?.[col.weekday] ?? null;
     // Covers the Pause button (status 'paused'), the Resume button
     // (currentStatus 'paused'), and AddPlatformModal's "Paused" option
     // (status 'paused', currentStatus null) — all admin-only. Leaves
@@ -1019,9 +1057,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       return;
     }
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, status));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform as Platform, col.weekday, status));
     try {
-      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, status);
+      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform as Platform, col.weekday, status);
       // Unconditional, same reasoning as handleCellClick's 'active' leg above
       // -- covers AddPlatformModal reactivating a previously-cancelled blank
       // day, and is a harmless no-op for the new Pause/Resume buttons (which
@@ -1033,7 +1071,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         // fresh day Active) -- either way it's no longer paused, so any
         // stale "Paused by" attribution should go with it.
         clearManualPauseIfAny(brand, platform, col);
-        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
+        pushScheduleActivations([{ tab, tabLabel: tabDisplayName(tab), brand, platform: platform as Platform, date: col.iso, agent: resolveAgentForPlatform(normalizeBrandKey(brand), platform, agentAssignments, rawAgentFallback) }]).catch((err) => {
           setToast({ message: err instanceof Error ? err.message : 'Failed to sync to PMS', kind: 'error' });
         });
       } else {
@@ -1041,7 +1079,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         recordManualPause(brand, platform, col);
       }
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform as Platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to save', kind: 'error' });
     }
   }
@@ -1049,9 +1087,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // The new explicit Cancel button's handler -- unlike handleCellClick, this
   // writes straight to blank from whichever real status the day currently
   // has (active or paused), rather than cycling through the sequence.
-  async function handleCancelDay(brand: string, platform: Platform, col: ScheduleColumn) {
+  async function handleCancelDay(brand: string, platform: SchedulablePlatform, col: ScheduleColumn) {
     if (!canEditWeek(col.weekStartISO)) return;
-    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform)?.[col.weekday] ?? null;
+    const currentStatus: DayStatus = scheduleFor(scheduleRows, tab, brand, col.weekStartISO, platform as Platform)?.[col.weekday] ?? null;
     // Cancelling an active day is a normal scheduling action, open to any
     // approved user; cancelling a paused day ends the pause, so it's
     // admin-only like every other exit from 'paused'.
@@ -1060,12 +1098,12 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       return;
     }
 
-    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, null));
+    setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform as Platform, col.weekday, null));
     try {
-      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform, col.weekday, null);
+      await setBrandScheduleDay(tab, brand, col.weekStartISO, platform as Platform, col.weekday, null);
       finalizeCancellation(brand, platform, col);
     } catch (err) {
-      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform, col.weekday, currentStatus));
+      setScheduleRows((prev) => withDayStatus(prev, tab, brand, col.weekStartISO, platform as Platform, col.weekday, currentStatus));
       setToast({ message: err instanceof Error ? err.message : 'Failed to cancel', kind: 'error' });
     }
   }
@@ -1168,7 +1206,10 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
         const { col } = addPlatformTarget;
         const { rowsByPlatform, pausesByPlatform } = computeCellData(addPlatformTarget.brand, col.weekStartISO);
         return {
-          platforms: unscheduledPlatforms(brandPlatforms(addPlatformTarget.brand), col.weekday, rowsByPlatform, pausesByPlatform),
+          // AddPlatformModal.tsx stays Platform[]-typed and out of this
+          // plan's scope -- same accepted cast precedent used throughout
+          // this file's other out-of-scope boundaries.
+          platforms: unscheduledPlatforms(brandPlatforms(addPlatformTarget.brand), col.weekday, rowsByPlatform, pausesByPlatform) as Platform[],
           dayLabel: `${WEEKDAY_LABELS[col.weekday]} ${formatWeekdayDate(new Date(`${col.iso}T00:00:00`), 0)}`,
         };
       })()
@@ -1213,7 +1254,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // click already goes through: optimistic update, setBrandScheduleDay,
   // PMS push on 'active', rollback + toast on failure), just called once per
   // changed day instead of once per click.
-  async function handlePauseDaysSave(brand: string, platform: Platform, initialPausedDays: Weekday[], newPausedDays: Weekday[]) {
+  async function handlePauseDaysSave(brand: string, platform: SchedulablePlatform, initialPausedDays: Weekday[], newPausedDays: Weekday[]) {
     const wasPaused = new Set(initialPausedDays);
     const isNowPaused = new Set(newPausedDays);
     for (const col of columnsForWeek(weekStart)) {
@@ -1241,8 +1282,8 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // that explicit instead of leaving the save silent.
   async function handleSavePlatformPause(
     brand: string,
-    platform: Platform,
-    checkedPlatforms: Platform[],
+    platform: SchedulablePlatform,
+    checkedPlatforms: SchedulablePlatform[],
     reason: string,
     resumeAt: string | null,
   ) {
@@ -1256,11 +1297,14 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
     }
     setPlatformPauseBusy(true);
     try {
+      // savePlatformPause (platformPauseActions.ts) stays Platform[]-typed
+      // and out of this plan's scope -- same accepted cast precedent used
+      // throughout this file's other out-of-scope boundaries.
       await savePlatformPause({
         tab,
         brand,
-        eligiblePlatforms: [platform],
-        checkedPlatforms,
+        eligiblePlatforms: [platform] as Platform[],
+        checkedPlatforms: checkedPlatforms as Platform[],
         reason,
         resumeAt,
         overrideMap: tabCtx.overrideMap,
@@ -1349,10 +1393,19 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
               <ExportMenuButton
                 headers={SCHEDULE_EXPORT_HEADERS}
                 getRows={() => buildScheduleExportRows(
+                  // scheduleExport.ts stays Platform-only and out of this
+                  // plan's scope -- built up here as SchedulablePlatform
+                  // internally (consistent with the rest of this file), then
+                  // cast once at this one boundary, same accepted pattern
+                  // used elsewhere in this file. A custom platform's export
+                  // row still round-trips correctly at runtime (this function
+                  // does no platform-specific branching, only PLATFORM_FULL_LABEL
+                  // indexing, which is itself a real gap for a future task —
+                  // see this task's own report).
                   filteredBrands.map((brand) => {
                     const { rowsByPlatform, pausesByPlatform } = computeCellData(brand);
                     const brandKey = normalizeBrandKey(brand);
-                    const evidenceByPlatform: Partial<Record<Platform, Partial<Record<Weekday, ReturnType<typeof resolveDateEvidenceKind>>>>> = {};
+                    const evidenceByPlatform: Partial<Record<SchedulablePlatform, Partial<Record<Weekday, ReturnType<typeof resolveDateEvidenceKind>>>>> = {};
                     for (const platform of brandPlatforms(brand)) {
                       const byWeekday: Partial<Record<Weekday, ReturnType<typeof resolveDateEvidenceKind>>> = {};
                       for (const col of columnsForWeek(weekStart)) {
@@ -1368,7 +1421,7 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                       removedPlatforms: flaggedRemovedPlatforms(brand),
                       evidenceByPlatform,
                     };
-                  }),
+                  }) as ScheduleExportBrandData[],
                   holidaysInWeek(weekStartISO, holidays).map((h) => h.name).join(', '),
                 )}
                 filenameBase={`schedule-planner-${tabToSlug(tab)}-${weekStartISO}`}
@@ -1613,9 +1666,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
                           // the reason/resume editor; every other state keeps the
                           // per-weekday PauseDaysModal. brandKey is in scope here
                           // (declared at the top of this row's render).
+                          // overrideKey (scheduleOverrides.ts) stays
+                          // Platform-typed and out of this plan's scope --
+                          // same accepted cast precedent used throughout this
+                          // file.
                           const isOverridePaused =
                             !!weekPausesByPlatform[platform] &&
-                            tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform))?.state === 'pause';
+                            tabCtx?.overrideMap.get(overrideKey(tab, brandKey, platform as Platform))?.state === 'pause';
                           const onClick = isOverridePaused
                             ? () => setPlatformPauseTarget({ brand, platform })
                             : () => setPauseDaysTarget({ brand, platform });
@@ -1673,7 +1730,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       {pauseDaysTarget && pauseDaysModalData && (
         <PauseDaysModal
           brand={pauseDaysTarget.brand}
-          platform={pauseDaysTarget.platform}
+          // PauseDaysModal.tsx stays Platform-typed and out of this plan's
+          // scope -- same accepted cast precedent used throughout this file.
+          platform={pauseDaysTarget.platform as Platform}
           weekLabel={pauseDaysModalData.weekLabel}
           scheduledDays={pauseDaysModalData.scheduledDays}
           initialPausedDays={pauseDaysModalData.initialPausedDays}
@@ -1689,11 +1748,15 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
       )}
       {platformPauseTarget && tabCtx && (() => {
         const { brand, platform } = platformPauseTarget;
-        const init = derivePauseModalInitial(tab, brand, [platform], tabCtx.overrideMap);
+        // derivePauseModalInitial (platformPauseActions.ts) and
+        // PlatformPauseModal.tsx both stay Platform[]-typed and out of this
+        // plan's scope -- same accepted cast precedent used throughout this
+        // file's other out-of-scope boundaries.
+        const init = derivePauseModalInitial(tab, brand, [platform] as Platform[], tabCtx.overrideMap);
         return (
           <PlatformPauseModal
             brand={brand}
-            platforms={[platform]}
+            platforms={[platform] as Platform[]}
             initialCheckedPlatforms={init.checkedPlatforms}
             autoPauseReasonByPlatform={{}}
             initialReason={init.initialReason}

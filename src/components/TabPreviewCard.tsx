@@ -4,10 +4,12 @@ import TabIcon from './TabIcon';
 import Tooltip from './Tooltip';
 import { tabDisplayName } from '../lib/tabs';
 import { scheduleFor, WEEKDAY_LABELS } from '../lib/scheduleBrands';
-import { normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
+import { normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, resolveDateEvidenceKind, filterVisiblePlatforms, type GridColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { getPlatformBadge, resolveDateEvidenceKind, filterVisiblePlatforms, type GridColumn, type DateEvidenceKind } from '../lib/scheduler/scheduleUtils';
+import { getPlatformFavicon } from '../lib/tabIcons';
 import { EvidenceCornerBadge } from '../lib/scheduler/calendarRenderer';
+import type { SchedulablePlatform } from '../lib/scheduler/schedulerRules';
 import type { TabPreview } from '../pages/SchedulePlanner';
 
 interface Props {
@@ -32,7 +34,7 @@ interface Props {
   // TabScheduleSection's own visiblePlatforms filtering so the overview
   // grid and the expanded single-tab grid can't disagree about what's
   // currently hidden.
-  visiblePlatforms: Platform[];
+  visiblePlatforms: SchedulablePlatform[];
   // Undefined disables the card's whole-card click/keyboard nav and the
   // trailing chevron — used for a whole-tab-paused card, which must never
   // be reachable through the normal tab-selection flow (opening
@@ -158,8 +160,15 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                 </tr>
               ) : (
                 previewBrands.map((brand) => {
+                  // resolveBrandPlatforms (scheduleBrandConfig.ts) stays
+                  // Platform[]-typed and out of this plan's scope -- same
+                  // accepted cast precedent already used throughout
+                  // schedulerService.ts for this exact function. Its return
+                  // (Platform[]) is itself assignable straight into
+                  // filterVisiblePlatforms' SchedulablePlatform[] param, no
+                  // cast needed there.
                   const brandPlatforms = filterVisiblePlatforms(
-                    resolveBrandPlatforms(tab, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
+                    resolveBrandPlatforms(tab, brand, preview.activePlatforms as Platform[], preview.hiddenSet, preview.restrictionMap, preview.removedSet),
                     visiblePlatforms,
                   );
                   const brandKey = normalizeBrandKey(brand);
@@ -180,12 +189,16 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                         }
                         const isPast = col.iso < todayISO;
                         const isToday = col.iso === todayISO;
-                        const planActive = (p: Platform) =>
-                          scheduleFor(preview.scheduleRows, tab, brand, col.weekStartISO, p)?.[col.weekday] === 'active';
-                        const executedEntries: { platform: Platform; kind: DateEvidenceKind | null }[] = isPast
+                        // scheduleFor (scheduleBrands.ts) stays Platform | null
+                        // typed and out of this plan's scope -- same accepted
+                        // cast precedent as countActivePlatformSlots'
+                        // scheduleFor call in scheduleUtils.ts.
+                        const planActive = (p: SchedulablePlatform) =>
+                          scheduleFor(preview.scheduleRows, tab, brand, col.weekStartISO, p as Platform)?.[col.weekday] === 'active';
+                        const executedEntries: { platform: SchedulablePlatform; kind: DateEvidenceKind | null }[] = isPast
                           ? brandPlatforms
                               .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
-                              .filter((e): e is { platform: Platform; kind: DateEvidenceKind } => e.kind !== null)
+                              .filter((e): e is { platform: SchedulablePlatform; kind: DateEvidenceKind } => e.kind !== null)
                           : isToday
                             ? brandPlatforms
                                 .map((p) => ({ platform: p, kind: resolveDateEvidenceKind(preview.dateStatusIndex, brandKey, p, col.iso) }))
@@ -200,33 +213,45 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                             className={`px-0.5 py-1 text-center ${holidayDateSet.has(col.iso) ? 'bg-rose-50' : ''}`}
                           >
                             <span className="flex flex-wrap items-center justify-center gap-0.5">
-                              {executedEntries.map(({ platform: p, kind }) => (
-                                <Tooltip key={p} content={PLATFORM_BADGE[p].label}>
-                                  <span
-                                    className={`relative inline-flex items-center rounded-[2px] p-px ${PLATFORM_BADGE[p].className}`}
-                                  >
-                                    <img
-                                      src={PLATFORM_FAVICON[p]}
-                                      alt={PLATFORM_BADGE[p].label}
-                                      className="size-2.5 rounded-[1px]"
-                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                    {kind && <EvidenceCornerBadge kind={kind} />}
-                                  </span>
-                                </Tooltip>
-                              ))}
-                              {missed.map((p) => (
-                                <Tooltip key={p} content={`${PLATFORM_BADGE[p].label}: Planned — no confirmed activity found`}>
-                                  <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 p-px opacity-60">
-                                    <img
-                                      src={PLATFORM_FAVICON[p]}
-                                      alt={PLATFORM_BADGE[p].label}
-                                      className="size-2.5 rounded-[1px] grayscale"
-                                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                    />
-                                  </span>
-                                </Tooltip>
-                              ))}
+                              {executedEntries.map(({ platform: p, kind }) => {
+                                const badge = getPlatformBadge(p);
+                                const favicon = getPlatformFavicon(p);
+                                return (
+                                  <Tooltip key={p} content={badge.label}>
+                                    <span
+                                      className={`relative inline-flex items-center rounded-[2px] p-px ${badge.className}`}
+                                    >
+                                      {favicon && (
+                                        <img
+                                          src={favicon}
+                                          alt={badge.label}
+                                          className="size-2.5 rounded-[1px]"
+                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        />
+                                      )}
+                                      {kind && <EvidenceCornerBadge kind={kind} />}
+                                    </span>
+                                  </Tooltip>
+                                );
+                              })}
+                              {missed.map((p) => {
+                                const badge = getPlatformBadge(p);
+                                const favicon = getPlatformFavicon(p);
+                                return (
+                                  <Tooltip key={p} content={`${badge.label}: Planned — no confirmed activity found`}>
+                                    <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 p-px opacity-60">
+                                      {favicon && (
+                                        <img
+                                          src={favicon}
+                                          alt={badge.label}
+                                          className="size-2.5 rounded-[1px] grayscale"
+                                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                        />
+                                      )}
+                                    </span>
+                                  </Tooltip>
+                                );
+                              })}
                             </span>
                           </td>
                         );

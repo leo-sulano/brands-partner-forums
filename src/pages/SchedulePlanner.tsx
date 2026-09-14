@@ -7,9 +7,11 @@ import { getActiveOperationalTabs, getPausedOperationalTabs } from '../lib/pause
 import { deriveTabBrands, getTabPlatforms } from '../lib/tab-configs';
 import { toISODate, mondayOf, addDays, formatWeekdayDate, type BrandScheduleRow } from '../lib/scheduleBrands';
 import { buildHolidayDateSet, type PublicHoliday } from '../lib/publicHolidays';
-import { buildRemovedPlatformBrandSet, normalizeBrandKey, PLATFORM_FAVICON, type Platform } from '../lib/removedPlatformBrands';
+import { buildRemovedPlatformBrandSet, normalizeBrandKey, type Platform } from '../lib/removedPlatformBrands';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../lib/scheduleBrandConfig';
-import { PLATFORM_BADGE, buildResolvedAgentIndex, buildAgentIndex, buildAgentAssignmentMap, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { getPlatformBadge, buildResolvedAgentIndex, buildAgentIndex, buildAgentAssignmentMap, buildDateStatusIndex, buildFirstLastPostIndex, columnsForWeek, weekdayColumnsInRange, withWeekendMarkers, countActivePlatformSlots, filterVisiblePlatforms, type ScheduleColumn, type DateStatusIndex } from '../lib/scheduler/scheduleUtils';
+import { getPlatformFavicon } from '../lib/tabIcons';
+import type { SchedulablePlatform } from '../lib/scheduler/schedulerRules';
 import {
   fetchBrandSchedule,
   fetchRawEntriesByTab,
@@ -43,7 +45,27 @@ const DATE_FROM_STORAGE_KEY = 'schedulePlanner.dateFrom';
 const DATE_TO_STORAGE_KEY = 'schedulePlanner.dateTo';
 const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
 const VISIBLE_PLATFORMS_STORAGE_KEY = 'schedulePlanner.visiblePlatforms';
-const ALL_PLATFORMS: Platform[] = ['tp', 'ag', 'cg', 'wo'];
+// The built-in 4 -- used only as (a) the default `visiblePlatforms` value on
+// a genuinely fresh session (sessionStorage empty) and (b) a fixed ordering
+// anchor in orderedPlatformKeys below, so the toolbar's toggle strip keeps
+// showing TP/AG/CG/WO in their familiar order with any custom platform
+// appended after them. Never used to gate/exclude a platform from being
+// tracked, toggled, restored, or rendered — see orderedPlatformKeys and the
+// visiblePlatforms restore logic below, both of which accept any platform id.
+const ALL_PLATFORMS: SchedulablePlatform[] = ['tp', 'ag', 'cg', 'wo'];
+
+// Stable tp/ag/cg/wo-first ordering for a set of platform keys (e.g. the
+// toolbar's platform-count strip) with any custom platform id appended after
+// them in whatever order Object.keys() yields -- keeps the built-ins'
+// familiar left-to-right order unchanged while still surfacing a custom
+// platform's own toggle button once it has real data, instead of the fixed
+// 4-item list the toolbar used to intersect against (which silently dropped
+// any non-built-in key, custom platforms included).
+function orderedPlatformKeys(keys: string[]): SchedulablePlatform[] {
+  const builtIns = ALL_PLATFORMS.filter((p) => keys.includes(p));
+  const custom = keys.filter((p) => !(ALL_PLATFORMS as string[]).includes(p));
+  return [...builtIns, ...custom];
+}
 
 export interface TabPreview {
   // Already filtered to brands with at least one schedulable, non-removed
@@ -51,7 +73,7 @@ export interface TabPreview {
   // so the "+N more" count matches what actually has rows in the real
   // calendar, not a raw unique-brand count.
   brands: string[];
-  activePlatforms: Platform[];
+  activePlatforms: SchedulablePlatform[];
   hiddenSet: Set<string>;
   restrictionMap: Map<string, Platform>;
   removedSet: Set<string>;
@@ -113,15 +135,18 @@ function deriveEntryDependentPreview(
   rawEntries: Entry[],
   headers: string[],
   agentAssignmentRows: BrandAgentAssignmentRow[],
-  activePlatforms: Platform[],
+  activePlatforms: SchedulablePlatform[],
   hiddenSet: Set<string>,
   restrictionMap: Map<string, Platform>,
   removedSet: Set<string>,
   catalogBrands: string[],
 ): Pick<TabPreview, 'brands' | 'agentIndex' | 'dateStatusIndex'> {
   return {
+    // resolveBrandPlatforms (scheduleBrandConfig.ts) stays Platform[]-typed
+    // and out of this plan's scope -- same accepted cast precedent used
+    // throughout TabScheduleSection.tsx for this exact function.
     brands: deriveTabBrands(tab, rawEntries, headers, catalogBrands).filter(
-      (b) => resolveBrandPlatforms(tab, b, activePlatforms, hiddenSet, restrictionMap, removedSet).length > 0,
+      (b) => resolveBrandPlatforms(tab, b, activePlatforms as Platform[], hiddenSet, restrictionMap, removedSet).length > 0,
     ),
     agentIndex: buildResolvedAgentIndex(rawEntries, agentAssignmentRows, activePlatforms),
     dateStatusIndex: buildDateStatusIndex(rawEntries),
@@ -198,17 +223,21 @@ export default function SchedulePlanner() {
   // filterVisiblePlatforms's doc comment. Defaults to all four so a first
   // visit (or a wiped/unavailable sessionStorage) shows everything, same as
   // before this toggle existed.
-  const [visiblePlatforms, setVisiblePlatforms] = useState<Platform[]>(() => {
+  const [visiblePlatforms, setVisiblePlatforms] = useState<SchedulablePlatform[]>(() => {
     try {
       const raw = sessionStorage.getItem(VISIBLE_PLATFORMS_STORAGE_KEY);
       if (raw === null) return ALL_PLATFORMS;
-      const parsed = raw.split(',').filter((p): p is Platform => (ALL_PLATFORMS as string[]).includes(p));
-      return parsed;
+      // Deliberately no longer filtered against the built-in 4 (ALL_PLATFORMS)
+      // -- that used to silently drop a previously-toggled-visible custom
+      // platform id on every restore, since it's never one of 'tp'/'ag'/'cg'/
+      // 'wo'. Any non-empty stored value is a real platform id (built-in or
+      // custom) this session explicitly toggled at some point.
+      return raw.split(',').filter(Boolean);
     } catch {
       return ALL_PLATFORMS;
     }
   });
-  const togglePlatformVisible = (p: Platform) => {
+  const togglePlatformVisible = (p: SchedulablePlatform) => {
     setVisiblePlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
   // The full set of Agent values across every tab, for the filter dropdown's
@@ -379,8 +408,8 @@ export default function SchedulePlanner() {
   // across every currently-selected tab without lifting each section's own
   // schedule-row fetching/state up to this page (each section keeps loading
   // and writing its own data independently, as today).
-  const [sectionCounts, setSectionCounts] = useState<Record<string, Partial<Record<Platform, number>>>>({});
-  const handlePlatformCounts = useCallback((t: string, counts: Partial<Record<Platform, number>>) => {
+  const [sectionCounts, setSectionCounts] = useState<Record<string, Partial<Record<SchedulablePlatform, number>>>>({});
+  const handlePlatformCounts = useCallback((t: string, counts: Partial<Record<SchedulablePlatform, number>>) => {
     setSectionCounts((prev) => ({ ...prev, [t]: counts }));
   }, []);
 
@@ -767,20 +796,23 @@ export default function SchedulePlanner() {
   // uses for its own count — one shared computation, two callers, so they
   // can't independently drift on what "scheduled" means.
   const overviewPlatformCounts = useMemo(() => {
-    const totals: Partial<Record<Platform, number>> = {};
+    const totals: Partial<Record<SchedulablePlatform, number>> = {};
     for (const t of getActiveOperationalTabs()) {
       const preview = previewByTab[t] ?? EMPTY_PREVIEW;
       const brands = previewBrandsFor(t);
+      // resolveBrandPlatforms (scheduleBrandConfig.ts) stays Platform[]-typed
+      // and out of this plan's scope -- same accepted cast precedent used
+      // throughout this file.
       const tabCounts = countActivePlatformSlots(
         preview.scheduleRows,
         t,
         brands,
-        (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
+        (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms as Platform[], preview.hiddenSet, preview.restrictionMap, preview.removedSet),
         allRangeColumns,
         preview.dateStatusIndex,
         todayISO,
       );
-      for (const platform of Object.keys(tabCounts) as Platform[]) {
+      for (const platform of Object.keys(tabCounts) as SchedulablePlatform[]) {
         totals[platform] = (totals[platform] ?? 0) + (tabCounts[platform] ?? 0);
       }
     }
@@ -797,27 +829,30 @@ export default function SchedulePlanner() {
   // for paused tabs, never a plan -- matching TabPreviewCard's own paused
   // rendering rule.
   const pausedPlatformCounts = useMemo(() => {
-    const totals: Partial<Record<Platform, number>> = {};
+    const totals: Partial<Record<SchedulablePlatform, number>> = {};
     for (const t of getPausedOperationalTabs()) {
       const preview = previewByTab[t] ?? EMPTY_PREVIEW;
       const brands = previewBrandsFor(t);
+      // resolveBrandPlatforms (scheduleBrandConfig.ts) stays Platform[]-typed
+      // and out of this plan's scope -- same accepted cast precedent used
+      // throughout this file.
       const tabCounts = countActivePlatformSlots(
         preview.scheduleRows,
         t,
         brands,
-        (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms, preview.hiddenSet, preview.restrictionMap, preview.removedSet),
+        (brand) => resolveBrandPlatforms(t, brand, preview.activePlatforms as Platform[], preview.hiddenSet, preview.restrictionMap, preview.removedSet),
         allRangeColumns,
         preview.dateStatusIndex,
         todayISO,
       );
-      for (const platform of Object.keys(tabCounts) as Platform[]) {
+      for (const platform of Object.keys(tabCounts) as SchedulablePlatform[]) {
         totals[platform] = (totals[platform] ?? 0) + (tabCounts[platform] ?? 0);
       }
     }
     return totals;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewByTab, agentFilter, allRangeColumns, todayISO]);
-  const pausedDisplayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in pausedPlatformCounts);
+  const pausedDisplayedPlatforms = orderedPlatformKeys(Object.keys(pausedPlatformCounts));
   // Same "nothing left to show" hide the active-tabs grid applies below --
   // a paused tab whose every tracked platform is currently toggled off (a
   // TP-only tab with TP hidden) would otherwise render as an empty-looking
@@ -829,11 +864,11 @@ export default function SchedulePlanner() {
   // Specific-tab-mode platform counts: summed across every currently
   // selected tab's own reported counts (see handlePlatformCounts above).
   const selectedPlatformCounts = useMemo(() => {
-    const totals: Partial<Record<Platform, number>> = {};
+    const totals: Partial<Record<SchedulablePlatform, number>> = {};
     for (const t of selectedTabs) {
       const counts = sectionCounts[t];
       if (!counts) continue;
-      for (const platform of Object.keys(counts) as Platform[]) {
+      for (const platform of Object.keys(counts) as SchedulablePlatform[]) {
         totals[platform] = (totals[platform] ?? 0) + (counts[platform] ?? 0);
       }
     }
@@ -841,7 +876,7 @@ export default function SchedulePlanner() {
   }, [selectedTabs, sectionCounts]);
 
   const displayedPlatformCounts = showGrid ? overviewPlatformCounts : selectedPlatformCounts;
-  const displayedPlatforms = (['tp', 'ag', 'cg', 'wo'] as Platform[]).filter((p) => p in displayedPlatformCounts);
+  const displayedPlatforms = orderedPlatformKeys(Object.keys(displayedPlatformCounts));
   // The week nav drives the no-filter default week in both modes (overview's
   // cards via allRangeColumns above, a selected tab's grid via its own
   // weekStart-driven columns in TabScheduleSection) — but once a date range
@@ -896,28 +931,32 @@ export default function SchedulePlanner() {
           <div className="flex shrink-0 items-center gap-1.5">
             {displayedPlatforms.map((p) => {
               const visible = visiblePlatforms.includes(p);
+              const badge = getPlatformBadge(p);
+              const favicon = getPlatformFavicon(p);
               return (
                 <Tooltip
                   key={p}
                   content={
                     visible
-                      ? `${PLATFORM_BADGE[p].label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — click to hide its chips from the grid`
-                      : `${PLATFORM_BADGE[p].label} chips hidden from the grid — click to show them again`
+                      ? `${badge.label} scheduled or confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — click to hide its chips from the grid`
+                      : `${badge.label} chips hidden from the grid — click to show them again`
                   }
                 >
                   <button
                     type="button"
                     onClick={() => togglePlatformVisible(p)}
                     aria-pressed={visible}
-                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-opacity ${PLATFORM_BADGE[p].className} ${visible ? '' : 'opacity-40 grayscale hover:opacity-70'}`}
+                    className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-opacity ${badge.className} ${visible ? '' : 'opacity-40 grayscale hover:opacity-70'}`}
                   >
-                    <img
-                      src={PLATFORM_FAVICON[p]}
-                      alt=""
-                      className="size-3 rounded-[1px]"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
-                    {PLATFORM_BADGE[p].label} <span className="text-slate-900">{displayedPlatformCounts[p] ?? 0}</span>
+                    {favicon && (
+                      <img
+                        src={favicon}
+                        alt=""
+                        className="size-3 rounded-[1px]"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    )}
+                    {badge.label} <span className="text-slate-900">{displayedPlatformCounts[p] ?? 0}</span>
                   </button>
                 </Tooltip>
               );
@@ -1029,28 +1068,32 @@ export default function SchedulePlanner() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   {pausedDisplayedPlatforms.map((p) => {
                     const visible = visiblePlatforms.includes(p);
+                    const badge = getPlatformBadge(p);
+                    const favicon = getPlatformFavicon(p);
                     return (
                       <Tooltip
                         key={p}
                         content={
                           visible
-                            ? `${PLATFORM_BADGE[p].label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above. Click to hide its chips.`
-                            : `${PLATFORM_BADGE[p].label} chips hidden from the grid — click to show them again`
+                            ? `${badge.label} confirmed ${hasDateFilter ? 'in the selected date range' : 'this week'} — paused tabs only, kept separate from the totals above. Click to hide its chips.`
+                            : `${badge.label} chips hidden from the grid — click to show them again`
                         }
                       >
                         <button
                           type="button"
                           onClick={() => togglePlatformVisible(p)}
                           aria-pressed={visible}
-                          className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-opacity ${PLATFORM_BADGE[p].className} ${visible ? 'opacity-70' : 'opacity-40 grayscale hover:opacity-60'}`}
+                          className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-opacity ${badge.className} ${visible ? 'opacity-70' : 'opacity-40 grayscale hover:opacity-60'}`}
                         >
-                          <img
-                            src={PLATFORM_FAVICON[p]}
-                            alt=""
-                            className="size-3 rounded-[1px]"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                          {PLATFORM_BADGE[p].label} <span className="text-slate-900">{pausedPlatformCounts[p] ?? 0}</span>
+                          {favicon && (
+                            <img
+                              src={favicon}
+                              alt=""
+                              className="size-3 rounded-[1px]"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                          )}
+                          {badge.label} <span className="text-slate-900">{pausedPlatformCounts[p] ?? 0}</span>
                         </button>
                       </Tooltip>
                     );
@@ -1084,11 +1127,18 @@ export default function SchedulePlanner() {
                     renderBrandDetail={(brand) => {
                       const byPlatform = firstLastIndex.get(normalizeBrandKey(brand));
                       if (!byPlatform) return null;
+                      // buildFirstLastPostIndex (scheduleUtils.ts) stays
+                      // Platform-only -- it only reads PLATFORM_STATUS_KEYS/
+                      // PLATFORM_DATE_KEYS, which a custom platform doesn't
+                      // populate, so this history view doesn't cover custom
+                      // platforms yet (same accepted out-of-scope cast
+                      // pattern used elsewhere; see this task's own report
+                      // for the gap).
                       const segments = filterVisiblePlatforms(preview.activePlatforms, visiblePlatforms)
-                        .filter((p) => byPlatform[p])
+                        .filter((p) => byPlatform[p as Platform])
                         .map((p) => {
-                          const fl = byPlatform[p]!;
-                          return `${PLATFORM_BADGE[p].label}: First ${formatPausedDate(fl.firstDateISO)} → Last ${formatPausedDate(fl.lastDateISO)}`;
+                          const fl = byPlatform[p as Platform]!;
+                          return `${getPlatformBadge(p).label}: First ${formatPausedDate(fl.firstDateISO)} → Last ${formatPausedDate(fl.lastDateISO)}`;
                         });
                       if (segments.length === 0) return null;
                       return segments.join('  ·  ');
