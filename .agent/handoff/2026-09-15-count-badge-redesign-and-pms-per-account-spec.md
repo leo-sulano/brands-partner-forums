@@ -67,9 +67,11 @@
   the stale Task-347-only description (the `counts` map no longer exists, replaced by
   `entries`), documents the Task 348 redesign in full, and adds the full per-account PMS
   spec summary as its own section.
-- Committed + pushed to `origin/main`: the redesign/fix commit, plus the spec-doc commit.
-- **PMS ticket for Task 348 not yet filed as of this handoff note** — check
-  `docs/task-history.md`/PMS Review/QA directly before assuming either way.
+- Committed + pushed to `origin/main`: the redesign/fix commit, the spec-doc commit, and
+  the docs/handoff commit.
+- PMS ticket filed: Task 348 → `cmu1fw9f8000v04ict6noxchz` (Review/QA, assigned Leo
+  Sulano, label Feature, 3 subtasks) — verified live via GET after creation. Added to
+  `.claude/pms-synced-tasks.txt`.
 
 **Open thread / possible next step:**
 - **Blocked on the user reviewing `docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md`.**
