@@ -10315,3 +10315,12 @@ Planner card gained public-holiday blocking (Task 307), the Super Admin weekly a
 blurb now describe the three-tier role system (Member/Admin/Super Admin) instead of two tiers; INTRO
 now mentions Custom Platforms. Verified with `npm run build` (clean). Not verified live in a browser
 this session.
+
+---
+
+## Task 344: PMS ↔ Schedule Planner Sync Direction — Clarified (Investigation Only)
+
+*2026-09-14:* Investigated and confirmed the PMS status/column sync is one-way,
+dashboard-authoritative — a manual PMS column move (e.g. into Project Paused) is never read back and
+gets overwritten on the next sync tick; only due-date/assignee drift pulls from PMS. No code changed.
+Full detail: memory `project_pms_schedule_planner_sync_direction_clarified`.
