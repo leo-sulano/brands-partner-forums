@@ -40,26 +40,22 @@
 - `docs/task-history.md` — Task 347 (short-form entry).
 - Memory: `project_schedule_planner_multi_account_day_cell` updated in place (was
   "approved, not built" → now "SHIPPED", with the live-verification detail).
-- Committed locally (`feat: per-account count badge on Schedule Planner day chips`) — **not
-  yet pushed to origin/main, and no PMS ticket filed yet** as of this handoff note. Both
-  are the immediate next step, same pattern as Tasks 345/346 (push, then file to PMS
-  Review/QA with assignee + label + subtasks, then record the ticket ID here and in
-  `.claude/pms-synced-tasks.txt`).
+- Committed and pushed to `origin/main` (`feat: per-account count badge on Schedule
+  Planner day chips`, plus a docs follow-up commit for Task 347 + this handoff file).
+- PMS board (Review/QA, assigned Leo Sulano, label Feature, 3 subtasks, verified via GET
+  after creation): Task 347 → `cmu1f2pum000904lbo8c3yoae`. Added to
+  `.claude/pms-synced-tasks.txt` so the Stop hook won't re-create it.
 
 **Open thread / possible next step:**
-- Push the commit to `origin/main` and file the Task 347 PMS ticket (Review/QA column,
-  assigned Leo Sulano, with subtasks) if not already done by the time this is read — check
-  `git log origin/main` and the PMS board directly rather than trusting this note blindly,
-  since it may have been completed later in the same session after this file was written.
-- Nothing else outstanding on this feature — CSV/Excel export and Ask AI remain explicitly
-  out of scope, matching the existing precedent for the other evidence badges.
+- Nothing outstanding on this feature — fully shipped, pushed, and filed. CSV/Excel export
+  and Ask AI remain explicitly out of scope, matching the existing precedent for the other
+  evidence badges.
 
 **Resume prompt for next session:**
 
 > Continue from the 2026-09-14 session (see
 > `.agent/handoff/2026-09-14-schedule-planner-per-account-count-badge-shipped.md`). The
-> Schedule Planner per-account count badge (Task 347) is built, tested, and live-verified
-> against real BIT tab data. Check whether it was pushed to `origin/main` and filed to the
-> PMS board yet (`git log origin/main`, PMS Review/QA) — if not, that's the immediate next
-> step, following the same pattern as Tasks 345/346. If it's already done, there's nothing
-> outstanding on this feature; ask what to work on next.
+> Schedule Planner per-account count badge (Task 347) is fully shipped: built via TDD,
+> live-verified against real BIT tab data, pushed to `origin/main`, and filed to PMS
+> Review/QA (`cmu1f2pum000904lbo8c3yoae`). Nothing outstanding on this feature — ask what
+> to work on next.
