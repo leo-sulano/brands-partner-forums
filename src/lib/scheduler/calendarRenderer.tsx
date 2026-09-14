@@ -1,9 +1,10 @@
 import { Fragment } from 'react';
 import type { Weekday, BrandScheduleRow, DayStatus } from '../scheduleBrands';
 import { WEEKDAY_LABELS } from '../scheduleBrands';
-import { PLATFORM_FAVICON, type Platform } from '../removedPlatformBrands';
 import type { BrandPlatformPause } from '../queries';
-import { PLATFORM_BADGE, PLATFORM_FULL_LABEL, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
+import { getPlatformBadge, getPlatformFullLabel, unscheduledPlatforms, type DateEvidenceKind } from './scheduleUtils';
+import { getPlatformFavicon } from '../tabIcons';
+import type { SchedulablePlatform } from './schedulerRules';
 import Tooltip, { useTooltip } from '../../components/Tooltip';
 import PausedBadgeIcon from '../../components/PausedBadgeIcon';
 
@@ -32,9 +33,9 @@ function statusLabel(status: DayStatus): string {
 interface ScheduleCellProps {
   brand: string;
   day: Weekday;
-  platforms: Platform[];
-  rowsByPlatform: Partial<Record<Platform, BrandScheduleRow>>;
-  pausesByPlatform: Partial<Record<Platform, BrandPlatformPause>>;
+  platforms: SchedulablePlatform[];
+  rowsByPlatform: Partial<Record<SchedulablePlatform, BrandScheduleRow>>;
+  pausesByPlatform: Partial<Record<SchedulablePlatform, BrandPlatformPause>>;
   // removed/confirmed/pending/doneByPlatform are all matched to this exact
   // calendar day via buildDateStatusIndex — the date column (e.g. "Trust
   // Pilot") records when the account/entry was added, independent of its
@@ -42,10 +43,10 @@ interface ScheduleCellProps {
   // same way Removed/Live do. At most one of the four is ever true for a
   // given platform+day in real data (buildDateStatusIndex classifies each
   // entry into a single bucket).
-  removedByPlatform: Partial<Record<Platform, boolean>>;
-  confirmedByPlatform: Partial<Record<Platform, boolean>>;
-  pendingByPlatform: Partial<Record<Platform, boolean>>;
-  doneByPlatform: Partial<Record<Platform, boolean>>;
+  removedByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
+  confirmedByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
+  pendingByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
+  doneByPlatform: Partial<Record<SchedulablePlatform, boolean>>;
   // Brand-level Agent/Country/Account (most-recently-updated entry, same
   // resolution rule buildAgentIndex/buildCountryIndex/buildAccountIndex use
   // for PMS assignment). Agent is shown unconditionally — it doubles as "who
@@ -69,14 +70,14 @@ interface ScheduleCellProps {
   // titleFor's comment for why that string comparison was replaced), and
   // resolved from brand_platform_override.set_by. Absent (or no entry) means
   // "unknown/not applicable," never rendered as blank.
-  pausedByPlatform?: Partial<Record<Platform, string>>;
+  pausedByPlatform?: Partial<Record<SchedulablePlatform, string>>;
   // Who manually paused this exact day cell (status === 'paused' on this one
   // weekday), keyed by platform, from schedule_manual_pauses.paused_by —
   // distinct from pausedByPlatform above, which is per (platform, week) and
   // only ever populated for an override-driven scheduler-level pause. Absent
   // (or no entry) means "unknown" (e.g. paused before this tracking existed),
   // never rendered as blank.
-  dayPausedByPlatform?: Partial<Record<Platform, string>>;
+  dayPausedByPlatform?: Partial<Record<SchedulablePlatform, string>>;
   // True for any calendar day strictly before today. A plan-only chip (a
   // brand_schedule status with no matching real-entry evidence) on a past
   // day would otherwise look identical to a confirmed post even though the
@@ -99,21 +100,21 @@ interface ScheduleCellProps {
   // handleSetDayStatus/handleCancelDay) enforce this too — this prop only
   // controls what's rendered as interactive.
   canPause: boolean;
-  onToggle: (platform: Platform) => void;
+  onToggle: (platform: SchedulablePlatform) => void;
   // Explicit Pause ('active' -> 'paused') / Resume ('paused' -> 'active')
   // buttons rendered next to a chip with a real per-day status -- an
   // alternative to onToggle's cycle for anyone who wants the direct action
   // instead of clicking through the whole sequence. Reuses the same
   // TabScheduleSection.handleSetDayStatus write path AddPlatformModal
   // already calls, so it can't disagree with what that path already does.
-  onSetStatus: (platform: Platform, status: 'active' | 'paused') => void;
+  onSetStatus: (platform: SchedulablePlatform, status: 'active' | 'paused') => void;
   // Explicit Cancel button -- writes the day back to blank and records a
   // schedule_cancellations row, so the Schedule Status column can show
   // "Cancelled" for it (see TabScheduleSection's handleCancelDay). onToggle's
   // own paused -> blank cycle leg routes through this exact same recording
   // logic internally, so the two paths to "blank" can't disagree about
   // whether a day counts as cancelled.
-  onCancel: (platform: Platform) => void;
+  onCancel: (platform: SchedulablePlatform) => void;
   onAddPlatform: () => void;
   // True whenever the grid is showing more than one week's worth of columns
   // at once (a date-range filter is active) -- TabScheduleSection sets this
@@ -126,7 +127,7 @@ interface ScheduleCellProps {
 }
 
 interface PlatformChipProps {
-  platform: Platform;
+  platform: SchedulablePlatform;
   stateClassName: string;
   isRemoved: boolean;
   isConfirmed: boolean;
@@ -189,10 +190,11 @@ export function EvidenceCornerBadge({ kind }: { kind: DateEvidenceKind }) {
 // redundant tab stop and move keyboard focus off the element whose CSS
 // actually reacts to :focus-visible.
 function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPending, isDone, clickable, planUnverified, label, agent, country, account, isPausedState, pauseReason, pausedBy, onClick, iconOnly }: PlatformChipProps) {
-  const badge = PLATFORM_BADGE[platform];
+  const badge = getPlatformBadge(platform);
+  const favicon = getPlatformFavicon(platform);
   const content = (
     <div>
-      <div>{PLATFORM_FULL_LABEL[platform]}: {label}</div>
+      <div>{getPlatformFullLabel(platform)}: {label}</div>
       {isPausedState ? (
         <>
           {pauseReason && <div>Reason: {pauseReason}</div>}
@@ -212,12 +214,14 @@ function PlatformChip({ platform, stateClassName, isRemoved, isConfirmed, isPend
         onClick={clickable ? onClick : undefined}
         className={`relative inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium ${stateClassName} ${isRemoved ? 'ring-1 ring-rose-500' : ''} ${clickable ? 'cursor-pointer' : ''} ${planUnverified ? 'opacity-0 group-hover/cell:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100' : ''}`}
       >
-        <img
-          src={PLATFORM_FAVICON[platform]}
-          alt={badge.label}
-          className="size-3 rounded-sm"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-        />
+        {favicon && (
+          <img
+            src={favicon}
+            alt={badge.label}
+            className="size-3 rounded-sm"
+            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+          />
+        )}
         {!iconOnly && badge.label}
         {isRemoved && <EvidenceCornerBadge kind="removed" />}
         {isConfirmed && <EvidenceCornerBadge kind="confirmed" />}
@@ -289,7 +293,7 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
         const isDone = !isConfirmed && !isRemoved && !isPending && !!doneByPlatform[platform];
         const hasEvidence = isConfirmed || isRemoved || isPending || isDone;
         if (!isPaused && status == null && !hasEvidence) return null;
-        const badge = PLATFORM_BADGE[platform];
+        const badge = getPlatformBadge(platform);
         const isActiveLook = status === 'active' || (status == null && hasEvidence);
         // A scheduler pause is per (brand, platform, week), not per day — it
         // says nothing about any one day, it's just the absence of a real
@@ -414,8 +418,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                     <button
                       type="button"
                       onClick={() => onSetStatus(platform, 'paused')}
-                      title={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
-                      aria-label={`Pause ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                      title={`Pause ${getPlatformFullLabel(platform)} for ${WEEKDAY_LABELS[day]}`}
+                      aria-label={`Pause ${getPlatformFullLabel(platform)} for ${brand} on ${day}`}
                       className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
                     >
                       ⏸
@@ -424,8 +428,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                     <button
                       type="button"
                       onClick={() => onSetStatus(platform, 'active')}
-                      title={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
-                      aria-label={`Resume ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                      title={`Resume ${getPlatformFullLabel(platform)} for ${WEEKDAY_LABELS[day]}`}
+                      aria-label={`Resume ${getPlatformFullLabel(platform)} for ${brand} on ${day}`}
                       className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-400"
                     >
                       ▶
@@ -435,8 +439,8 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
                   <button
                     type="button"
                     onClick={() => onCancel(platform)}
-                    title={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${WEEKDAY_LABELS[day]}`}
-                    aria-label={`Cancel ${PLATFORM_FULL_LABEL[platform]} for ${brand} on ${day}`}
+                    title={`Cancel ${getPlatformFullLabel(platform)} for ${WEEKDAY_LABELS[day]}`}
+                    aria-label={`Cancel ${getPlatformFullLabel(platform)} for ${brand} on ${day}`}
                     className="inline-flex size-4 items-center justify-center rounded border border-slate-300 text-[9px] text-slate-500 hover:border-rose-400 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-rose-400"
                   >
                     🚫
@@ -503,11 +507,11 @@ export function ScheduleCell({ brand, day, platforms, rowsByPlatform, pausesByPl
 // still goes through the day cell itself (the "+" button, or Resume once
 // it's been reactivated), not this icon.
 type ScheduleStatusIconProps = { agent?: string; pausedBy?: string; pauseResumeAt?: string | null; clickable: boolean; onClick: () => void } & (
-  | { platform: Platform; source: 'system'; pause: BrandPlatformPause }
-  | { platform: Platform; source: 'manual'; days: Weekday[] }
-  | { platform: Platform; source: 'cancelled'; days: Weekday[] }
-  | { platform: Platform; source: 'no-schedule' }
-  | { platform: Platform; source: 'active' }
+  | { platform: SchedulablePlatform; source: 'system'; pause: BrandPlatformPause }
+  | { platform: SchedulablePlatform; source: 'manual'; days: Weekday[] }
+  | { platform: SchedulablePlatform; source: 'cancelled'; days: Weekday[] }
+  | { platform: SchedulablePlatform; source: 'no-schedule' }
+  | { platform: SchedulablePlatform; source: 'active' }
 );
 
 function resumeWeekLabel(pausedWeekStart: string): string {
@@ -618,22 +622,25 @@ export function ScheduleStatusIcon(props: ScheduleStatusIconProps) {
         ? 'bg-slate-100 text-slate-500'
         : 'bg-white text-slate-400 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100'
   } ${clickable ? 'cursor-pointer hover:bg-slate-200' : ''}`;
+  const statusFavicon = getPlatformFavicon(platform);
   const inner = (
     <>
       {isFlagged && (isCancelled ? '🚫' : <PausedBadgeIcon className="size-3" />)}
-      <img
-        src={PLATFORM_FAVICON[platform]}
-        alt={PLATFORM_BADGE[platform].label}
-        className="size-3 rounded-sm"
-        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-      />
+      {statusFavicon && (
+        <img
+          src={statusFavicon}
+          alt={getPlatformBadge(platform).label}
+          className="size-3 rounded-sm"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
       {isFlagged && (isCancelled ? 'Cancelled' : 'Paused')}
     </>
   );
   return (
     <>
       {clickable ? (
-        <button type="button" {...triggerProps} onClick={onClick} className={className} aria-label={`Manage ${PLATFORM_FULL_LABEL[platform]} pause days`}>
+        <button type="button" {...triggerProps} onClick={onClick} className={className} aria-label={`Manage ${getPlatformFullLabel(platform)} pause days`}>
           {inner}
         </button>
       ) : (
