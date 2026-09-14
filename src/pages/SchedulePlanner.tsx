@@ -44,14 +44,14 @@ const WEEK_STORAGE_KEY = 'schedulePlanner.weekStart';
 const DATE_FROM_STORAGE_KEY = 'schedulePlanner.dateFrom';
 const DATE_TO_STORAGE_KEY = 'schedulePlanner.dateTo';
 const AGENT_STORAGE_KEY = 'schedulePlanner.agentFilter';
-const VISIBLE_PLATFORMS_STORAGE_KEY = 'schedulePlanner.visiblePlatforms';
-// The built-in 4 -- used only as (a) the default `visiblePlatforms` value on
-// a genuinely fresh session (sessionStorage empty) and (b) a fixed ordering
-// anchor in orderedPlatformKeys below, so the toolbar's toggle strip keeps
-// showing TP/AG/CG/WO in their familiar order with any custom platform
-// appended after them. Never used to gate/exclude a platform from being
-// tracked, toggled, restored, or rendered — see orderedPlatformKeys and the
-// visiblePlatforms restore logic below, both of which accept any platform id.
+const HIDDEN_PLATFORMS_STORAGE_KEY = 'schedulePlanner.hiddenPlatforms';
+// The built-in 4 -- used only as a fixed ordering anchor in
+// orderedPlatformKeys below, so the toolbar's toggle strip keeps showing
+// TP/AG/CG/WO in their familiar order with any custom platform appended
+// after them. Never used to gate/exclude a platform from being tracked,
+// toggled, restored, rendered, or shown by default — see orderedPlatformKeys
+// below and visiblePlatforms' derivation further down, neither of which
+// special-cases the built-in 4 or excludes any other platform id.
 const ALL_PLATFORMS: SchedulablePlatform[] = ['tp', 'ag', 'cg', 'wo'];
 
 // Stable tp/ag/cg/wo-first ordering for a set of platform keys (e.g. the
@@ -220,25 +220,37 @@ export default function SchedulePlanner() {
   // Which platforms' chips are drawn in the calendar grid/preview cards --
   // an overview toggle only, never a data filter: the toolbar's own count
   // badges, KPI/PMS/pause logic, and export are all untouched by this, see
-  // filterVisiblePlatforms's doc comment. Defaults to all four so a first
-  // visit (or a wiped/unavailable sessionStorage) shows everything, same as
-  // before this toggle existed.
-  const [visiblePlatforms, setVisiblePlatforms] = useState<SchedulablePlatform[]>(() => {
+  // filterVisiblePlatforms's doc comment.
+  //
+  // Persisted as the HIDDEN set, not the visible one -- a platform this
+  // session has never explicitly toggled off (including one this page
+  // doesn't even know exists yet, e.g. a custom platform enabled on some tab
+  // after the last restore) must default to visible. Storing "visible"
+  // directly can't express that without first knowing every platform that
+  // could ever appear; storing "hidden" can, since "not hidden" is the right
+  // default for anything unrecognized.
+  const [hiddenPlatforms, setHiddenPlatforms] = useState<SchedulablePlatform[]>(() => {
     try {
-      const raw = sessionStorage.getItem(VISIBLE_PLATFORMS_STORAGE_KEY);
-      if (raw === null) return ALL_PLATFORMS;
-      // Deliberately no longer filtered against the built-in 4 (ALL_PLATFORMS)
-      // -- that used to silently drop a previously-toggled-visible custom
-      // platform id on every restore, since it's never one of 'tp'/'ag'/'cg'/
-      // 'wo'. Any non-empty stored value is a real platform id (built-in or
-      // custom) this session explicitly toggled at some point.
-      return raw.split(',').filter(Boolean);
+      const raw = sessionStorage.getItem(HIDDEN_PLATFORMS_STORAGE_KEY);
+      return raw ? raw.split(',').filter(Boolean) : [];
     } catch {
-      return ALL_PLATFORMS;
+      return [];
     }
   });
+  // Every platform any currently active or paused tab tracks -- built-in or
+  // custom -- via the same getTabPlatforms() each grid filter/count below
+  // already calls per tab, so this can't disagree with them about what
+  // platforms exist. Recomputed on every render rather than memoized, same
+  // reasoning as TAB_OPTS above: getTabPlatforms reads the hidden-built-in
+  // and custom-platform registries, both of which mutate in place mid-session
+  // (dynamicTabRegistry.ts/tab-configs.ts), so a stale memo could keep a
+  // newly-enabled platform hidden until reload.
+  const knownPlatforms: SchedulablePlatform[] = [
+    ...new Set([...getActiveOperationalTabs(), ...getPausedOperationalTabs()].flatMap((t) => getTabPlatforms(t))),
+  ];
+  const visiblePlatforms = knownPlatforms.filter((p) => !hiddenPlatforms.includes(p));
   const togglePlatformVisible = (p: SchedulablePlatform) => {
-    setVisiblePlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
+    setHiddenPlatforms((prev) => (prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]));
   };
   // The full set of Agent values across every tab, for the filter dropdown's
   // option list — fetched once on mount, independent of showGrid/selectedTabs,
@@ -439,11 +451,11 @@ export default function SchedulePlanner() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(VISIBLE_PLATFORMS_STORAGE_KEY, visiblePlatforms.join(','));
+      sessionStorage.setItem(HIDDEN_PLATFORMS_STORAGE_KEY, hiddenPlatforms.join(','));
     } catch {
       // same as above
     }
-  }, [visiblePlatforms]);
+  }, [hiddenPlatforms]);
 
   useEffect(() => {
     try {

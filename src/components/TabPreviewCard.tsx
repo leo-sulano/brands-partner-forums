@@ -221,13 +221,23 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                                     <span
                                       className={`relative inline-flex items-center rounded-[2px] p-px ${badge.className}`}
                                     >
-                                      {favicon && (
+                                      {favicon ? (
                                         <img
                                           src={favicon}
                                           alt={badge.label}
                                           className="size-2.5 rounded-[1px]"
                                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                         />
+                                      ) : (
+                                        // No favicon (e.g. a custom platform) --
+                                        // fall back to the badge's own label
+                                        // text so the chip still has real width
+                                        // and something to hover, instead of
+                                        // collapsing to an empty ~2px box.
+                                        // Mirrors calendarRenderer.tsx's
+                                        // PlatformChip, which degrades the same
+                                        // way.
+                                        <span className="px-0.5 text-[8px] font-semibold leading-none">{badge.label}</span>
                                       )}
                                       {kind && <EvidenceCornerBadge kind={kind} />}
                                     </span>
@@ -240,13 +250,18 @@ export default function TabPreviewCard({ tab, preview, previewBrands, hasDateFil
                                 return (
                                   <Tooltip key={p} content={`${badge.label}: Planned — no confirmed activity found`}>
                                     <span className="inline-flex items-center rounded-[2px] border border-dashed border-slate-300 p-px opacity-60">
-                                      {favicon && (
+                                      {favicon ? (
                                         <img
                                           src={favicon}
                                           alt={badge.label}
                                           className="size-2.5 rounded-[1px] grayscale"
                                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                                         />
+                                      ) : (
+                                        // Same fallback as the executed-entry
+                                        // chip above -- no favicon means no
+                                        // other content in this span at all.
+                                        <span className="px-0.5 text-[8px] font-semibold leading-none text-slate-400">{badge.label}</span>
                                       )}
                                     </span>
                                   </Tooltip>
