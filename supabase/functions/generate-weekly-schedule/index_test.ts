@@ -17,6 +17,8 @@ function tableBuilder(rows: unknown[]) {
     eq: () => builder,
     order: () => builder,
     range: () => builder,
+    limit: () => builder,
+    gt: () => builder,
     upsert: () => builder,
     maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
     then(onfulfilled: (v: { data: unknown[]; error: null }) => unknown) {
