@@ -1396,6 +1396,55 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'Rooster Partners', brand: 'Lucky7even', date: '2026-08-27' }]);
   });
 
+  it('resolves an entry-tied link from its own entry\'s evidence, independent of the combo\'s other entries', async () => {
+    // 'TP Brand Injection' (tabLabel 'BITP') so 'TP Review Status'/'Trust
+    // Pilot' are the right field names for platform 'tp' -- same tab the
+    // first two tests in this describe block already use.
+    const TAB = 'TP Brand Injection';
+    const client = fakeMultiTableClient({
+      entries: [
+        { id: 'e1', tab: TAB, sheet_row_id: '1', updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null, data: { Brands: 'Casino Magius', Account: 'a1', Agent: 'LAI', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-09-15' } },
+        { id: 'e2', tab: TAB, sheet_row_id: '1', updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null, data: { Brands: 'Casino Magius', Account: 'a2', Agent: 'JEN', 'TP Review Status': 'Done', 'Trust Pilot': '2026-09-15' } },
+      ],
+      schedule_pms_links: [
+        { id: 'link-generic', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-generic', synced_status: 'removed', synced_column_id: DONE_COL, entry_id: null },
+        { id: 'link-e1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-e1', synced_status: 'removed', synced_column_id: DONE_COL, entry_id: 'e1' },
+        { id: 'link-e2', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-e2', synced_status: 'active', synced_column_id: TODO_COL, entry_id: 'e2' },
+      ],
+      brand_schedule: [],
+      brand_platform_pause: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    // link-generic and link-e1 both already read 'removed' (the combo's own
+    // aggregate, since e1's Removed status wins removed>confirmed>pending>done
+    // precedence there) which matches their current synced_status -- neither
+    // should ever provoke a fetch call. link-e2 is the one link whose own
+    // entry (e2, Done) disagrees with that combo aggregate: only it should
+    // move, and only to 'done', not to the combo's 'removed'. The GET here is
+    // syncScheduleStatusToPms's own fetchPmsProjectTasks call, made once
+    // whenever there's at least one item to sync, before the per-item
+    // move/description writes.
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
+      { url: /\/tasks\/task-e2\/move$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-e2$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await resolveAndSyncTabStatuses(TAB, client, CREDENTIALS, fetchFn);
+    // Asserting the full item (not just linkId) is what actually catches the
+    // combo-aggregate bug: under the old code every link here resolves via
+    // the combo aggregate, so link-e2 would *also* be the only link with a
+    // status mismatch (combo 'removed' vs its synced 'active') and would
+    // still be the only one synced -- linkId alone can't tell 'removed' (the
+    // wrong, combo-level answer) apart from 'done' (the right, per-entry
+    // answer), since both happen to map to the same PMS column.
+    expect(result.synced).toEqual([{
+      linkId: 'link-e2', pmsTaskId: 'task-e2', targetStatus: 'done', tabLabel: 'BITP', brand: 'Casino Magius', date: '2026-09-15',
+      description: 'Account: a2\nCountry: \nProxy: ',
+    }]);
+  });
+
 });
 
 const IN_PROGRESS_COL = 'cmsoh1uxz000304l4zynwy7vw';

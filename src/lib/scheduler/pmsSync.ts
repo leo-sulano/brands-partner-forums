@@ -1246,11 +1246,27 @@ export async function resolveAndSyncTabStatuses(
       continue;
     }
 
-    const targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
+    const comboKey = `${link.brand_key}::${link.platform}::${link.date}`;
+    let targetStatus: PmsSyncStatus;
+    let description: string | undefined;
+    if (link.entry_id != null) {
+      // Entry-tied link: resolve from THIS entry's own evidence, not the
+      // combo's aggregate -- see resolveEntryPmsStatus's own doc comment.
+      // If the entry can't be found (e.g. its status changed to something
+      // outside the four recognized categories since this link was created),
+      // leave the link untouched rather than guessing -- same
+      // never-destructively-act-on-an-unclear-case spirit as the rest of
+      // this function.
+      const entryDetail = dateStatusIndex.entries.get(comboKey)?.find((e) => e.id === link.entry_id);
+      if (!entryDetail) continue;
+      targetStatus = resolveEntryPmsStatus(entryDetail.kind);
+      description = buildTaskDescription(entryDetail);
+    } else {
+      targetStatus = resolvePmsSyncStatus(link.brand_key, link.platform, link.date, dateStatusIndex, isPaused);
+      const details = dateStatusIndex.details.get(comboKey);
+      description = details ? buildTaskDescription(details) : undefined;
+    }
     if (targetStatus !== link.synced_status) {
-      const detailsKey = `${link.brand_key}::${link.platform}::${link.date}`;
-      const details = dateStatusIndex.details.get(detailsKey);
-      const description = details ? buildTaskDescription(details) : undefined;
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus, tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date, description });
     }
   }
