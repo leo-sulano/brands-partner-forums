@@ -461,6 +461,12 @@ Deno.test('handleAuditAllStatuses calls parityFn once per active tab, never for 
         ? [{ tab, date: '2026-09-16', plannerActiveCount: 15, pmsActiveLinkCount: 14, pmsTotalLinkCount: 15 }]
         : [];
     },
+    undefined,
+    undefined,
+    // Otherwise the real backfillMissingEntryLinks runs against the fake
+    // {} client, throws, and its swallowed error silently lands in
+    // results[tab] ahead of the parity note this test actually cares about.
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(parityCalls.sort(), ['BITP', 'Hanan']);
   assertEquals(results['BITP'].endsWith('; parity mismatch on 1 date(s)'), true);
@@ -480,6 +486,9 @@ Deno.test('handleAuditAllStatuses isolates one tab\'s parity-check failure from 
       if (tab === 'BITP') throw new Error('boom');
       return [];
     },
+    undefined,
+    undefined,
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   // A thrown parityFn is caught and logged, never surfaced into results --
   // unlike a backfill failure (which IS surfaced, see the dedicated test
@@ -506,6 +515,7 @@ Deno.test('handleAuditAllStatuses sends one alert email when parity issues are f
       sendCalls.push({ subject, text });
       return { sent: 1, failed: 0 };
     },
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(sendCalls.length, 1);
   assertEquals(sendCalls[0].text.includes('BITP / 2026-09-16'), true);
@@ -527,6 +537,7 @@ Deno.test('handleAuditAllStatuses never sends an alert email when no parity issu
       sendCalls++;
       return { sent: 1, failed: 0 };
     },
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(sendCalls, 0);
 });
@@ -545,6 +556,7 @@ Deno.test('handleAuditAllStatuses skips the alert email when Gmail credentials a
     async () => {
       throw new Error('should never be called with no gmailCredentials');
     },
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(results['BITP'].endsWith('; parity mismatch on 1 date(s)'), true);
 });
@@ -563,6 +575,7 @@ Deno.test('handleAuditAllStatuses swallows a send-email failure without throwing
     async () => {
       throw new Error('Gmail 500');
     },
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(results['BITP'].endsWith('; parity mismatch on 1 date(s)'), true);
 });
