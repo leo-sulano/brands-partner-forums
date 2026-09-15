@@ -10415,3 +10415,26 @@ pre-existing generic card (position-based coverage rule); a manual re-trigger cr
 cards (idempotent). Full suite 1122/1122, build clean, `deno check` clean on both edge functions
 throughout. Full detail: memory `project_schedule_planner_multi_account_day_cell`, handoff
 `2026-09-15-per-account-pms-task-cards.md`.
+
+---
+
+## Task 351: Closed the Two Accepted Gaps from Task 350
+
+*2026-09-15:* Same-day follow-up closing the two non-blocking gaps Task 350 deliberately left open.
+(1) An entry-tied `schedule_pms_links` row whose `entries` row was deleted (`entry_id` nulled by `ON
+DELETE SET NULL`) used to fall through the "entry can't be found -- leave it untouched" guard forever,
+since nothing can ever match `entry_id: null` again. Now cleaned up outright (PMS task + link row
+deleted) the same way an explicit Cancel is, tracked in new `orphanCleaned`/`orphanCleanupFailed`
+result buckets kept separate from `cancelled`/`cancelFailed` for observability. Verified RED->GREEN by
+temporarily disabling the new branch and confirming both the success and failure-path tests fail for
+the right reason. (2) 6 `handleAuditAllStatuses` parity/email tests in `index_test.ts` injected a fake
+`parityFn`/`sendAlertFn` but never `backfillEntryFn`, so the real `backfillMissingEntryLinks` silently
+ran against the fake client every time and swallowed its error into a hidden note -- fixed by injecting
+a no-op fake, same pattern Task 6 already used for 4 sibling tests. Also found and fixed an unrelated
+pre-existing regression while verifying: Task 7's `skipped` field addition to `backfillMissingEntryLinks`
+was never checked with `deno test` (only `deno check`), leaving `deno test` unable to even type-check
+on `main` -- fixed 4 stale test fakes. Tier 2 (implement directly + self-review, no full pipeline) per
+this project's own blast-radius rule, since both were scoped fixes with a contained root cause. Full
+suite 2517/2517, build clean, `deno check`+`deno test` clean on both edge functions. Deployed
+`sync-schedule-pms` to production (`generate-weekly-schedule` confirmed unaffected -- it only imports
+`pushScheduleToPms`, untouched by either fix -- no redeploy needed). No schema change, no `db push`.
