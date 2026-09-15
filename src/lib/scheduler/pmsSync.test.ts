@@ -2340,9 +2340,11 @@ describe('backfillMissingEntryLinks', () => {
       { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-jen', name: 'JEN' } }, { user: { id: 'u-ann', name: 'ANN' } }] } },
       { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
       { url: /\/tasks$/, method: 'POST', body: { id: 'task-2' } },
-      { url: /\/tasks\/task-2$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-2$/, method: 'PATCH', body: {} }, // labels/assignee
+      { url: /\/tasks\/task-2$/, method: 'PATCH', body: {} }, // description
       { url: /\/tasks$/, method: 'POST', body: { id: 'task-3' } },
-      { url: /\/tasks\/task-3$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-3$/, method: 'PATCH', body: {} }, // labels/assignee
+      { url: /\/tasks\/task-3$/, method: 'PATCH', body: {} }, // description
     ]);
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
     expect(result.created).toEqual([
@@ -2383,7 +2385,8 @@ describe('backfillMissingEntryLinks', () => {
       { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-lai', name: 'LAI' } }] } },
       { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
       { url: /\/tasks$/, method: 'POST', body: { id: 'task-1' } },
-      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} }, // labels/assignee
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} }, // description
     ]);
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
     expect(result.created).toEqual([
@@ -2416,7 +2419,8 @@ describe('backfillMissingEntryLinks', () => {
       { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-lai', name: 'LAI' } }] } },
       { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
       { url: /\/tasks$/, method: 'POST', body: { id: 'task-1' } },
-      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} }, // labels/assignee
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} }, // description
     ]);
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
     expect(result.created).toEqual([
@@ -2425,6 +2429,60 @@ describe('backfillMissingEntryLinks', () => {
     expect(linksTable).toEqual([
       { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-1', synced_column_id: DONE_COL, link_kind: 'entry', entry_id: 'e1', synced_status: 'removed' },
     ]);
+  });
+
+  // Reported live (BIT tab, Casino Magius, 2026-09-14): the 506/512 cards
+  // backfillMissingEntryLinks created sat with a null description in
+  // production. Root cause: the card's synced_status is now set to its
+  // final resolved value AT insert time (the fix above, I4), so a later
+  // resolveAndSyncTabStatuses tick -- which only PATCHes a description when
+  // targetStatus !== link.synced_status -- never finds a mismatch to act on
+  // for an entry-tied link again. The description must be set here, at
+  // creation, not deferred to that tick.
+  it('sets the card\'s description at creation time to the entry\'s own Account/Country/Proxy Used/review-text content', async () => {
+    const client = fakeMultiTableClient({
+      entries: [{
+        id: 'e1', tab: TAB, sheet_row_id: '1', updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null,
+        data: {
+          Brands: 'Casino Magius', Account: '506 | BI TP | Netherlands', Agent: 'JEN',
+          'TP Review Status': 'Published', 'Trust Pilot': '2026-09-15',
+          Country: 'Netherlands', 'Proxy Used': 'SpyderProxy', 'TP Review Text': 'Great service, quick payouts.',
+        },
+      }],
+      // No pre-existing generic link -- this is the only entry (index 0), so
+      // it must get its own entry-tied card directly (matching "creates
+      // entry-tied links for every entry when no generic link exists yet"
+      // above); with a generic link present it would instead ride that one
+      // (position-0 coverage rule) and this test would create nothing.
+      schedule_pms_links: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
+    });
+    const calls: { url: string; method: string; body: unknown }[] = [];
+    const fetchFn = vi.fn(async (url: string, init: RequestInit = {}) => {
+      const method = init.method ?? 'GET';
+      calls.push({ url, method, body: init.body ? JSON.parse(init.body as string) : undefined });
+      if (/\/teams\//.test(url) && method === 'GET') return { ok: true, status: 200, json: async () => ({ members: [{ user: { id: 'u-jen', name: 'JEN' } }] }) };
+      if (/\/labels$/.test(url) && method === 'GET') return { ok: true, status: 200, json: async () => [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] };
+      if (/\/tasks$/.test(url) && method === 'POST') return { ok: true, status: 200, json: async () => ({ id: 'task-1' }) };
+      if (/\/tasks\/task-1$/.test(url) && method === 'PATCH') return { ok: true, status: 200, json: async () => ({}) };
+      throw new Error(`unexpected fetch call: ${method} ${url}`);
+    }) as unknown as typeof fetch;
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '506 | BI TP | Netherlands' },
+    ]);
+    // Two PATCHes to task-1: labels/assignee (no body assertion needed, its
+    // own contract is covered elsewhere), then description -- this is the
+    // second one, and its body is what proves this fix.
+    const descriptionPatches = calls.filter((c) => c.url.endsWith('/tasks/task-1') && c.method === 'PATCH');
+    expect(descriptionPatches).toHaveLength(2);
+    expect(descriptionPatches[1].body).toEqual({
+      description: 'Account: 506 | BI TP | Netherlands\nCountry: Netherlands\nProxy: SpyderProxy\n\nGreat service, quick payouts.',
+    });
   });
 
   it('skips a combo whose platform is flagged page-removed for that brand, and records it in result.skipped with a reason', async () => {

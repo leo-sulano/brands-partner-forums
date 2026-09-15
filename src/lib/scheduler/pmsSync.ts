@@ -540,6 +540,19 @@ export async function backfillMissingEntryLinks(
         const task = await createPmsTask(`${tabLabel} | ${brand} — ${entryDetail.account}`, date, credentials, fetchFn, columnId);
         createdTaskId = task.id;
         await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
+        // Set at creation time, not left for a later resolveAndSyncTabStatuses
+        // tick to attach: that tick only fires a description PATCH when
+        // targetStatus !== link.synced_status, and insertSchedulePmsLink
+        // below already inserts this link with synced_status pre-set to its
+        // final resolved status (I4's fix) -- so, unlike a generic link
+        // (which genuinely starts at the DB default 'active' and so always
+        // mismatches on its first real resolve), an entry-tied link's status never again
+        // differs from what it was created with, and the "next tick attaches
+        // it" description path this function was originally built to rely on
+        // never fires. Confirmed live: BI TP Netherlands 506/512 (BIT tab,
+        // 2026-09-14) sat with a null description in production for exactly
+        // this reason.
+        await setPmsTaskDescription(task.id, buildTaskDescription(entryDetail), credentials, fetchFn);
         await insertSchedulePmsLink(tab, brand, platform as Platform, date, task.id, columnId, entryDetail.id, 'entry', client, status);
         created.push({ tab, brand, platform: platform as SchedulablePlatform, date, account: entryDetail.account });
       } catch (err) {
