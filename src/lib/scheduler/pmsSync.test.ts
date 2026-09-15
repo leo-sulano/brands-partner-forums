@@ -1964,6 +1964,7 @@ describe('backfillMissingScheduledLinks', () => {
 describe('backfillMissingEntryLinks', () => {
   const TAB = 'TP Brand Injection';
   const WEEK = '2026-09-14'; // Monday
+  const APPROVED = [{ tab: TAB, week_start: WEEK, status: 'approved' }];
 
   // fetchRawEntriesByTab caches entries per tab name for 60s regardless of
   // which client fetched them (see resolveAndSyncTabStatuses's own top-of-file
@@ -2006,6 +2007,7 @@ describe('backfillMissingEntryLinks', () => {
       removed_platform_brands: [],
       schedule_hidden_brands: [],
       schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
     });
     const fetchFn = fakeFetchSequence([
       { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-jen', name: 'JEN' } }, { user: { id: 'u-ann', name: 'ANN' } }] } },
@@ -2033,6 +2035,7 @@ describe('backfillMissingEntryLinks', () => {
       removed_platform_brands: [],
       schedule_hidden_brands: [],
       schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
     });
     const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API when nothing is missing'); }) as unknown as typeof fetch;
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
@@ -2047,6 +2050,7 @@ describe('backfillMissingEntryLinks', () => {
       removed_platform_brands: [],
       schedule_hidden_brands: [],
       schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
     });
     const fetchFn = fakeFetchSequence([
       { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-lai', name: 'LAI' } }] } },
@@ -2071,10 +2075,94 @@ describe('backfillMissingEntryLinks', () => {
       removed_platform_brands: [{ tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp' }],
       schedule_hidden_brands: [],
       schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
     });
     const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API for an excluded combo'); }) as unknown as typeof fetch;
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [], failed: [] });
+  });
+
+  // Important #2 (task-4 review): backfillMissingEntryLinks creates tasks
+  // directly, unlike backfillMissingScheduledLinks which gets the weekly
+  // approval gate for free by delegating to pushScheduleToPms -- this proves
+  // it enforces the same gate itself rather than ever putting an entry-tied
+  // card on the board for a week nobody has approved.
+  it('creates no cards for a combo whose week has not been approved', async () => {
+    const client = fakeMultiTableClient({
+      entries: [entryRow({ id: 'e1', account: '504 | BI TP | Netherlands' })],
+      schedule_pms_links: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: [], // no approval row for this tab/week
+    });
+    const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API for an unapproved week'); }) as unknown as typeof fetch;
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [], failed: [] });
+  });
+
+  // Important #1 (task-4 review): the try/catch/cleanup-on-failure path had
+  // zero coverage -- mirrors pushScheduleToPms's own "deletes the just-created
+  // PMS task when a later step in the same item fails" test (this file,
+  // describe('pushScheduleToPms')) but additionally proves the per-entry
+  // failure does NOT abort the rest of the combo: e2's assignee/label PATCH
+  // fails and is cleaned up + recorded in `failed`, while e3 (the next
+  // uncovered entry in the same combo) still gets its card created.
+  it('deletes the just-created task and records a failure for one entry, without aborting the rest of the combo', async () => {
+    const client = fakeMultiTableClient({
+      entries: [
+        entryRow({ id: 'e1', account: '504 | BI TP | Netherlands', agent: 'LAI' }),
+        entryRow({ id: 'e2', account: '506 | BI TP | Netherlands', agent: 'JEN' }),
+        entryRow({ id: 'e3', account: '512 | BI TP | Netherlands', agent: 'ANN' }),
+      ],
+      schedule_pms_links: [
+        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', entry_id: null },
+      ],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
+    });
+    const deleteCalls: string[] = [];
+    let taskPostCount = 0;
+    const fetchFn = vi.fn(async (url: string, init: RequestInit = {}) => {
+      const method = init.method ?? 'GET';
+      if (method === 'DELETE') {
+        deleteCalls.push(url);
+        return { ok: true, status: 204, json: async () => ({}) };
+      }
+      if (/\/teams\//.test(url) && method === 'GET') {
+        return { ok: true, status: 200, json: async () => ({ members: [{ user: { id: 'u-jen', name: 'JEN' } }, { user: { id: 'u-ann', name: 'ANN' } }] }) };
+      }
+      if (/\/labels$/.test(url) && method === 'GET') {
+        return { ok: true, status: 200, json: async () => [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] };
+      }
+      if (/\/tasks$/.test(url) && method === 'POST') {
+        taskPostCount += 1;
+        // First uncovered entry (e2) gets task-orphan; second (e3) gets task-3.
+        return { ok: true, status: 200, json: async () => ({ id: taskPostCount === 1 ? 'task-orphan' : 'task-3' }) };
+      }
+      if (/\/tasks\/task-orphan$/.test(url) && method === 'PATCH') {
+        // Simulates e2's labels/assignee PATCH failing after its task was
+        // already created -- the same failure point pushScheduleToPms's
+        // orphan-cleanup test exercises.
+        return { ok: false, status: 500, json: async () => ({}) };
+      }
+      if (/\/tasks\/task-3$/.test(url) && method === 'PATCH') {
+        return { ok: true, status: 200, json: async () => ({}) };
+      }
+      throw new Error(`unexpected fetch call: ${method} ${url}`);
+    }) as unknown as typeof fetch;
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result.failed).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '506 | BI TP | Netherlands', error: 'PMS task label/assignee update failed: 500' },
+    ]);
+    expect(deleteCalls).toEqual(['https://pms-nu-eight.vercel.app/api/tasks/task-orphan']);
+    expect(result.created).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '512 | BI TP | Netherlands' },
+    ]);
   });
 });
 

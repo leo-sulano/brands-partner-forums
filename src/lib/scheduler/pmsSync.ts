@@ -425,13 +425,19 @@ export async function backfillMissingEntryLinks(
   const created: PmsEntryLinkResult['created'] = [];
   const failed: PmsEntryLinkResult['failed'] = [];
 
-  const [entries, links, catalogRows, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+  const [entries, links, catalogRows, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows, approvedWeekSet] = await Promise.all([
     fetchRawEntriesByTab(tab, client),
     fetchSchedulePmsLinks(tab, client),
     fetchBrandCatalog(tab, client).catch(() => []),
     fetchRemovedPlatformBrands(client),
     fetchScheduleHiddenBrands(tab, client),
     fetchScheduleRestrictedBrands(tab, client),
+    // Same weekly approval gate pushScheduleToPms enforces (see its own
+    // comment above) -- no card, entry-tied or generic, may ever land on the
+    // PMS board for a week nobody has approved yet. backfillMissingScheduledLinks
+    // gets this for free by delegating to pushScheduleToPms; this function
+    // creates tasks directly, so it must check the same gate itself.
+    fetchApprovedScheduleWeeks([tab], client),
   ]);
 
   const dateStatusIndex = buildDateStatusIndex(entries);
@@ -456,6 +462,14 @@ export async function backfillMissingEntryLinks(
     // buildDateStatusIndex, so this narrowing is safe at runtime; TypeScript
     // just can't track it through the split('::').
     if (!allowedPlatforms.includes(platform as SchedulablePlatform)) continue;
+
+    // Weekly approval gate (see the fetchApprovedScheduleWeeks comment above)
+    // -- an un-approved combo is skipped outright, same as pushScheduleToPms's
+    // own `skipped` items, just without a dedicated bucket in this function's
+    // narrower result shape (created/failed only): nothing was attempted, so
+    // there's nothing to report either way.
+    const comboWeekStart = weekdayAndWeekStartFor(date)?.weekStart;
+    if (!comboWeekStart || !approvedWeekSet.has(`${tab}::${comboWeekStart}`)) continue;
 
     const comboLinks = links.filter((l) => l.brand_key === brandKey && l.platform === platform && l.date === date);
     const linkedEntryIds = new Set(comboLinks.filter((l) => l.entry_id != null).map((l) => l.entry_id));
