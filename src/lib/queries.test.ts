@@ -507,9 +507,9 @@ describe('queries.ts injectable Supabase client', () => {
   it('insertSchedulePmsLink uses the passed-in client for the insert, recording the created column', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ insert });
-    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-todo', { from: fakeFrom } as any);
+    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-todo', null, { from: fakeFrom } as any);
     expect(fakeFrom).toHaveBeenCalledWith('schedule_pms_links');
-    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-todo' });
+    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-todo', entry_id: null });
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 

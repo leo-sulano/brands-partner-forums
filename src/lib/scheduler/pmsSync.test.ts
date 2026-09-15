@@ -87,7 +87,7 @@ describe('pushScheduleToPms', () => {
     ]);
     const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [ITEM], skipped: [], failed: [] });
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, entry_id: null }]);
   });
 
   it('skips an item that already has a link for that exact combo, making no PMS API calls', async () => {
@@ -204,7 +204,7 @@ describe('pushScheduleToPms', () => {
     expect(result.created).toEqual([ITEM]);
     expect(result.skipped).toEqual([{ ...ITEM }]);
     expect(result.failed).toEqual([]);
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, entry_id: null }]);
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
@@ -1582,7 +1582,7 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
 function link(over: Partial<SchedulePmsLink> = {}): SchedulePmsLink {
   return {
     id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega',
-    platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done', synced_column_id: DONE_COL,
+    platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done', synced_column_id: DONE_COL, entry_id: null,
     ...over,
   };
 }

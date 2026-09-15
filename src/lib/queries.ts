@@ -1686,12 +1686,17 @@ export interface SchedulePmsLink {
   // PMS_STATUS_COLUMN_IDS remap, where this value itself is now stale
   // relative to the current mapping) -- only the latter gets corrected.
   synced_column_id: string;
+  // NULL for the original "generic" plan-level link (one per combo, created
+  // when the slot's plan first went active -- unchanged behavior). Set to a
+  // specific entries.id for a new entry-tied link representing one real
+  // account's own posting -- see docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md.
+  entry_id: string | null;
 }
 
 export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
   const { data, error } = await client
     .from('schedule_pms_links')
-    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id')
+    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as SchedulePmsLink[];
@@ -1702,7 +1707,8 @@ export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient 
 // cards on schedule-paused/archived tabs the per-tab status sweep never
 // touches. Paginated for the same reason fetchEntryCredentials is: an
 // unpaginated select silently caps at PostgREST's 1,000-row default, and
-// this table grows one row per scheduled (tab, brand, platform, date).
+// this table grows one row per scheduled (tab, brand, platform, date) --
+// now potentially several rows per combo, one per account.
 export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
   const PAGE = 1000;
   const all: SchedulePmsLink[] = [];
@@ -1710,7 +1716,7 @@ export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase
   while (true) {
     const { data, error } = await client
       .from('schedule_pms_links')
-      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id')
+      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id')
       .range(from, from + PAGE - 1);
     if (error) throw error;
     all.push(...((data ?? []) as SchedulePmsLink[]));
@@ -1727,11 +1733,12 @@ export async function insertSchedulePmsLink(
   date: string,
   pmsTaskId: string,
   columnId: string,
+  entryId: string | null,
   client: SupabaseClient = supabase,
 ): Promise<void> {
   const { error } = await client
     .from('schedule_pms_links')
-    .insert({ tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId });
+    .insert({ tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId, entry_id: entryId });
   if (error) throw error;
 }
 

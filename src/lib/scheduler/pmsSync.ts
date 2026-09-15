@@ -268,7 +268,7 @@ export async function pushScheduleToPms(
       // through this column safely. Same bridge-with-documented-cast pattern
       // as the scheduleBrands.ts/BrandScheduleRow.platform gap this plan's
       // ledger already ruled on for Task 6.
-      await insertSchedulePmsLink(item.tab, item.brand, item.platform as Platform, item.date, task.id, PMS_TODO_COLUMN_ID, client);
+      await insertSchedulePmsLink(item.tab, item.brand, item.platform as Platform, item.date, task.id, PMS_TODO_COLUMN_ID, null, client);
       // Reflect the just-created link back into this tab's in-memory `links`
       // array so a later item in the SAME batch that repeats this exact combo
       // (e.g. rapid re-cycling of one cell while a prior push is in flight)
@@ -279,7 +279,7 @@ export async function pushScheduleToPms(
       // Same queries.ts-out-of-scope cast as insertSchedulePmsLink above --
       // links is typed SchedulePmsLink[] (platform: Platform), this is a
       // local in-memory mirror of what was just inserted, not a re-derivation.
-      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform as Platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID });
+      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform as Platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID, entry_id: null });
       created.push(item);
     } catch (err) {
       // The in-memory `links` guard above only protects against a duplicate
