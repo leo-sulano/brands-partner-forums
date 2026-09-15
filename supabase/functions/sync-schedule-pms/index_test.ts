@@ -9,7 +9,7 @@ Deno.test('syncAllTabStatuses processes every given tab independently, isolating
   const fakeResolve = async (tab: string) => {
     calls.push(tab);
     if (tab === 'Trybet') throw new Error('boom');
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [], orphanCleaned: [], orphanCleanupFailed: [] };
   };
   const results = await syncAllTabStatuses(
     [{ tab: 'BITP', paused: false }, { tab: 'Trybet', paused: false }, { tab: 'Hanan', paused: false }],
@@ -32,6 +32,8 @@ Deno.test('syncAllTabStatuses reports both move and cancel failure counts in one
     cancelFailed: [{ item: {} as any, error: 'cancel boom' }, { item: {} as any, error: 'cancel boom 2' }],
     pageRemoved: [],
     pageRemovedFailed: [],
+    orphanCleaned: [],
+    orphanCleanupFailed: [],
   });
   const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'error: 1 link(s) failed to move, 2 link(s) failed to cancel');
@@ -45,12 +47,29 @@ Deno.test('syncAllTabStatuses reports a page-removed move failure alongside the 
     cancelFailed: [],
     pageRemoved: [],
     pageRemovedFailed: [{ item: {} as any, error: 'move-to-page-removed boom' }],
+    orphanCleaned: [],
+    orphanCleanupFailed: [],
   });
   const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'error: 1 link(s) failed to move to Page Removed');
 });
 
-Deno.test('syncAllTabStatuses reports ok when only cancelled/pageRemoved items are non-empty, with zero failures', async () => {
+Deno.test('syncAllTabStatuses reports an orphan-cleanup failure count alongside the other failure counts', async () => {
+  const fakeResolve = async () => ({
+    synced: [],
+    failed: [],
+    cancelled: [],
+    cancelFailed: [],
+    pageRemoved: [],
+    pageRemovedFailed: [],
+    orphanCleaned: [],
+    orphanCleanupFailed: [{ item: {} as any, error: 'orphan delete boom' }],
+  });
+  const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
+  assertEquals(results['BITP'], 'error: 1 orphaned link(s) failed to clean up');
+});
+
+Deno.test('syncAllTabStatuses reports ok when only cancelled/pageRemoved/orphanCleaned items are non-empty, with zero failures', async () => {
   const fakeResolve = async () => ({
     synced: [],
     failed: [],
@@ -58,6 +77,8 @@ Deno.test('syncAllTabStatuses reports ok when only cancelled/pageRemoved items a
     cancelFailed: [],
     pageRemoved: [{ tab: 'BITP', brand: 'Y', platform: 'tp' as const, date: '2026-08-27' }],
     pageRemovedFailed: [],
+    orphanCleaned: [{ tab: 'BITP', brand: 'Z', platform: 'tp' as const, date: '2026-08-27' }],
+    orphanCleanupFailed: [],
   });
   const results = await syncAllTabStatuses([{ tab: 'BITP', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(results['BITP'], 'ok');
@@ -67,7 +88,7 @@ Deno.test('syncAllTabStatuses processes only the given tab when the list has one
   const calls: string[] = [];
   const fakeResolve = async (tab: string) => {
     calls.push(tab);
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [], orphanCleaned: [], orphanCleanupFailed: [] };
   };
   const results = await syncAllTabStatuses([{ tab: 'Wizard of Odds', paused: false }], {} as SupabaseClient, { apiToken: 'test-token' }, fetch, fakeResolve as any);
   assertEquals(calls, ['Wizard of Odds']);
@@ -78,7 +99,7 @@ Deno.test('syncAllTabStatuses passes each tab\'s paused flag through to resolveF
   const calls: { tab: string; paused: unknown }[] = [];
   const fakeResolve = async (tab: string, _c: unknown, _cr: unknown, _f: unknown, paused: unknown) => {
     calls.push({ tab, paused });
-    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
+    return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [], orphanCleaned: [], orphanCleanupFailed: [] };
   };
   await syncAllTabStatuses(
     [{ tab: 'BITP', paused: false }, { tab: 'Hanan', paused: true }],
@@ -257,7 +278,7 @@ Deno.test('handleSyncAllStatuses calls backfillFn for a single requested active 
         failed: [],
       };
     },
-    async () => ({ created: [], failed: [] }),
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(backfillCalls, ['Hanan']);
   assertEquals(results['Hanan'].endsWith('; backfilled 1 missing link(s)'), true);
@@ -372,7 +393,7 @@ Deno.test('handleAuditAllStatuses appends a non-empty backfill result onto that 
     undefined,
     undefined,
     undefined,
-    async () => ({ created: [], failed: [] }),
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(results['BITP'].endsWith('; backfilled 1 missing link(s)'), true);
 });
@@ -392,7 +413,7 @@ Deno.test('handleAuditAllStatuses isolates one tab\'s backfill failure from the 
     undefined,
     undefined,
     undefined,
-    async () => ({ created: [], failed: [] }),
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(results['BITP'].endsWith('; backfill error: boom'), true);
   // Hanan's backfill returns nothing to report, so only its own (real,
@@ -412,7 +433,7 @@ Deno.test('handleAuditAllStatuses leaves a tab\'s result string untouched when i
     undefined,
     undefined,
     undefined,
-    async () => ({ created: [], failed: [] }),
+    async () => ({ created: [], failed: [], skipped: [] }),
   );
   assertEquals(results['BITP'].includes('backfill'), false);
 });

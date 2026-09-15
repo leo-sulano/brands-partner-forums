@@ -719,20 +719,28 @@ export interface PmsStatusSyncResult {
 
 // resolveAndSyncTabStatuses's own return type -- a superset of
 // PmsStatusSyncResult (syncScheduleStatusToPms's plain result type, kept
-// unchanged so its own tests/callers are untouched) adding two distinct
+// unchanged so its own tests/callers are untouched) adding three distinct
 // self-healing outcomes: cancelled/cancelFailed for a day cycled back to
 // blank with no evidence (the linked PMS task+link are deleted outright, see
 // the inline block inside resolveAndSyncTabStatuses below) -- mirroring
 // PmsCancelResult's own deleted/failed shape (see cancelScheduleInPms further
-// below) -- and pageRemoved/pageRemovedFailed for a combo whose review page
-// is flagged removed (the card is moved to the Page Removed column, see
-// moveRemovedPageCards; task and link are both kept). Deliberately not
-// merged into one bucket: only the former actually deletes anything.
+// below) -- pageRemoved/pageRemovedFailed for a combo whose review page is
+// flagged removed (the card is moved to the Page Removed column, see
+// moveRemovedPageCards; task and link are both kept) -- and
+// orphanCleaned/orphanCleanupFailed for an entry-tied link whose entries row
+// was deleted outright (entry_id nulled by the FK's ON DELETE SET NULL, see
+// the entry-tied resolve branch below). Deliberately three separate buckets,
+// not merged into one: cancelled and orphanCleaned both delete something,
+// but for unrelated reasons a caller may want to tell apart (a stale plan
+// slot vs. a permanently-gone account), and only pageRemoved leaves the task
+// in place.
 export interface PmsResolveResult extends PmsStatusSyncResult {
   cancelled: PmsCancelItem[];
   cancelFailed: { item: PmsCancelItem; error: string }[];
   pageRemoved: PmsCancelItem[];
   pageRemovedFailed: { item: PmsCancelItem; error: string }[];
+  orphanCleaned: PmsCancelItem[];
+  orphanCleanupFailed: { item: PmsCancelItem; error: string }[];
 }
 
 async function movePmsTask(taskId: string, columnId: string, position: number, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<void> {
@@ -1160,7 +1168,7 @@ export async function resolveAndSyncTabStatuses(
   isTabPaused = false,
 ): Promise<PmsResolveResult> {
   const links = await fetchSchedulePmsLinks(tab, client);
-  if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [] };
+  if (links.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: [], pageRemovedFailed: [], orphanCleaned: [], orphanCleanupFailed: [] };
 
   // Fetched once here (rather than inside each branch below, as before) so
   // moveRemovedPageCards can run ahead of the paused/normal split and both
@@ -1209,9 +1217,9 @@ export async function resolveAndSyncTabStatuses(
       if (!allowedPlatforms.includes(link.platform)) continue;
       items.push({ linkId: link.id, pmsTaskId: link.pms_task_id, targetStatus: 'paused', tabLabel: tabDisplayName(link.tab), brand: link.brand, date: link.date });
     }
-    if (items.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
+    if (items.length === 0) return { synced: [], failed: [], cancelled: [], cancelFailed: [], pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed, orphanCleaned: [], orphanCleanupFailed: [] };
     const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-    return { ...result, cancelled: [], cancelFailed: [], pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
+    return { ...result, cancelled: [], cancelFailed: [], pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed, orphanCleaned: [], orphanCleanupFailed: [] };
   }
 
   const [entries, hiddenBrandRows, restrictedBrandRows, pauses] = await Promise.all([
@@ -1253,6 +1261,8 @@ export async function resolveAndSyncTabStatuses(
   const items: PmsStatusSyncItem[] = [];
   const cancelled: PmsCancelItem[] = [];
   const cancelFailed: { item: PmsCancelItem; error: string }[] = [];
+  const orphanCleaned: PmsCancelItem[] = [];
+  const orphanCleanupFailed: { item: PmsCancelItem; error: string }[] = [];
   for (const link of liveLinks) {
     const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
     if (!allowedPlatforms.includes(link.platform)) continue;
@@ -1321,15 +1331,38 @@ export async function resolveAndSyncTabStatuses(
     let targetStatus: PmsSyncStatus;
     let description: string | undefined;
     if (link.link_kind === 'entry') {
+      // entry_id null means the entries row this link was tied to was
+      // deleted outright (FK ON DELETE SET NULL) -- unlike every other
+      // "entry not found" case below, this one is permanent: there is no
+      // future tick where this link could ever resolve again, since nothing
+      // will ever match `entry_id: null` in dateStatusIndex.entries (real
+      // entries always carry a real id). Clean it up now the same way an
+      // explicit Cancel does (delete task, then link), tracked in its own
+      // bucket rather than folded into cancelled/cancelFailed -- see
+      // PmsResolveResult's doc comment for why.
+      if (link.entry_id == null) {
+        const orphanItem: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
+        try {
+          await deletePmsTask(link.pms_task_id, credentials, fetchFn);
+          await deleteSchedulePmsLink(link.id, client);
+          orphanCleaned.push(orphanItem);
+        } catch (err) {
+          orphanCleanupFailed.push({ item: orphanItem, error: err instanceof Error ? err.message : String(err) });
+        }
+        continue;
+      }
       // Entry-tied link: resolve from THIS entry's own evidence, not the
       // combo's aggregate -- see resolveEntryPmsStatus's own doc comment.
       // If the entry can't be found (e.g. its status changed to something
       // outside the four recognized categories since this link was created,
-      // or the entries row was deleted outright and the FK nulled entry_id),
-      // leave the link untouched rather than guessing -- same
-      // never-destructively-act-on-an-unclear-case spirit as the rest of
-      // this function. `e.id === link.entry_id` below stays on entry_id: it
-      // is asking WHICH account this link belongs to, an identity question,
+      // or it moved to a different brand/platform/date), leave the link
+      // untouched rather than guessing -- same never-destructively-act-on-
+      // an-unclear-case spirit as the rest of this function. Unlike the
+      // entry_id-null case above, the entry itself still exists here, so a
+      // future tick might find it again (a status edit reverted, etc.) --
+      // only a truly gone entry (entry_id null) is safe to treat as
+      // permanent. `e.id === link.entry_id` below stays on entry_id: it is
+      // asking WHICH account this link belongs to, an identity question,
       // not which kind of link it is.
       const entryDetail = dateStatusIndex.entries.get(comboKey)?.find((e) => e.id === link.entry_id);
       if (!entryDetail) continue;
@@ -1346,10 +1379,10 @@ export async function resolveAndSyncTabStatuses(
   }
 
   if (items.length === 0) {
-    return { synced: [], failed: [], cancelled, cancelFailed, pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
+    return { synced: [], failed: [], cancelled, cancelFailed, pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed, orphanCleaned, orphanCleanupFailed };
   }
   const result = await syncScheduleStatusToPms(items, client, credentials, fetchFn);
-  return { ...result, cancelled, cancelFailed, pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed };
+  return { ...result, cancelled, cancelFailed, pageRemoved: parked.moved, pageRemovedFailed: parked.moveFailed, orphanCleaned, orphanCleanupFailed };
 }
 
 export interface PmsDriftedItem {

@@ -52,6 +52,7 @@ export async function syncAllTabStatuses(
       if (result.failed.length > 0) failures.push(`${result.failed.length} link(s) failed to move`);
       if (result.cancelFailed.length > 0) failures.push(`${result.cancelFailed.length} link(s) failed to cancel`);
       if (result.pageRemovedFailed.length > 0) failures.push(`${result.pageRemovedFailed.length} link(s) failed to move to Page Removed`);
+      if (result.orphanCleanupFailed.length > 0) failures.push(`${result.orphanCleanupFailed.length} orphaned link(s) failed to clean up`);
       results[tab] = failures.length > 0 ? `error: ${failures.join(', ')}` : 'ok';
     } catch (err) {
       console.error(`[sync-schedule-pms] syncAllStatuses ${tab} failed:`, err);
