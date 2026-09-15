@@ -10371,3 +10371,19 @@ committed a design spec (`docs/superpowers/specs/2026-09-15-pms-per-account-task
 separate, larger follow-up: giving each account its own PMS task card instead of sharing one per
 brand+platform+day — not yet implemented, pending spec review. Full suite (2494) and build pass, deno
 check clean. Full detail: memory `project_schedule_planner_multi_account_day_cell`.
+
+---
+
+## Task 349: Admin Can Edit/Pause/Cancel an Approved-Week Schedule
+
+*2026-09-15:* Per direct user request, loosened the approved-week `brand_schedule` write lock one
+notch: a plain `admin` can now edit/pause/cancel a schedule even after its week is approved, same
+as a `super_admin` — this is the 4th flip of this exact policy (see `20260903120000`,
+`20260903130000`, `20260903150000`). Approving/revoking the week itself stays `super_admin`-only,
+unchanged. Changed `TabScheduleSection.tsx`'s `canEditWeek` to check `isAdmin` instead of
+`isSuperAdmin` for the approved branch, and added migration
+`20260915120000_reopen_approved_week_brand_schedule_to_admin.sql` swapping `is_super_admin()` for
+`is_admin()` in the 3 `brand_schedule` RLS policies. Pushed to remote (which also applied an
+already-committed-but-unpushed migration from a parallel session, `20260911140000`, unrelated and
+safe). Build and `scheduleApproval.test.ts` pass. Full detail: handoff
+`2026-09-15-admin-can-edit-approved-week-schedule.md`.
