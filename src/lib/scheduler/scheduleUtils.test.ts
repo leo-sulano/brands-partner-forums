@@ -348,6 +348,7 @@ describe('buildDateStatusIndex', () => {
     })];
     const { details } = buildDateStatusIndex(entries);
     expect(details.get('winmega::tp::2026-07-28')).toEqual({
+      id: 'x', kind: 'removed',
       account: 'agent@example.com', agent: 'ANN', country: 'Germany', proxy: 'SpyderProxy', content: 'Great service.',
     });
   });
@@ -355,7 +356,7 @@ describe('buildDateStatusIndex', () => {
   it('captures details with empty strings when Account/Agent/Country/Proxy/content are all blank', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' })];
     const { details } = buildDateStatusIndex(entries);
-    expect(details.get('winmega::tp::2026-07-28')).toEqual({ account: '', agent: '', country: '', proxy: '', content: '' });
+    expect(details.get('winmega::tp::2026-07-28')).toEqual({ id: 'x', kind: 'done', account: '', agent: '', country: '', proxy: '', content: '' });
   });
 
   it('does not add a details entry for a status that matches none of the four sets', () => {
@@ -407,6 +408,21 @@ describe('buildDateStatusIndex', () => {
     const entries = [entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': null })];
     const { entries: index } = buildDateStatusIndex(entries);
     expect(index.size).toBe(0);
+  });
+
+  it('captures each entry\'s own id and evidence kind alongside its other details', () => {
+    const entries = [
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '2026-07-28' }),
+      entry({ Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '2026-07-28' }),
+    ];
+    entries[0].id = 'entry-done';
+    entries[1].id = 'entry-removed';
+    const { entries: index } = buildDateStatusIndex(entries);
+    const list = index.get('winmega::tp::2026-07-28');
+    expect(list?.map((e) => ({ id: e.id, kind: e.kind }))).toEqual([
+      { id: 'entry-done', kind: 'done' },
+      { id: 'entry-removed', kind: 'removed' },
+    ]);
   });
 });
 
@@ -938,7 +954,7 @@ describe('countActivePlatformSlots', () => {
   it('for a past day, counts a brand+platform+day with evidence even when the plan has no row for it at all', () => {
     const index: DateStatusIndex = {
       removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set(),
-      details: new Map(), entries: new Map([['a::tp::2026-08-17', [{ account: 'x', agent: '', country: '', proxy: '', content: '' }]]]),
+      details: new Map(), entries: new Map([['a::tp::2026-08-17', [{ id: 'e1', kind: 'confirmed', account: 'x', agent: '', country: '', proxy: '', content: '' }]]]),
     };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
     const todayISO = '2026-08-24';
@@ -947,7 +963,6 @@ describe('countActivePlatformSlots', () => {
   });
 
   it('for a past day, counts each of the four evidence types (removed/confirmed/pending/done) equally', () => {
-    const detail = { account: 'x', agent: '', country: '', proxy: '', content: '' };
     const index: DateStatusIndex = {
       removed: new Set(['a::tp::2026-08-17']),
       confirmed: new Set(['a::tp::2026-08-18']),
@@ -955,8 +970,10 @@ describe('countActivePlatformSlots', () => {
       done: new Set(['a::tp::2026-08-20']),
       details: new Map(),
       entries: new Map([
-        ['a::tp::2026-08-17', [detail]], ['a::tp::2026-08-18', [detail]],
-        ['a::tp::2026-08-19', [detail]], ['a::tp::2026-08-20', [detail]],
+        ['a::tp::2026-08-17', [{ id: 'e1', kind: 'removed', account: 'x', agent: '', country: '', proxy: '', content: '' }]],
+        ['a::tp::2026-08-18', [{ id: 'e2', kind: 'confirmed', account: 'x', agent: '', country: '', proxy: '', content: '' }]],
+        ['a::tp::2026-08-19', [{ id: 'e3', kind: 'pending', account: 'x', agent: '', country: '', proxy: '', content: '' }]],
+        ['a::tp::2026-08-20', [{ id: 'e4', kind: 'done', account: 'x', agent: '', country: '', proxy: '', content: '' }]],
       ]),
     };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
@@ -970,9 +987,9 @@ describe('countActivePlatformSlots', () => {
       removed: new Set(), confirmed: new Set(), pending: new Set(), done: new Set(['a::tp::2026-08-17']),
       details: new Map(),
       entries: new Map([['a::tp::2026-08-17', [
-        { account: 'a1', agent: 'ANN', country: '', proxy: '', content: '' },
-        { account: 'a2', agent: 'JEN', country: '', proxy: '', content: '' },
-        { account: 'a3', agent: 'LAI', country: '', proxy: '', content: '' },
+        { id: 'e1', kind: 'done', account: 'a1', agent: 'ANN', country: '', proxy: '', content: '' },
+        { id: 'e2', kind: 'done', account: 'a2', agent: 'JEN', country: '', proxy: '', content: '' },
+        { id: 'e3', kind: 'done', account: 'a3', agent: 'LAI', country: '', proxy: '', content: '' },
       ]]]),
     };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
@@ -985,7 +1002,7 @@ describe('countActivePlatformSlots', () => {
     const rows = [row('a', 'tp', '2026-08-17', {})]; // no plan for Monday
     const index: DateStatusIndex = {
       removed: new Set(), confirmed: new Set(['a::tp::2026-08-17']), pending: new Set(), done: new Set(),
-      details: new Map(), entries: new Map([['a::tp::2026-08-17', [{ account: 'x', agent: '', country: '', proxy: '', content: '' }]]]),
+      details: new Map(), entries: new Map([['a::tp::2026-08-17', [{ id: 'e1', kind: 'confirmed', account: 'x', agent: '', country: '', proxy: '', content: '' }]]]),
     };
     const cols = columnsForWeek(new Date('2026-08-17T00:00:00'));
     const todayISO = '2026-08-17'; // Monday itself is "today"

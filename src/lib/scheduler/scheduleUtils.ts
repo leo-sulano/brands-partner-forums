@@ -186,7 +186,11 @@ export interface DateStatusIndex {
   entries: Map<string, EntryDetails[]>;
 }
 
+export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';
+
 export interface EntryDetails {
+  id: string;
+  kind: DateEvidenceKind;
   account: string;
   agent: string;
   country: string;
@@ -228,11 +232,15 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
               ? done
               : null;
       if (!target) continue;
+      const kind: DateEvidenceKind =
+        target === removed ? 'removed' : target === confirmed ? 'confirmed' : target === pending ? 'pending' : 'done';
       const date = parsePostDate(pick(entry.data, PLATFORM_DATE_KEYS[platform]));
       if (!date) continue;
       const key = `${brandKey}::${platform}::${toISODate(date)}`;
       target.add(key);
       const entryDetail: EntryDetails = {
+        id: entry.id,
+        kind,
         account: (entry.data.Account ?? '').trim(),
         agent: (entry.data.Agent ?? '').trim(),
         country: (entry.data.Country ?? '').trim(),
@@ -247,8 +255,6 @@ export function buildDateStatusIndex(entries: Entry[]): DateStatusIndex {
   }
   return { removed, confirmed, pending, done, details, entries: entryLists };
 }
-
-export type DateEvidenceKind = 'removed' | 'confirmed' | 'pending' | 'done';
 
 // Resolves which single evidence type (if any) backs a brand+platform+date —
 // same removed > confirmed > pending > done precedence ScheduleCell's own
