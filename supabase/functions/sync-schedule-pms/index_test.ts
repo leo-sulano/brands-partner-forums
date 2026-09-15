@@ -257,6 +257,7 @@ Deno.test('handleSyncAllStatuses calls backfillFn for a single requested active 
         failed: [],
       };
     },
+    async () => ({ created: [], failed: [] }),
   );
   assertEquals(backfillCalls, ['Hanan']);
   assertEquals(results['Hanan'].endsWith('; backfilled 1 missing link(s)'), true);
@@ -368,6 +369,10 @@ Deno.test('handleAuditAllStatuses appends a non-empty backfill result onto that 
       skipped: [],
       failed: [],
     }),
+    undefined,
+    undefined,
+    undefined,
+    async () => ({ created: [], failed: [] }),
   );
   assertEquals(results['BITP'].endsWith('; backfilled 1 missing link(s)'), true);
 });
@@ -384,6 +389,10 @@ Deno.test('handleAuditAllStatuses isolates one tab\'s backfill failure from the 
       if (tab === 'BITP') throw new Error('boom');
       return { created: [], skipped: [], failed: [] };
     },
+    undefined,
+    undefined,
+    undefined,
+    async () => ({ created: [], failed: [] }),
   );
   assertEquals(results['BITP'].endsWith('; backfill error: boom'), true);
   // Hanan's backfill returns nothing to report, so only its own (real,
@@ -400,6 +409,10 @@ Deno.test('handleAuditAllStatuses leaves a tab\'s result string untouched when i
     () => ['BITP'],
     () => [],
     async () => ({ created: [], skipped: [], failed: [] }),
+    undefined,
+    undefined,
+    undefined,
+    async () => ({ created: [], failed: [] }),
   );
   assertEquals(results['BITP'].includes('backfill'), false);
 });

@@ -5,7 +5,7 @@
 // pull/status-resolution logic twice. Holds PMS_API_TOKEN as a Supabase
 // secret -- the browser never sees it.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, backfillMissingScheduledLinks, computeSchedulePmsParityIssues, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult, type SchedulePmsParityIssue } from '../../../src/lib/scheduler/pmsSync.ts';
+import { pushScheduleToPms, pullScheduleFromPms, resolveAndSyncTabStatuses, cancelScheduleInPms, enforcePmsColumns, backfillMissingScheduledLinks, backfillMissingEntryLinks, computeSchedulePmsParityIssues, type PmsSyncItem, type PmsCancelItem, type PmsCredentials, type PmsResolveResult, type SchedulePmsParityIssue } from '../../../src/lib/scheduler/pmsSync.ts';
 import { bootstrapTabRegistries } from '../../../src/lib/tabRegistryBootstrap.ts';
 import { getActiveOperationalTabs, getPausedOperationalTabs } from '../../../src/lib/pausedTabRegistry.ts';
 import { fetchAllSchedulePmsLinks, invalidateTabCache } from '../../../src/lib/queries.ts';
@@ -83,10 +83,16 @@ async function backfillActiveTabs(
   credentials: PmsCredentials,
   fetchFn: typeof fetch,
   backfillFn: typeof backfillMissingScheduledLinks,
+  backfillEntryFn: typeof backfillMissingEntryLinks,
 ): Promise<void> {
   if (activeTabs.length === 0) return;
   const weekStart = toISODate(mondayOf(new Date()));
   for (const tab of activeTabs) {
+    // Two independent try/catches, not one shared block -- a failure in the
+    // entry-backfill must never mask or overwrite a successful note the
+    // plan-backfill already recorded for this tab, and vice versa. Matches
+    // this file's existing per-tab isolation philosophy, applied one level
+    // deeper (per-backfill-kind, not just per-tab).
     try {
       const backfill = await backfillFn(tab, weekStart, client, credentials, fetchFn);
       if (backfill.created.length > 0 || backfill.failed.length > 0) {
@@ -96,6 +102,17 @@ async function backfillActiveTabs(
     } catch (err) {
       console.error(`[sync-schedule-pms] backfill ${tab} failed:`, err);
       const note = `backfill error: ${err instanceof Error ? err.message : String(err)}`;
+      results[tab] = results[tab] && results[tab] !== 'ok' ? `${results[tab]}; ${note}` : note;
+    }
+    try {
+      const entryBackfill = await backfillEntryFn(tab, weekStart, client, credentials, fetchFn);
+      if (entryBackfill.created.length > 0 || entryBackfill.failed.length > 0) {
+        const note = `backfilled ${entryBackfill.created.length} per-account link(s)${entryBackfill.failed.length > 0 ? `, ${entryBackfill.failed.length} failed` : ''}`;
+        results[tab] = results[tab] && results[tab] !== 'ok' ? `${results[tab]}; ${note}` : note;
+      }
+    } catch (err) {
+      console.error(`[sync-schedule-pms] entry backfill ${tab} failed:`, err);
+      const note = `entry backfill error: ${err instanceof Error ? err.message : String(err)}`;
       results[tab] = results[tab] && results[tab] !== 'ok' ? `${results[tab]}; ${note}` : note;
     } finally {
       invalidateTabCache(tab);
@@ -192,6 +209,7 @@ export async function handleSyncAllStatuses(
   getActiveTabsFn: typeof getActiveOperationalTabs = getActiveOperationalTabs,
   getPausedTabsFn: typeof getPausedOperationalTabs = getPausedOperationalTabs,
   backfillFn: typeof backfillMissingScheduledLinks = backfillMissingScheduledLinks,
+  backfillEntryFn: typeof backfillMissingEntryLinks = backfillMissingEntryLinks,
 ): Promise<Record<string, string>> {
   await bootstrapFn(client, 'sync-schedule-pms');
   const activeTabs = getActiveTabsFn();
@@ -208,7 +226,7 @@ export async function handleSyncAllStatuses(
     ];
   }
   const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
-  await backfillActiveTabs(tabs.filter((t) => !t.paused).map((t) => t.tab), results, client, credentials, fetchFn, backfillFn);
+  await backfillActiveTabs(tabs.filter((t) => !t.paused).map((t) => t.tab), results, client, credentials, fetchFn, backfillFn, backfillEntryFn);
   return results;
 }
 
@@ -247,6 +265,7 @@ export async function handleAuditAllStatuses(
   parityFn: typeof computeSchedulePmsParityIssues = computeSchedulePmsParityIssues,
   gmailCredentials?: GmailCredentials,
   sendAlertFn: typeof sendToApprovedProfiles = sendToApprovedProfiles,
+  backfillEntryFn: typeof backfillMissingEntryLinks = backfillMissingEntryLinks,
 ): Promise<Record<string, string>> {
   await bootstrapFn(client, 'sync-schedule-pms');
   const activeTabs = getActiveTabsFn();
@@ -255,7 +274,7 @@ export async function handleAuditAllStatuses(
     ...getPausedTabsFn().map((tab) => ({ tab, paused: true })),
   ];
   const results = await syncAllTabStatuses(tabs, client, credentials, fetchFn);
-  await backfillActiveTabs(activeTabs, results, client, credentials, fetchFn, backfillFn);
+  await backfillActiveTabs(activeTabs, results, client, credentials, fetchFn, backfillFn, backfillEntryFn);
   const parityIssues = await runParityCheck(activeTabs, results, client, parityFn);
   if (parityIssues.length > 0 && gmailCredentials) {
     try {
