@@ -8,6 +8,7 @@ import { resolveAndSyncTabStatuses } from './pmsSync';
 import { cancelScheduleInPms, type PmsCancelItem } from './pmsSync';
 import { enforcePmsColumns, computeColumnSortMoves } from './pmsSync';
 import { getPmsPlatformLabel, resolveEntryPmsStatus } from './pmsSync';
+import { backfillMissingEntryLinks } from './pmsSync';
 import type { SchedulePmsLink } from '../queries';
 import { invalidateTabCache } from '../queries';
 import { registerTabCustomPlatforms, resetTabCustomPlatforms, type CustomPlatformConfig } from '../customPlatformRegistry';
@@ -1957,6 +1958,123 @@ describe('backfillMissingScheduledLinks', () => {
     const result = await backfillMissingScheduledLinks(TAB, WEEK, client, CREDENTIALS);
     expect(result).toEqual({ created: [], skipped: [], failed: [] });
     expect(calls).toEqual(['brand_schedule']);
+  });
+});
+
+describe('backfillMissingEntryLinks', () => {
+  const TAB = 'TP Brand Injection';
+  const WEEK = '2026-09-14'; // Monday
+
+  // fetchRawEntriesByTab caches entries per tab name for 60s regardless of
+  // which client fetched them (see resolveAndSyncTabStatuses's own top-of-file
+  // beforeEach for the same note) -- 'TP Brand Injection' is reused across
+  // every test in this block, each with its own `entries` fixture, so a stale
+  // cache from one test would otherwise leak into the next.
+  beforeEach(() => {
+    invalidateTabCache(TAB);
+  });
+
+  function entryRow(overrides: Partial<{ id: string; account: string; agent: string; status: string; date: string }> = {}) {
+    return {
+      id: overrides.id ?? 'e1',
+      tab: TAB,
+      sheet_row_id: '1',
+      updated_at: '',
+      last_edited_by: 'dashboard',
+      last_sync_tag: null,
+      data: {
+        Brands: 'Casino Magius',
+        Account: overrides.account ?? '504 | BI TP | Netherlands',
+        Agent: overrides.agent ?? 'LAI',
+        'TP Review Status': overrides.status ?? 'Done',
+        'Trust Pilot': overrides.date ?? '2026-09-15',
+      },
+    };
+  }
+
+  it('creates one entry-tied task for each account beyond the pre-existing generic link', async () => {
+    const client = fakeMultiTableClient({
+      entries: [
+        entryRow({ id: 'e1', account: '504 | BI TP | Netherlands', agent: 'LAI' }),
+        entryRow({ id: 'e2', account: '506 | BI TP | Netherlands', agent: 'JEN' }),
+        entryRow({ id: 'e3', account: '512 | BI TP | Netherlands', agent: 'ANN' }),
+      ],
+      schedule_pms_links: [
+        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', entry_id: null },
+      ],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const fetchFn = fakeFetchSequence([
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-jen', name: 'JEN' } }, { user: { id: 'u-ann', name: 'ANN' } }] } },
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-2' } },
+      { url: /\/tasks\/task-2$/, method: 'PATCH', body: {} },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-3' } },
+      { url: /\/tasks\/task-3$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '506 | BI TP | Netherlands' },
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '512 | BI TP | Netherlands' },
+    ]);
+    expect(result.failed).toEqual([]);
+  });
+
+  it('is a no-op when every entry already has its own link (or is covered by the generic link)', async () => {
+    const client = fakeMultiTableClient({
+      entries: [entryRow({ id: 'e1' })],
+      schedule_pms_links: [
+        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', entry_id: null },
+      ],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API when nothing is missing'); }) as unknown as typeof fetch;
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [], failed: [] });
+  });
+
+  it('creates entry-tied links for every entry when no generic link exists yet', async () => {
+    const client = fakeMultiTableClient({
+      entries: [entryRow({ id: 'e1', account: '504 | BI TP | Netherlands', agent: 'LAI' })],
+      schedule_pms_links: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const fetchFn = fakeFetchSequence([
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-lai', name: 'LAI' } }] } },
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '504 | BI TP | Netherlands' },
+    ]);
+  });
+
+  it('skips a combo whose platform is flagged page-removed for that brand', async () => {
+    const client = fakeMultiTableClient({
+      entries: [
+        entryRow({ id: 'e1', account: '504 | BI TP | Netherlands' }),
+        entryRow({ id: 'e2', account: '506 | BI TP | Netherlands' }),
+      ],
+      schedule_pms_links: [],
+      brand_catalog: [],
+      removed_platform_brands: [{ tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API for an excluded combo'); }) as unknown as typeof fetch;
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [], failed: [] });
   });
 });
 

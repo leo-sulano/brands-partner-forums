@@ -170,11 +170,11 @@ async function resolveLabelId(
   return created.id;
 }
 
-async function createPmsTask(title: string, dueDate: string, credentials: PmsCredentials, fetchFn: typeof fetch): Promise<PmsTaskCreated> {
+async function createPmsTask(title: string, dueDate: string, credentials: PmsCredentials, fetchFn: typeof fetch, columnId: string = PMS_TODO_COLUMN_ID): Promise<PmsTaskCreated> {
   const res = await fetchFn(`${PMS_BASE_URL}/projects/${PMS_PROJECT_ID}/tasks`, {
     method: 'POST',
     headers: pmsHeaders(credentials),
-    body: JSON.stringify({ title, columnId: PMS_TODO_COLUMN_ID, priority: 'MEDIUM', dueDate }),
+    body: JSON.stringify({ title, columnId, priority: 'MEDIUM', dueDate }),
   });
   if (!res.ok) throw new Error(`PMS task create failed: ${res.status}`);
   return (await res.json()) as PmsTaskCreated;
@@ -399,6 +399,100 @@ export async function backfillMissingScheduledLinks(
   }
   if (items.length === 0) return { created: [], skipped: [], failed: [] };
   return pushScheduleToPms(items, client, credentials, fetchFn);
+}
+
+export interface PmsEntryLinkResult {
+  created: { tab: string; brand: string; platform: SchedulablePlatform; date: string; account: string }[];
+  failed: { tab: string; brand: string; platform: SchedulablePlatform; date: string; account: string; error: string }[];
+}
+
+// Sibling to backfillMissingScheduledLinks above, NOT a modification of it --
+// this one is driven by real evidence (dateStatusIndex.entries), not the
+// plan (brand_schedule). For every (tab, brand_key, platform, date) combo
+// with more real entries than schedule_pms_links rows, creates the missing
+// entry-tied cards (entry_id set), one per uncovered account, each assigned
+// to that account's own Agent. The pre-existing generic link (entry_id null,
+// created by pushScheduleToPms when the slot's plan first went active) is
+// left completely untouched -- see docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md
+// for the full "why" and the positional-coverage rule below.
+export async function backfillMissingEntryLinks(
+  tab: string,
+  weekStart: string,
+  client: SupabaseClient,
+  credentials: PmsCredentials,
+  fetchFn: typeof fetch = fetch,
+): Promise<PmsEntryLinkResult> {
+  const created: PmsEntryLinkResult['created'] = [];
+  const failed: PmsEntryLinkResult['failed'] = [];
+
+  const [entries, links, catalogRows, removedPlatformBrandRows, hiddenBrandRows, restrictedBrandRows] = await Promise.all([
+    fetchRawEntriesByTab(tab, client),
+    fetchSchedulePmsLinks(tab, client),
+    fetchBrandCatalog(tab, client).catch(() => []),
+    fetchRemovedPlatformBrands(client),
+    fetchScheduleHiddenBrands(tab, client),
+    fetchScheduleRestrictedBrands(tab, client),
+  ]);
+
+  const dateStatusIndex = buildDateStatusIndex(entries);
+  const brandDisplay = buildBrandDisplayMap(entries, catalogRows.map((r) => r.brand));
+  const removedPlatformBrandSet = buildRemovedPlatformBrandSet(removedPlatformBrandRows);
+  const hiddenBrandSet = buildHiddenBrandSet(hiddenBrandRows);
+  const platformRestrictionMap = buildPlatformRestrictionMap(restrictedBrandRows);
+  const tabPlatforms = getTabPlatforms(tab);
+  const tabLabel = tabDisplayName(tab);
+  const weekISOs = new Set(columnsForWeek(new Date(`${weekStart}T00:00:00`)).map((c) => c.iso));
+
+  let labelCache: PmsLabel[] | null = null;
+  let teamMembers: PmsTeamMember[] | null = null;
+
+  for (const [key, entryList] of dateStatusIndex.entries) {
+    const [brandKey, platform, date] = key.split('::');
+    if (!weekISOs.has(date)) continue;
+    const brand = brandDisplay.get(brandKey) ?? brandKey;
+    const allowedPlatforms = resolveBrandPlatforms(tab, brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
+    // platform here is a raw string pulled out of the index key -- every key
+    // this loop sees was itself built from a real SchedulablePlatform in
+    // buildDateStatusIndex, so this narrowing is safe at runtime; TypeScript
+    // just can't track it through the split('::').
+    if (!allowedPlatforms.includes(platform as SchedulablePlatform)) continue;
+
+    const comboLinks = links.filter((l) => l.brand_key === brandKey && l.platform === platform && l.date === date);
+    const linkedEntryIds = new Set(comboLinks.filter((l) => l.entry_id != null).map((l) => l.entry_id));
+    const genericCoverage = comboLinks.some((l) => l.entry_id == null) ? 1 : 0;
+    const unlinkedEntries = entryList.filter((entry, i) => !linkedEntryIds.has(entry.id) && i >= genericCoverage);
+    if (unlinkedEntries.length === 0) continue;
+
+    const currentColumnId = comboLinks[0]?.synced_column_id ?? PMS_TODO_COLUMN_ID;
+
+    for (const entryDetail of unlinkedEntries) {
+      let createdTaskId: string | null = null;
+      try {
+        // Team-member lookup fetched before labels here (the reverse of
+        // pushScheduleToPms's own lazy-cache order above) -- both are
+        // independent, order-agnostic lazy caches, so this is purely a
+        // call-order detail, not a behavior difference.
+        if (!teamMembers && entryDetail.agent) teamMembers = await fetchPmsTeamMembers(credentials, fetchFn);
+        const assigneeId = resolveAssigneeId(entryDetail.agent, teamMembers ?? []);
+        if (!labelCache) labelCache = await fetchPmsLabels(credentials, fetchFn);
+        const platformLabelId = await resolveLabelId(getPmsPlatformLabel(platform as SchedulablePlatform), WO_LABEL_COLOR, labelCache, credentials, fetchFn);
+        const clientLabelId = await resolveLabelId(PMS_CLIENT_LABEL_NAME, WO_LABEL_COLOR, labelCache, credentials, fetchFn);
+
+        const task = await createPmsTask(`${tabLabel} | ${brand} — ${entryDetail.account}`, date, credentials, fetchFn, currentColumnId);
+        createdTaskId = task.id;
+        await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
+        await insertSchedulePmsLink(tab, brand, platform as Platform, date, task.id, currentColumnId, entryDetail.id, client);
+        created.push({ tab, brand, platform: platform as SchedulablePlatform, date, account: entryDetail.account });
+      } catch (err) {
+        if (createdTaskId) {
+          await deletePmsTask(createdTaskId, credentials, fetchFn).catch(() => {});
+        }
+        failed.push({ tab, brand, platform: platform as SchedulablePlatform, date, account: entryDetail.account, error: err instanceof Error ? err.message : String(err) });
+      }
+    }
+  }
+
+  return { created, failed };
 }
 
 export interface SchedulePmsParityIssue {
