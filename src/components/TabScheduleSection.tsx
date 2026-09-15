@@ -184,10 +184,13 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   // Weekly schedule approval state.
   //   * A PENDING week: editable by any approved user; its plan never reaches
   //     the PMS (the pushScheduleToPms gate drops it).
-  //   * An APPROVED week: on the PMS board, and LOCKED — only a super admin
-  //     may make further manual changes (their edits sync live). Everyone else
-  //     sees the week read-only. Automatic pause/resume stays exempt (it writes
-  //     brand_platform_pause, never brand_schedule).
+  //   * An APPROVED week: on the PMS board, and LOCKED to admins — an admin (or
+  //     super admin) can still edit/pause/cancel and their edits sync live, but
+  //     a plain approved member sees the week read-only. Approving/revoking the
+  //     week itself stays super_admin-only (see handleApproveWeek/handleRevoke
+  //     and the "Approve week"/"Revoke" buttons below). Automatic pause/resume
+  //     stays exempt from all of this (it writes brand_platform_pause, never
+  //     brand_schedule).
   // `tabApprovals` holds every approval row for this tab (one fetch covers
   // every displayed week — the grid can show several at once). Fail-open to []
   // on a fetch error: the pill shows "Draft" and the lock relaxes, but the
@@ -207,9 +210,9 @@ export default function TabScheduleSection({ tab, weekStart, weekStartISO, today
   );
   const isDisplayedWeekApproved = currentWeekApproval?.status === 'approved';
   // Per displayed week: a pending week is editable by any approved user; an
-  // approved week only by a super admin. Legacy-week read-only-ness is layered
-  // on separately at the call site.
-  const canEditWeek = (w: string) => isApproved && (approvedWeekSet.has(w) ? isSuperAdmin : true);
+  // approved week only by an admin (super admin included). Legacy-week
+  // read-only-ness is layered on separately at the call site.
+  const canEditWeek = (w: string) => isApproved && (approvedWeekSet.has(w) ? isAdmin : true);
 
   useEffect(() => {
     let canceled = false;
