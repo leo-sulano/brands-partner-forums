@@ -99,6 +99,27 @@ describe('pushScheduleToPms', () => {
     expect(fetchFn).not.toHaveBeenCalled();
   });
 
+  // Important finding I1 (final whole-branch review): `alreadyLinked` must
+  // mean "does the GENERIC link exist", not "does any link exist" -- a combo
+  // whose generic link was removed (self-healed by pullScheduleFromPms, or a
+  // stale-link cleanup) but that still has one or more entry-tied links (real
+  // per-account history) must still be able to get a fresh generic card on
+  // re-activation, not be permanently skipped just because SOME link for the
+  // combo exists.
+  it('creates a new generic card for a combo that has an entry-tied link but no generic link, instead of treating it as already-linked', async () => {
+    const { client, insertedRows } = fakeSupabase([
+      { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-entry', entry_id: 'e1' },
+    ]);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [ITEM], skipped: [], failed: [] });
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, entry_id: null }]);
+  });
+
   it('auto-creates the WO label on first use, then reuses it for a second WO item', async () => {
     const { client } = fakeSupabase([]);
     const woItem1: PmsSyncItem = { tab: 'Wizard of Odds', tabLabel: 'Wizard of Odds', brand: 'BrandA', platform: 'wo', date: '2026-08-20' };
@@ -445,6 +466,45 @@ describe('pullScheduleFromPms', () => {
     const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
     expect(result.assignees).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Ann' }]);
   });
+
+  // Critical finding C1 (final whole-branch review): an entry-tied link
+  // (entry_id set) is per-account history, not a plan-level slot -- both
+  // `deleted` and `drifted` are consumed by the browser (TabScheduleSection.tsx)
+  // as plan-level un-scheduling/date-move signals, so one agent's own
+  // per-account card being deleted or re-dated in PMS must never propagate up
+  // to the whole day's plan. A sibling GENERIC link for the exact same combo
+  // must keep behaving exactly as before.
+  const ENTRY_LINK = { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-entry', entry_id: 'e1' };
+
+  it('self-heals (deletes the stale link row) an entry-tied link whose PMS task is gone, without reporting it in `deleted` -- while a sibling generic link for the same combo still reports normally', async () => {
+    const { client, deletedIds } = fakeSupabaseWithLinks([LINK, ENTRY_LINK]);
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      // task-1 (generic) still exists; task-entry (entry-tied) is gone.
+      json: async () => [{ id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z', assignees: [] }],
+    });
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result.deleted).toEqual([]); // never reported, entry-tied or not
+    expect(deletedIds).toEqual(['link-entry']); // still self-healed
+    expect(result.assignees).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: null }]);
+  });
+
+  it('never reports an entry-tied link as drifted, and never updates its stored date, even when its live PMS due date differs -- while a sibling generic link still drifts normally', async () => {
+    const { client, updated } = fakeSupabaseWithLinks([LINK, ENTRY_LINK]);
+    const fetchFn = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => [
+        { id: 'task-1', dueDate: '2026-08-22T00:00:00.000Z', assignees: [] }, // generic: genuinely drifted
+        { id: 'task-entry', dueDate: '2026-08-25T00:00:00.000Z', assignees: [{ user: { name: 'Jen' } }] }, // entry-tied: due date moved in PMS too, but must not be treated as drift
+      ],
+    });
+    const result = await pullScheduleFromPms('BITP', client, CREDENTIALS, fetchFn);
+    expect(result.drifted).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', oldDate: '2026-08-20', newDate: '2026-08-22' }]);
+    expect(updated).toEqual([{ id: 'link-1', date: '2026-08-22' }]); // only the generic link's date is ever written
+    // The entry-tied link's assignee is still reported, against its ORIGINAL
+    // (unchanged) date, not the live PMS date it was never allowed to drift to.
+    expect(result.assignees).toContainEqual({ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', assigneeName: 'Jen' });
+  });
 });
 
 const CANCEL_ITEM: PmsCancelItem = { tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20' };
@@ -467,6 +527,21 @@ describe('cancelScheduleInPms', () => {
     expect(result).toEqual({ deleted: [], skipped: [CANCEL_ITEM], failed: [] });
     expect(deletedIds).toEqual([]);
     expect(fetchFn).not.toHaveBeenCalled();
+  });
+
+  // Important finding I2 (final whole-branch review): an explicit Cancel must
+  // always target the GENERIC (plan-level) link for the combo -- never an
+  // arbitrary entry-tied one, since fetchSchedulePmsLinks' results are
+  // unordered and the old `.find` had no entry_id filter to disambiguate.
+  it('cancels the generic link, never an entry-tied one, when a combo has both', async () => {
+    const entryLink = { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-entry', entry_id: 'e1' };
+    const { client, deletedIds } = fakeSupabaseWithLinks([entryLink, LINK]); // entry-tied link listed FIRST, so an unfiltered .find would have picked it
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
+    ]);
+    const result = await cancelScheduleInPms([CANCEL_ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ deleted: [CANCEL_ITEM], skipped: [], failed: [] });
+    expect(deletedIds).toEqual(['link-1']); // the generic link, never 'link-entry'
   });
 
   it('records a per-item failure without aborting the batch, and never deletes that link', async () => {
@@ -993,6 +1068,40 @@ describe('resolveAndSyncTabStatuses', () => {
     expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]);
   });
 
+  // Important finding I5.3 (final whole-branch review): an entry-tied link
+  // is real per-account history, not a plan slot that can go stale -- the
+  // same "genuinely blank day, no evidence" condition that self-heals
+  // (deletes) the GENERIC link must never delete a sibling entry-tied link
+  // for the same combo. The entry-tied link falls through to the normal
+  // per-entry resolve branch instead, which (since this fixture's `entries`
+  // has nothing matching link.entry_id) skips it via that branch's own
+  // "entry can't be found -- leave it untouched" guard (Task 5), so it's
+  // neither deleted nor synced.
+  it('deletes the generic link but leaves a sibling entry-tied link untouched, for a combo whose day is genuinely blank with no evidence', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', entry_id: null },
+        { id: 'link-entry', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-entry', synced_status: 'done', entry_id: 'e1' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [
+        { tab: 'Rooster Partners', brand_key: 'lucky7even', week_start: '2026-08-24', platform: 'cg', monday: null, tuesday: null, wednesday: null, thursday: null, friday: null },
+      ],
+    }, deletes);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 }, // no DELETE for task-entry expected
+    ]);
+    const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.cancelled).toEqual([{ tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'cg', date: '2026-08-27' }]);
+    expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]); // link-entry is never deleted
+  });
+
   it('does not cancel a link whose day was manually cycled to Paused in brand_schedule -- moves it to Project Paused instead, same as a scheduler auto-pause', async () => {
     // Paused and Cancelled are two distinct, separately-actioned outcomes
     // (see the day-cell Pause/Resume/Cancel buttons and schedule_cancellations
@@ -1366,6 +1475,34 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     expect(calls.some((c) => !c.url.endsWith('/move'))).toBe(false);
   });
 
+  // Important finding I5.2 (final whole-branch review): an entry-tied link
+  // only ever exists because that entry already has real, settled evidence
+  // (resolveEntryPmsStatus can never produce 'paused') -- a whole-tab pause
+  // must force-pause the GENERIC link only, leaving a sibling entry-tied
+  // link for the same combo untouched. fakeFetchSequence throws on any
+  // unexpected extra call, so a stray move for the entry-tied link's task
+  // would fail this test.
+  it('force-pauses only the generic link, never a sibling entry-tied link for the same combo, when isTabPaused is true', async () => {
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', entry_id: null },
+        { id: 'link-entry', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-entry', synced_status: 'done', entry_id: 'e1' },
+      ],
+      entries: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    });
+    const fetchFn = fakeFetchSequence([
+      { url: /\/tasks$/, method: 'GET', body: [] },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} }, // no /tasks/task-entry/move expected
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
+    expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27' }]);
+  });
+
   it('makes no PMS calls when every link is already synced as paused (nothing to move)', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
@@ -1499,6 +1636,39 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
     expect(result.cancelled).toEqual([]);
     expect(result.cancelFailed).toEqual([]);
     expect(result.synced).toEqual([]);
+    expect(deletes).toEqual([]);
+  });
+
+  // Important finding I5.1 (final whole-branch review): an entry-tied card
+  // is per-account settled history, not a plan-level slot -- it must never
+  // be swept into Page Removed parking just because its combo's review page
+  // got flagged removed. fakeFetchSequence throws on any unexpected extra
+  // call, so a second (entry-tied) /move call here would fail this test.
+  it('moves only the generic card to Page Removed, never a sibling entry-tied card for the same flagged combo', async () => {
+    const deletes: { table: string; id: string }[] = [];
+    const client = fakeMultiTableClient({
+      schedule_pms_links: [
+        REMOVED_LINK,
+        { ...REMOVED_LINK, id: 'link-entry', pms_task_id: 'task-entry', entry_id: 'e1' },
+      ],
+      entries: [],
+      removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      brand_platform_pause: [],
+      brand_schedule: [],
+    }, deletes);
+    const fetchFn = fakeFetchSequence([
+      {
+        url: /\/tasks$/, method: 'GET', body: [
+          { id: 'task-1', title: 'BITP | RollingSlots Casino', columnId: TODO_COL, position: 0, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] },
+          { id: 'task-entry', title: 'BITP | RollingSlots Casino — acct1', columnId: TODO_COL, position: 1, dueDate: '2026-09-04T00:00:00.000Z', assignees: [] },
+        ],
+      },
+      { url: /\/tasks\/task-1\/move$/, method: 'PATCH', body: {} }, // no /tasks/task-entry/move expected
+    ]);
+    const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
+    expect(result.pageRemoved).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
     expect(deletes).toEqual([]);
   });
 
@@ -2087,7 +2257,7 @@ describe('backfillMissingEntryLinks', () => {
     });
     const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API when nothing is missing'); }) as unknown as typeof fetch;
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ created: [], failed: [] });
+    expect(result).toEqual({ created: [], failed: [], skipped: [] });
   });
 
   it('creates entry-tied links for every entry when no generic link exists yet', async () => {
@@ -2112,7 +2282,43 @@ describe('backfillMissingEntryLinks', () => {
     ]);
   });
 
-  it('skips a combo whose platform is flagged page-removed for that brand', async () => {
+  // Important #4 (final whole-branch review): the card's actual creation
+  // column, and the link's synced_status at insert time, must both come from
+  // THIS entry's own resolved status (resolveEntryPmsStatus), not from
+  // comboLinks[0]?.synced_column_id ?? PMS_TODO_COLUMN_ID (the old
+  // behavior) -- with no pre-existing generic link for this combo, the old
+  // code would have used PMS_TODO_COLUMN_ID and left synced_status at the DB
+  // default ('active'), even though a 'Removed' entry resolves to 'removed'
+  // (the Done column). That mismatch is exactly what enforcePmsColumns' 1-
+  // minute drift-reconcile would "correct" by yanking the brand-new card
+  // back to To Do on its very next tick.
+  it('creates a freshly-backfilled entry-tied link\'s card directly in the column matching its resolved status, with synced_status set at insert time', async () => {
+    const linksTable: unknown[] = [];
+    const client = fakeMultiTableClient({
+      entries: [entryRow({ id: 'e1', account: '504 | BI TP | Netherlands', agent: 'LAI', status: 'Removed' })],
+      schedule_pms_links: linksTable,
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+      weekly_schedule_approvals: APPROVED,
+    });
+    const fetchFn = fakeFetchSequence([
+      { url: /\/teams\//, method: 'GET', body: { members: [{ user: { id: 'u-lai', name: 'LAI' } }] } },
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
+    expect(result.created).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '504 | BI TP | Netherlands' },
+    ]);
+    expect(linksTable).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-1', synced_column_id: DONE_COL, entry_id: 'e1', synced_status: 'removed' },
+    ]);
+  });
+
+  it('skips a combo whose platform is flagged page-removed for that brand, and records it in result.skipped with a reason', async () => {
     const client = fakeMultiTableClient({
       entries: [
         entryRow({ id: 'e1', account: '504 | BI TP | Netherlands' }),
@@ -2127,7 +2333,11 @@ describe('backfillMissingEntryLinks', () => {
     });
     const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API for an excluded combo'); }) as unknown as typeof fetch;
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ created: [], failed: [] });
+    expect(result.created).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(result.skipped).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', reason: 'platform not allowed' },
+    ]);
   });
 
   // Important #2 (task-4 review): backfillMissingEntryLinks creates tasks
@@ -2135,7 +2345,7 @@ describe('backfillMissingEntryLinks', () => {
   // approval gate for free by delegating to pushScheduleToPms -- this proves
   // it enforces the same gate itself rather than ever putting an entry-tied
   // card on the board for a week nobody has approved.
-  it('creates no cards for a combo whose week has not been approved', async () => {
+  it('creates no cards for a combo whose week has not been approved, and records it in result.skipped with a reason', async () => {
     const client = fakeMultiTableClient({
       entries: [entryRow({ id: 'e1', account: '504 | BI TP | Netherlands' })],
       schedule_pms_links: [],
@@ -2147,7 +2357,11 @@ describe('backfillMissingEntryLinks', () => {
     });
     const fetchFn = vi.fn(async () => { throw new Error('should never call the PMS API for an unapproved week'); }) as unknown as typeof fetch;
     const result = await backfillMissingEntryLinks(TAB, WEEK, client, CREDENTIALS, fetchFn);
-    expect(result).toEqual({ created: [], failed: [] });
+    expect(result.created).toEqual([]);
+    expect(result.failed).toEqual([]);
+    expect(result.skipped).toEqual([
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', reason: 'week not approved' },
+    ]);
   });
 
   // Important #1 (task-4 review): the try/catch/cleanup-on-failure path had
@@ -2254,6 +2468,34 @@ describe('computeSchedulePmsParityIssues', () => {
       schedule_platform_restrictions: [],
     });
     const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    expect(issues).toEqual([]);
+  });
+
+  // Important finding I3 (final whole-branch review): an entry-tied link
+  // starts life on the DB default synced_status: 'active' (see
+  // backfillMissingEntryLinks) -- if this aggregate counted it alongside the
+  // one GENERIC link plannerActiveCount is actually meant to compare against,
+  // it would inflate pmsActiveLinkCount past the correct generic-only count,
+  // producing a spurious mismatch even though the generic link itself matches
+  // the plan exactly.
+  it('does not let an entry-tied link\'s own active status inflate the aggregate -- only the generic link counts', async () => {
+    const client = fakeMultiTableClient({
+      brand_schedule: [row()],
+      schedule_pms_links: [
+        { id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'active', entry_id: null },
+        { id: 'link-entry', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-entry', synced_status: 'active', entry_id: 'e1' },
+      ],
+      entries: [],
+      brand_catalog: [],
+      removed_platform_brands: [],
+      schedule_hidden_brands: [],
+      schedule_platform_restrictions: [],
+    });
+    const issues = await computeSchedulePmsParityIssues(TAB, WEEK, client);
+    // plannerActiveCount is 1 (one active brand_schedule day); the generic
+    // link alone also counts as 1 active -- a real match. Before the fix,
+    // the entry-tied link's own 'active' status would have pushed
+    // pmsActiveLinkCount to 2, wrongly flagging this as an issue.
     expect(issues).toEqual([]);
   });
 

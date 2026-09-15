@@ -513,6 +513,18 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
+  // The optional 9th `status` param (added for backfillMissingEntryLinks,
+  // pmsSync.ts) writes an explicit initial synced_status instead of leaving
+  // the row on the table's DB default ('active') -- the test above (no
+  // status passed) is the existing-callers-unaffected half of this contract;
+  // this is the half that proves passing one actually reaches the insert.
+  it('insertSchedulePmsLink includes synced_status in the insert body when a status is passed', async () => {
+    const insert = vi.fn().mockResolvedValue({ error: null });
+    const fakeFrom = vi.fn().mockReturnValue({ insert });
+    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-done', 'entry-1', { from: fakeFrom } as any, 'removed');
+    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-done', entry_id: 'entry-1', synced_status: 'removed' });
+  });
+
   it('updateSchedulePmsLinkDate uses the passed-in client and filters by id', async () => {
     const eq = vi.fn().mockResolvedValue({ error: null });
     const update = vi.fn().mockReturnValue({ eq });

@@ -1726,6 +1726,16 @@ export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase
   return all;
 }
 
+// `status`, when passed, is written as the row's initial synced_status
+// instead of leaving it at the table's DB default ('active'). Existing
+// callers (the generic link created by pushScheduleToPms) omit it and are
+// unaffected -- a generic link's 'active' starting status is correct as-is.
+// backfillMissingEntryLinks (pmsSync.ts) passes it so an entry-tied link's
+// row matches the actual column its just-created card was placed in (derived
+// from that entry's own resolveEntryPmsStatus result), instead of landing on
+// 'active' while the card itself might already be in Done/Paused -- a
+// mismatch enforcePmsColumns' drift-reconcile would otherwise "correct" by
+// yanking the brand-new card back to To Do on its very next tick.
 export async function insertSchedulePmsLink(
   tab: string,
   brand: string,
@@ -1735,10 +1745,13 @@ export async function insertSchedulePmsLink(
   columnId: string,
   entryId: string | null,
   client: SupabaseClient = supabase,
+  status?: string,
 ): Promise<void> {
+  const row: Record<string, unknown> = { tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId, entry_id: entryId };
+  if (status != null) row.synced_status = status;
   const { error } = await client
     .from('schedule_pms_links')
-    .insert({ tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId, entry_id: entryId });
+    .insert(row);
   if (error) throw error;
 }
 
