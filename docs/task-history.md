@@ -10438,3 +10438,22 @@ this project's own blast-radius rule, since both were scoped fixes with a contai
 suite 2517/2517, build clean, `deno check`+`deno test` clean on both edge functions. Deployed
 `sync-schedule-pms` to production (`generate-weekly-schedule` confirmed unaffected -- it only imports
 `pushScheduleToPms`, untouched by either fix -- no redeploy needed). No schema change, no `db push`.
+
+---
+
+## Task 352: Fixed Missing Descriptions on Entry-Tied PMS Cards
+
+*2026-09-15:* User caught this live: Casino Magius's 506/512 cards (created by Task 350, BIT tab,
+2026-09-14) had no description in PMS. Root cause: `backfillMissingEntryLinks` now inserts each
+entry-tied link with `synced_status` pre-set to its final resolved value (Task 350's own I4 fix, to
+avoid a wrong-column flash), but `resolveAndSyncTabStatuses` only PATCHes a description when
+`targetStatus !== link.synced_status` -- so the "next tick attaches the description" path the final
+whole-branch review had verified working (correctly, at the time, against pre-I4-fix code) never fires
+for an entry-tied link again, since its status never again differs from what it was created with. A
+generic link is unaffected (it genuinely starts at the DB default `'active'`, so always mismatches on
+its first real resolve). Fixed by calling `setPmsTaskDescription(buildTaskDescription(entryDetail))`
+directly at creation time in `backfillMissingEntryLinks`, matching what a generic card eventually gets.
+Also manually patched the 2 already-live 506/512 cards' descriptions via a direct PMS API call, since
+the code fix only prevents the bug for future cards -- existing ones don't self-heal (same "status never
+differs again" reason). Verified RED->GREEN. Full suite 2518/2518, build/deno check clean. Deployed
+`sync-schedule-pms`. Detail: memory `project_schedule_planner_multi_account_day_cell`.
