@@ -10387,3 +10387,31 @@ unchanged. Changed `TabScheduleSection.tsx`'s `canEditWeek` to check `isAdmin` i
 already-committed-but-unpushed migration from a parallel session, `20260911140000`, unrelated and
 safe). Build and `scheduleApproval.test.ts` pass. Full detail: handoff
 `2026-09-15-admin-can-edit-approved-week-schedule.md`.
+
+---
+
+## Task 350: Per-Account PMS Task Cards
+
+*2026-09-15:* Implemented the Task 348 spec (`docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md`)
+via subagent-driven development, plan at `docs/superpowers/plans/2026-09-15-pms-per-account-tasks.md`:
+each real account posting for an already-scheduled brand+platform+day now gets its own PMS task card,
+assigned to that account's own agent, instead of every account sharing the one card created when the
+slot's plan first went active. `schedule_pms_links` gains `entry_id` (nullable FK to `entries`) and a
+`link_kind` (`'generic' | 'entry'`) discriminator column with two partial unique indexes; a new
+`backfillMissingEntryLinks` (sibling to `backfillMissingScheduledLinks`) creates the missing per-account
+cards, wired into the same 1-minute cron + daily audit; `resolveAndSyncTabStatuses` resolves an
+entry-tied link from that entry's own evidence, independent of the combo's aggregate. The whole-branch
+review (which the per-task reviews couldn't see) caught 8 real production-safety bugs beyond the
+original plan — 2 Critical (`pullScheduleFromPms` treating an entry-tied card deletion/edit in PMS as a
+plan-level signal that could blank/move a whole day's schedule; `entry_id`'s `on delete set null`
+colliding with the "one generic link per combo" unique index, which would hard-fail an entry deletion)
+plus 5 Important/Minor, all fixed and re-reviewed clean before deploy. The `link_kind` column exists
+specifically to fix the second Critical — user was asked directly and chose it over `on delete cascade`
+or dropping the FK. Migration + both edge functions (`sync-schedule-pms`, `generate-weekly-schedule`)
+deployed to production and live-verified against the real Casino Magius case (BIT tab, 2026-09-14): the
+1-minute cron self-created 2 new cards for accounts 506 (JEN, resolved `published`) and 512 (ANN,
+resolved `done`) within minutes of deploy, with no manual trigger; account 504 correctly rides the
+pre-existing generic card (position-based coverage rule); a manual re-trigger created zero additional
+cards (idempotent). Full suite 1122/1122, build clean, `deno check` clean on both edge functions
+throughout. Full detail: memory `project_schedule_planner_multi_account_day_cell`, handoff
+`2026-09-15-per-account-pms-task-cards.md`.
