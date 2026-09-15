@@ -40,7 +40,7 @@ export function getPmsPlatformLabel(platform: SchedulablePlatform): string {
   return custom?.shortLabel ?? platform;
 }
 
-// An entry-tied schedule_pms_links row (entry_id set) always represents a
+// An entry-tied schedule_pms_links row (link_kind 'entry') always represents a
 // SETTLED real posting -- it only ever gets created because that specific
 // entry already landed in one of the four evidence categories (see
 // backfillMissingEntryLinks below). Unlike resolvePmsSyncStatus (used for the
@@ -255,13 +255,17 @@ export async function pushScheduleToPms(
         links = await fetchSchedulePmsLinks(item.tab, client);
         linksByTab.set(item.tab, links);
       }
-      // entry_id == null -- this must mean "does the GENERIC (plan-level)
-      // link already exist", not "does ANY link exist". A combo can now have
-      // zero-or-more entry-tied links alongside its one generic link; if the
-      // generic link was ever removed (self-healed by pullScheduleFromPms,
-      // or a stale-link cleanup) while entry-tied links for that combo still
-      // exist, re-activation must still be able to recreate the generic card.
-      const alreadyLinked = links.some((l) => l.entry_id == null && l.brand_key === brandKey && l.platform === item.platform && l.date === item.date);
+      // link_kind === 'generic' -- this must mean "does the GENERIC
+      // (plan-level) link already exist", not "does ANY link exist". A combo
+      // can now have zero-or-more entry-tied links alongside its one generic
+      // link; if the generic link was ever removed (self-healed by
+      // pullScheduleFromPms, or a stale-link cleanup) while entry-tied links
+      // for that combo still exist, re-activation must still be able to
+      // recreate the generic card. Keyed off link_kind rather than
+      // `entry_id == null` so an entry-tied link whose entries row was
+      // deleted (FK `on delete set null`) can never masquerade as the
+      // generic link and suppress that recreation.
+      const alreadyLinked = links.some((l) => l.link_kind === 'generic' && l.brand_key === brandKey && l.platform === item.platform && l.date === item.date);
       if (alreadyLinked) {
         skipped.push(item);
         continue;
@@ -288,7 +292,7 @@ export async function pushScheduleToPms(
       // through this column safely. Same bridge-with-documented-cast pattern
       // as the scheduleBrands.ts/BrandScheduleRow.platform gap this plan's
       // ledger already ruled on for Task 6.
-      await insertSchedulePmsLink(item.tab, item.brand, item.platform as Platform, item.date, task.id, PMS_TODO_COLUMN_ID, null, client);
+      await insertSchedulePmsLink(item.tab, item.brand, item.platform as Platform, item.date, task.id, PMS_TODO_COLUMN_ID, null, 'generic', client);
       // Reflect the just-created link back into this tab's in-memory `links`
       // array so a later item in the SAME batch that repeats this exact combo
       // (e.g. rapid re-cycling of one cell while a prior push is in flight)
@@ -299,7 +303,7 @@ export async function pushScheduleToPms(
       // Same queries.ts-out-of-scope cast as insertSchedulePmsLink above --
       // links is typed SchedulePmsLink[] (platform: Platform), this is a
       // local in-memory mirror of what was just inserted, not a re-derivation.
-      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform as Platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID, entry_id: null });
+      links.push({ id: '', tab: item.tab, brand: item.brand, brand_key: brandKey, platform: item.platform as Platform, date: item.date, pms_task_id: task.id, synced_status: 'active', synced_column_id: PMS_TODO_COLUMN_ID, entry_id: null, link_kind: 'generic' });
       created.push(item);
     } catch (err) {
       // The in-memory `links` guard above only protects against a duplicate
@@ -423,9 +427,9 @@ export interface PmsEntryLinkResult {
 // this one is driven by real evidence (dateStatusIndex.entries), not the
 // plan (brand_schedule). For every (tab, brand_key, platform, date) combo
 // with more real entries than schedule_pms_links rows, creates the missing
-// entry-tied cards (entry_id set), one per uncovered account, each assigned
-// to that account's own Agent. The pre-existing generic link (entry_id null,
-// created by pushScheduleToPms when the slot's plan first went active) is
+// entry-tied cards (link_kind 'entry'), one per uncovered account, each
+// assigned to that account's own Agent. The pre-existing generic link
+// (link_kind 'generic', created by pushScheduleToPms when the slot's plan first went active) is
 // left completely untouched -- see docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md
 // for the full "why" and the positional-coverage rule below.
 export async function backfillMissingEntryLinks(
@@ -490,8 +494,17 @@ export async function backfillMissingEntryLinks(
     }
 
     const comboLinks = links.filter((l) => l.brand_key === brandKey && l.platform === platform && l.date === date);
+    // Two DIFFERENT questions, deliberately keyed off two different columns:
+    // linkedEntryIds asks "which specific accounts already have their own
+    // link" -- an identity question, which only entry_id can answer (a link
+    // whose entry_id has gone NULL via the FK's `on delete set null` names no
+    // account, so it correctly contributes nothing here). genericCoverage
+    // asks "does this combo have its plan-level link" -- a kind question,
+    // which must key off link_kind: were it still `entry_id == null`, an
+    // orphaned entry-tied link would fake generic coverage and permanently
+    // suppress the backfill of one real account for that combo.
     const linkedEntryIds = new Set(comboLinks.filter((l) => l.entry_id != null).map((l) => l.entry_id));
-    const genericCoverage = comboLinks.some((l) => l.entry_id == null) ? 1 : 0;
+    const genericCoverage = comboLinks.some((l) => l.link_kind === 'generic') ? 1 : 0;
     const unlinkedEntries = entryList.filter((entry, i) => !linkedEntryIds.has(entry.id) && i >= genericCoverage);
     if (unlinkedEntries.length === 0) continue;
 
@@ -527,7 +540,7 @@ export async function backfillMissingEntryLinks(
         const task = await createPmsTask(`${tabLabel} | ${brand} — ${entryDetail.account}`, date, credentials, fetchFn, columnId);
         createdTaskId = task.id;
         await setPmsTaskLabelsAndAssignee(task.id, [platformLabelId, clientLabelId], assigneeId, credentials, fetchFn);
-        await insertSchedulePmsLink(tab, brand, platform as Platform, date, task.id, columnId, entryDetail.id, client, status);
+        await insertSchedulePmsLink(tab, brand, platform as Platform, date, task.id, columnId, entryDetail.id, 'entry', client, status);
         created.push({ tab, brand, platform: platform as SchedulablePlatform, date, account: entryDetail.account });
       } catch (err) {
         if (createdTaskId) {
@@ -642,7 +655,7 @@ export async function computeSchedulePmsParityIssues(
     // would otherwise inflate pmsActiveLinkCount against a planner count that
     // never counted it, producing a spurious (or, once the entry resolves,
     // silently persistent) parity mismatch alert.
-    if (link.entry_id != null) continue;
+    if (link.link_kind === 'entry') continue;
     const bucket = linksByDate.get(link.date) ?? { active: 0, total: 0 };
     bucket.total += 1;
     if (link.synced_status === 'active') bucket.active += 1;
@@ -1086,7 +1099,7 @@ async function moveRemovedPageCards(
   // Generic links only -- an entry-tied card is per-account settled history,
   // not a plan-level slot, so it must never be swept into Page Removed
   // parking just because its combo's review page got flagged removed.
-  const flagged = links.filter((l) => l.entry_id == null && removedPlatformBrandSet.has(platformRemovedKey(l.tab, l.brand, l.platform)));
+  const flagged = links.filter((l) => l.link_kind === 'generic' && removedPlatformBrandSet.has(platformRemovedKey(l.tab, l.brand, l.platform)));
   if (flagged.length === 0) return { movedLinkIds, moved, moveFailed };
 
   let tasks: PmsTaskListed[];
@@ -1190,7 +1203,7 @@ export async function resolveAndSyncTabStatuses(
       // doc comment) -- resolveEntryPmsStatus can never produce 'paused', so
       // a whole-tab pause must never force one there either; it stays on its
       // own resolved status regardless of the tab-level pause.
-      if (link.entry_id != null) continue;
+      if (link.link_kind === 'entry') continue;
       if (link.synced_status === 'paused') continue;
       const allowedPlatforms = resolveBrandPlatforms(tab, link.brand, tabPlatforms, hiddenBrandSet, platformRestrictionMap, removedPlatformBrandSet);
       if (!allowedPlatforms.includes(link.platform)) continue;
@@ -1283,12 +1296,16 @@ export async function resolveAndSyncTabStatuses(
     // real cancellation signal when the rest of that week's schedule is
     // present to compare against; an entirely-empty week is a fetch/regen
     // artifact, not "every slot cancelled". Also requires the link to be the
-    // GENERIC one (entry_id == null): an entry-tied link is real per-account
-    // history, not a plan slot that can go stale -- deleting it here would
-    // also defeat the "if the entry can't be found, skip rather than guess"
-    // guard the entry-tied resolve branch below applies for exactly this
-    // link kind.
-    if (link.entry_id == null && loc != null && weeksWithScheduleRows.has(loc.weekStart) && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
+    // GENERIC one (link_kind === 'generic'): an entry-tied link is real
+    // per-account history, not a plan slot that can go stale -- deleting it
+    // here would also defeat the "if the entry can't be found, skip rather
+    // than guess" guard the entry-tied resolve branch below applies for
+    // exactly this link kind. Keyed off link_kind, not `entry_id == null`,
+    // so an entry-tied link whose entries row was deleted (FK `on delete set
+    // null`) is not silently reclassified as a plan slot and then destroyed
+    // by this very branch -- the exact irreversible outcome that column
+    // exists to prevent.
+    if (link.link_kind === 'generic' && loc != null && weeksWithScheduleRows.has(loc.weekStart) && dayStatus == null && !isPaused && !hasDateEvidence(dateStatusIndex, link.brand_key, link.platform, link.date)) {
       const cancelItem: PmsCancelItem = { tab: link.tab, brand: link.brand, platform: link.platform, date: link.date };
       try {
         await deletePmsTask(link.pms_task_id, credentials, fetchFn);
@@ -1303,14 +1320,17 @@ export async function resolveAndSyncTabStatuses(
     const comboKey = `${link.brand_key}::${link.platform}::${link.date}`;
     let targetStatus: PmsSyncStatus;
     let description: string | undefined;
-    if (link.entry_id != null) {
+    if (link.link_kind === 'entry') {
       // Entry-tied link: resolve from THIS entry's own evidence, not the
       // combo's aggregate -- see resolveEntryPmsStatus's own doc comment.
       // If the entry can't be found (e.g. its status changed to something
-      // outside the four recognized categories since this link was created),
+      // outside the four recognized categories since this link was created,
+      // or the entries row was deleted outright and the FK nulled entry_id),
       // leave the link untouched rather than guessing -- same
       // never-destructively-act-on-an-unclear-case spirit as the rest of
-      // this function.
+      // this function. `e.id === link.entry_id` below stays on entry_id: it
+      // is asking WHICH account this link belongs to, an identity question,
+      // not which kind of link it is.
       const entryDetail = dateStatusIndex.entries.get(comboKey)?.find((e) => e.id === link.entry_id);
       if (!entryDetail) continue;
       targetStatus = resolveEntryPmsStatus(entryDetail.kind);
@@ -1447,13 +1467,16 @@ export async function cancelScheduleInPms(
         links = await fetchSchedulePmsLinks(item.tab, client);
         linksByTab.set(item.tab, links);
       }
-      // entry_id == null -- an explicit Cancel always targets the GENERIC
-      // (plan-level) link for this combo, never an arbitrary entry-tied one.
-      // Without this filter, a combo with both a generic link and one or
-      // more entry-tied links would have this `.find` pick whichever one
-      // fetchSchedulePmsLinks happened to return first (unordered), deleting
-      // real per-account history instead of the plan slot.
-      const link = links.find((l) => l.entry_id == null && l.brand_key === brandKey && l.platform === item.platform && l.date === item.date);
+      // link_kind === 'generic' -- an explicit Cancel always targets the
+      // GENERIC (plan-level) link for this combo, never an arbitrary
+      // entry-tied one. Without this filter, a combo with both a generic link
+      // and one or more entry-tied links would have this `.find` pick
+      // whichever one fetchSchedulePmsLinks happened to return first
+      // (unordered), deleting real per-account history instead of the plan
+      // slot. Keyed off link_kind, not `entry_id == null`, so an entry-tied
+      // link orphaned by the FK's `on delete set null` can't be picked here
+      // and destroyed in the generic link's place.
+      const link = links.find((l) => l.link_kind === 'generic' && l.brand_key === brandKey && l.platform === item.platform && l.date === item.date);
       if (!link) {
         skipped.push(item);
         continue;
@@ -1494,19 +1517,19 @@ export async function pullScheduleFromPms(
     const task = taskById.get(link.pms_task_id);
     if (!task) {
       await deleteSchedulePmsLink(link.id, client);
-      // Entry-tied links (link.entry_id set) are per-account history, not a
+      // Entry-tied links (link_kind 'entry') are per-account history, not a
       // plan-level slot -- `deleted` is consumed by the browser
       // (TabScheduleSection.tsx) as a signal to un-schedule the ENTIRE day's
       // plan. If one agent's own per-account card was deleted in PMS, that
       // must never propagate up to the plan; just self-heal the now-stale
       // link row above and move on, same as the generic-link case does for
       // itself, but without reporting it.
-      if (link.entry_id != null) continue;
+      if (link.link_kind === 'entry') continue;
       deleted.push({ tab: link.tab, brand: link.brand, platform: link.platform, date: link.date });
       continue;
     }
     const assigneeName = task.assignees[0]?.user.name ?? null;
-    if (link.entry_id != null) {
+    if (link.link_kind === 'entry') {
       // Entry-tied link: its date is the entry's own settled evidence date,
       // not a movable plan date -- never contribute to `drifted` (also
       // consumed by the browser as a plan-level date-move signal). Still

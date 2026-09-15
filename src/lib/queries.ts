@@ -1686,17 +1686,25 @@ export interface SchedulePmsLink {
   // PMS_STATUS_COLUMN_IDS remap, where this value itself is now stale
   // relative to the current mapping) -- only the latter gets corrected.
   synced_column_id: string;
-  // NULL for the original "generic" plan-level link (one per combo, created
-  // when the slot's plan first went active -- unchanged behavior). Set to a
-  // specific entries.id for a new entry-tied link representing one real
-  // account's own posting -- see docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md.
+  // WHICH specific account an entry-tied link belongs to -- an identity, not
+  // a kind. NULL on every generic link, and also NULL on an entry-tied link
+  // whose entries row was deleted (the FK is `on delete set null`), which is
+  // exactly why nullness here must never be read as "this is the generic
+  // link" -- use link_kind for that. See
+  // docs/superpowers/specs/2026-09-15-pms-per-account-tasks-design.md.
   entry_id: string | null;
+  // The generic-vs-entry-tied discriminator. 'generic' = the original
+  // plan-level link (one per combo, created when the slot's plan first went
+  // active -- unchanged behavior); 'entry' = a link representing one real
+  // account's own posting. Unlike entry_id, this never changes behind the
+  // code's back, so every "is this the generic link?" branch keys off it.
+  link_kind: 'generic' | 'entry';
 }
 
 export async function fetchSchedulePmsLinks(tab: string, client: SupabaseClient = supabase): Promise<SchedulePmsLink[]> {
   const { data, error } = await client
     .from('schedule_pms_links')
-    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id')
+    .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id, link_kind')
     .eq('tab', tab);
   if (error) throw error;
   return (data ?? []) as SchedulePmsLink[];
@@ -1716,7 +1724,7 @@ export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase
   while (true) {
     const { data, error } = await client
       .from('schedule_pms_links')
-      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id')
+      .select('id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id, link_kind')
       .range(from, from + PAGE - 1);
     if (error) throw error;
     all.push(...((data ?? []) as SchedulePmsLink[]));
@@ -1736,6 +1744,13 @@ export async function fetchAllSchedulePmsLinks(client: SupabaseClient = supabase
 // 'active' while the card itself might already be in Done/Paused -- a
 // mismatch enforcePmsColumns' drift-reconcile would otherwise "correct" by
 // yanking the brand-new card back to To Do on its very next tick.
+//
+// `linkKind` is always passed explicitly rather than leaning on the column's
+// DB default ('generic'): it is the row's generic-vs-entry-tied
+// discriminator, and a caller that forgets it would silently create a
+// mislabelled link the whole of pmsSync.ts then branches on. `entryId`
+// remains a separate, purely identifying field -- 'entry' + an id at the
+// entry-tied call site, 'generic' + null at the plan-level one.
 export async function insertSchedulePmsLink(
   tab: string,
   brand: string,
@@ -1744,10 +1759,11 @@ export async function insertSchedulePmsLink(
   pmsTaskId: string,
   columnId: string,
   entryId: string | null,
+  linkKind: 'generic' | 'entry',
   client: SupabaseClient = supabase,
   status?: string,
 ): Promise<void> {
-  const row: Record<string, unknown> = { tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId, entry_id: entryId };
+  const row: Record<string, unknown> = { tab, brand, platform, date, pms_task_id: pmsTaskId, synced_column_id: columnId, entry_id: entryId, link_kind: linkKind };
   if (status != null) row.synced_status = status;
   const { error } = await client
     .from('schedule_pms_links')

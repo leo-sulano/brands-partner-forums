@@ -504,25 +504,41 @@ describe('queries.ts injectable Supabase client', () => {
     expect(singletonFrom).toHaveBeenCalledWith('schedule_pms_links');
   });
 
+  // link_kind is the generic-vs-entry-tied discriminator every branch in
+  // src/lib/scheduler/pmsSync.ts now keys off -- if it silently drops out of
+  // this explicit column list, every link reads back as link_kind undefined
+  // and the whole resolve/cancel/parity layer treats every row as neither
+  // kind. entry_id stays selected too: it still answers "which account".
+  it('fetchSchedulePmsLinks selects link_kind alongside entry_id', async () => {
+    const selectSpy = vi.fn().mockReturnValue({ eq: () => Promise.resolve({ data: [], error: null }) });
+    const fakeFrom = vi.fn().mockReturnValue({ select: selectSpy });
+    await fetchSchedulePmsLinks('X', { from: fakeFrom } as any);
+    expect(selectSpy).toHaveBeenCalledWith(
+      'id, tab, brand, brand_key, platform, date, pms_task_id, synced_status, synced_column_id, entry_id, link_kind',
+    );
+  });
+
   it('insertSchedulePmsLink uses the passed-in client for the insert, recording the created column', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ insert });
-    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-todo', null, { from: fakeFrom } as any);
+    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-todo', null, 'generic', { from: fakeFrom } as any);
     expect(fakeFrom).toHaveBeenCalledWith('schedule_pms_links');
-    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-todo', entry_id: null });
+    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-todo', entry_id: null, link_kind: 'generic' });
     expect(singletonFrom).not.toHaveBeenCalled();
   });
 
-  // The optional 9th `status` param (added for backfillMissingEntryLinks,
+  // The optional trailing `status` param (added for backfillMissingEntryLinks,
   // pmsSync.ts) writes an explicit initial synced_status instead of leaving
   // the row on the table's DB default ('active') -- the test above (no
   // status passed) is the existing-callers-unaffected half of this contract;
   // this is the half that proves passing one actually reaches the insert.
+  // Also the entry-tied half of the link_kind contract: 'entry' + a real
+  // entry id, vs 'generic' + null above.
   it('insertSchedulePmsLink includes synced_status in the insert body when a status is passed', async () => {
     const insert = vi.fn().mockResolvedValue({ error: null });
     const fakeFrom = vi.fn().mockReturnValue({ insert });
-    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-done', 'entry-1', { from: fakeFrom } as any, 'removed');
-    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-done', entry_id: 'entry-1', synced_status: 'removed' });
+    await insertSchedulePmsLink('X', 'WinMega', 'tp', '2026-08-20', 'task-1', 'col-done', 'entry-1', 'entry', { from: fakeFrom } as any, 'removed');
+    expect(insert).toHaveBeenCalledWith({ tab: 'X', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: 'col-done', entry_id: 'entry-1', link_kind: 'entry', synced_status: 'removed' });
   });
 
   it('updateSchedulePmsLinkDate uses the passed-in client and filters by id', async () => {

@@ -88,11 +88,11 @@ describe('pushScheduleToPms', () => {
     ]);
     const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [ITEM], skipped: [], failed: [] });
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, entry_id: null }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, link_kind: 'generic', entry_id: null }]);
   });
 
   it('skips an item that already has a link for that exact combo, making no PMS API calls', async () => {
-    const { client } = fakeSupabase([{ id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1' }]);
+    const { client } = fakeSupabase([{ id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', link_kind: 'generic' }]);
     const fetchFn = vi.fn();
     const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [], skipped: [ITEM], failed: [] });
@@ -108,7 +108,7 @@ describe('pushScheduleToPms', () => {
   // combo exists.
   it('creates a new generic card for a combo that has an entry-tied link but no generic link, instead of treating it as already-linked', async () => {
     const { client, insertedRows } = fakeSupabase([
-      { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-entry', entry_id: 'e1' },
+      { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-entry', link_kind: 'entry', entry_id: 'e1' },
     ]);
     const fetchFn = fakeFetchSequence([
       { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
@@ -117,7 +117,30 @@ describe('pushScheduleToPms', () => {
     ]);
     const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
     expect(result).toEqual({ created: [ITEM], skipped: [], failed: [] });
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, entry_id: null }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, link_kind: 'generic', entry_id: null }]);
+  });
+
+  // Critical finding C2 (final whole-branch review): schedule_pms_links.entry_id
+  // is `on delete set null`, so deleting an entries row silently nulls the
+  // entry_id of that account's own link while the row itself lives on. The
+  // link is still entry-tied -- link_kind says so -- and the ONLY thing that
+  // changed is an identity column. Back when nullness was the discriminator,
+  // this row read as "the generic link" to every branch in this module, so a
+  // combo whose real generic card had been removed would be treated as
+  // already-linked here and never get its card back. Same fixture as the test
+  // above, with the one difference that matters: entry_id is NULL.
+  it('still treats a link whose entry_id has gone NULL (entries row deleted) as entry-tied, so it never masquerades as the missing generic link', async () => {
+    const { client, insertedRows } = fakeSupabase([
+      { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-entry', link_kind: 'entry', entry_id: null },
+    ]);
+    const fetchFn = fakeFetchSequence([
+      { url: /\/labels$/, method: 'GET', body: [{ id: 'label-tp', name: 'TP' }, { id: 'label-client', name: 'Client' }] },
+      { url: /\/tasks$/, method: 'POST', body: { id: 'task-1', dueDate: '2026-08-20T00:00:00.000Z' } },
+      { url: /\/tasks\/task-1$/, method: 'PATCH', body: {} },
+    ]);
+    const result = await pushScheduleToPms([ITEM], client, CREDENTIALS, fetchFn);
+    expect(result).toEqual({ created: [ITEM], skipped: [], failed: [] });
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, link_kind: 'generic', entry_id: null }]);
   });
 
   it('auto-creates the WO label on first use, then reuses it for a second WO item', async () => {
@@ -226,7 +249,7 @@ describe('pushScheduleToPms', () => {
     expect(result.created).toEqual([ITEM]);
     expect(result.skipped).toEqual([{ ...ITEM }]);
     expect(result.failed).toEqual([]);
-    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, entry_id: null }]);
+    expect(insertedRows).toEqual([{ tab: 'BITP', brand: 'WinMega', platform: 'tp', date: '2026-08-20', pms_task_id: 'task-1', synced_column_id: TODO_COL, link_kind: 'generic', entry_id: null }]);
     expect(fetchFn).toHaveBeenCalledTimes(3);
   });
 
@@ -384,7 +407,7 @@ function fakeSupabaseWithLinks(links: any[]) {
   };
 }
 
-const LINK = { id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-1' };
+const LINK = { id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-1', link_kind: 'generic' };
 
 describe('pullScheduleFromPms', () => {
   it('reports a drifted item and updates the link when the live due date differs', async () => {
@@ -435,7 +458,7 @@ describe('pullScheduleFromPms', () => {
   });
 
   it('skips a link whose live task has a cleared (null) due date without throwing, while still processing other links and still reporting its assignee', async () => {
-    const LINK_2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-2' };
+    const LINK_2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-2', link_kind: 'generic' };
     const { client, updated, deletedIds } = fakeSupabaseWithLinks([LINK, LINK_2]);
     const fetchFn = vi.fn().mockResolvedValue({
       ok: true,
@@ -474,7 +497,7 @@ describe('pullScheduleFromPms', () => {
   // per-account card being deleted or re-dated in PMS must never propagate up
   // to the whole day's plan. A sibling GENERIC link for the exact same combo
   // must keep behaving exactly as before.
-  const ENTRY_LINK = { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-entry', entry_id: 'e1' };
+  const ENTRY_LINK = { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-entry', link_kind: 'entry', entry_id: 'e1' };
 
   it('self-heals (deletes the stale link row) an entry-tied link whose PMS task is gone, without reporting it in `deleted` -- while a sibling generic link for the same combo still reports normally', async () => {
     const { client, deletedIds } = fakeSupabaseWithLinks([LINK, ENTRY_LINK]);
@@ -534,7 +557,7 @@ describe('cancelScheduleInPms', () => {
   // arbitrary entry-tied one, since fetchSchedulePmsLinks' results are
   // unordered and the old `.find` had no entry_id filter to disambiguate.
   it('cancels the generic link, never an entry-tied one, when a combo has both', async () => {
-    const entryLink = { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-entry', entry_id: 'e1' };
+    const entryLink = { id: 'link-entry', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega', platform: 'tp' as const, date: '2026-08-20', pms_task_id: 'task-entry', link_kind: 'entry', entry_id: 'e1' };
     const { client, deletedIds } = fakeSupabaseWithLinks([entryLink, LINK]); // entry-tied link listed FIRST, so an unfiltered .find would have picked it
     const fetchFn = fakeFetchSequence([
       { url: /\/tasks\/task-1$/, method: 'DELETE', body: null, status: 204 },
@@ -547,7 +570,7 @@ describe('cancelScheduleInPms', () => {
   it('records a per-item failure without aborting the batch, and never deletes that link', async () => {
     const { client, deletedIds } = fakeSupabaseWithLinks([
       LINK,
-      { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-21', pms_task_id: 'task-2' },
+      { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-21', pms_task_id: 'task-2', link_kind: 'generic' },
     ]);
     const badItem: PmsCancelItem = CANCEL_ITEM;
     const okItem: PmsCancelItem = { tab: 'BITP', brand: 'OtherBrand', platform: 'tp', date: '2026-08-21' };
@@ -582,7 +605,7 @@ describe('cancelScheduleInPms', () => {
 
   it('reuses the per-tab links fetch across a batch, fetching schedule_pms_links only once', async () => {
     const item2: PmsCancelItem = { tab: 'BITP', brand: 'OtherBrand', platform: 'tp', date: '2026-08-21' };
-    const link2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-21', pms_task_id: 'task-2' };
+    const link2 = { id: 'link-2', tab: 'BITP', brand: 'OtherBrand', brand_key: 'otherbrand', platform: 'tp' as const, date: '2026-08-21', pms_task_id: 'task-2', link_kind: 'generic' };
     let selectCalls = 0;
     const deletedIds: string[] = [];
     const client = {
@@ -884,7 +907,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('moves a link whose entry status resolves to Done, and leaves synced_status current on success', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [],
@@ -921,7 +944,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('builds the description with the matched entry\'s Account/Country/Proxy Used/review-text content, content appended after a blank line', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', {
         Brands: 'WinMega', 'TP Review Status': 'Removed', 'Trust Pilot': '27/08/2026',
@@ -948,7 +971,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('leaves description undefined for a combo resolving to paused (no evidence, plan/title-only)', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -982,7 +1005,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('resolves an evidence-free but scheduler-paused combo to paused, not active', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1002,7 +1025,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('lets an explicit day-level active status override a scheduler auto-pause, resolving to active -- matching calendarRenderer.tsx\'s own "day status wins over the week-level pause" precedence (effectivePaused = isPaused && status == null)', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1024,7 +1047,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('still treats the week as paused for a link whose day has no explicit status (status stays null) even though another day in the same week was manually reactivated', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-25', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-25', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1047,7 +1070,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1081,8 +1104,8 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', entry_id: null },
-        { id: 'link-entry', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-entry', synced_status: 'done', entry_id: 'e1' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic', entry_id: null },
+        { id: 'link-entry', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-entry', synced_status: 'done', link_kind: 'entry', entry_id: 'e1' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1098,6 +1121,13 @@ describe('resolveAndSyncTabStatuses', () => {
     ]);
     const result = await resolveAndSyncTabStatuses('Rooster Partners', client, { apiToken: 'test-token' }, fetchFn);
     expect(result.cancelled).toEqual([{ tab: 'Rooster Partners', brand: 'Lucky7even', platform: 'cg', date: '2026-08-27' }]);
+    // Without the link_kind filter, link-entry would ALSO be picked up as a
+    // cancellation candidate, triggering a second deletePmsTask call that
+    // fakeFetchSequence has no mocked response for -- that failed attempt
+    // lands in cancelFailed, not in a thrown test error, so this assertion is
+    // what actually discriminates the bug (the `deletes` assertion below
+    // alone stays green either way, since only the successful delete lands there).
+    expect(result.cancelFailed).toEqual([]);
     expect(result.synced).toEqual([]);
     expect(deletes).toEqual([{ table: 'schedule_pms_links', id: 'link-1' }]); // link-entry is never deleted
   });
@@ -1110,7 +1140,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-31', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-31', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1136,7 +1166,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-31', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-31', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1161,7 +1191,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1187,7 +1217,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Trybet', brand: 'Trybet.com', brand_key: 'trybet.com', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1209,7 +1239,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [],
@@ -1234,7 +1264,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const base = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1271,7 +1301,7 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1293,8 +1323,8 @@ describe('resolveAndSyncTabStatuses', () => {
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-bad', synced_status: 'active' },
-        { id: 'link-2', tab: 'Rooster Partners', brand: 'Rocketspin', brand_key: 'rocketspin', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-ok', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-bad', synced_status: 'active', link_kind: 'generic' },
+        { id: 'link-2', tab: 'Rooster Partners', brand: 'Rocketspin', brand_key: 'rocketspin', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-ok', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [
         { ...entry('Rooster Partners', 'e1', { Brands: 'Lucky7even', 'CG Review Status': '', 'Casino Guru review added': '' }), updated_at: '2026-08-27T12:00:00Z' },
@@ -1322,7 +1352,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('skips a link whose platform is currently hidden for that brand, never syncing it', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Novadreams2', brand_key: 'novadreams2', platform: 'ag', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Novadreams2', brand_key: 'novadreams2', platform: 'ag', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('Rooster Partners', 'e1', { Brands: 'Novadreams2', 'AG Review Status': 'Done', 'Ask Gambler review added': '27/08/2026' })],
       removed_platform_brands: [],
@@ -1340,7 +1370,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('makes no move call when the resolved status already matches synced_status', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [],
@@ -1367,7 +1397,7 @@ describe('resolveAndSyncTabStatuses', () => {
   it('performs a full resolve on every call, with nothing cached across calls that could short-circuit a later one', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [],
@@ -1404,9 +1434,9 @@ describe('resolveAndSyncTabStatuses', () => {
         { id: 'e2', tab: TAB, sheet_row_id: '1', updated_at: '', last_edited_by: 'dashboard', last_sync_tag: null, data: { Brands: 'Casino Magius', Account: 'a2', Agent: 'JEN', 'TP Review Status': 'Done', 'Trust Pilot': '2026-09-15' } },
       ],
       schedule_pms_links: [
-        { id: 'link-generic', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-generic', synced_status: 'removed', synced_column_id: DONE_COL, entry_id: null },
-        { id: 'link-e1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-e1', synced_status: 'removed', synced_column_id: DONE_COL, entry_id: 'e1' },
-        { id: 'link-e2', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-e2', synced_status: 'active', synced_column_id: TODO_COL, entry_id: 'e2' },
+        { id: 'link-generic', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-generic', synced_status: 'removed', synced_column_id: DONE_COL, link_kind: 'generic', entry_id: null },
+        { id: 'link-e1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-e1', synced_status: 'removed', synced_column_id: DONE_COL, link_kind: 'entry', entry_id: 'e1' },
+        { id: 'link-e2', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-e2', synced_status: 'active', synced_column_id: TODO_COL, link_kind: 'entry', entry_id: 'e2' },
       ],
       brand_schedule: [],
       brand_platform_pause: [],
@@ -1452,7 +1482,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
   it('forces an eligible link to paused when isTabPaused is true, overriding what its real evidence would otherwise resolve to', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [],
@@ -1485,8 +1515,8 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
   it('force-pauses only the generic link, never a sibling entry-tied link for the same combo, when isTabPaused is true', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', entry_id: null },
-        { id: 'link-entry', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-entry', synced_status: 'done', entry_id: 'e1' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic', entry_id: null },
+        { id: 'link-entry', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-entry', synced_status: 'done', link_kind: 'entry', entry_id: 'e1' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1501,12 +1531,17 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn, true);
     expect(result.synced).toEqual([{ linkId: 'link-1', pmsTaskId: 'task-1', targetStatus: 'paused', tabLabel: 'BITP', brand: 'WinMega', date: '2026-08-27' }]);
+    // Without the link_kind filter, link-entry would also be force-paused,
+    // hitting fetchFn for an unmocked /tasks/task-entry/move call; that
+    // failure lands in `failed`, not a thrown test error, so this is the
+    // assertion that actually discriminates the bug being present.
+    expect(result.failed).toEqual([]);
   });
 
   it('makes no PMS calls when every link is already synced as paused (nothing to move)', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1524,7 +1559,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
   it('does not force-pause a link whose platform is currently hidden for that brand, leaving it untouched', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Novadreams2', brand_key: 'novadreams2', platform: 'ag', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Novadreams2', brand_key: 'novadreams2', platform: 'ag', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1542,7 +1577,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
   it('makes no move call when a link is already synced as paused', async () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused' },
+        { id: 'link-1', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'paused', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1561,7 +1596,7 @@ describe('resolveAndSyncTabStatuses — tab-level pause cascade (isTabPaused par
     const deletes: { table: string; id: string }[] = [];
     const client = fakeMultiTableClient({
       schedule_pms_links: [
-        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active' },
+        { id: 'link-1', tab: 'Rooster Partners', brand: 'Lucky7even', brand_key: 'lucky7even', platform: 'cg', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [],
       removed_platform_brands: [],
@@ -1605,6 +1640,7 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
   const REMOVED_LINK = {
     id: 'link-1', tab: 'TP Brand Injection', brand: 'RollingSlots Casino', brand_key: 'rollingslots casino',
     platform: 'tp' as const, date: '2026-09-04', pms_task_id: 'task-1', synced_status: 'active' as const,
+    link_kind: 'generic' as const,
   };
 
   function removedPageClient(deletes?: { table: string; id: string }[]) {
@@ -1649,7 +1685,7 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
         REMOVED_LINK,
-        { ...REMOVED_LINK, id: 'link-entry', pms_task_id: 'task-entry', entry_id: 'e1' },
+        { ...REMOVED_LINK, id: 'link-entry', pms_task_id: 'task-entry', link_kind: 'entry', entry_id: 'e1' },
       ],
       entries: [],
       removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
@@ -1669,6 +1705,12 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
     ]);
     const result = await resolveAndSyncTabStatuses('TP Brand Injection', client, { apiToken: 'test-token' }, fetchFn);
     expect(result.pageRemoved).toEqual([{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp', date: '2026-09-04' }]);
+    // Without the link_kind filter, task-entry would also be flagged for the
+    // Page Removed move, hitting fetchFn for an unmocked
+    // /tasks/task-entry/move call; that failure lands in pageRemovedFailed,
+    // not a thrown test error, so this is the assertion that actually
+    // discriminates the bug being present.
+    expect(result.pageRemovedFailed).toEqual([]);
     expect(deletes).toEqual([]);
   });
 
@@ -1717,7 +1759,7 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
         REMOVED_LINK,
-        { id: 'link-2', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-2', synced_status: 'active' },
+        { id: 'link-2', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-2', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
@@ -1748,7 +1790,7 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
     const client = fakeMultiTableClient({
       schedule_pms_links: [
         REMOVED_LINK,
-        { id: 'link-2', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-2', synced_status: 'active' },
+        { id: 'link-2', tab: 'TP Brand Injection', brand: 'WinMega', brand_key: 'winmega', platform: 'tp', date: '2026-08-27', pms_task_id: 'task-2', synced_status: 'active', link_kind: 'generic' },
       ],
       entries: [entry('TP Brand Injection', 'e1', { Brands: 'WinMega', 'TP Review Status': 'Done', 'Trust Pilot': '27/08/2026' })],
       removed_platform_brands: [{ tab: 'TP Brand Injection', brand: 'RollingSlots Casino', platform: 'tp' }],
@@ -1801,7 +1843,7 @@ describe('resolveAndSyncTabStatuses — removed-page card parking', () => {
 function link(over: Partial<SchedulePmsLink> = {}): SchedulePmsLink {
   return {
     id: 'link-1', tab: 'BITP', brand: 'WinMega', brand_key: 'winmega',
-    platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done', synced_column_id: DONE_COL, entry_id: null,
+    platform: 'tp', date: '2026-08-27', pms_task_id: 'task-1', synced_status: 'done', synced_column_id: DONE_COL, link_kind: 'generic', entry_id: null,
     ...over,
   };
 }
@@ -2127,7 +2169,7 @@ describe('backfillMissingScheduledLinks', () => {
   it('skips a combo that already has a link, making no PMS API calls', async () => {
     const client = fakeMultiTableClient({
       brand_schedule: [row({ tuesday: null, thursday: null })],
-      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1' }],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', link_kind: 'generic' }],
       entries: [],
       brand_catalog: [],
       removed_platform_brands: [],
@@ -2219,7 +2261,7 @@ describe('backfillMissingEntryLinks', () => {
         entryRow({ id: 'e3', account: '512 | BI TP | Netherlands', agent: 'ANN' }),
       ],
       schedule_pms_links: [
-        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', entry_id: null },
+        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', link_kind: 'generic', entry_id: null },
       ],
       brand_catalog: [],
       removed_platform_brands: [],
@@ -2247,7 +2289,7 @@ describe('backfillMissingEntryLinks', () => {
     const client = fakeMultiTableClient({
       entries: [entryRow({ id: 'e1' })],
       schedule_pms_links: [
-        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', entry_id: null },
+        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', link_kind: 'generic', entry_id: null },
       ],
       brand_catalog: [],
       removed_platform_brands: [],
@@ -2314,7 +2356,7 @@ describe('backfillMissingEntryLinks', () => {
       { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', account: '504 | BI TP | Netherlands' },
     ]);
     expect(linksTable).toEqual([
-      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-1', synced_column_id: DONE_COL, entry_id: 'e1', synced_status: 'removed' },
+      { tab: TAB, brand: 'Casino Magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-1', synced_column_id: DONE_COL, link_kind: 'entry', entry_id: 'e1', synced_status: 'removed' },
     ]);
   });
 
@@ -2379,7 +2421,7 @@ describe('backfillMissingEntryLinks', () => {
         entryRow({ id: 'e3', account: '512 | BI TP | Netherlands', agent: 'ANN' }),
       ],
       schedule_pms_links: [
-        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', entry_id: null },
+        { id: 'link-1', tab: TAB, brand: 'Casino Magius', brand_key: 'casino magius', platform: 'tp', date: '2026-09-15', pms_task_id: 'task-existing', synced_status: 'active', synced_column_id: 'col-todo', link_kind: 'generic', entry_id: null },
       ],
       brand_catalog: [],
       removed_platform_brands: [],
@@ -2460,7 +2502,7 @@ describe('computeSchedulePmsParityIssues', () => {
   it('reports no issues when every active plan day has a matching active-status link', async () => {
     const client = fakeMultiTableClient({
       brand_schedule: [row()],
-      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'active' }],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic' }],
       entries: [],
       brand_catalog: [],
       removed_platform_brands: [],
@@ -2482,8 +2524,8 @@ describe('computeSchedulePmsParityIssues', () => {
     const client = fakeMultiTableClient({
       brand_schedule: [row()],
       schedule_pms_links: [
-        { id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'active', entry_id: null },
-        { id: 'link-entry', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-entry', synced_status: 'active', entry_id: 'e1' },
+        { id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'active', link_kind: 'generic', entry_id: null },
+        { id: 'link-entry', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-entry', synced_status: 'active', link_kind: 'entry', entry_id: 'e1' },
       ],
       entries: [],
       brand_catalog: [],
@@ -2502,7 +2544,7 @@ describe('computeSchedulePmsParityIssues', () => {
   it('flags a day whose plan is active but whose only link is not in active status -- the exact Task 341 shape', async () => {
     const client = fakeMultiTableClient({
       brand_schedule: [row()],
-      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'paused' }],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'paused', link_kind: 'generic' }],
       entries: [],
       brand_catalog: [],
       removed_platform_brands: [],
@@ -2526,7 +2568,7 @@ describe('computeSchedulePmsParityIssues', () => {
     // live production run of this check found on 4 real tabs.
     const client = fakeMultiTableClient({
       brand_schedule: [row()],
-      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'done' }],
+      schedule_pms_links: [{ id: 'link-1', tab: TAB, brand: 'Alf Casino', brand_key: 'alf casino', platform: 'tp', date: '2026-09-07', pms_task_id: 'task-1', synced_status: 'done', link_kind: 'generic' }],
       entries: [entry(TAB, 'e1', { Brands: 'Alf Casino', 'TP Review Status': 'Done', 'Trust Pilot': '07/09/2026' })],
       brand_catalog: [],
       removed_platform_brands: [],
