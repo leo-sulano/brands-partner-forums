@@ -7,7 +7,7 @@ import { syncScheduleStatusToPms, type PmsStatusSyncItem } from './pmsSync';
 import { resolveAndSyncTabStatuses } from './pmsSync';
 import { cancelScheduleInPms, type PmsCancelItem } from './pmsSync';
 import { enforcePmsColumns, computeColumnSortMoves } from './pmsSync';
-import { getPmsPlatformLabel } from './pmsSync';
+import { getPmsPlatformLabel, resolveEntryPmsStatus } from './pmsSync';
 import type { SchedulePmsLink } from '../queries';
 import { invalidateTabCache } from '../queries';
 import { registerTabCustomPlatforms, resetTabCustomPlatforms, type CustomPlatformConfig } from '../customPlatformRegistry';
@@ -2110,5 +2110,14 @@ describe('getPmsPlatformLabel', () => {
     } finally {
       resetTabCustomPlatforms();
     }
+  });
+});
+
+describe('resolveEntryPmsStatus', () => {
+  it('maps each evidence kind straight to its PMS status, with no pause branch', () => {
+    expect(resolveEntryPmsStatus('removed')).toBe('removed');
+    expect(resolveEntryPmsStatus('confirmed')).toBe('published');
+    expect(resolveEntryPmsStatus('pending')).toBe('pending');
+    expect(resolveEntryPmsStatus('done')).toBe('done');
   });
 });

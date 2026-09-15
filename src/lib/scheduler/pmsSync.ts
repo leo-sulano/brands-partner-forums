@@ -6,7 +6,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeBrandKey, platformRemovedKey, buildRemovedPlatformBrandSet, type Platform } from '../removedPlatformBrands.ts';
 import { fetchSchedulePmsLinks, insertSchedulePmsLink, updateSchedulePmsLinkDate, updateSchedulePmsLinkStatus, updateSchedulePmsLinkColumn, deleteSchedulePmsLink, fetchRawEntriesByTab, fetchRemovedPlatformBrands, fetchScheduleHiddenBrands, fetchScheduleRestrictedBrands, fetchActiveBrandPlatformPauses, fetchBrandSchedule, fetchApprovedScheduleWeeks, fetchBrandCatalog, type SchedulePmsLink } from '../queries.ts';
-import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, buildBrandDisplayMap, columnsForWeek, type PmsSyncStatus, type EntryDetails } from './scheduleUtils.ts';
+import { buildDateStatusIndex, resolvePmsSyncStatus, hasDateEvidence, buildBrandDisplayMap, columnsForWeek, type PmsSyncStatus, type EntryDetails, type DateEvidenceKind } from './scheduleUtils.ts';
 import { buildHiddenBrandSet, buildPlatformRestrictionMap, resolveBrandPlatforms } from '../scheduleBrandConfig.ts';
 import { getTabPlatforms } from '../tab-configs.ts';
 import { weekdayAndWeekStartFor, scheduleFor, type BrandScheduleRow } from '../scheduleBrands.ts';
@@ -38,6 +38,20 @@ export function getPmsPlatformLabel(platform: SchedulablePlatform): string {
   if (platform in PMS_PLATFORM_LABEL_NAMES) return PMS_PLATFORM_LABEL_NAMES[platform as Platform];
   const custom = getCustomPlatformById(platform);
   return custom?.shortLabel ?? platform;
+}
+
+// An entry-tied schedule_pms_links row (entry_id set) always represents a
+// SETTLED real posting -- it only ever gets created because that specific
+// entry already landed in one of the four evidence categories (see
+// backfillMissingEntryLinks below). Unlike resolvePmsSyncStatus (used for the
+// generic, plan-level link), there is no isPaused branch here: a settled
+// account can never be "paused" or "active" (not-yet-decided) -- those are
+// plan-level concepts that don't apply to history that already happened.
+export function resolveEntryPmsStatus(kind: DateEvidenceKind): PmsSyncStatus {
+  if (kind === 'removed') return 'removed';
+  if (kind === 'confirmed') return 'published';
+  if (kind === 'pending') return 'pending';
+  return 'done';
 }
 
 // Every existing platform label (TP/AG/CG) already has its own color; WO is
