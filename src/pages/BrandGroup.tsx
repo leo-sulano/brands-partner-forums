@@ -1394,7 +1394,7 @@ export default function BrandGroup() {
   if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]) uniqueBrands.push(TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]);
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
-    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href', 'Brand Link'];
+    const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href', 'Brand / TP URL PAGE__href', 'Brand Link'];
     const profiles: Record<string, Record<string, string>> = {};
     if (brandCol) {
       // Count occurrences per brand+col so a handful of mistyped/copy-pasted outlier
@@ -2243,6 +2243,8 @@ export default function BrandGroup() {
             }
           }}
           onBrandAdded={() => reloadRef.current()}
+          brandProfiles={brandProfiles}
+          onBrandsChanged={() => reloadRef.current()}
         />
       )}
 
