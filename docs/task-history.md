@@ -10457,3 +10457,9 @@ Also manually patched the 2 already-live 506/512 cards' descriptions via a direc
 the code fix only prevents the bug for future cards -- existing ones don't self-heal (same "status never
 differs again" reason). Verified RED->GREEN. Full suite 2518/2518, build/deno check clean. Deployed
 `sync-schedule-pms`. Detail: memory `project_schedule_planner_multi_account_day_cell`.
+
+---
+
+## Task 353: Editable brand names + brand page links
+
+Brands can now be renamed globally (every tab) from Edit Brand Tab's new Brands list or Edit Entry's Brand Name pencil, via atomic `rename_brand` RPC (migrations 20260923120000/130000/140000) that rewrites every matching brand key in entries.data plus every `brand`-column table (history tables excluded), blocks collisions, and logs each entry to edit_log. Per-platform brand page links (TP/AG/CG; WO only on the Wizard of Odds tab) are editable in the same list and written to every entry of the brand via `set_brand_links`; hardcoded fallback links are materialized before a rename. Pending manual step: EC2 `scripts/check_brand_page_removed.py` still reads TP URLs only from the name-keyed map, so a renamed brand with no entry-level TP link skips the daily page-removed check until that script gets a fallback + EC2 deploy. Detail: `.agent/handoff/2026-09-23-brand-rename-and-links.md`.
