@@ -57,9 +57,13 @@ interface Props {
   // Fired after a brand rename or link save in the Brands list — BrandGroup
   // wires this to its reload, same as onBrandAdded.
   onBrandsChanged?: () => void;
+  // Brands whose NAME can't be renamed here (links stay editable) -- BrandGroup
+  // passes its synthesized TAB_DEFAULT_BRAND for a zero-brand tab, since that
+  // name keys the tab's schedule and renaming it would orphan the schedule.
+  renameLockedBrands?: string[];
 }
 
-export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose, onBrandAdded, brandProfiles, onBrandsChanged }: Props) {
+export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose, onBrandAdded, brandProfiles, onBrandsChanged, renameLockedBrands }: Props) {
   const { isAdmin } = useAuth();
   const dynamic = isDynamicTab(tabName);
   // Captured once at modal-open time: what to diff the Status select against
@@ -115,6 +119,11 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   // "outer modal must not close on Escape then" reasoning as pauseChildOpen/
   // removedChildOpen above.
   const [brandsChildOpen, setBrandsChildOpen] = useState(false);
+  // Bumped after every rename/link save in the Brands list and used as the
+  // `key` of the paused/removed sections: they fetch their rows once per
+  // tabName, so after a rename they'd keep old-name rows and resume/unflag
+  // would silently hit 0 rows. Remounting forces a refetch.
+  const [brandsRevision, setBrandsRevision] = useState(0);
   const [customPlatforms, setCustomPlatforms] = useState<CustomPlatformSummary[]>([]);
   const [enabledCustomPlatformIds, setEnabledCustomPlatformIds] = useState<string[]>(
     () => initialEnabledCustomPlatformIds,
@@ -519,8 +528,12 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
             tabName={tabName}
             brands={localBrands}
             brandProfiles={brandProfiles ?? {}}
-            onChanged={() => onBrandsChanged?.()}
+            onChanged={() => {
+              setBrandsRevision((n) => n + 1);
+              onBrandsChanged?.();
+            }}
             onChildModalOpenChange={setBrandsChildOpen}
+            renameLockedBrands={renameLockedBrands}
           />
 
           <div>
@@ -560,12 +573,14 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
           </div>
 
           <TabRemovedPlatformsSection
+            key={`removed-${brandsRevision}`}
             tabName={tabName}
             brands={localBrands}
             onChildModalOpenChange={setRemovedChildOpen}
           />
 
           <TabPausedBrandsSection
+            key={`paused-${brandsRevision}`}
             tabName={tabName}
             brands={localBrands}
             onChildModalOpenChange={setPauseChildOpen}

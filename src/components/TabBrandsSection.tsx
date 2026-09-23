@@ -13,6 +13,9 @@ interface Props {
   brandProfiles: Record<string, Record<string, string>>;
   onChanged: () => void;
   onChildModalOpenChange: (open: boolean) => void;
+  // Brands whose name input is disabled (links stay editable); see
+  // EditBrandTabModal's renameLockedBrands.
+  renameLockedBrands?: string[];
 }
 
 export interface RowState {
@@ -144,7 +147,8 @@ export function makeRowsUpdater(
 // Edit Brand Tab's editable list of every brand on this tab: rename (global,
 // every tab — via BrandRenameDialog) and per-platform page links (written to
 // every entry of that brand on every tab where the platform is enabled).
-export default function TabBrandsSection({ tabName, brands, brandProfiles, onChanged, onChildModalOpenChange }: Props) {
+export default function TabBrandsSection({ tabName, brands, brandProfiles, onChanged, onChildModalOpenChange, renameLockedBrands }: Props) {
+  const lockedKeys = new Set((renameLockedBrands ?? []).map((b) => b.trim().toLowerCase()));
   const platforms = tabLinkPlatforms(tabName);
   const initial = useMemo(() => {
     const m: Record<string, RowState> = {};
@@ -270,8 +274,10 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
                 <input
                   type="text"
                   value={r.name}
+                  disabled={lockedKeys.has(brand.trim().toLowerCase())}
+                  title={lockedKeys.has(brand.trim().toLowerCase()) ? "This tab's default brand keys its schedule and can't be renamed" : undefined}
                   onChange={(e) => setRows((s) => ({ ...s, [brand]: { ...s[brand], name: e.target.value } }))}
-                  className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500"
                 />
                 <button
                   type="button"

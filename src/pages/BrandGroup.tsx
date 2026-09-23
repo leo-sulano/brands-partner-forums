@@ -1392,7 +1392,10 @@ export default function BrandGroup() {
     ...(brandCol ? entries.map((e) => e.data[brandCol]).filter((v): v is string => !!v && v.trim() !== '') : []),
     ...catalogRows.map((r) => r.brand),
   ])].sort();
-  if (uniqueBrands.length === 0 && TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]) uniqueBrands.push(TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)]);
+  // Synthesized default for a zero-brand tab: it keys the tab's schedule, so
+  // Edit Brand Tab must not rename it (renameLockedBrands below).
+  const synthesizedDefaultBrand = uniqueBrands.length === 0 ? TAB_DEFAULT_BRAND[resolveHardcodedTabKey(decodedTab)] : undefined;
+  if (synthesizedDefaultBrand) uniqueBrands.push(synthesizedDefaultBrand);
 
   const brandProfiles = useMemo<Record<string, Record<string, string>>>(() => {
     const LINK_COLS = ['Link to the profile', 'AG Review Link', 'CG Review Link', 'URL PAGE__href', 'Brand / TP URL PAGE__href', 'Brand Link'];
@@ -2246,6 +2249,7 @@ export default function BrandGroup() {
           onBrandAdded={() => reloadRef.current()}
           brandProfiles={brandProfiles}
           onBrandsChanged={() => reloadRef.current()}
+          renameLockedBrands={synthesizedDefaultBrand ? [synthesizedDefaultBrand] : undefined}
         />
       )}
 
