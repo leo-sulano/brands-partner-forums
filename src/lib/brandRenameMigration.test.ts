@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sql from '../../supabase/migrations/20260923120000_add_rename_brand_functions.sql?raw';
+import sqlAllKeys from '../../supabase/migrations/20260923140000_rename_brand_all_matching_keys.sql?raw';
 import { BRAND_COLS } from './tab-configs';
 
 // rename_brand/set_brand_links resolve an entry's brand key from a SQL copy
@@ -8,6 +9,12 @@ import { BRAND_COLS } from './tab-configs';
 describe('rename_brand migration', () => {
   it('embeds the same BRAND_COLS list, in the same order, as tab-configs.ts', () => {
     const m = sql.match(/-- BRAND_COLS-SYNC\s*\n\s*array\[([^\]]*)\]/);
+    expect(m).not.toBeNull();
+    const sqlCols = [...m![1].matchAll(/'((?:[^']|'')*)'/g)].map((x) => x[1].replace(/''/g, "'"));
+    expect(sqlCols).toEqual(BRAND_COLS);
+  });
+  it('entry_brand_matching_keys (20260923140000) embeds the same BRAND_COLS list', () => {
+    const m = sqlAllKeys.match(/-- BRAND_COLS-SYNC\s*\n\s*array\[([^\]]*)\]/);
     expect(m).not.toBeNull();
     const sqlCols = [...m![1].matchAll(/'((?:[^']|'')*)'/g)].map((x) => x[1].replace(/''/g, "'"));
     expect(sqlCols).toEqual(BRAND_COLS);
