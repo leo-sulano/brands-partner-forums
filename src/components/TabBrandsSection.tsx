@@ -108,6 +108,35 @@ export function mergeRows(
   return merged;
 }
 
+// Stateful wrapper around mergeRows for the `initial`-changed effect below.
+// Fix round 2: the effect used to hold "what initial looked like last time"
+// in a plain ref, written synchronously right after handing `setRows` an
+// updater function that reads that same ref. Since React doesn't call a
+// setState updater inline -- it's invoked later, during the actual
+// re-render -- the ref had already been reassigned to the NEW initial by the
+// time the updater ran, so mergeRows always saw prevInitial === nextInitial.
+// A clean row (server value changed via realtime, user never touched it) was
+// then judged dirty against its own new value and kept the STALE one
+// forever, with Save lit up ready to write that stale link back over the
+// real update. Bundling the merge and the "what's previous now" bookkeeping
+// into one closure call fixes this by construction: both happen inside the
+// same synchronous invocation (whenever React actually makes it), so there's
+// no separate ref write that can race ahead of it. Call once per component
+// instance (e.g. `useRef(makeRowReconciler)`, lazily) and pass the result
+// straight into `setRows`.
+export function makeRowReconciler(): (
+  current: Record<string, RowState>,
+  nextInitial: Record<string, RowState>,
+  platforms: LinkPlatform[],
+) => Record<string, RowState> {
+  let prevInitial: Record<string, RowState> = {};
+  return (current, nextInitial, platforms) => {
+    const merged = mergeRows(current, prevInitial, nextInitial, platforms);
+    prevInitial = nextInitial;
+    return merged;
+  };
+}
+
 // Edit Brand Tab's editable list of every brand on this tab: rename (global,
 // every tab — via BrandRenameDialog) and per-platform page links (written to
 // every entry of that brand on every tab where the platform is enabled).
@@ -121,11 +150,12 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
     return m;
   }, [brands, brandProfiles, tabName]);
   const [rows, setRows] = useState<Record<string, RowState>>(initial);
-  // What `initial` looked like the last time the reconcile effect below ran —
-  // the baseline mergeRows diffs a row's CURRENT state against, so an
-  // in-progress edit is judged against the snapshot it actually started from,
-  // not against whatever `initial` has become since.
-  const prevInitialRef = useRef<Record<string, RowState>>(initial);
+  // One reconciler per component instance (lazy-initialized — see
+  // makeRowReconciler's own comment for why the merge and its "previous
+  // initial" bookkeeping must be bundled into a single closure call rather
+  // than a plain ref written next to a setRows call).
+  const reconcileRef = useRef<ReturnType<typeof makeRowReconciler> | null>(null);
+  if (!reconcileRef.current) reconcileRef.current = makeRowReconciler();
   const [savingBrand, setSavingBrand] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [rowSaved, setRowSaved] = useState<{ brand: string; message: string } | null>(null);
@@ -137,9 +167,8 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
   const [renameTarget, setRenameTarget] = useState<{ brand: string; newName: string; links: Partial<Record<LinkPlatform, string>> } | null>(null);
 
   useEffect(() => {
-    setRows((current) => mergeRows(current, prevInitialRef.current, initial, platforms));
-    prevInitialRef.current = initial;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- platforms is a pure function of tabName, which `initial` already depends on
+    setRows((current) => reconcileRef.current!(current, initial, platforms));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- platforms is a pure function of tabName, which `initial` already depends on; reconcileRef is a stable ref
   }, [initial]);
   useEffect(() => onChildModalOpenChange(renameTarget !== null), [renameTarget, onChildModalOpenChange]);
 
