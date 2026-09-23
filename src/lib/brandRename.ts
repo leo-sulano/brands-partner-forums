@@ -4,6 +4,8 @@
 // because it depends on hardcoded-tab-rename resolution (getBrandLinkCol);
 // the rename_brand/set_brand_links RPCs just apply the explicit writes.
 import { getBrandLinkCol, getTabPlatforms, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from './tab-configs';
+import { renameBrand } from './queries';
+import { OPERATIONAL_TABS } from './tabs';
 
 export type LinkPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 export const LINK_PLATFORMS: LinkPlatform[] = ['tp', 'ag', 'cg', 'wo'];
@@ -74,4 +76,16 @@ export function effectiveBrandLinks(
     out[platform] = profile?.[col] || fallbackLink(tab, brand, platform);
   }
   return out;
+}
+
+// The one call sequence both Edit Brand Tab and Edit Entry use. Fills are
+// computed across every operational tab (rename is global) and returned so
+// Edit Entry can mirror them into its still-open form (see applyRenameToFields).
+export async function performBrandRename(
+  oldName: string,
+  newName: string,
+): Promise<{ changed: number; fills: BrandLinkWrite[] }> {
+  const fills = buildFallbackFills([...OPERATIONAL_TABS], oldName);
+  const changed = await renameBrand(oldName, newName.trim(), fills);
+  return { changed, fills };
 }

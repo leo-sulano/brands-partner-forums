@@ -10,7 +10,11 @@ vi.mock('./tab-configs', () => ({
   getBrandCgUrl: () => undefined,
 }));
 
-import { brandLinkColumnFor, tabLinkPlatforms, buildLinkWrites, buildFallbackFills, effectiveBrandLinks } from './brandRename';
+const { renameBrandMock } = vi.hoisted(() => ({ renameBrandMock: vi.fn() }));
+vi.mock('./queries', () => ({ renameBrand: renameBrandMock }));
+vi.mock('./tabs', () => ({ OPERATIONAL_TABS: ['SilverPlay', 'BIT'] }));
+
+import { brandLinkColumnFor, tabLinkPlatforms, buildLinkWrites, buildFallbackFills, effectiveBrandLinks, performBrandRename } from './brandRename';
 
 describe('brandLinkColumnFor', () => {
   it('maps TP to the tab brand-link column', () => {
@@ -67,5 +71,15 @@ describe('effectiveBrandLinks', () => {
     expect(effectiveBrandLinks('SilverPlay', 'rooster.bet', { 'Brand Link': 'https://tp/own' })).toEqual({
       tp: 'https://tp/own', ag: 'https://ag/rooster', cg: '',
     });
+  });
+});
+
+describe('performBrandRename', () => {
+  it('passes fallback fills for every operational tab and trims the new name', async () => {
+    renameBrandMock.mockResolvedValue(3);
+    const res = await performBrandRename('rooster.bet', '  Rooster  ');
+    expect(renameBrandMock).toHaveBeenCalledWith('rooster.bet', 'Rooster', res.fills);
+    expect(res.changed).toBe(3);
+    expect(res.fills.map((f) => `${f.tab}:${f.platform}`)).toEqual(['SilverPlay:tp', 'SilverPlay:ag', 'BIT:tp']);
   });
 });
