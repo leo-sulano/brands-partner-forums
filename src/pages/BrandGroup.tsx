@@ -2923,7 +2923,14 @@ export default function BrandGroup() {
                       // Render as a clickable TP link when a known URL exists for the brand.
                       if (h === 'Brands' || h === 'Brand Name' || h === 'Brand') {
                         const brandName = entry.data[h] ?? null;
-                        const tpUrl = brandName ? getBrandTpUrl(brandName, decodedTab) : undefined;
+                        // The hardcoded name map loses the link after a brand rename, so
+                        // fall back to this entry's own brand-link column (never
+                        // 'Link to the profile' -- that's a per-review/WO link, not the brand's).
+                        const entryLinkCol = getBrandLinkCol(decodedTab);
+                        const entryLink = entryLinkCol !== 'Link to the profile' ? entry.data[entryLinkCol]?.trim() : undefined;
+                        const tpUrl = brandName
+                          ? getBrandTpUrl(brandName, decodedTab) ?? (entryLink && entryLink !== '—' ? entryLink : undefined)
+                          : undefined;
                         if (brandName && tpUrl) {
                           return (
                             <td key={h} className="px-[10px] py-2">
