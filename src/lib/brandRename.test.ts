@@ -4,7 +4,7 @@ vi.mock('./tab-configs', () => ({
   getBrandLinkCol: (tab: string) =>
     tab === 'BIT' ? 'Brand / TP URL PAGE__href' : tab === 'Wizard of Odds' ? 'Link to the profile' : 'Brand Link',
   getTabPlatforms: (tab: string) =>
-    tab === 'BIT' ? ['tp'] : tab === 'Wizard of Odds' ? ['wo'] : tab === 'SilverPlay' ? ['tp', 'ag', 'cg', 'custom-x'] : ['tp'],
+    tab === 'BIT' ? ['tp'] : tab === 'Wizard of Odds' ? ['wo'] : tab === 'SilverPlay' ? ['tp', 'ag', 'cg', 'custom-x'] : tab === 'DynWO' ? ['tp', 'wo'] : ['tp'],
   resolveBrandLink: (brand: string) => (brand === 'rooster.bet' ? 'https://tp/rooster' : ''),
   getBrandAgUrl: (brand: string) => (brand === 'rooster.bet' ? 'https://ag/rooster' : undefined),
   getBrandCgUrl: () => undefined,
@@ -37,6 +37,10 @@ describe('tabLinkPlatforms', () => {
     expect(tabLinkPlatforms('BIT')).toEqual(['tp']);
     expect(tabLinkPlatforms('Wizard of Odds')).toEqual(['wo']);
   });
+  it('excludes WO on a dynamic tab (its Link to the profile is TP per-review data)', () => {
+    expect(brandLinkColumnFor('DynWO', 'wo')).toBeNull();
+    expect(tabLinkPlatforms('DynWO')).toEqual(['tp']);
+  });
 });
 
 describe('buildLinkWrites', () => {
@@ -46,6 +50,12 @@ describe('buildLinkWrites', () => {
       { tab: 'BIT', column: 'Brand / TP URL PAGE__href', value: 'https://tp/x', platform: 'tp' },
       { tab: 'SilverPlay', column: 'Brand Link', value: 'https://tp/x', platform: 'tp' },
       { tab: 'SilverPlay', column: 'AG Review Link', value: 'https://ag/x', platform: 'ag' },
+    ]);
+  });
+  it('never writes a WO link on a dynamic tab, only on Wizard of Odds', () => {
+    expect(buildLinkWrites(['DynWO'], { wo: 'https://wo/x' })).toEqual([]);
+    expect(buildLinkWrites(['DynWO', 'Wizard of Odds'], { wo: 'https://wo/x' })).toEqual([
+      { tab: 'Wizard of Odds', column: 'Link to the profile', value: 'https://wo/x', platform: 'wo' },
     ]);
   });
   it('skips empty/blank values so clearing an input never wipes links everywhere', () => {

@@ -7,6 +7,7 @@ import { getBrandLinkCol, getTabPlatforms, resolveBrandLink, getBrandAgUrl, getB
 import { renameBrand } from './queries';
 import { OPERATIONAL_TABS } from './tabs';
 import { normalizeBrandKey } from './removedPlatformBrands';
+import { resolveHardcodedTabKey } from './hardcodedTabRenameRegistry';
 
 export type LinkPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 export const LINK_PLATFORMS: LinkPlatform[] = ['tp', 'ag', 'cg', 'wo'];
@@ -26,7 +27,11 @@ export function brandLinkColumnFor(tab: string, platform: LinkPlatform): string 
     }
     case 'ag': return 'AG Review Link';
     case 'cg': return 'CG Review Link';
-    case 'wo': return 'Link to the profile';
+    // WO's brand link lives in 'Link to the profile' ONLY on the Wizard of
+    // Odds tab. On dynamic tabs that same column is TP's per-review
+    // reviewer-profile link (read by the TP Check Status scraper), so a WO
+    // link write there would overwrite every entry's per-review link.
+    case 'wo': return resolveHardcodedTabKey(tab) === 'Wizard of Odds' ? 'Link to the profile' : null;
   }
 }
 
