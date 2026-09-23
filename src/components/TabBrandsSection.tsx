@@ -108,33 +108,37 @@ export function mergeRows(
   return merged;
 }
 
-// Stateful wrapper around mergeRows for the `initial`-changed effect below.
-// Fix round 2: the effect used to hold "what initial looked like last time"
-// in a plain ref, written synchronously right after handing `setRows` an
-// updater function that reads that same ref. Since React doesn't call a
-// setState updater inline -- it's invoked later, during the actual
-// re-render -- the ref had already been reassigned to the NEW initial by the
-// time the updater ran, so mergeRows always saw prevInitial === nextInitial.
-// A clean row (server value changed via realtime, user never touched it) was
-// then judged dirty against its own new value and kept the STALE one
-// forever, with Save lit up ready to write that stale link back over the
-// real update. Bundling the merge and the "what's previous now" bookkeeping
-// into one closure call fixes this by construction: both happen inside the
-// same synchronous invocation (whenever React actually makes it), so there's
-// no separate ref write that can race ahead of it. Call once per component
-// instance (e.g. `useRef(makeRowReconciler)`, lazily) and pass the result
-// straight into `setRows`.
-export function makeRowReconciler(): (
-  current: Record<string, RowState>,
+// Pure factory for the `initial`-changed effect's setRows updater below.
+// Fix round 2 tried bundling "what initial looked like last time" (mutable
+// closure state) together with the merge into one stateful reconciler
+// function, on the theory that computing both inside a single call would
+// stop a plain ref-write from racing a deferred setState updater (the
+// original round-1 bug: the ref got reassigned to the NEW value before the
+// updater -- called later, during the actual re-render -- ever read it, so
+// mergeRows always saw prevInitial === nextInitial and a clean row whose
+// server value changed via realtime got judged dirty against its own new
+// value and kept the stale one forever). That reconciler MUTATED its closure
+// state from inside the function handed to setRows -- but a setState updater
+// must be pure: React can and does call it more than once (confirmed:
+// src/main.tsx renders in StrictMode, and React 19 dev double-invokes an
+// updater on the non-eager path, discarding the first call's result). The
+// first (discarded) call would advance the mutable prevInitial, so the
+// second (kept) call saw prevInitial === nextInitial again -- the exact same
+// stale-clean-row bug, just moved one layer down, and reachable in
+// production too on any replayed render.
+//
+// This factory has no mutable state at all: `prevInitial`/`nextInitial` are
+// fixed for the lifetime of the returned function, closed over as plain
+// (immutable) arguments -- calling it any number of times with the same
+// `current` always returns an equal result. The caller (the effect below)
+// is responsible for advancing "what's previous now" itself, synchronously,
+// BEFORE calling setRows -- never inside the updater.
+export function makeRowsUpdater(
+  prevInitial: Record<string, RowState>,
   nextInitial: Record<string, RowState>,
   platforms: LinkPlatform[],
-) => Record<string, RowState> {
-  let prevInitial: Record<string, RowState> = {};
-  return (current, nextInitial, platforms) => {
-    const merged = mergeRows(current, prevInitial, nextInitial, platforms);
-    prevInitial = nextInitial;
-    return merged;
-  };
+): (current: Record<string, RowState>) => Record<string, RowState> {
+  return (current) => mergeRows(current, prevInitial, nextInitial, platforms);
 }
 
 // Edit Brand Tab's editable list of every brand on this tab: rename (global,
@@ -150,12 +154,11 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
     return m;
   }, [brands, brandProfiles, tabName]);
   const [rows, setRows] = useState<Record<string, RowState>>(initial);
-  // One reconciler per component instance (lazy-initialized — see
-  // makeRowReconciler's own comment for why the merge and its "previous
-  // initial" bookkeeping must be bundled into a single closure call rather
-  // than a plain ref written next to a setRows call).
-  const reconcileRef = useRef<ReturnType<typeof makeRowReconciler> | null>(null);
-  if (!reconcileRef.current) reconcileRef.current = makeRowReconciler();
+  // What `initial` looked like the last time the effect below ran. Advanced
+  // synchronously in the effect body, BEFORE calling setRows -- never inside
+  // the updater itself (see makeRowsUpdater's comment for why that ordering,
+  // not just "compute the two together", is what actually matters).
+  const prevInitialRef = useRef<Record<string, RowState>>(initial);
   const [savingBrand, setSavingBrand] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [rowSaved, setRowSaved] = useState<{ brand: string; message: string } | null>(null);
@@ -167,8 +170,10 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
   const [renameTarget, setRenameTarget] = useState<{ brand: string; newName: string; links: Partial<Record<LinkPlatform, string>> } | null>(null);
 
   useEffect(() => {
-    setRows((current) => reconcileRef.current!(current, initial, platforms));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- platforms is a pure function of tabName, which `initial` already depends on; reconcileRef is a stable ref
+    const prev = prevInitialRef.current; // snapshot BEFORE enqueueing the update
+    prevInitialRef.current = initial;
+    setRows(makeRowsUpdater(prev, initial, platforms)); // pure: closes over locals only, safe to call more than once
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- platforms is a pure function of tabName, which `initial` already depends on
   }, [initial]);
   useEffect(() => onChildModalOpenChange(renameTarget !== null), [renameTarget, onChildModalOpenChange]);
 

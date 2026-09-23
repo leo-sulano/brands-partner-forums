@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupeBrands, rowIsDirty, resolveSaveAction, mergeRows, makeRowReconciler, type RowState } from './TabBrandsSection';
+import { dedupeBrands, rowIsDirty, resolveSaveAction, mergeRows, makeRowsUpdater, type RowState } from './TabBrandsSection';
 
 describe('dedupeBrands', () => {
   it('trims whitespace-suffixed brand names', () => {
@@ -96,49 +96,60 @@ describe('mergeRows', () => {
   });
 });
 
-// Exercises the actual effect wiring (fix round 2), not just mergeRows in
-// isolation -- the bug this guards against wasn't in mergeRows itself, it
-// was in HOW the component fed it "what changed since last time": a plain
-// ref written synchronously right next to a setRows(updater) call, where the
-// updater (and therefore the ref read inside it) only actually runs later,
-// after that synchronous write had already replaced the ref's old value.
-// makeRowReconciler bundles the merge and the "previous initial" bookkeeping
-// into one closure call so there's no separate write that can race ahead of
-// it; calling the SAME returned function repeatedly (as the component's
-// effect does across successive `initial` changes) is what makes this test
-// actually cover that sequencing, not just mergeRows' pure diffing.
-describe('makeRowReconciler', () => {
+// Exercises the actual effect wiring (fix rounds 2 & 3), not just mergeRows
+// in isolation -- the bug this guards against wasn't in mergeRows itself, it
+// was in HOW the component fed it "what changed since last time" and HOW it
+// packaged that into the setRows updater:
+//   - round 1: a plain ref written synchronously right next to a
+//     setRows(updater) call, where the updater (and therefore the ref read
+//     inside it) only actually runs later -- after that synchronous write
+//     had already replaced the ref's old value, so prevInitial ended up
+//     always equal to nextInitial.
+//   - round 2's fix bundled the merge and the "previous initial" bookkeeping
+//     into one closure call (correct order), but MUTATED that closure state
+//     from inside the function handed to setRows -- and a setState updater
+//     must be pure, since React can call it more than once (this repo's
+//     src/main.tsx renders in StrictMode; React 19 dev double-invokes an
+//     updater on the non-eager path and discards the first call's result).
+//     The first (discarded) call advanced the mutable state, so the second
+//     (kept) call saw prevInitial === nextInitial again -- the same bug,
+//     reachable in production too on any replayed render.
+// makeRowsUpdater has no mutable state: prevInitial/nextInitial are fixed
+// arguments for the life of the returned function, so calling it any number
+// of times with the same `current` is required to return an equal result
+// (tested directly below) -- and the component now advances "what's
+// previous now" itself, synchronously, BEFORE calling setRows.
+describe('makeRowsUpdater', () => {
   const platforms: ('tp')[] = ['tp'];
   const gen = (tp: string) => ({ Librabet: { name: 'Librabet', links: { tp } } });
 
-  it('a clean row picks up a changed initial value across successive reconciles', () => {
-    const reconcile = makeRowReconciler();
-    // Mount: rows seeded directly from initial (current === nextInitial), same as the component's useState(initial).
-    let rows = reconcile(gen('https://v1'), gen('https://v1'), platforms);
-    expect(rows.Librabet.links.tp).toBe('https://v1');
+  it('is idempotent: the same updater called twice with the same current gives a clean row the new value and a dirty row its edit, both times', () => {
+    const updater = makeRowsUpdater(gen('https://v1'), gen('https://v2'), platforms);
 
-    // A realtime update changes the server value; the user never touched this row.
-    rows = reconcile(rows, gen('https://v2'), platforms);
-    expect(rows.Librabet.links.tp).toBe('https://v2');
+    // Clean row: current still matches prevInitial (user never touched it).
+    const cleanCurrent = gen('https://v1');
+    const cleanCall1 = updater(cleanCurrent);
+    const cleanCall2 = updater(cleanCurrent);
+    expect(cleanCall1).toEqual(cleanCall2);
+    expect(cleanCall1.Librabet.links.tp).toBe('https://v2');
+
+    // Dirty row: current diverges from prevInitial (user is mid-edit).
+    const dirtyCurrent = { Librabet: { name: 'Librabet', links: { tp: 'https://user-typing' } } };
+    const dirtyCall1 = updater(dirtyCurrent);
+    const dirtyCall2 = updater(dirtyCurrent);
+    expect(dirtyCall1).toEqual(dirtyCall2);
+    expect(dirtyCall1.Librabet.links.tp).toBe('https://user-typing');
   });
 
-  it('a dirty row keeps its in-progress edit across a changed initial', () => {
-    const reconcile = makeRowReconciler();
-    let rows = reconcile(gen('https://v1'), gen('https://v1'), platforms);
+  it('chains across successive transitions applied in order (i0 -> i1, then i1 -> i2)', () => {
+    const i0 = gen('https://v1');
+    const i1 = gen('https://v2');
+    const i2 = gen('https://v3');
 
-    // User starts typing -- `rows` now diverges from the last-seen initial.
-    rows = { Librabet: { name: 'Librabet', links: { tp: 'https://user-typing' } } };
-
-    // A realtime update lands on the same brand at the same time.
-    rows = reconcile(rows, gen('https://v2'), platforms);
-    expect(rows.Librabet.links.tp).toBe('https://user-typing');
-  });
-
-  it('keeps tracking fresh server values across three successive reconciles with no manual edit', () => {
-    const reconcile = makeRowReconciler();
-    let rows = reconcile(gen('https://v1'), gen('https://v1'), platforms);
-    rows = reconcile(rows, gen('https://v2'), platforms);
-    rows = reconcile(rows, gen('https://v3'), platforms);
+    // Mount: rows seeded directly from initial, same as the component's useState(initial).
+    let rows = makeRowsUpdater({}, i0, platforms)(i0);
+    rows = makeRowsUpdater(i0, i1, platforms)(rows);
+    rows = makeRowsUpdater(i1, i2, platforms)(rows);
     expect(rows.Librabet.links.tp).toBe('https://v3');
   });
 });
