@@ -14,7 +14,7 @@ const { renameBrandMock } = vi.hoisted(() => ({ renameBrandMock: vi.fn() }));
 vi.mock('./queries', () => ({ renameBrand: renameBrandMock }));
 vi.mock('./tabs', () => ({ OPERATIONAL_TABS: ['SilverPlay', 'BIT'] }));
 
-import { brandLinkColumnFor, tabLinkPlatforms, buildLinkWrites, buildFallbackFills, effectiveBrandLinks, performBrandRename } from './brandRename';
+import { brandLinkColumnFor, tabLinkPlatforms, buildLinkWrites, buildFallbackFills, effectiveBrandLinks, performBrandRename, applyRenameToFields } from './brandRename';
 
 describe('brandLinkColumnFor', () => {
   it('maps TP to the tab brand-link column', () => {
@@ -81,5 +81,24 @@ describe('performBrandRename', () => {
     expect(renameBrandMock).toHaveBeenCalledWith('rooster.bet', 'Rooster', res.fills);
     expect(res.changed).toBe(3);
     expect(res.fills.map((f) => `${f.tab}:${f.platform}`)).toEqual(['SilverPlay:tp', 'SilverPlay:ag', 'BIT:tp']);
+  });
+});
+
+describe('applyRenameToFields', () => {
+  const fills = [
+    { tab: 'SilverPlay', column: 'Brand Link', value: 'https://tp/r', platform: 'tp' as const },
+    { tab: 'SilverPlay', column: 'AG Review Link', value: 'https://ag/r', platform: 'ag' as const },
+    { tab: 'BIT', column: 'Brand / TP URL PAGE__href', value: 'https://tp/r', platform: 'tp' as const },
+  ];
+  it('sets the new name and mirrors fills for this tab into empty fields only', () => {
+    const out = applyRenameToFields(
+      { Brands: 'rooster.bet', 'Brand Link': '', 'AG Review Link': 'https://ag/own', Email: 'x' },
+      'Brands', ' Rooster ', 'SilverPlay', fills,
+    );
+    expect(out).toEqual({ Brands: 'Rooster', 'Brand Link': 'https://tp/r', 'AG Review Link': 'https://ag/own', Email: 'x' });
+  });
+  it('ignores fills for other tabs and columns the form does not have', () => {
+    const out = applyRenameToFields({ Brands: 'a' }, 'Brands', 'b', 'SilverPlay', fills);
+    expect(out).toEqual({ Brands: 'b' });
   });
 });

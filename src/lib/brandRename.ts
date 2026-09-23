@@ -89,3 +89,23 @@ export async function performBrandRename(
   const changed = await renameBrand(oldName, newName.trim(), fills);
   return { changed, fills };
 }
+
+// Edit Entry keeps its own form state after a rename. Without mirroring the
+// rename (and the fallback links rename_brand just filled into empty
+// columns) into that state, pressing Save Changes afterward would write the
+// stale form back — reverting this entry's brand and blanking those links.
+export function applyRenameToFields(
+  fields: Record<string, string>,
+  brandCol: string,
+  newName: string,
+  tab: string,
+  fills: BrandLinkWrite[],
+): Record<string, string> {
+  const next = { ...fields, [brandCol]: newName.trim() };
+  for (const f of fills) {
+    if (f.tab !== tab || !(f.column in next)) continue;
+    const cur = (next[f.column] ?? '').trim();
+    if (cur === '' || cur === '—') next[f.column] = f.value;
+  }
+  return next;
+}

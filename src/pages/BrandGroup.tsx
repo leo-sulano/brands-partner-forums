@@ -3296,6 +3296,7 @@ export default function BrandGroup() {
             }
             reloadRef.current();
           }}
+          onBrandRenamed={() => reloadRef.current()}
         />
       )}
 

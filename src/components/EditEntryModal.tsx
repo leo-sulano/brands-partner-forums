@@ -1,7 +1,9 @@
 import { useState, type ReactElement } from 'react';
-import { X, Save, Loader2 } from 'lucide-react';
+import { X, Save, Loader2, Pencil } from 'lucide-react';
 import BrandSelectDropdown from './BrandSelectDropdown';
 import SelectDropdown from './SelectDropdown';
+import BrandRenameDialog from './BrandRenameDialog';
+import { applyRenameToFields } from '../lib/brandRename';
 import { getColLabel, getCountryForAccount, getBrandAgUrl, getBrandCgUrl, getBrandLinkCol, resolveBrandLink, getTabPlatforms } from '../lib/tab-configs';
 import { formatCellValue } from '../lib/format';
 import type { Entry } from '../types/entry';
@@ -100,6 +102,7 @@ interface Props {
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
   initialRemovedCustomPlatforms?: string[];
   initialRemovedCustomPlatformDates?: Record<string, string>;
+  onBrandRenamed?: () => void;
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -119,7 +122,7 @@ const PLATFORM_ADDED_HEADER: Record<Platform, string> = {
   wo: 'Wizard of Odds',
 };
 
-export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, entryReviewAnalyses, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides, initialRemovedCustomPlatforms, initialRemovedCustomPlatformDates }: Props) {
+export default function EditEntryModal({ entry, headers, onClose, onSave, currentTab, availableBrands, brandCol, brandProfiles, tabEntries, entryReviewAnalyses, initialRemovedPlatforms, initialRemovedPlatformDates, initialOverrides, initialRemovedCustomPlatforms, initialRemovedCustomPlatformDates, onBrandRenamed }: Props) {
   // Recomputed on every render (deliberately not memoized, and deliberately
   // not hoisted to module scope): OPERATIONAL_TABS is mutated in place when a
   // dynamic tab is created/deleted mid-session
@@ -182,6 +185,14 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   const [error, setError] = useState<string | null>(null);
   const [pasteFlash, setPasteFlash] = useState(false);
   const [dateErrors, setDateErrors] = useState<Set<string>>(new Set());
+  // Inline global brand rename (docs/superpowers/specs/2026-09-23-brand-rename-and-links-design.md).
+  // renameDraft !== null = the pencil's input is open; renameTarget = confirm dialog open.
+  const [renameDraft, setRenameDraft] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<string | null>(null);
+  // Name the brand had when this modal opened / after the last rename —
+  // what rename_brand must match on, since fields[brandCol] may have been
+  // re-picked via the dropdown without saving.
+  const [savedBrand, setSavedBrand] = useState(() => (brandCol ? entry.data[brandCol] ?? '' : ''));
 
   function validateDateField(h: string, value: string) {
     setDateErrors((prev) => {
@@ -242,7 +253,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   }
 
   function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape' && renameTarget === null) onClose();
   }
 
   function handlePaste(e: React.ClipboardEvent) {
@@ -536,28 +547,70 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                 />
               </div>
               {brandCol && availableBrands && availableBrands.length > 0 && (
-                <div>
+                <div className="sm:col-span-2">
                   <label className="mb-1.5 block text-xs font-medium text-slate-500">Brand Name</label>
-                  <BrandSelectDropdown
-                    value={fields[brandCol] ?? ''}
-                    onChange={(v) => {
-                      const profile = brandProfiles?.[v];
-                      const tabForLookup = selectedTab || entry.tab;
-                      setFields((f) => {
-                        const next = { ...f, [brandCol]: v };
-                        for (const { col, fallback } of BRAND_PROFILE_LINK_COLS) {
-                          if (col in next) next[col] = profile?.[col] || fallback(v) || '';
-                        }
-                        const linkCol = getBrandLinkCol(tabForLookup);
-                        if (linkCol in next) {
-                          next[linkCol] = resolveBrandLink(v, tabForLookup, profile?.[linkCol]);
-                        }
-                        return next;
-                      });
-                    }}
-                    brands={availableBrands}
-                    disabled={saving}
-                  />
+                  {renameDraft === null ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className="min-w-0 flex-1">
+                        <BrandSelectDropdown
+                          value={fields[brandCol] ?? ''}
+                          onChange={(v) => {
+                            const profile = brandProfiles?.[v];
+                            const tabForLookup = selectedTab || entry.tab;
+                            setFields((f) => {
+                              const next = { ...f, [brandCol]: v };
+                              for (const { col, fallback } of BRAND_PROFILE_LINK_COLS) {
+                                if (col in next) next[col] = profile?.[col] || fallback(v) || '';
+                              }
+                              const linkCol = getBrandLinkCol(tabForLookup);
+                              if (linkCol in next) {
+                                next[linkCol] = resolveBrandLink(v, tabForLookup, profile?.[linkCol]);
+                              }
+                              return next;
+                            });
+                          }}
+                          brands={availableBrands}
+                          disabled={saving}
+                        />
+                      </div>
+                      {savedBrand && (
+                        <button
+                          type="button"
+                          title="Rename this brand everywhere"
+                          onClick={() => setRenameDraft(savedBrand.trim())}
+                          disabled={saving}
+                          className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        autoFocus
+                        value={renameDraft}
+                        onChange={(e) => setRenameDraft(e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => renameDraft.trim() && renameDraft.trim() !== savedBrand.trim() && setRenameTarget(renameDraft.trim())}
+                        disabled={!renameDraft.trim() || renameDraft.trim() === savedBrand.trim()}
+                        className="shrink-0 rounded-md bg-blue-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-40"
+                      >
+                        Rename
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRenameDraft(null)}
+                        className="shrink-0 rounded-md px-2 py-1.5 text-xs text-slate-500 hover:bg-slate-100"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
               {brandCol && availableBrands && availableBrands.length > 0 && builtInTabPlatforms.length > 0 && (
@@ -752,6 +805,20 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           </button>
         </div>
       </div>
+      {renameTarget !== null && brandCol && (
+        <BrandRenameDialog
+          oldName={savedBrand}
+          newName={renameTarget}
+          onCancel={() => setRenameTarget(null)}
+          onDone={({ fills }) => {
+            setFields((f) => applyRenameToFields(f, brandCol, renameTarget, selectedTab || entry.tab, fills));
+            setSavedBrand(renameTarget);
+            setRenameTarget(null);
+            setRenameDraft(null);
+            onBrandRenamed?.();
+          }}
+        />
+      )}
     </div>
   );
 }
