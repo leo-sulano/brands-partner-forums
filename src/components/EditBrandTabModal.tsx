@@ -511,15 +511,6 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
             </div>
           )}
 
-          <TabBrandsSection
-            tabName={tabName}
-            brands={localBrands}
-            brandProfiles={brandProfiles ?? {}}
-            onChanged={() => onBrandsChanged?.()}
-            onChildModalOpenChange={setBrandsChildOpen}
-            renameLockedBrands={renameLockedBrands}
-          />
-
           <div>
             <div className="mb-1 flex items-center gap-1">
               <label className="block text-xs font-medium text-slate-500">Add a brand</label>
@@ -555,6 +546,15 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
             {addBrandError && <p className="mt-1 text-xs text-rose-600">{addBrandError}</p>}
             {addBrandSuccess && <p className="mt-1 text-xs text-emerald-600">{addBrandSuccess}</p>}
           </div>
+
+          <TabBrandsSection
+            tabName={tabName}
+            brands={localBrands}
+            brandProfiles={brandProfiles ?? {}}
+            onChanged={() => onBrandsChanged?.()}
+            onChildModalOpenChange={setBrandsChildOpen}
+            renameLockedBrands={renameLockedBrands}
+          />
 
           <div>
             <div className="mb-1.5 flex items-center gap-1">
