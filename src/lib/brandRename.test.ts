@@ -101,4 +101,18 @@ describe('applyRenameToFields', () => {
     const out = applyRenameToFields({ Brands: 'a' }, 'Brands', 'b', 'SilverPlay', fills);
     expect(out).toEqual({ Brands: 'b' });
   });
+  it('treats an em-dash placeholder as empty and fills it', () => {
+    const out = applyRenameToFields(
+      { Brands: 'rooster.bet', 'Brand Link': '—' },
+      'Brands', 'Rooster', 'SilverPlay', fills,
+    );
+    expect(out).toEqual({ Brands: 'Rooster', 'Brand Link': 'https://tp/r' });
+  });
+  it('treats a whitespace-only value as empty and fills it', () => {
+    const out = applyRenameToFields(
+      { Brands: 'rooster.bet', 'Brand Link': '   ' },
+      'Brands', 'Rooster', 'SilverPlay', fills,
+    );
+    expect(out).toEqual({ Brands: 'Rooster', 'Brand Link': 'https://tp/r' });
+  });
 });

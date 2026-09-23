@@ -102,7 +102,10 @@ interface Props {
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
   initialRemovedCustomPlatforms?: string[];
   initialRemovedCustomPlatformDates?: Record<string, string>;
-  onBrandRenamed?: () => void;
+  // May return a promise (e.g. the caller's own reload of the maps this
+  // rename just changed) — Save Changes is kept disabled until it settles,
+  // so a save can't race a still-stale override/removed-platform lookup.
+  onBrandRenamed?: (newName: string) => void | Promise<void>;
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -193,6 +196,12 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   // what rename_brand must match on, since fields[brandCol] may have been
   // re-picked via the dropdown without saving.
   const [savedBrand, setSavedBrand] = useState(() => (brandCol ? entry.data[brandCol] ?? '' : ''));
+  // True when the BrandSelectDropdown was re-picked to a different brand
+  // without saving yet. Renaming while this is true would rename savedBrand
+  // (the persisted brand) but the dialog's usage count and this entry's own
+  // visible dropdown value are for the re-picked brand — confusing enough
+  // that the pencil is disabled until the pick is saved or reverted.
+  const brandPicksDiffer = !!brandCol && (fields[brandCol] ?? '').trim() !== savedBrand.trim();
 
   function validateDateField(h: string, value: string) {
     setDateErrors((prev) => {
@@ -253,7 +262,10 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
   }
 
   function handleKey(e: React.KeyboardEvent) {
-    if (e.key === 'Escape' && renameTarget === null) onClose();
+    if (e.key !== 'Escape') return;
+    if (renameTarget !== null) return; // BrandRenameDialog's own capture-phase listener handles this
+    if (renameDraft !== null) { setRenameDraft(null); return; }
+    onClose();
   }
 
   function handlePaste(e: React.ClipboardEvent) {
@@ -576,9 +588,9 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
                       {savedBrand && (
                         <button
                           type="button"
-                          title="Rename this brand everywhere"
+                          title={brandPicksDiffer ? 'Save or revert the brand change first' : 'Rename this brand everywhere'}
                           onClick={() => setRenameDraft(savedBrand.trim())}
-                          disabled={saving}
+                          disabled={saving || brandPicksDiffer}
                           className="shrink-0 rounded-md p-1.5 text-slate-400 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50"
                         >
                           <Pencil className="size-3.5" />
@@ -810,12 +822,24 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           oldName={savedBrand}
           newName={renameTarget}
           onCancel={() => setRenameTarget(null)}
-          onDone={({ fills }) => {
-            setFields((f) => applyRenameToFields(f, brandCol, renameTarget, selectedTab || entry.tab, fills));
-            setSavedBrand(renameTarget);
+          onDone={async ({ fills }) => {
+            const newName = renameTarget;
+            // Mirror against entry.tab (the tab the RPC actually wrote fills for),
+            // not selectedTab — selectedTab may hold an unsaved pending tab move,
+            // and this entry's fields still live under its current, saved tab.
+            setFields((f) => applyRenameToFields(f, brandCol, newName, entry.tab, fills));
+            setSavedBrand(newName);
             setRenameTarget(null);
             setRenameDraft(null);
-            onBrandRenamed?.();
+            // Block Save Changes until the caller's own reload (of the
+            // override/removed-platform maps rename_brand just renamed rows
+            // in) settles, so a save here can't race a still-stale lookup.
+            setSaving(true);
+            try {
+              await onBrandRenamed?.(newName);
+            } finally {
+              setSaving(false);
+            }
           }}
         />
       )}

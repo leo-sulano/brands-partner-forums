@@ -3296,7 +3296,22 @@ export default function BrandGroup() {
             }
             reloadRef.current();
           }}
-          onBrandRenamed={() => reloadRef.current()}
+          onBrandRenamed={(newName) => {
+            // The renamed entry's own local state must reflect the new name
+            // immediately: initialOverridesForEditEntry/initialRemovedPlatformsForEditEntry
+            // etc. below are computed every render from editEntry.data[brandCol],
+            // looked up against overrideRows/removedPlatformBrandRows — and
+            // rename_brand renamed those DB rows to the new name too. Left
+            // pointing at the old name, that lookup would miss after reload,
+            // making onSave's `was` read as unset and silently no-op a still-set
+            // override/removed-platform flag (or re-fire its notification).
+            // reloadRef.current() only bumps a seq that effects react to
+            // asynchronously (no promise to await here) — EditEntryModal keeps
+            // its own Save Changes disabled until this whole handler resolves,
+            // which is the best available guard against saving mid-reload.
+            setEditEntry((e) => (e && brandCol ? { ...e, data: { ...e.data, [brandCol]: newName } } : e));
+            reloadRef.current();
+          }}
         />
       )}
 
