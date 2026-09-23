@@ -89,6 +89,9 @@ import {
   enableCustomPlatformOnTab,
   disableCustomPlatformOnTab,
   deleteCustomPlatform,
+  renameBrand,
+  setBrandLinks,
+  fetchBrandUsage,
 } from './queries';
 import { computeTabSuccessRates } from './scoreSummary.ts';
 import { platformRemovedKey } from './removedPlatformBrands.ts';
@@ -1986,5 +1989,32 @@ describe('createCustomPlatform / enableCustomPlatformOnTab / deleteCustomPlatfor
       (table === 'tab_custom_platforms' || table === 'removed_custom_platform_brands') ? countChain : deleteChain,
     );
     await expect(deleteCustomPlatform('p1')).resolves.toBeUndefined();
+  });
+});
+
+describe('brand rename queries', () => {
+  beforeEach(() => singletonRpc.mockReset());
+
+  it('renameBrand calls rename_brand with the fills and returns the count', async () => {
+    singletonRpc.mockResolvedValue({ data: 4, error: null });
+    const fills = [{ tab: 'BIT', column: 'Brand / TP URL PAGE__href', value: 'https://x', platform: 'tp' as const }];
+    await expect(renameBrand('Librabet Casino', 'Librabet', fills)).resolves.toBe(4);
+    expect(singletonRpc).toHaveBeenCalledWith('rename_brand', { p_old: 'Librabet Casino', p_new: 'Librabet', p_link_fills: fills });
+  });
+
+  it('renameBrand surfaces the collision error message verbatim', async () => {
+    singletonRpc.mockResolvedValue({ data: null, error: { message: 'a brand named "Librabet" already exists' } });
+    await expect(renameBrand('A', 'Librabet')).rejects.toThrow('a brand named "Librabet" already exists');
+  });
+
+  it('setBrandLinks calls set_brand_links', async () => {
+    singletonRpc.mockResolvedValue({ data: 2, error: null });
+    await expect(setBrandLinks('Librabet', [])).resolves.toBe(2);
+    expect(singletonRpc).toHaveBeenCalledWith('set_brand_links', { p_brand: 'Librabet', p_writes: [] });
+  });
+
+  it('fetchBrandUsage maps the single result row', async () => {
+    singletonRpc.mockResolvedValue({ data: [{ entry_count: 7, tab_count: 2 }], error: null });
+    await expect(fetchBrandUsage('Librabet')).resolves.toEqual({ entryCount: 7, tabCount: 2 });
   });
 });

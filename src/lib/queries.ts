@@ -19,6 +19,7 @@ import type { RemovalEvidence } from './reviewRemovalEvidence.ts';
 import { extractCredentials, type EntryCredentials } from './entryCredentials.ts';
 import { computeCustomPlatformCounts, type CustomPlatformConfig } from './customPlatforms.ts';
 import { getTabCustomPlatforms } from './customPlatformRegistry.ts';
+import type { BrandLinkWrite } from './brandRename';
 
 // ---------------------------------------------------------------------------
 // Adapter — maps an Entry row to the Mention shape the UI expects.
@@ -1301,6 +1302,34 @@ export async function addBrandToCatalog(tab: string, brand: string, link: string
     .from('brand_catalog')
     .insert({ tab, brand, link, added_by: await currentUserEmail() });
   if (error) throw error;
+}
+
+// Global brand rename (every tab) -- see rename_brand in
+// 20260923120000_add_rename_brand_functions.sql. linkFills are applied to
+// empty link columns of the old brand's entries first, in the same
+// transaction, so hardcoded fallback links keyed by the old name survive.
+// PostgrestError isn't an Error instance, so rethrow with its message.
+export async function renameBrand(oldName: string, newName: string, linkFills: BrandLinkWrite[] = []): Promise<number> {
+  const { data, error } = await supabase.rpc('rename_brand', { p_old: oldName, p_new: newName, p_link_fills: linkFills });
+  if (error) throw new Error(error.message);
+  // Clear tab entry cache since rename affects entries on every tab.
+  tabEntryCache.clear();
+  return (data as number | null) ?? 0;
+}
+
+export async function setBrandLinks(brand: string, writes: BrandLinkWrite[]): Promise<number> {
+  const { data, error } = await supabase.rpc('set_brand_links', { p_brand: brand, p_writes: writes });
+  if (error) throw new Error(error.message);
+  // Clear tab entry cache since link updates affect entries on every tab.
+  tabEntryCache.clear();
+  return (data as number | null) ?? 0;
+}
+
+export async function fetchBrandUsage(name: string): Promise<{ entryCount: number; tabCount: number }> {
+  const { data, error } = await supabase.rpc('count_brand_usage', { p_name: name });
+  if (error) throw new Error(error.message);
+  const row = (data as { entry_count: number; tab_count: number }[] | null)?.[0];
+  return { entryCount: row?.entry_count ?? 0, tabCount: row?.tab_count ?? 0 };
 }
 
 export interface BrandPlatformOverride {
