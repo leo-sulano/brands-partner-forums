@@ -6,6 +6,7 @@
 import { getBrandLinkCol, getTabPlatforms, resolveBrandLink, getBrandAgUrl, getBrandCgUrl } from './tab-configs';
 import { renameBrand } from './queries';
 import { OPERATIONAL_TABS } from './tabs';
+import { normalizeBrandKey } from './removedPlatformBrands';
 
 export type LinkPlatform = 'tp' | 'ag' | 'cg' | 'wo';
 export const LINK_PLATFORMS: LinkPlatform[] = ['tp', 'ag', 'cg', 'wo'];
@@ -108,4 +109,26 @@ export function applyRenameToFields(
     if (cur === '' || cur === '—') next[f.column] = f.value;
   }
   return next;
+}
+
+// Client-side fallback for BrandGroup's onBrandRenamed handler: rename_brand
+// renames matching rows server-side (removed_platform_brands,
+// removed_custom_platform_brands, brand_platform_override), but if the
+// refetch that's supposed to pick that up fails, whatever's already in
+// memory would otherwise keep pointing at the old name until some later
+// reload happens to succeed — silently breaking every lookup for this brand
+// in between (see EditEntryModal's onDone comment for the concrete failure
+// this causes). This re-keys already-loaded rows the same way, client-side:
+// matches every row whose key normalizes (trim + lowercase) to oldName,
+// across every tab (a rename is global), and never mutates a row or the
+// input array — each `withKey` call returns a fresh object.
+export function rekeyBrandRows<T>(
+  rows: T[],
+  oldName: string,
+  newKeyValue: string,
+  getKey: (row: T) => string,
+  withKey: (row: T, newKeyValue: string) => T,
+): T[] {
+  const oldKey = normalizeBrandKey(oldName);
+  return rows.map((r) => (normalizeBrandKey(getKey(r)) === oldKey ? withKey(r, newKeyValue) : r));
 }

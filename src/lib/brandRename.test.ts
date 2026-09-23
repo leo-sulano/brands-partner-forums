@@ -14,7 +14,7 @@ const { renameBrandMock } = vi.hoisted(() => ({ renameBrandMock: vi.fn() }));
 vi.mock('./queries', () => ({ renameBrand: renameBrandMock }));
 vi.mock('./tabs', () => ({ OPERATIONAL_TABS: ['SilverPlay', 'BIT'] }));
 
-import { brandLinkColumnFor, tabLinkPlatforms, buildLinkWrites, buildFallbackFills, effectiveBrandLinks, performBrandRename, applyRenameToFields } from './brandRename';
+import { brandLinkColumnFor, tabLinkPlatforms, buildLinkWrites, buildFallbackFills, effectiveBrandLinks, performBrandRename, applyRenameToFields, rekeyBrandRows } from './brandRename';
 
 describe('brandLinkColumnFor', () => {
   it('maps TP to the tab brand-link column', () => {
@@ -114,5 +114,55 @@ describe('applyRenameToFields', () => {
       'Brands', 'Rooster', 'SilverPlay', fills,
     );
     expect(out).toEqual({ Brands: 'Rooster', 'Brand Link': 'https://tp/r' });
+  });
+});
+
+describe('rekeyBrandRows', () => {
+  interface BrandRow { tab: string; brand: string; platform: string }
+  const getKey = (r: BrandRow) => r.brand;
+  const withKey = (r: BrandRow, v: string): BrandRow => ({ ...r, brand: v });
+
+  it('re-keys every row matching the old name (trimmed/case-insensitive), across every tab', () => {
+    const rows: BrandRow[] = [
+      { tab: 'SilverPlay', brand: ' Rooster.Bet ', platform: 'tp' },
+      { tab: 'BIT', brand: 'rooster.bet', platform: 'tp' },
+    ];
+    const out = rekeyBrandRows(rows, 'rooster.bet', 'Rooster', getKey, withKey);
+    expect(out).toEqual([
+      { tab: 'SilverPlay', brand: 'Rooster', platform: 'tp' },
+      { tab: 'BIT', brand: 'Rooster', platform: 'tp' },
+    ]);
+  });
+
+  it('leaves other brands untouched', () => {
+    const rows: BrandRow[] = [
+      { tab: 'SilverPlay', brand: 'rooster.bet', platform: 'tp' },
+      { tab: 'SilverPlay', brand: 'Librabet', platform: 'ag' },
+    ];
+    const out = rekeyBrandRows(rows, 'rooster.bet', 'Rooster', getKey, withKey);
+    expect(out).toEqual([
+      { tab: 'SilverPlay', brand: 'Rooster', platform: 'tp' },
+      { tab: 'SilverPlay', brand: 'Librabet', platform: 'ag' },
+    ]);
+  });
+
+  it('does not mutate the input array or its rows', () => {
+    const rows: BrandRow[] = [{ tab: 'SilverPlay', brand: 'rooster.bet', platform: 'tp' }];
+    const original = rows[0];
+    const out = rekeyBrandRows(rows, 'rooster.bet', 'Rooster', getKey, withKey);
+    expect(rows[0]).toBe(original);
+    expect(rows[0].brand).toBe('rooster.bet');
+    expect(out).not.toBe(rows);
+    expect(out[0]).not.toBe(original);
+  });
+
+  it('works with a normalized brand_key field, matching overrideRows shape', () => {
+    interface OverrideRow { tab: string; brand_key: string; platform: string }
+    const overrideRows: OverrideRow[] = [{ tab: 'SilverPlay', brand_key: 'rooster.bet', platform: 'tp' }];
+    const out = rekeyBrandRows(
+      overrideRows, 'rooster.bet', 'rooster',
+      (r) => r.brand_key, (r, v) => ({ ...r, brand_key: v }),
+    );
+    expect(out).toEqual([{ tab: 'SilverPlay', brand_key: 'rooster', platform: 'tp' }]);
   });
 });

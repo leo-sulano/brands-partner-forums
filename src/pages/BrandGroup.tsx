@@ -37,6 +37,7 @@ import { getTabColumns, getColLabel, COLUMN_LABELS, TAB_DEFAULT_BRAND, getTabPla
 import { slugToTab, tabToSlug, OPERATIONAL_TABS, tabDisplayName } from '../lib/tabs';
 import { parseScore, PLATFORM_MAX_SCORE, PLATFORM_LABEL, PLATFORM_SHORT_LABEL, computeAccountPlatformUsage, passesPlatformDateFilter, PLATFORM_REVIEW_TEXT_KEYS, PLATFORM_SCORE_KEYS, pick, type Platform } from '../lib/scoreSummary';
 import { savePlatformRemoved, saveCustomPlatformRemoved } from '../lib/platformRemovedActions';
+import { rekeyBrandRows } from '../lib/brandRename';
 import { canonicalCountryKey, resolveCountryLabel } from '../lib/countryFlags';
 import { canonicalProxyKey, canonicalProxyName, resolveProxyLabel } from '../lib/proxyAliases';
 import { isValidDateText, DATE_ENTRY_HEADERS } from '../lib/dateUtils';
@@ -3296,7 +3297,7 @@ export default function BrandGroup() {
             }
             reloadRef.current();
           }}
-          onBrandRenamed={(newName) => {
+          onBrandRenamed={async (oldName, newName) => {
             // The renamed entry's own local state must reflect the new name
             // immediately: initialOverridesForEditEntry/initialRemovedPlatformsForEditEntry
             // etc. below are computed every render from editEntry.data[brandCol],
@@ -3305,11 +3306,43 @@ export default function BrandGroup() {
             // pointing at the old name, that lookup would miss after reload,
             // making onSave's `was` read as unset and silently no-op a still-set
             // override/removed-platform flag (or re-fire its notification).
-            // reloadRef.current() only bumps a seq that effects react to
-            // asynchronously (no promise to await here) — EditEntryModal keeps
-            // its own Save Changes disabled until this whole handler resolves,
-            // which is the best available guard against saving mid-reload.
             setEditEntry((e) => (e && brandCol ? { ...e, data: { ...e.data, [brandCol]: newName } } : e));
+            // EditEntryModal keeps Save Changes disabled until this promise
+            // settles, so it must not resolve until overrideRows/
+            // removedPlatformBrandRows/removedCustomPlatformBrandRows
+            // actually match the new name — a bare reloadRef.current() bump
+            // resolves before its effect's fetch lands, which is exactly the
+            // race that let a stale lookup silently no-op a clear or
+            // re-fire a removal notification. Fetch the three renamed
+            // sources directly and await them here.
+            try {
+              const [rp, rcp, ov] = await Promise.all([
+                fetchRemovedPlatformBrands(),
+                fetchRemovedCustomPlatformBrands(),
+                fetchBrandPlatformOverrides(decodedTab),
+              ]);
+              setRemovedPlatformBrandRows(rp);
+              setRemovedCustomPlatformBrandRows(rcp);
+              setOverrideRows(ov);
+            } catch {
+              // Refetch failed (network hiccup, etc.) — rename_brand itself
+              // already succeeded server-side, so re-key what's already in
+              // memory (old name -> new name, pure updaters) rather than
+              // leaving these three arrays pointing at a name that no
+              // longer has any rows under it until some later reload
+              // happens to succeed. Global (every tab) and
+              // trim/case-insensitive, matching normalizeBrandKey — the
+              // same rules rename_brand used server-side.
+              setRemovedPlatformBrandRows((rows) =>
+                rekeyBrandRows(rows, oldName, newName.trim(), (r) => r.brand, (r, v) => ({ ...r, brand: v })));
+              setRemovedCustomPlatformBrandRows((rows) =>
+                rekeyBrandRows(rows, oldName, newName.trim(), (r) => r.brand, (r, v) => ({ ...r, brand: v })));
+              setOverrideRows((rows) =>
+                rekeyBrandRows(rows, oldName, normalizeBrandKey(newName), (r) => r.brand_key, (r, v) => ({ ...r, brand_key: v })));
+            }
+            // Everything else this rename could affect (brandCatalog,
+            // entries/headers, account usage) — same as any other
+            // same-tab reload.
             reloadRef.current();
           }}
         />

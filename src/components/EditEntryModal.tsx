@@ -102,10 +102,11 @@ interface Props {
   initialOverrides?: Partial<Record<Platform, 'pause' | 'active'>>;
   initialRemovedCustomPlatforms?: string[];
   initialRemovedCustomPlatformDates?: Record<string, string>;
-  // May return a promise (e.g. the caller's own reload of the maps this
-  // rename just changed) — Save Changes is kept disabled until it settles,
-  // so a save can't race a still-stale override/removed-platform lookup.
-  onBrandRenamed?: (newName: string) => void | Promise<void>;
+  // Called with (oldName, newName) once a rename confirms. Must return a
+  // promise that only resolves once it's safe to save this entry again —
+  // Save Changes is kept disabled until it settles (see the onDone handler
+  // below for why).
+  onBrandRenamed?: (oldName: string, newName: string) => Promise<void>;
 }
 
 const BRAND_PROFILE_LINK_COLS: Array<{ col: string; fallback: (brand: string) => string | undefined }> = [
@@ -823,6 +824,7 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
           newName={renameTarget}
           onCancel={() => setRenameTarget(null)}
           onDone={async ({ fills }) => {
+            const oldName = savedBrand;
             const newName = renameTarget;
             // Mirror against entry.tab (the tab the RPC actually wrote fills for),
             // not selectedTab — selectedTab may hold an unsaved pending tab move,
@@ -831,12 +833,22 @@ export default function EditEntryModal({ entry, headers, onClose, onSave, curren
             setSavedBrand(newName);
             setRenameTarget(null);
             setRenameDraft(null);
-            // Block Save Changes until the caller's own reload (of the
-            // override/removed-platform maps rename_brand just renamed rows
-            // in) settles, so a save here can't race a still-stale lookup.
+            // Block Save Changes until onBrandRenamed's promise settles. The
+            // caller (BrandGroup) uses that window to refetch — or, if the
+            // refetch itself fails, synchronously re-key — the override/
+            // removed-platform rows rename_brand just renamed server-side, so
+            // a save here can't run against a lookup still keyed to the old
+            // name (which would otherwise read an existing override/removed
+            // flag as unset and silently fail to clear it, or misread it as
+            // newly-removed and re-fire a removal notification). onDone is
+            // called by BrandRenameDialog without being awaited, so this
+            // catches its own errors rather than risking an unhandled
+            // rejection — surfaced via the modal's existing error banner.
             setSaving(true);
             try {
-              await onBrandRenamed?.(newName);
+              await onBrandRenamed?.(oldName, newName);
+            } catch (err) {
+              setError(err instanceof Error ? err.message : 'Renamed, but failed to refresh — reopen this entry before saving.');
             } finally {
               setSaving(false);
             }
