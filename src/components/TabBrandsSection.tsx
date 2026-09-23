@@ -1,11 +1,19 @@
 // src/components/TabBrandsSection.tsx
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ChevronDown, Search, Info } from 'lucide-react';
 import { setBrandLinks } from '../lib/queries';
 import { tabLinkPlatforms, effectiveBrandLinks, buildLinkWrites, type LinkPlatform } from '../lib/brandRename';
 import { OPERATIONAL_TABS } from '../lib/tabs';
 import { PLATFORM_SHORT_LABEL } from '../lib/scoreSummary';
+import { normalizeBrandKey, PLATFORM_FAVICON } from '../lib/removedPlatformBrands';
+import { PLATFORM_FULL_LABEL } from '../lib/scheduler/scheduleUtils';
+import { mondayOf, addDays, toISODate } from '../lib/scheduleBrands';
+import { formatCellValue } from '../lib/format';
 import BrandRenameDialog from './BrandRenameDialog';
+import PlatformRemovedModal, { type RemovableFlagOption } from './PlatformRemovedModal';
+import PlatformPauseModal from './PlatformPauseModal';
+import Tooltip from './Tooltip';
+import { useTabBrandFlags, type RemovedFlag } from './useTabBrandFlags';
 
 interface Props {
   tabName: string;
@@ -144,12 +152,25 @@ export function makeRowsUpdater(
   return (current) => mergeRows(current, prevInitial, nextInitial, platforms);
 }
 
-// Edit Brand Tab's editable list of every brand on this tab: rename (global,
-// every tab — via BrandRenameDialog) and per-platform page links (written to
-// every entry of that brand on every tab where the platform is enabled).
+// Case-insensitive substring filter for the Brands list's search box.
+export function filterBrandKeys(keys: string[], query: string): string[] {
+  const q = query.trim().toLowerCase();
+  return q ? keys.filter((k) => k.toLowerCase().includes(q)) : keys;
+}
+
+type Picker = { kind: 'removed' | 'pause'; brand: string } | null;
+
+// Edit Brand Tab's single, searchable list of every brand on this tab. Each
+// brand collapses to one line (name + removed/paused chips) and expands to:
+// editable name (global rename via BrandRenameDialog), per-platform page
+// links (written to every entry of that brand on every tab where the
+// platform is enabled), and per-platform removed/paused status with
+// Restore/Resume plus Flag removed…/Pause… (the former separate "Removed
+// platform pages" and "Paused brands" sections, now folded in per brand).
 export default function TabBrandsSection({ tabName, brands, brandProfiles, onChanged, onChildModalOpenChange, renameLockedBrands }: Props) {
   const lockedKeys = new Set((renameLockedBrands ?? []).map((b) => b.trim().toLowerCase()));
   const platforms = tabLinkPlatforms(tabName);
+  const flags = useTabBrandFlags(tabName, brands);
   const initial = useMemo(() => {
     const m: Record<string, RowState> = {};
     for (const brand of dedupeBrands(brands)) {
@@ -160,18 +181,15 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
   const [rows, setRows] = useState<Record<string, RowState>>(initial);
   // What `initial` looked like the last time the effect below ran. Advanced
   // synchronously in the effect body, BEFORE calling setRows -- never inside
-  // the updater itself (see makeRowsUpdater's comment for why that ordering,
-  // not just "compute the two together", is what actually matters).
+  // the updater itself (see makeRowsUpdater's comment).
   const prevInitialRef = useRef<Record<string, RowState>>(initial);
   const [savingBrand, setSavingBrand] = useState<string | null>(null);
   const [rowError, setRowError] = useState<Record<string, string>>({});
   const [rowSaved, setRowSaved] = useState<{ brand: string; message: string } | null>(null);
-  // links: captured from changedLinks(brand) at the moment Save is clicked
-  // (see handleSave) -- relying on handleRenamed re-deriving it itself at
-  // confirm time only worked by closure accident (rows/initial happening not
-  // to have changed in between); a real gap given the reconcile effect above
-  // can legitimately touch `rows` while the rename confirm dialog is open.
   const [renameTarget, setRenameTarget] = useState<{ brand: string; newName: string; links: Partial<Record<LinkPlatform, string>> } | null>(null);
+  const [picker, setPicker] = useState<Picker>(null);
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const prev = prevInitialRef.current; // snapshot BEFORE enqueueing the update
@@ -179,9 +197,21 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
     setRows(makeRowsUpdater(prev, initial, platforms)); // pure: closes over locals only, safe to call more than once
     // eslint-disable-next-line react-hooks/exhaustive-deps -- platforms is a pure function of tabName, which `initial` already depends on
   }, [initial]);
-  useEffect(() => onChildModalOpenChange(renameTarget !== null), [renameTarget, onChildModalOpenChange]);
+  useEffect(
+    () => onChildModalOpenChange(renameTarget !== null || picker !== null),
+    [renameTarget, picker, onChildModalOpenChange],
+  );
 
   const brandKeys = Object.keys(initial);
+  const visibleKeys = filterBrandKeys(brandKeys, query);
+
+  function toggle(brand: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(brand)) next.delete(brand); else next.add(brand);
+      return next;
+    });
+  }
 
   function isDirty(brand: string): boolean {
     const r = rows[brand];
@@ -199,11 +229,8 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
     return out;
   }
 
-  // Returns whether any write actually happened -- buildLinkWrites drops
-  // blank values (a blanked-out link input is "leave unchanged", not "clear
-  // everywhere"), so a links-only save can legitimately produce zero writes;
-  // callers use this to show "Nothing to save" instead of a misleading
-  // "Saved.".
+  // Returns whether any write actually happened -- blank link inputs are
+  // "leave unchanged", so a links-only save can produce zero writes.
   async function saveLinks(brandNow: string, links: Partial<Record<LinkPlatform, string>>): Promise<boolean> {
     const writes = buildLinkWrites([...OPERATIONAL_TABS], links);
     if (writes.length > 0) await setBrandLinks(brandNow, writes);
@@ -214,13 +241,17 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
     return wrote ? 'Saved.' : 'Nothing to save — blank links are left unchanged.';
   }
 
+  function setError(brand: string, message: string) {
+    setRowError((e) => ({ ...e, [brand]: message }));
+  }
+
   async function handleSave(brand: string) {
-    setRowError((e) => ({ ...e, [brand]: '' }));
+    setError(brand, '');
     setRowSaved(null);
     const links = changedLinks(brand);
     const action = resolveSaveAction(brand, rows[brand].name, links);
     if (action.kind === 'empty-name') {
-      setRowError((e) => ({ ...e, [brand]: 'Brand name cannot be empty.' }));
+      setError(brand, 'Brand name cannot be empty.');
       return;
     }
     if (action.kind === 'rename') {
@@ -233,7 +264,7 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
       setRowSaved({ brand, message: savedMessage(wrote) });
       onChanged();
     } catch (err) {
-      setRowError((e) => ({ ...e, [brand]: err instanceof Error ? err.message : 'Failed to save links' }));
+      setError(brand, err instanceof Error ? err.message : 'Failed to save links');
     } finally {
       setSavingBrand(null);
     }
@@ -242,74 +273,223 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
   async function handleRenamed(brand: string, newName: string, links: Partial<Record<LinkPlatform, string>>) {
     setRenameTarget(null);
     setSavingBrand(brand);
+    // Keep the renamed row open after the parent reload re-keys it.
+    setExpanded((prev) => new Set(prev).add(newName));
     try {
       const wrote = await saveLinks(newName, links);
       setRowSaved({ brand: newName, message: savedMessage(wrote) });
     } catch (err) {
-      // Keyed by newName, not the pre-rename `brand` -- onChanged() below
-      // triggers a parent reload that re-keys this row to newName (the
-      // rename itself already succeeded; only the link write failed), so an
-      // error stored under the old key would never render again once the
-      // fresh `brands` prop flows back down without that old name in it.
-      setRowError((e) => ({ ...e, [newName]: `Renamed, but links failed: ${err instanceof Error ? err.message : 'unknown error'}` }));
+      // Keyed by newName -- the parent reload re-keys this row to newName.
+      setError(newName, `Renamed, but links failed: ${err instanceof Error ? err.message : 'unknown error'}`);
     } finally {
       setSavingBrand(null);
       onChanged();
+      // Removed/pause rows were renamed server-side too; refetch them.
+      flags.refresh().catch(() => {});
     }
+  }
+
+  // Runs a removed/pause action for `brand`, surfacing failures (and
+  // non-fatal warnings, e.g. a failed notification email) on that row.
+  async function runFlagAction(brand: string, action: () => Promise<string | null>): Promise<boolean> {
+    setError(brand, '');
+    setRowSaved(null);
+    try {
+      const warning = await action();
+      if (warning) setError(brand, warning);
+      return true;
+    } catch (err) {
+      setError(brand, err instanceof Error ? err.message : 'Failed to update');
+      return false;
+    }
+  }
+
+  function flagLabel(f: RemovedFlag): string {
+    return f.kind === 'builtin' ? PLATFORM_SHORT_LABEL[f.platform] : f.label;
   }
 
   if (brandKeys.length === 0) return null;
 
+  const busy = savingBrand !== null || flags.busy;
+  const smallBtn = 'shrink-0 rounded bg-white px-2 py-0.5 font-medium text-slate-600 ring-1 ring-slate-200 hover:bg-slate-100 disabled:opacity-50';
+
   return (
     <div>
-      <label className="mb-1.5 block text-xs font-medium text-slate-500">Brands</label>
-      <div className="max-h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 p-2">
-        {brandKeys.map((brand) => {
+      <div className="mb-1.5 flex items-center gap-1">
+        <label className="block text-xs font-medium text-slate-500">Brands ({brandKeys.length})</label>
+        <Tooltip
+          content={
+            <span className="block w-56 whitespace-normal">
+              Click a brand to edit its name and page links, or flag a platform page removed / pause it. Renames apply to every tab; links update every entry of the brand (a blank link is left unchanged). A new pause reaches the Schedule Planner, PMS and Ask AI the next time the tab's Schedule Planner opens (or the Monday cron runs); resuming is immediate.
+            </span>
+          }
+        >
+          <Info className="size-3.5 text-slate-400" />
+        </Tooltip>
+      </div>
+      <div className="relative mb-2">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search brands…"
+          className="w-full rounded-lg border border-slate-200 py-1.5 pl-8 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+      {flags.loadError && <p className="mb-1 text-xs text-rose-600">Failed to load removed/paused status.</p>}
+      <div className="max-h-96 divide-y divide-slate-100 overflow-y-auto rounded-lg border border-slate-200">
+        {visibleKeys.length === 0 && <p className="px-3 py-2 text-xs text-slate-400">No brands match "{query}".</p>}
+        {visibleKeys.map((brand) => {
           const r = rows[brand];
           if (!r) return null;
+          const key = normalizeBrandKey(brand);
+          const removed = flags.removedByBrand.get(key) ?? [];
+          const paused = flags.pausedByBrand.get(key) ?? [];
+          const isOpen = expanded.has(brand);
           const dirty = isDirty(brand);
+          const locked = lockedKeys.has(key);
+          const pauseEligible = flags.pauseEligibleFor(brand);
           return (
-            <div key={brand} className="space-y-1.5 rounded-md border border-slate-100 p-2">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={r.name}
-                  disabled={lockedKeys.has(brand.trim().toLowerCase())}
-                  title={lockedKeys.has(brand.trim().toLowerCase()) ? "This tab's default brand keys its schedule and can't be renamed" : undefined}
-                  onChange={(e) => setRows((s) => ({ ...s, [brand]: { ...s[brand], name: e.target.value } }))}
-                  className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleSave(brand)}
-                  disabled={!dirty || savingBrand !== null}
-                  className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
-                >
-                  {savingBrand === brand && <Loader2 className="size-3 animate-spin" />}
-                  Save
-                </button>
-              </div>
-              {platforms.map((p) => (
-                <div key={p} className="flex items-center gap-2">
-                  <span className="w-7 shrink-0 text-[11px] font-semibold text-slate-400">{PLATFORM_SHORT_LABEL[p]}</span>
-                  <input
-                    type="text"
-                    value={r.links[p] ?? ''}
-                    placeholder="https://…"
-                    onChange={(e) => setRows((s) => ({ ...s, [brand]: { ...s[brand], links: { ...s[brand].links, [p]: e.target.value } } }))}
-                    className="min-w-0 flex-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+            <div key={brand}>
+              <button
+                type="button"
+                onClick={() => toggle(brand)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-slate-50"
+              >
+                <ChevronDown className={`size-3.5 shrink-0 text-slate-400 transition-transform ${isOpen ? '' : '-rotate-90'}`} />
+                <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{brand}</span>
+                {removed.map((f) => (
+                  <span key={`r-${f.kind === 'builtin' ? f.platform : f.platformId}`} className="shrink-0 rounded bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-600">
+                    {flagLabel(f)} removed
+                  </span>
+                ))}
+                {paused.map((x) => (
+                  <span key={`p-${x.platform}`} className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
+                    {PLATFORM_SHORT_LABEL[x.platform]} paused
+                  </span>
+                ))}
+              </button>
+
+              {isOpen && (
+                <div className="space-y-2 bg-slate-50/60 px-3 pb-3 pt-1">
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={r.name}
+                      disabled={locked}
+                      title={locked ? 'This tab’s default brand keys its schedule and can’t be renamed' : undefined}
+                      onChange={(e) => setRows((s) => ({ ...s, [brand]: { ...s[brand], name: e.target.value } }))}
+                      className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSave(brand)}
+                      disabled={!dirty || busy}
+                      className="inline-flex shrink-0 items-center gap-1 rounded-md bg-slate-800 px-2.5 py-1 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-40"
+                    >
+                      {savingBrand === brand && <Loader2 className="size-3 animate-spin" />}
+                      Save
+                    </button>
+                  </div>
+
+                  {flags.tabPlatforms.map((p) => {
+                    const linkable = (platforms as string[]).includes(p);
+                    const rf = removed.find((f) => f.kind === 'builtin' && f.platform === p);
+                    const pf = paused.find((x) => x.platform === p);
+                    return (
+                      <div key={p} className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={PLATFORM_FAVICON[p]}
+                            alt={p}
+                            className="size-3.5 shrink-0 rounded-sm"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
+                          <span className="w-7 shrink-0 text-[11px] font-semibold text-slate-500">{PLATFORM_SHORT_LABEL[p]}</span>
+                          {linkable ? (
+                            <input
+                              type="text"
+                              value={r.links[p] ?? ''}
+                              placeholder={`${PLATFORM_FULL_LABEL[p]} page link`}
+                              onChange={(e) => setRows((s) => ({ ...s, [brand]: { ...s[brand], links: { ...s[brand].links, [p]: e.target.value } } }))}
+                              className="min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          ) : (
+                            <span className="flex-1 text-xs text-slate-400">{PLATFORM_FULL_LABEL[p]}</span>
+                          )}
+                        </div>
+                        {rf && (
+                          <div className="ml-[3.25rem] flex items-center justify-between gap-2 text-xs">
+                            <span className="text-rose-600">
+                              Removed {formatCellValue(rf.removedAt)}
+                              {rf.removedBy && <span className="text-slate-400"> — {rf.removedBy}</span>}
+                            </span>
+                            <button type="button" disabled={busy} onClick={() => runFlagAction(brand, () => flags.restore(rf))} className={smallBtn}>
+                              Restore
+                            </button>
+                          </div>
+                        )}
+                        {pf && (
+                          <div className="ml-[3.25rem] flex items-center justify-between gap-2 text-xs">
+                            <span className="text-amber-700">
+                              Paused{pf.reason ? ` — ${pf.reason}` : ''}{pf.resumeAt ? ` — resumes ${pf.resumeAt}` : ' — permanent'}
+                            </span>
+                            <button type="button" disabled={busy} onClick={() => runFlagAction(brand, () => flags.resume(pf))} className={smallBtn}>
+                              Resume
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  {flags.tabCustomPlatforms.map((cp) => {
+                    const rf = removed.find((f) => f.kind === 'custom' && f.platformId === cp.id);
+                    return (
+                      <div key={cp.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-slate-500">
+                          <span className="font-semibold">{cp.shortLabel || cp.name}</span>
+                          {rf && <span className="text-rose-600"> — Removed {formatCellValue(rf.removedAt)}</span>}
+                        </span>
+                        {rf && (
+                          <button type="button" disabled={busy} onClick={() => runFlagAction(brand, () => flags.restore(rf))} className={smallBtn}>
+                            Restore
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={busy || flags.loading}
+                      onClick={() => setPicker({ kind: 'removed', brand })}
+                      className="rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                    >
+                      Flag removed…
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || flags.loading || pauseEligible.length === 0}
+                      title={pauseEligible.length === 0 ? 'No pausable platforms (removed, hidden or restricted)' : undefined}
+                      onClick={() => setPicker({ kind: 'pause', brand })}
+                      className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      Pause…
+                    </button>
+                  </div>
+
+                  {rowError[brand] && <p className="text-xs text-rose-600">{rowError[brand]}</p>}
+                  {rowSaved?.brand === brand && <p className="text-xs text-emerald-600">{rowSaved.message}</p>}
                 </div>
-              ))}
-              {rowError[brand] && <p className="text-xs text-rose-600">{rowError[brand]}</p>}
-              {rowSaved?.brand === brand && <p className="text-xs text-emerald-600">{rowSaved.message}</p>}
+              )}
             </div>
           );
         })}
       </div>
-      <p className="mt-1 text-[11px] text-slate-400">
-        Renames apply to every tab. Links update every entry of the brand; a blank link is left unchanged.
-      </p>
+
       {renameTarget && (
         <BrandRenameDialog
           oldName={renameTarget.brand}
@@ -318,6 +498,51 @@ export default function TabBrandsSection({ tabName, brands, brandProfiles, onCha
           onDone={() => handleRenamed(renameTarget.brand, renameTarget.newName, renameTarget.links)}
         />
       )}
+
+      {picker?.kind === 'removed' && (() => {
+        const brand = picker.brand;
+        const init = flags.removedModalInitial(brand);
+        const options: RemovableFlagOption[] = [
+          ...flags.tabPlatforms.map((p) => ({ key: p, label: PLATFORM_FULL_LABEL[p], favicon: PLATFORM_FAVICON[p] })),
+          ...flags.tabCustomPlatforms.map((p) => ({ key: p.id, label: p.name })),
+        ];
+        return (
+          <PlatformRemovedModal
+            brand={brand}
+            platforms={options}
+            initialCheckedKeys={init.checkedKeys}
+            initialDateTexts={init.dateTexts}
+            overlayZClass="z-[60]"
+            busy={flags.busy}
+            onSave={async (checked, dateTexts) => {
+              if (await runFlagAction(brand, () => flags.saveRemoved(brand, checked, dateTexts))) setPicker(null);
+            }}
+            onClose={() => setPicker(null)}
+          />
+        );
+      })()}
+
+      {picker?.kind === 'pause' && (() => {
+        const brand = picker.brand;
+        const init = flags.pauseModalInitial(brand);
+        return (
+          <PlatformPauseModal
+            brand={brand}
+            platforms={flags.pauseEligibleFor(brand)}
+            initialCheckedPlatforms={init.checkedPlatforms}
+            autoPauseReasonByPlatform={{}}
+            initialReason={init.initialReason}
+            initialResumeAt={init.initialResumeAt}
+            minResumeAt={toISODate(addDays(mondayOf(new Date()), 7))}
+            overlayZClass="z-[60]"
+            busy={flags.busy}
+            onSave={async (checked, reason, resumeAt) => {
+              if (await runFlagAction(brand, () => flags.savePause(brand, checked, reason, resumeAt))) setPicker(null);
+            }}
+            onClose={() => setPicker(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

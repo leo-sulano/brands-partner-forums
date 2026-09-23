@@ -10463,3 +10463,9 @@ differs again" reason). Verified RED->GREEN. Full suite 2518/2518, build/deno ch
 ## Task 353: Editable brand names + brand page links
 
 Brands can now be renamed globally (every tab) from Edit Brand Tab's new Brands list or Edit Entry's Brand Name pencil, via atomic `rename_brand` RPC (migrations 20260923120000/130000/140000) that rewrites every matching brand key in entries.data plus every `brand`-column table (history tables excluded), blocks collisions, and logs each entry to edit_log. Per-platform brand page links (TP/AG/CG; WO only on the Wizard of Odds tab) are editable in the same list and written to every entry of the brand via `set_brand_links`; hardcoded fallback links are materialized before a rename. Pending manual step: EC2 `scripts/check_brand_page_removed.py` still reads TP URLs only from the name-keyed map, so a renamed brand with no entry-level TP link skips the daily page-removed check until that script gets a fallback + EC2 deploy. Detail: `.agent/handoff/2026-09-23-brand-rename-and-links.md`.
+
+---
+
+## Task 354: Unified collapsible Brands list in Edit Brand Tab
+
+Edit Brand Tab's Brands list is now one searchable, collapsible list: each brand collapses to its name plus removed/paused chips and expands to its editable name, per-platform page links, and per-platform removed/paused status with Restore/Resume and Flag removed.../Pause... buttons. The separate "Removed platform pages" and "Paused brands" sections were folded into it (data/actions moved into `src/components/useTabBrandFlags.ts`, reusing the existing platformRemovedActions/platformPauseActions write paths, so notification emails and PMS sync are unchanged). No DB changes; build + full vitest (3731) pass; visually verified on BIT.

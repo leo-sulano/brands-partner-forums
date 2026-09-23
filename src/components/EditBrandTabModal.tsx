@@ -21,8 +21,6 @@ import { isTabPaused, pauseTabLocally, unpauseTabLocally } from '../lib/pausedTa
 import { renameOperationalTab } from '../lib/tabs';
 import { useAuth } from '../contexts/AuthContext';
 import IconPicker from './IconPicker';
-import TabPausedBrandsSection from './TabPausedBrandsSection';
-import TabRemovedPlatformsSection from './TabRemovedPlatformsSection';
 import TabBrandsSection from './TabBrandsSection';
 import SelectDropdown from './SelectDropdown';
 import Tooltip from './Tooltip';
@@ -41,7 +39,7 @@ function InfoTip({ children }: { children: string }) {
 interface Props {
   tabName: string;
   // Distinct brand display strings for this tab (BrandGroup's uniqueBrands),
-  // passed straight through to TabPausedBrandsSection so it needs no fetch.
+  // passed straight through to TabBrandsSection so it needs no fetch.
   brands: string[];
   onUpdated: (renamedTo?: string) => void;
   onClose: () => void;
@@ -109,21 +107,10 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   const [pausedUntil, setPausedUntil] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // True while TabPausedBrandsSection's PlatformPauseModal child (or
-  // TabRemovedPlatformsSection's PlatformRemovedModal child) is open — the
-  // outer modal must not close on Escape then (each child has its own
-  // Escape-to-close).
-  const [pauseChildOpen, setPauseChildOpen] = useState(false);
-  const [removedChildOpen, setRemovedChildOpen] = useState(false);
-  // True while TabBrandsSection's BrandRenameDialog child is open — same
-  // "outer modal must not close on Escape then" reasoning as pauseChildOpen/
-  // removedChildOpen above.
+  // True while any of TabBrandsSection's child dialogs (BrandRenameDialog,
+  // PlatformRemovedModal, PlatformPauseModal) is open — the outer modal must
+  // not close on Escape then (each child has its own Escape-to-close).
   const [brandsChildOpen, setBrandsChildOpen] = useState(false);
-  // Bumped after every rename/link save in the Brands list and used as the
-  // `key` of the paused/removed sections: they fetch their rows once per
-  // tabName, so after a rename they'd keep old-name rows and resume/unflag
-  // would silently hit 0 rows. Remounting forces a refetch.
-  const [brandsRevision, setBrandsRevision] = useState(0);
   const [customPlatforms, setCustomPlatforms] = useState<CustomPlatformSummary[]>([]);
   const [enabledCustomPlatformIds, setEnabledCustomPlatformIds] = useState<string[]>(
     () => initialEnabledCustomPlatformIds,
@@ -132,7 +119,7 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
   const [deletingCustomPlatformId, setDeletingCustomPlatformId] = useState<string | null>(null);
   const [deleteCustomPlatformError, setDeleteCustomPlatformError] = useState<string | null>(null);
 
-  // Brand list handed to TabPausedBrandsSection. Initialized once from the
+  // Brand list handed to TabBrandsSection. Initialized once from the
   // `brands` prop (BrandGroup's uniqueBrands at modal-open time, per that
   // prop's own doc comment) and appended to locally on a successful add —
   // BrandGroup's realtime entries subscription will eventually recompute
@@ -193,11 +180,11 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape' && !submitting && !pauseChildOpen && !removedChildOpen && !showAddCustomPlatform && !brandsChildOpen) onClose();
+      if (e.key === 'Escape' && !submitting && !showAddCustomPlatform && !brandsChildOpen) onClose();
     }
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, submitting, pauseChildOpen, removedChildOpen, showAddCustomPlatform, brandsChildOpen]);
+  }, [onClose, submitting, showAddCustomPlatform, brandsChildOpen]);
 
   function handleRequestClose() {
     if (submitting) return;
@@ -528,10 +515,7 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
             tabName={tabName}
             brands={localBrands}
             brandProfiles={brandProfiles ?? {}}
-            onChanged={() => {
-              setBrandsRevision((n) => n + 1);
-              onBrandsChanged?.();
-            }}
+            onChanged={() => onBrandsChanged?.()}
             onChildModalOpenChange={setBrandsChildOpen}
             renameLockedBrands={renameLockedBrands}
           />
@@ -571,20 +555,6 @@ export default function EditBrandTabModal({ tabName, brands, onUpdated, onClose,
             {addBrandError && <p className="mt-1 text-xs text-rose-600">{addBrandError}</p>}
             {addBrandSuccess && <p className="mt-1 text-xs text-emerald-600">{addBrandSuccess}</p>}
           </div>
-
-          <TabRemovedPlatformsSection
-            key={`removed-${brandsRevision}`}
-            tabName={tabName}
-            brands={localBrands}
-            onChildModalOpenChange={setRemovedChildOpen}
-          />
-
-          <TabPausedBrandsSection
-            key={`paused-${brandsRevision}`}
-            tabName={tabName}
-            brands={localBrands}
-            onChildModalOpenChange={setPauseChildOpen}
-          />
 
           <div>
             <div className="mb-1.5 flex items-center gap-1">

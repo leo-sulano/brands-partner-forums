@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { dedupeBrands, rowIsDirty, resolveSaveAction, mergeRows, makeRowsUpdater, type RowState } from './TabBrandsSection';
+import { filterBrandKeys, dedupeBrands, rowIsDirty, resolveSaveAction, mergeRows, makeRowsUpdater, type RowState } from './TabBrandsSection';
 
 describe('dedupeBrands', () => {
   it('trims whitespace-suffixed brand names', () => {
@@ -151,5 +151,16 @@ describe('makeRowsUpdater', () => {
     rows = makeRowsUpdater(i0, i1, platforms)(rows);
     rows = makeRowsUpdater(i1, i2, platforms)(rows);
     expect(rows.Librabet.links.tp).toBe('https://v3');
+  });
+});
+
+describe('filterBrandKeys', () => {
+  const keys = ['Librabet', 'Librabet Casino', 'Alf Casino'];
+  it('returns all keys for a blank query', () => {
+    expect(filterBrandKeys(keys, '  ')).toEqual(keys);
+  });
+  it('matches case-insensitive substrings', () => {
+    expect(filterBrandKeys(keys, 'CASINO')).toEqual(['Librabet Casino', 'Alf Casino']);
+    expect(filterBrandKeys(keys, ' libra ')).toEqual(['Librabet', 'Librabet Casino']);
   });
 });
