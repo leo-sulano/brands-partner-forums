@@ -30,6 +30,23 @@ const CREDENTIALS: GmailCredentials = {
   senderEmail: 'sandbox@optinetsolutions.com',
 };
 
+// Automated emails are off unless AUTO_EMAILS_ENABLED=true (see _shared/gmail.ts);
+// these tests exercise the sending path, so opt in for the whole file.
+Deno.env.set('AUTO_EMAILS_ENABLED', 'true');
+
+Deno.test('sendBrandRemovedNotification sends nothing while AUTO_EMAILS_ENABLED is unset', async () => {
+  Deno.env.delete('AUTO_EMAILS_ENABLED');
+  try {
+    let calls = 0;
+    const fetchFn = (() => { calls++; return Promise.resolve(new Response('{}')); }) as typeof fetch;
+    const result = await sendBrandRemovedNotification(PAYLOAD, fakeProfilesClient(['a@example.com']), CREDENTIALS, fetchFn);
+    assertEquals(result, { sent: 0, failed: 0 });
+    assertEquals(calls, 0);
+  } finally {
+    Deno.env.set('AUTO_EMAILS_ENABLED', 'true');
+  }
+});
+
 function decodeBase64ToString(base64: string): string {
   return new TextDecoder().decode(Uint8Array.from(atob(base64), (c) => c.charCodeAt(0)));
 }

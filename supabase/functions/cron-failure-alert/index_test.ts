@@ -3,6 +3,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { GmailCredentials } from '../_shared/gmail.ts';
 import { buildAlertEmail, runCronFailureAlertCheck, type CronFailure } from './index.ts';
 
+// Automated emails are off unless AUTO_EMAILS_ENABLED=true (see _shared/gmail.ts);
+// these tests exercise the sending path, so opt in for the whole file.
+Deno.env.set('AUTO_EMAILS_ENABLED', 'true');
+
 const CREDENTIALS: GmailCredentials = {
   clientId: 'client-id',
   clientSecret: 'client-secret',

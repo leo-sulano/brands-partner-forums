@@ -10474,3 +10474,8 @@ Edit Brand Tab's Brands list is now one searchable, collapsible list: each brand
 
 ## Task 355: Pause Schedule Planner ↔ PMS mismatch alert email
 Deactivated the auto-sent parity-mismatch email from `sync-schedule-pms`'s daily `auditAllStatuses` action. It is now opt-in via a new `PARITY_ALERT_EMAIL_ENABLED=true` secret (unset = off); the parity check itself still runs and still reports in the JSON response. Deployed. To turn it back on: `supabase secrets set PARITY_ALERT_EMAIL_ENABLED=true`.
+
+---
+
+## Task 356: Pause all automated emails
+Added a global kill switch in `supabase/functions/_shared/gmail.ts` (`sendToApprovedProfiles`), so every automated edge-function email (Brand Page Removal notification, cron-failure alert, Schedule Planner ↔ PMS mismatch) is skipped unless the `AUTO_EMAILS_ENABLED=true` secret is set; it is unset, so all are off. `notify-brand-removed`, `cron-failure-alert` and `sync-schedule-pms` were redeployed. The local `scripts/watchdog.ps1` restart-alert email is likewise gated behind `WATCHDOG_EMAIL_ENABLED=true` in `scripts/.env`. The underlying checks still run; only the emails stop. To re-enable, set `AUTO_EMAILS_ENABLED=true` with `supabase secrets set` (plus `PARITY_ALERT_EMAIL_ENABLED=true` from Task 355 for the mismatch email).

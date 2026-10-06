@@ -81,6 +81,13 @@ export async function sendToApprovedProfiles(
   text: string,
   fetchFn: typeof fetch = fetch,
 ): Promise<{ sent: number; failed: number }> {
+  // Global kill switch for every automated email (brand-removed, cron-failure,
+  // Schedule Planner <-> PMS mismatch). Paused 2026-10-06 at the user's
+  // request; opt back in with the AUTO_EMAILS_ENABLED=true secret.
+  if (Deno.env.get('AUTO_EMAILS_ENABLED') !== 'true') {
+    console.log(`[gmail] automated emails disabled, skipped: ${subject}`);
+    return { sent: 0, failed: 0 };
+  }
   const { data, error } = await client.from('profiles').select('email').eq('approved', true);
   if (error) throw error;
   const emails = ((data ?? []) as { email: string }[]).map((r) => r.email).filter(Boolean);

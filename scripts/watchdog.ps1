@@ -90,7 +90,9 @@ try {
     $alertTo  = Read-EnvVar 'WATCHDOG_ALERT_TO'
     $smtpUser = Read-EnvVar 'WATCHDOG_SMTP_USER'
     $smtpPass = Read-EnvVar 'WATCHDOG_SMTP_APP_PASSWORD'
-    if ($alertTo -and $smtpUser -and $smtpPass) {
+    # Paused 2026-10-06 at the user's request; set WATCHDOG_EMAIL_ENABLED=true to opt back in.
+    $emailEnabled = (Read-EnvVar 'WATCHDOG_EMAIL_ENABLED') -eq 'true'
+    if ($emailEnabled -and $alertTo -and $smtpUser -and $smtpPass) {
         $securePass = ConvertTo-SecureString $smtpPass -AsPlainText -Force
         $cred = New-Object System.Management.Automation.PSCredential($smtpUser, $securePass)
         Send-MailMessage -From $smtpUser -To $alertTo `
