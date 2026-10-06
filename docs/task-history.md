@@ -10469,3 +10469,8 @@ Brands can now be renamed globally (every tab) from Edit Brand Tab's new Brands 
 ## Task 354: Unified collapsible Brands list in Edit Brand Tab
 
 Edit Brand Tab's Brands list is now one searchable, collapsible list: each brand collapses to its name plus removed/paused chips and expands to its editable name, per-platform page links, and per-platform removed/paused status with Restore/Resume and Flag removed.../Pause... buttons. The separate "Removed platform pages" and "Paused brands" sections were folded into it (data/actions moved into `src/components/useTabBrandFlags.ts`, reusing the existing platformRemovedActions/platformPauseActions write paths, so notification emails and PMS sync are unchanged). No DB changes; build + full vitest (3731) pass; visually verified on BIT. Same-day follow-up: "Add a brand" moved above the Brands list (ac536d6).
+
+---
+
+## Task 355: Pause Schedule Planner ↔ PMS mismatch alert email
+Deactivated the auto-sent parity-mismatch email from `sync-schedule-pms`'s daily `auditAllStatuses` action. It is now opt-in via a new `PARITY_ALERT_EMAIL_ENABLED=true` secret (unset = off); the parity check itself still runs and still reports in the JSON response. Deployed. To turn it back on: `supabase secrets set PARITY_ALERT_EMAIL_ENABLED=true`.

@@ -19,6 +19,7 @@ const GMAIL_CLIENT_ID = Deno.env.get('GMAIL_CLIENT_ID') || '';
 const GMAIL_CLIENT_SECRET = Deno.env.get('GMAIL_CLIENT_SECRET') || '';
 const GMAIL_REFRESH_TOKEN = Deno.env.get('GMAIL_REFRESH_TOKEN') || '';
 const GMAIL_SENDER_EMAIL = Deno.env.get('GMAIL_SENDER_EMAIL') || '';
+const PARITY_ALERT_EMAIL_ENABLED = Deno.env.get('PARITY_ALERT_EMAIL_ENABLED') === 'true';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -353,8 +354,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
       // the 4 secrets is unset -- handleAuditAllStatuses treats that as "skip
       // the alert email, keep everything else," matching how the rest of
       // this action already degrades gracefully around optional add-ons.
+      // Paused 2026-10-06 at the user's request: the mismatch alert email is
+      // opt-in via PARITY_ALERT_EMAIL_ENABLED=true. The parity check itself
+      // still runs and still reports in the JSON response.
       const gmailCredentials: GmailCredentials | undefined =
-        GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN && GMAIL_SENDER_EMAIL
+        PARITY_ALERT_EMAIL_ENABLED && GMAIL_CLIENT_ID && GMAIL_CLIENT_SECRET && GMAIL_REFRESH_TOKEN && GMAIL_SENDER_EMAIL
           ? { clientId: GMAIL_CLIENT_ID, clientSecret: GMAIL_CLIENT_SECRET, refreshToken: GMAIL_REFRESH_TOKEN, senderEmail: GMAIL_SENDER_EMAIL }
           : undefined;
       const results = await handleAuditAllStatuses(
